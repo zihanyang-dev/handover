@@ -7,14 +7,12 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { createSpace, spaceForMember } from '../db/space.ts'
+import { createSpace } from '../db/space.ts'
 import { normalizeSlug } from '@handover/universal'
 import { api, sends, takes } from './contract.ts'
 import { body, refusal, type Failure } from './failure.ts'
+import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
-
-/** A Space that is not there and a Space you are not in are the same answer, on purpose. */
-const UNAVAILABLE: Failure<404> = { reason: 'unavailable', recovery: 'start-over', status: 404 }
 
 /** A name of pure punctuation has no address, and no address means no Space. */
 const UNUSABLE_NAME: Failure<400> = {
@@ -71,29 +69,30 @@ const enterSpace = createRoute({
 export function spaceApi(db: Database) {
   const signedIn = requireSession(db)
 
-  return api<{ Variables: Signed }>()
-    .openapi({ ...makeSpace, middleware: [signedIn] }, async (c) => {
-      const asked = c.req.valid('json')
-      const slug = normalizeSlug(asked.displayName)
-      if (slug === null) return c.json(body(UNUSABLE_NAME), UNUSABLE_NAME.status)
+  return (
+    api<{ Variables: Signed & InSpace }>()
+      .openapi({ ...makeSpace, middleware: [signedIn] }, async (c) => {
+        const asked = c.req.valid('json')
+        const slug = normalizeSlug(asked.displayName)
+        if (slug === null) return c.json(body(UNUSABLE_NAME), UNUSABLE_NAME.status)
 
-      const made = await createSpace(db, {
-        requestKey: asked.requestKey,
-        userId: c.get('userId'),
-        displayName: asked.displayName.trim(),
-        slug,
+        const made = await createSpace(db, {
+          requestKey: asked.requestKey,
+          userId: c.get('userId'),
+          displayName: asked.displayName.trim(),
+          slug,
+        })
+
+        if (made.kind === 'slug-taken') {
+          const taken = { reason: 'slug-taken', recovery: 'choose-another-name' } as const
+          return c.json({ ...taken, suggestion: made.suggestion }, 409)
+        }
+        return c.json(made.space, made.kind === 'created' ? 201 : 200)
       })
 
-      if (made.kind === 'slug-taken') {
-        const taken = { reason: 'slug-taken', recovery: 'choose-another-name' } as const
-        return c.json({ ...taken, suggestion: made.suggestion }, 409)
-      }
-      return c.json(made.space, made.kind === 'created' ? 201 : 200)
-    })
-
-    .openapi({ ...enterSpace, middleware: [signedIn] }, async (c) => {
-      const space = await spaceForMember(db, c.req.valid('param').slug, c.get('userId'))
-      if (space === undefined) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      return c.json(space, 200)
-    })
+      // The gate answers this one entirely: reaching the handler is the whole of the question.
+      .openapi({ ...enterSpace, middleware: [signedIn, requireMember(db)] }, (c) =>
+        c.json(c.get('space'), 200),
+      )
+  )
 }

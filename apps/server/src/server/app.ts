@@ -17,6 +17,9 @@ import { requestLog, type Logged } from './request-log.ts'
 import { meApi } from './me-api.ts'
 import { spaceApi } from './space-api.ts'
 import { credentialApi } from './credential-api.ts'
+import { approvalApi } from './approval-api.ts'
+import { enrolmentApi } from './enrolment-api.ts'
+import { machineApi } from './machine-api.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
 export type App = Omit<SignInApi, 'providers'> &
@@ -54,4 +57,7 @@ export function handoverApp(deps: App) {
     .route('/', meApi({ db: deps.db, providers }))
     .route('/', spaceApi(deps.db))
     .route('/', credentialApi(deps))
+    .route('/', enrolmentApi({ db: deps.db, webOrigin: deps.webOrigin }))
+    .route('/', approvalApi({ db: deps.db }))
+    .route('/', machineApi({ db: deps.db }))
 }

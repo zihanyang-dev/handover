@@ -22,13 +22,22 @@ export type FoundAgent = {
   readonly version: string
 }
 
+/** What a machine says it found, in its own terms: the command it looked for, and what answered. */
+export type Reported = {
+  readonly command: string
+  readonly version: string
+}
+
 /**
- * The kind a command name belongs to, if this deployment knows it.
+ * What a machine reported, as agents this deployment knows.
  *
- * A machine reports what it found by command name, because that is what it actually looked for.
- * Names it reports that we do not know are dropped rather than refused: a newer CLI on an older
- * server is a machine that keeps working with fewer agents, not a machine that cannot connect.
+ * A machine reports by command name because that is what it actually looked for. Names we do not
+ * know are dropped rather than refused: a newer CLI against an older server should be a machine
+ * with fewer agents, not a machine that cannot check in.
  */
-export function kindOfCommand(command: string): AgentKind | undefined {
-  return AGENT_KIND_NAMES.find((kind) => AGENT_KINDS[kind].command === command)
+export function agentsFound(reported: readonly Reported[]): readonly FoundAgent[] {
+  return reported.flatMap((one) => {
+    const kind = AGENT_KIND_NAMES.find((known) => AGENT_KINDS[known].command === one.command)
+    return kind === undefined ? [] : [{ kind, version: one.version }]
+  })
 }

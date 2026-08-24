@@ -311,6 +311,322 @@
           "displayName",
           "requestKey"
         ]
+      },
+      "AskedToConnect": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string"
+          },
+          "userCode": {
+            "type": "string",
+            "example": "WDJB-MJHT"
+          },
+          "verifyUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "verifyUrlComplete": {
+            "type": "string",
+            "format": "uri"
+          },
+          "pollSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "secret",
+          "userCode",
+          "verifyUrl",
+          "verifyUrlComplete",
+          "pollSeconds",
+          "expiresAt"
+        ]
+      },
+      "AskToConnect": {
+        "type": "object",
+        "properties": {
+          "machineName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "mina-mbp"
+          }
+        },
+        "required": [
+          "machineName"
+        ]
+      },
+      "Collected": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "granted"
+                ]
+              },
+              "token": {
+                "type": "string"
+              },
+              "machineId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "token",
+              "machineId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "waiting"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "refused"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "expired"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "spent"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "no-enrolment"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        ]
+      },
+      "CollectEnrolment": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "secret"
+        ]
+      },
+      "MachineWaiting": {
+        "type": "object",
+        "properties": {
+          "machineName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "machineName",
+          "expiresAt"
+        ]
+      },
+      "NothingForThisMachine": {
+        "type": "object",
+        "properties": {
+          "pollSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": [
+          "pollSeconds"
+        ]
+      },
+      "MachineReport": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "command",
+                "version"
+              ]
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "found"
+        ]
+      },
+      "Machines": {
+        "type": "object",
+        "properties": {
+          "machines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Machine"
+            }
+          }
+        },
+        "required": [
+          "machines"
+        ]
+      },
+      "Machine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "presence": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "here"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "gone"
+                    ]
+                  },
+                  "since": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "state",
+                  "since"
+                ]
+              }
+            ]
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MachineAgent"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "presence",
+          "agents"
+        ]
+      },
+      "MachineAgent": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex",
+              "cursor-agent"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "version"
+        ]
       }
     },
     "parameters": {}
@@ -946,6 +1262,377 @@
           },
           "429": {
             "description": "This code has no tries left",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enrolments": {
+      "post": {
+        "summary": "Ask to bring this machine in, and get a code for somebody to approve",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskToConnect"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Show the code and start asking",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskedToConnect"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enrolments/collect": {
+      "post": {
+        "summary": "Collect the credential this enrolment was approved for",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectEnrolment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What became of it, including still waiting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collected"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enrolments/{userCode}": {
+      "get": {
+        "summary": "What is asking to come in under this code",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userCode",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A machine is waiting on an answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineWaiting"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing is waiting under that code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/enrolments/{userCode}/approve": {
+      "post": {
+        "summary": "Let that machine into this Space",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userCode",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "It may come in"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing is waiting under that code, or no such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enrolments/{userCode}/refuse": {
+      "post": {
+        "summary": "Turn that machine away",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "userCode",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "It may not come in, and asking again will not change that"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing is waiting under that code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/poll": {
+      "post": {
+        "summary": "Report what this machine has, and ask whether there is anything for it",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MachineReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Nothing for it yet; ask again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NothingForThisMachine"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/session": {
+      "delete": {
+        "summary": "Say this machine is stopping on purpose",
+        "responses": {
+          "204": {
+            "description": "Gone, without waiting out the silence"
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/machines": {
+      "get": {
+        "summary": "The machines in this Space",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Everything attached, here or not",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machines"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/machines/{id}": {
+      "delete": {
+        "summary": "Take a machine out of this Space",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Out, and its credential stops working"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such machine in it",
             "content": {
               "application/json": {
                 "schema": {
