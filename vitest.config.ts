@@ -34,6 +34,16 @@ export default defineConfig({
           include: ['apps/server/src/db/**/*.spec.ts', 'apps/server/src/server/**/*.spec.ts'],
         },
       },
+      {
+        // A real init, in a container. Slow to start and worth it: what is claimed is that a
+        // service manager accepts the unit and keeps the process up, and neither can be faked.
+        test: {
+          name: 'service',
+          include: ['apps/cli/service-check/*.container.spec.ts'],
+          testTimeout: 120_000,
+          hookTimeout: 600_000,
+        },
+      },
     ],
   },
 })

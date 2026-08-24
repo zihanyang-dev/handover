@@ -218,25 +218,35 @@ DELETE /machines/{id}                   移除
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
 
-## 达不到这个仓库标准的地方
+## 服务这部分怎么验
 
-到目前为止每条规则都有检查器,`db/` 和 `identity/` 是 100%。**装服务那个文件做不到,我不想假装它能。**
+到目前为止每条规则都有检查器,`db/` 和 `identity/` 是 100%。装服务这一块本来是例外 —— 直到发现
+**容器里能跑真的 systemd**。
 
 ```
-能测    生成的 plist / unit 内容对不对        断言文本
-能测    操作系统认不认这个文件                plutil -lint · systemd-analyze verify,进 CI
-能测    PATH 解析的退化逻辑                   把 $SHELL 换成一个假的
-测不了  launchctl bootstrap 真的起来了没      人跑一次
-测不了  Linux 上整条链路                      CI 容器能跑到"文件合法",跑不到"服务起来了"
+docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... /sbin/init
 ```
 
-`plutil -lint` 和 `systemd-analyze verify` 是操作系统自己的校验器,**把"我写的模板对不对"这半边还上了**。剩下的那半边只有人验过一次。
+于是能验的比预想的多得多:
 
-那个文件的文件头要写清**哪几行有测试、哪几行只有人试过**,免得以后有人以为它和别的文件一样安全。
+```
+生成的 unit          交给 systemd-analyze verify —— 连 ExecStart 指的文件不存在都会挑出来
+系统服务             daemon-reload · enable --now · is-active · is-enabled
+崩了会不会被拉起来    kill -9 掉进程,看 systemd 把它拉回来,NRestarts 涨了
+日志                 journalctl -u handover 里真的有
+用户服务             systemctl --user enable --now,不用 root
+```
 
-另外一件事实:**Linux 那一半是在 macOS 上写的。** CI 里跑容器能验到文件合法,验不到真的能起来。第一台真实的 Linux 机器接进来之前,那条路只能算「写完了」,不算「验过了」。
+**「崩了会不会被拉起来」尤其重要:那是我们把常驻交给操作系统的全部理由**,现在它有证据,不是一句
+承诺。跑在 vitest 的 `service` project 里,和数据库测试一样靠 docker。
 
-## 风险
+**只剩 macOS 一条没有检查器。** 没有容器能跑 launchd(内核不一样)。`plutil -lint` 能验 plist 的
+语法,`launchctl bootstrap` 起没起来验不了。
+
+那一条是这个仓库里**唯一一处「有人跑过一次」就是全部证据**的地方。但它恰好是我们每天在用的系统 ——
+真正危险的是没人用也没人测的那种,而 Linux 现在两样都有。
+
+## 风险## 风险
 
 **长轮询挂住连接。** 一百台机器就是一百个挂起的请求。Node 扛得住,但它决定了以后横向扩看的是**连接数,不是 QPS** —— 现在不用做什么,但别用 QPS 去估容量。
 
