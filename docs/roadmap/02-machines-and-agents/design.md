@@ -76,9 +76,23 @@ agents
 被拒了    终态,不能重试
 ```
 
-**③ 用户码要能被人念出来**
+**③ 用户码用 RFC 8628 那个字符集,并且干净网址是主路径**
 
-短码会被抄在便签上、念到电话里。字符集去掉互相认错的那几个(`0/O`、`1/I/L`),分组显示。这是一条纯规则,住在 `machine` owner 里,有测试钉住"字符集里不含易混字符"。
+字符集是 `BCDFGHJKLMNPQRSTVWXZ` —— 大小写不敏感的 A–Z,**去掉全部数字,再去掉元音**。
+
+- 全字母就不存在 `0/O`、`1/I` 认错的问题,不用一条条排除
+- **去掉元音是为了不随机拼出单词**,免得给人发一个骂人的码
+- 八位 `WDJB-MJHT`,`20^8` ≈ 256 亿
+
+命令行打两行:干净网址加码,以及一个带码的完整网址(标准里的 `verification_uri_complete`,存在的理由是二维码这类"非文本传输")。**能复制就点第二行,拿手机对着服务器屏幕就念第一行。**
+
+**带码的那个是加速通道,不是主路径。** 标准明确不建议把码塞进主网址,理由不是安全是可用性:
+
+> It is NOT RECOMMENDED for authorization servers to include the user code in the `verification_uri`... The rationale emphasizes that **allows users to receive error feedback about code entry after successfully reaching the URI**.
+
+只给带码长网址的话,**输错一个字符得到的是 404,而不是「这个码不对」** —— 页面都到不了,就没地方说哪儿错了。
+
+字符集和分组是纯规则,住在 `machine` owner 里,测试钉住:**不含数字、不含元音、不随机成词。**
 
 **④ 机器的凭据不是 `credentials` 表里的一行**
 
@@ -117,7 +131,9 @@ Multica 文档说轮询 3 秒,代码里有 WebSocket,但那个 WebSocket 只送 
 ## 接口
 
 ```
-POST   /spaces/{slug}/enrolments        命令行发起 → { userCode, verifyUrl, interval, expiresAt }
+POST   /spaces/{slug}/enrolments        命令行发起
+                                        → { userCode, verifyUrl, verifyUrlComplete,
+                                            interval, expiresAt }
 POST   /enrolments/claim                命令行轮询,出示 secret → 未批 / 过期 / 被拒 / 机器凭据
 GET    /enrolments/{userCode}           网页给人看:哪台机器、进哪个 Space
 POST   /enrolments/{userCode}/approve   人批准
