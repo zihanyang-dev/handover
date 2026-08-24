@@ -7,6 +7,7 @@ function spec(overrides: Partial<ServiceSpec> = {}): ServiceSpec {
     args: ['/usr/local/lib/handover/main.js'],
     system: false,
     label: 'dev.handover.machine',
+    path: '/opt/homebrew/bin:/usr/bin:/bin',
     ...overrides,
   }
 }
@@ -49,6 +50,16 @@ describe('the plist launchd is given', () => {
 
     expect(plist).toContain('<string>/usr/local/bin/node</string>')
     expect(plist).toContain('<string>/path/with a space/main.js</string>')
+  })
+})
+
+describe('the PATH it carries', () => {
+  it('is in the unit, because a service inherits four directories and none of them have agents', () => {
+    expect(unitFor(spec())).toContain('Environment="PATH=/opt/homebrew/bin:/usr/bin:/bin"')
+  })
+
+  it('is in the plist too', () => {
+    expect(plistFor(spec())).toContain('<string>/opt/homebrew/bin:/usr/bin:/bin</string>')
   })
 })
 

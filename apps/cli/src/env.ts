@@ -12,15 +12,12 @@ export type Env = {
   readonly origin: string
   /** Where a user-level attachment is kept, per the XDG convention. */
   readonly configHome: string | undefined
-  /** Whose login shell to ask for a PATH. Absent under a service manager, which is the point. */
-  readonly shell: string | undefined
 }
 
 export function readEnv(): Env {
   return {
     origin: nonEmpty(process.env['HANDOVER_ORIGIN']) ?? DEFAULT_ORIGIN,
     configHome: nonEmpty(process.env['XDG_CONFIG_HOME']),
-    shell: nonEmpty(process.env['SHELL']),
   }
 }
 

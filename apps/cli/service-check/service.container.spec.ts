@@ -23,6 +23,9 @@ const CONTAINER = `handover-service-check-${randomUUID().slice(0, 8)}`
 
 const STUB = '/usr/local/bin/handover-stub'
 
+/** Where the stub lives, so a unit that carries a PATH carries one that can find it. */
+const PATH = '/usr/local/bin:/usr/bin:/bin'
+
 async function inside(script: string): Promise<string> {
   const { stdout } = await run('docker', ['exec', CONTAINER, 'sh', '-c', script])
   return stdout.trim()
@@ -60,7 +63,13 @@ afterAll(async () => {
 })
 
 async function install(system: boolean): Promise<void> {
-  const unit = unitFor({ executable: STUB, args: [], system, label: 'dev.handover.machine' })
+  const unit = unitFor({
+    executable: STUB,
+    args: [],
+    system,
+    label: 'dev.handover.machine',
+    path: PATH,
+  })
   const where = system
     ? '/etc/systemd/system/handover.service'
     : '/home/mina/.config/systemd/user/handover.service'
@@ -87,6 +96,7 @@ describe('the unit we generate', () => {
       args: [],
       system: true,
       label: 'dev.handover.machine',
+      path: PATH,
     })
     await inside(`mkdir -p /check && cat > /check/handover.service <<'UNIT'\n${unit}UNIT`)
 
@@ -102,6 +112,7 @@ describe('the unit we generate', () => {
       args: [],
       system: true,
       label: 'dev.handover.machine',
+      path: PATH,
     })
     await inside(`cat > /check/missing.service <<'UNIT'\n${unit}UNIT`)
 

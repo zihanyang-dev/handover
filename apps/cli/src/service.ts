@@ -17,6 +17,22 @@ export type ServiceSpec = {
   readonly args: readonly string[]
   readonly system: boolean
   readonly label: string
+  /**
+   * The PATH to look for agents along, taken from the terminal `connect` was run in.
+   *
+   * A service inherits almost nothing — launchd hands over four directories and systemd fewer —
+   * and looking for agents *is* looking along PATH, so without this a machine that works when run
+   * by hand finds nothing at all once it is a service.
+   *
+   * Taken rather than asked for. Asking a login shell at runtime is what an editor launched from
+   * a dock has to do, because it never has a moment when somebody is standing in their own
+   * terminal. This does: that moment is `connect`, and its PATH is already the right one.
+   *
+   * It is a snapshot, and the cost is stated where it is felt: install an agent somewhere new and
+   * this will not see it until `handover connect` is run again. That is something a person can
+   * actually do, unlike rearranging the files their shell reads.
+   */
+  readonly path: string
 }
 
 /**
@@ -36,6 +52,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=${command}
+Environment="PATH=${spec.path}"
 Restart=on-failure
 RestartSec=5
 
@@ -65,6 +82,11 @@ export function plistFor(spec: ServiceSpec): string {
     <array>
 ${args}
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>${spec.path}</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

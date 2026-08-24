@@ -143,23 +143,37 @@ end
 
 `handover run` 单独留着:前台、什么都不装。调试和"先看看能不能通"需要一个不碰服务的入口,GitHub runner 的 `run.sh` 就是这个位置。
 
-**⑧ 启动用绝对路径,找 agent 问登录 shell**
+**⑧ PATH 在 connect 那一刻取下来,不在运行时去问**
 
-服务不继承 shell 的 PATH。launchd 给的是 `/usr/bin:/bin:/usr/sbin:/sbin`,systemd 给的更少 —— **而这个 CLI 的核心工作就是扫 PATH 找 agent**。在终端里跑得好好的,装成服务之后一个都扫不到,报的还是"这台机器上没有 agent",完全指不到真正的原因。
+服务不继承 shell 的 PATH。launchd 给的是 `/usr/bin:/bin:/usr/sbin:/sbin`,systemd 给的更少 ——
+**而找 agent 就是在 PATH 上找**。在终端里跑得好好的,装成服务之后一个都扫不到,报的还是「这台机器
+上没有 agent」,完全指不到真正的原因。这条是真踩过的,不是设想。
 
-两个问题,两个答案:
+两种做法,选后者:
 
 ```
-启动服务用什么      绝对路径,永不依赖 dotfile
-                    brew services · cloudflared · Tailscale 一致
+运行时问登录 shell    要 -ilc(大多数人的 PATH 在 .zshrc,而那是交互式 shell 才读的)
+                     要随机分隔符、要绕开 oh-my-zsh、要超时、要解析
+                     失败时的恢复动作是「去改你的 dotfile」—— 那不是一个动作
 
-上哪儿找 agent      每次发现时问一次登录 shell($SHELL -lc),带超时
-                    问不到就退回装的时候那份,并且在 status 里说清用的是哪份
+connect 时取下来      那一刻就在用户自己的终端里,PATH 已经是对的
+                     写进 plist / unit,服务直接就有
+                     失败时的恢复动作是「重跑 handover connect」
 ```
 
-**启动绝不能依赖 shell**:一个 `.zshrc` 里的笔误不该让服务起不来。**发现必须问 shell**:不然装了新 agent 扫不到,而那个错会骗人。
+**关键是一处不对称:编辑器是从 Finder 双击起来的,永远没有「用户刚在终端里敲过命令」那一刻,所以
+它只能去问 shell。我们有那一刻。** pm2 和 brew services 都是取下来的。
 
-问登录 shell 是有名的做法也有名的坑 —— VS Code 的 `Unable to resolve your shell environment` 就是它,重的 shell 配置会超时。所以必须有超时和退化,而且 `handover status` 要打印**服务实际用的那份 PATH**,以及它是问来的还是退化的。
+代价说清:**它是一张快照。** 把 agent 装到一个新目录里,要重跑 `connect` 才看得见。所以 `connect`
+当场就把找到了什么打出来 —— 人还站在那台机器前面,能立刻装、立刻重来:
+
+```
+connected as zanedeMacBook-Air.local
+found     claude 2.1.231 · codex 0.148.0
+```
+
+一个都没有的时候说的是「装一个 X 或 Y,然后重跑这条命令」。**同样的空,到了网页上只是一行
+「No agents found」,而那时人已经不在那台机器旁边了。**
 
 **⑨ 一个长轮询的端点,不是一个心跳端点**
 

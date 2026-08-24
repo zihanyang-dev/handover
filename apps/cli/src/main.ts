@@ -21,8 +21,8 @@ import { apiFor } from './api.ts'
 import { keepCheckingIn } from './checking-in.ts'
 import { askToConnect, waitToBeLetIn } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
+import { findAgents } from './discovery.ts'
 import { handoverFor } from './service.ts'
-import { resolvedPath } from './shell-path.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
 const run = promisify(execFile)
@@ -50,7 +50,8 @@ const sleep = async (seconds: number): Promise<void> =>
   new Promise((wake) => setTimeout(wake, seconds * 1000))
 
 if (command === 'connect') {
-  if ((await readAttachment(where)) === undefined) await enrol()
+  const attachment = (await readAttachment(where)) ?? (await enrol())
+  await sayWhatIsHere(attachment)
   await handOver()
 } else if (command === 'run') {
   const attachment = await readAttachment(where)
@@ -94,6 +95,25 @@ async function enrol(): Promise<Attachment> {
 }
 
 /**
+ * Says what is on this machine while somebody is still standing in front of it.
+ *
+ * The same emptiness reaches the Space screen as "no agents found", but by then they are not at
+ * this keyboard. Here they can install one and run this again in the same minute.
+ */
+async function sayWhatIsHere(attachment: Attachment): Promise<void> {
+  const api = apiFor(attachment.origin, attachment.token)
+  const { data } = await api.POST('/machines/current/poll', { body: { found: [] } })
+  const found = await findAgents(data?.lookFor ?? [], machineEnvironment())
+
+  if (found.length === 0) {
+    say(`found     nothing — install one of ${(data?.lookFor ?? []).join(', ')} and run this again`)
+    return
+  }
+
+  say(`found     ${found.map((one) => `${one.command} ${one.version}`).join(' · ')}`)
+}
+
+/**
  * Writes the service file and runs what makes it take effect, saying both first.
  *
  * The path is printed whether or not this works, because a machine somebody cannot find the
@@ -108,6 +128,9 @@ async function handOver(): Promise<void> {
       args: [process.argv[1] ?? '', 'run', ...(values.system ? ['--system'] : [])],
       system: values.system,
       label: 'dev.handover.machine',
+      // Taken from this terminal, where it is already right. A service inherits four directories
+      // and none of them hold an agent.
+      path: machineEnvironment()['PATH'] ?? '',
     },
     process.platform,
     homedir(),
@@ -135,20 +158,13 @@ async function stayConnected(attachment: Attachment): Promise<void> {
   }
 
   const api = apiFor(attachment.origin, attachment.token)
+  const first = await api.POST('/machines/current/poll', { body: { found: [] } })
 
-  // Asking the login shell, because a service does not inherit one. Said out loud: "no agents
-  // found" reads differently depending on which PATH was searched.
-  const looking = await resolvedPath(machineEnvironment(), env.shell)
-  say(`looking on ${looking.from === 'login-shell' ? 'your shell PATH' : "this process's PATH"}`)
-
-  const first = await apiFor(attachment.origin, attachment.token).POST('/machines/current/poll', {
-    body: { found: [] },
-  })
-
+  // The PATH here is the one the service file carries, put there by `connect`.
   const stopped = await keepCheckingIn(
     api,
     first.data?.lookFor ?? [],
-    { sleep, say, env: { ...machineEnvironment(), PATH: looking.path } },
+    { sleep, say, env: machineEnvironment() },
     stopping.signal,
   )
 
