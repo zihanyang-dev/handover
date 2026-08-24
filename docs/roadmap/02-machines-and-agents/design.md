@@ -108,17 +108,74 @@ agents
 
 发现在**每次报到时**做,不只是启动时。别人 `brew upgrade` 之后我们跟着更新版本号,不重启、不重接。
 
-**⑥ 命令行前台跑**
+**⑥ 常驻交给操作系统,而且用什么身份跑决定装哪一种**
 
-不做 pid 文件、不做 profile 目录、不做日志路径解析。要常驻交给 systemd / launchd。
+```
+不是 root  →  用户服务   ~/Library/LaunchAgents/  或  ~/.config/systemd/user/
+是 root    →  系统服务   /etc/systemd/system/
+```
 
-Multica 那份文档里,"两个 `daemon.log` 你不知道在看哪个"这类问题占了很大篇幅,而**那些复杂度全部来自它自己做了后台化**。
+这条判断抄 `brew services`:
 
-**⑦ 报到是拉取,不是推送**
+```ruby
+def self.scope
+  System.root? ? "--system" : "--user"
+end
+```
 
-机器定期报到,服务器在回答里附上"有没有活"。这一片还没有活,但形状先立住:**服务器永远不主动连机器。**
+**两种服务的语义不是我们调出来的,是它们各自的定义。** Syncthing 的文档写得最直白:用户服务"只在用户登录之后启动",用于 "a desktop computer";系统服务"即使没有活动会话也在开机时运行",用于 "a server"。
 
-Multica 文档说轮询 3 秒,代码里有 WebSocket,但那个 WebSocket 只送 `wakeup hints` —— **活本身还是机器自己来拿。** 和 `architecture.md` 写的是同一件事。
+**不开 `enable-linger`** —— 开了用户服务就变成开机启动,笔记本就成了服务器语义,那正是要防的。
+
+只支持 systemd 和 launchd。pm2 和 cloudflared 要支持 sysv / openrc / upstart,是因为它们得跑在十年前的发行版上。两个都探测不到就打印出来让人自己装 —— 兜底,不是主路径。
+
+**自己不后台化。** 没有 pid 文件、没有 profile 目录、没有自己发明的日志目录;stdout 交给 journald / launchd。Multica 那份文档里"两个 `daemon.log` 你不知道在看哪个"占了很大篇幅,而**那些复杂度全部是自己后台化的副产品**。
+
+`handover run` 单独留着:前台、什么都不装。调试和"先看看能不能通"需要一个不碰服务的入口,GitHub runner 的 `run.sh` 就是这个位置。
+
+**⑦ 启动用绝对路径,找 agent 问登录 shell**
+
+服务不继承 shell 的 PATH。launchd 给的是 `/usr/bin:/bin:/usr/sbin:/sbin`,systemd 给的更少 —— **而这个 CLI 的核心工作就是扫 PATH 找 agent**。在终端里跑得好好的,装成服务之后一个都扫不到,报的还是"这台机器上没有 agent",完全指不到真正的原因。
+
+两个问题,两个答案:
+
+```
+启动服务用什么      绝对路径,永不依赖 dotfile
+                    brew services · cloudflared · Tailscale 一致
+
+上哪儿找 agent      每次发现时问一次登录 shell($SHELL -lc),带超时
+                    问不到就退回装的时候那份,并且在 status 里说清用的是哪份
+```
+
+**启动绝不能依赖 shell**:一个 `.zshrc` 里的笔误不该让服务起不来。**发现必须问 shell**:不然装了新 agent 扫不到,而那个错会骗人。
+
+问登录 shell 是有名的做法也有名的坑 —— VS Code 的 `Unable to resolve your shell environment` 就是它,重的 shell 配置会超时。所以必须有超时和退化,而且 `handover status` 要打印**服务实际用的那份 PATH**,以及它是问来的还是退化的。
+
+**⑧ 一个长轮询的端点,不是一个心跳端点**
+
+```
+POST /machines/current/poll     挂住约 25 秒
+  带上   这台机器扫到的 agent 和版本
+  返回   什么都没有  /  (下一片)一件活
+```
+
+**心跳不是独立的概念,是轮询的副作用**:每次轮询落一次 `last_seen_at`,顺便更新它扫到的东西。
+
+这么设计是为了让下一片**往返回值里加东西,而不是删掉一个端点再加一个**。GitHub 的 runner 就是这个形状,而且它每次轮询都重报 `status, version, os, architecture` —— **发现自愈靠的就是这个,不需要单独一个上报能力的接口。**
+
+**干净停止时说一声再见**(`DELETE /machines/current/session`),立刻转离线。GitHub 的 runner 退出时调 `DeleteSessionAsync` 是同一件事。**常见情况准确,异常情况才靠阈值猜。**
+
+**⑨ 以后接长连接,变的只有传输**
+
+`last_seen_at` 仍然是在线与否的唯一真相,WebSocket 只让延迟变短。
+
+这不是洁癖,是多实例逼出来的:socket 挂在 A 实例上,而网页可能由 B 实例伺候,**B 看不见 A 的 socket**。Multica 的 WS 只送 `wakeup hints`,活还是机器自己拉,原因就是这个。
+
+所以加长连接时:**表不动、产品不动,只换谁来写 `last_seen_at`、机器怎么更快知道有活。**
+
+**⑩ 服务器永远不主动连机器**
+
+不是偏好,是 NAT 和防火墙决定的:机器在别人家的网络里,连不进去。所以只能机器往外连着 —— **长期外连的进程这个形状是被逼出来的,不是选出来的。**
 
 ## 三态出现在哪
 
@@ -141,7 +198,8 @@ POST   /enrolments/{userCode}/refuse    人拒绝
 
 POST   /spaces/{slug}/machine-keys      网页生成一条已批准的,明文只回一次
 
-POST   /machines/current/heartbeat      机器报到,带上它扫到的 agent
+POST   /machines/current/poll           长轮询约 25 秒;带上扫到的 agent
+DELETE /machines/current/session       干净停止时说再见,立刻转离线
 GET    /spaces/{slug}/machines          Space 页面读这个
 DELETE /machines/{id}                   移除
 ```
@@ -149,6 +207,30 @@ DELETE /machines/{id}                   移除
 `/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验"这个 id 是不是你",而凭据本来就说明了你是谁。
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
+
+## 达不到这个仓库标准的地方
+
+到目前为止每条规则都有检查器,`db/` 和 `identity/` 是 100%。**装服务那个文件做不到,我不想假装它能。**
+
+```
+能测    生成的 plist / unit 内容对不对        断言文本
+能测    操作系统认不认这个文件                plutil -lint · systemd-analyze verify,进 CI
+能测    PATH 解析的退化逻辑                   把 $SHELL 换成一个假的
+测不了  launchctl bootstrap 真的起来了没      人跑一次
+测不了  Linux 上整条链路                      CI 容器能跑到"文件合法",跑不到"服务起来了"
+```
+
+`plutil -lint` 和 `systemd-analyze verify` 是操作系统自己的校验器,**把"我写的模板对不对"这半边还上了**。剩下的那半边只有人验过一次。
+
+那个文件的文件头要写清**哪几行有测试、哪几行只有人试过**,免得以后有人以为它和别的文件一样安全。
+
+另外一件事实:**Linux 那一半是在 macOS 上写的。** CI 里跑容器能验到文件合法,验不到真的能起来。第一台真实的 Linux 机器接进来之前,那条路只能算「写完了」,不算「验过了」。
+
+## 风险
+
+**长轮询挂住连接。** 一百台机器就是一百个挂起的请求。Node 扛得住,但它决定了以后横向扩看的是**连接数,不是 QPS** —— 现在不用做什么,但别用 QPS 去估容量。
+
+**烤进 ExecStart 的可执行路径会随 node 版本管理器变。** 用 nvm / fnm 的人升级 node 之后服务起不来。**但它是响的**(服务启动失败,`status` 会说),不像陈旧的 PATH 那样哑着骗人。
 
 ## 测试
 
