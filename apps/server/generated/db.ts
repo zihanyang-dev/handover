@@ -20,7 +20,14 @@ export interface BrowserSessions {
   user_id: string;
 }
 
-export interface EmailChallenges {
+export interface Credentials {
+  kind: string;
+  subject: string;
+  user_id: string;
+  verified_at: Generated<Timestamp>;
+}
+
+export interface EmailCodes {
   attempts: Generated<number>;
   closed_at: Timestamp | null;
   closed_reason: string | null;
@@ -53,18 +60,11 @@ export interface Users {
   id: Generated<string>;
 }
 
-export interface WaysIn {
-  kind: string;
-  subject: string;
-  user_id: string;
-  verified_at: Generated<Timestamp>;
-}
-
 export interface DB {
   browser_sessions: BrowserSessions;
-  email_challenges: EmailChallenges;
+  credentials: Credentials;
+  email_codes: EmailCodes;
   memberships: Memberships;
   spaces: Spaces;
   users: Users;
-  ways_in: WaysIn;
 }

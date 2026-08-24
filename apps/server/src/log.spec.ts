@@ -61,7 +61,7 @@ describe('the log', () => {
   it('censors one nested inside whatever it was passed', () => {
     const { log, lines } = recording()
 
-    log.info({ attempt: { challengeId: 'abc', tokenHash: 'deadbeef' } }, 'verifying')
+    log.info({ attempt: { codeId: 'abc', tokenHash: 'deadbeef' } }, 'verifying')
 
     const line = JSON.stringify(lines()[0])
     expect(line).not.toContain('deadbeef')

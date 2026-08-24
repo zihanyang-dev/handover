@@ -8,13 +8,13 @@
 
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
-import { CREDENTIALS, loadEnv } from './env.ts'
-import { codeLetter } from './identity/emailed-code.ts'
+import { PROVIDER_KEYS, loadEnv } from './env.ts'
+import { codeLetter } from './identity/email-code.ts'
 import { createLog } from './log.ts'
 import { resend, type Mailer } from './mail.ts'
 import { PROVIDERS, type Provider } from './identity/provider.ts'
 import { handoverApp } from './server/app.ts'
-import type { SendCode } from './server/emailed-code.ts'
+import type { SendCode } from './server/email-code.ts'
 import { githubClient } from './server/oauth/github.ts'
 import { googleClient } from './server/oauth/google.ts'
 import type { ProviderClient } from './server/oauth/provider-client.ts'
@@ -68,7 +68,7 @@ const BUILD = {
 /** Built at startup, so an unreachable provider is found now and not at somebody's first sign-in. */
 const clients: Partial<Record<Provider, ProviderClient>> = {}
 for (const provider of PROVIDERS) {
-  const [idKey, secretKey] = CREDENTIALS[provider]
+  const [idKey, secretKey] = PROVIDER_KEYS[provider]
   const id = env[idKey]
   const secret = env[secretKey]
   if (id !== undefined && secret !== undefined)

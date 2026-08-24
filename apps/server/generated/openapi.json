@@ -6,7 +6,7 @@
   },
   "components": {
     "schemas": {
-      "WaysIn": {
+      "OfferedCredentials": {
         "type": "object",
         "properties": {
           "offered": {
@@ -25,10 +25,10 @@
           "offered"
         ]
       },
-      "OpenedChallenge": {
+      "IssuedCode": {
         "type": "object",
         "properties": {
-          "challengeId": {
+          "codeId": {
             "type": "string",
             "format": "uuid"
           },
@@ -47,7 +47,7 @@
           }
         },
         "required": [
-          "challengeId",
+          "codeId",
           "expiresAt",
           "resendAfterSeconds",
           "digits"
@@ -161,10 +161,10 @@
           "displayName": {
             "type": "string"
           },
-          "waysIn": {
+          "credentials": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WayIn"
+              "$ref": "#/components/schemas/Credential"
             }
           },
           "spaces": {
@@ -176,11 +176,11 @@
         },
         "required": [
           "displayName",
-          "waysIn",
+          "credentials",
           "spaces"
         ]
       },
-      "WayIn": {
+      "Credential": {
         "anyOf": [
           {
             "type": "object",
@@ -316,7 +316,7 @@
     "parameters": {}
   },
   "paths": {
-    "/auth/ways-in": {
+    "/auth/credentials": {
       "get": {
         "summary": "Which ways in this deployment can actually offer",
         "responses": {
@@ -325,7 +325,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WaysIn"
+                  "$ref": "#/components/schemas/OfferedCredentials"
                 }
               }
             }
@@ -352,7 +352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OpenedChallenge"
+                  "$ref": "#/components/schemas/IssuedCode"
                 }
               }
             }
@@ -425,7 +425,7 @@
             }
           },
           "404": {
-            "description": "There is no such challenge",
+            "description": "There is no such code",
             "content": {
               "application/json": {
                 "schema": {
@@ -445,7 +445,7 @@
             }
           },
           "429": {
-            "description": "This challenge has no tries left",
+            "description": "This code has no tries left",
             "content": {
               "application/json": {
                 "schema": {
@@ -519,7 +519,7 @@
         }
       }
     },
-    "/me/ways-in/{provider}/start": {
+    "/me/credentials/{provider}/start": {
       "post": {
         "summary": "Leave to connect a provider to this account",
         "parameters": [
@@ -696,6 +696,26 @@
         }
       }
     },
+    "/browser/sessions/current": {
+      "delete": {
+        "summary": "Stop being signed in",
+        "responses": {
+          "204": {
+            "description": "The session is revoked and the cookie is cleared"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/spaces": {
       "post": {
         "summary": "Make a Space",
@@ -810,27 +830,7 @@
         }
       }
     },
-    "/browser/sessions/current": {
-      "delete": {
-        "summary": "Stop being signed in",
-        "responses": {
-          "204": {
-            "description": "The session is revoked and the cookie is cleared"
-          },
-          "401": {
-            "description": "Nobody is signed in here",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/ways-in/email-codes": {
+    "/me/credentials/email-codes": {
       "post": {
         "summary": "Ask for a code at an address, to add it to this account",
         "requestBody": {
@@ -849,7 +849,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OpenedChallenge"
+                  "$ref": "#/components/schemas/IssuedCode"
                 }
               }
             }
@@ -887,7 +887,7 @@
         }
       }
     },
-    "/me/ways-in/email-codes/{id}/answer": {
+    "/me/credentials/email-codes/{id}/answer": {
       "post": {
         "summary": "Answer the code, which adds the address to this account",
         "parameters": [

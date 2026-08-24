@@ -1,9 +1,9 @@
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { newSessionToken } from '../identity/browser-session.ts'
-import { hashCode, MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/emailed-code.ts'
-import { openChallenge } from './email-challenge.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { hashCode, MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/email-code.ts'
+import { issueCode } from './email-code.ts'
 import { signInWithCode, type SignIn } from './sign-in.ts'
 import { arrive } from './user.ts'
 import { connect, type Database } from './connection.ts'
@@ -30,7 +30,7 @@ beforeEach(() => {
 const CODE = '493018'
 
 async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string> {
-  const opened = await openChallenge(db, {
+  const opened = await issueCode(db, {
     purpose: 'sign-in',
     requestKey,
     email,
@@ -40,18 +40,18 @@ async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string
   return opened.id
 }
 
-async function submit(challengeId: string, code = CODE): Promise<SignIn> {
+async function submit(codeId: string, code = CODE): Promise<SignIn> {
   return signInWithCode(db, env.AUTH_SECRET, {
-    challengeId,
+    codeId,
     submittedCode: code,
     sessionTokenHash: newSessionToken().hash,
   })
 }
 
-/** Moves a challenge back in time, so a test can reach past the resend interval without waiting. */
+/** Moves a code back in time, so a test can reach past the resend interval without waiting. */
 async function age(email: string): Promise<void> {
   await db
-    .updateTable('email_challenges')
+    .updateTable('email_codes')
     .set({ created_at: sql`created_at - make_interval(secs => ${RESEND_INTERVAL_SECONDS})` })
     .where('email', '=', email)
     .execute()
@@ -60,7 +60,7 @@ async function age(email: string): Promise<void> {
 /** This test's people, counted through the keys that name them. */
 async function people(): Promise<number> {
   const rows = await db
-    .selectFrom('ways_in')
+    .selectFrom('credentials')
     .select('user_id')
     .where('subject', 'like', `%${RUN}%`)
     .execute()
@@ -71,18 +71,18 @@ async function people(): Promise<number> {
 async function sessions(): Promise<number> {
   const rows = await db
     .selectFrom('browser_sessions')
-    .innerJoin('ways_in', 'ways_in.user_id', 'browser_sessions.user_id')
+    .innerJoin('credentials', 'credentials.user_id', 'browser_sessions.user_id')
     .select('browser_sessions.id')
-    .where('ways_in.subject', 'like', `%${RUN}%`)
+    .where('credentials.subject', 'like', `%${RUN}%`)
     .execute()
   return rows.length
 }
 
-async function attemptsOn(challengeId: string): Promise<number> {
+async function attemptsOn(codeId: string): Promise<number> {
   const row = await db
-    .selectFrom('email_challenges')
+    .selectFrom('email_codes')
     .select('attempts')
-    .where('id', '=', challengeId)
+    .where('id', '=', codeId)
     .executeTakeFirstOrThrow()
   return row.attempts
 }
@@ -93,7 +93,7 @@ describe('signing in with a code', () => {
 
     expect(result.kind).toBe('signed-in')
     const keys = await db
-      .selectFrom('ways_in')
+      .selectFrom('credentials')
       .select(['kind', 'subject'])
       .where('subject', 'like', `%${RUN}%`)
       .execute()
@@ -111,42 +111,42 @@ describe('signing in with a code', () => {
   })
 
   it('spends the code, so the same one cannot be used again', async () => {
-    const challengeId = await sendCode()
-    await submit(challengeId)
+    const codeId = await sendCode()
+    await submit(codeId)
 
-    expect(await submit(challengeId)).toEqual({ kind: 'rejected', rejection: 'consumed' })
+    expect(await submit(codeId)).toEqual({ kind: 'rejected', rejection: 'consumed' })
   })
 
-  it('counts a wrong guess and leaves the challenge open', async () => {
-    const challengeId = await sendCode()
+  it('counts a wrong guess and leaves the code open', async () => {
+    const codeId = await sendCode()
 
-    expect(await submit(challengeId, '000000')).toEqual({
+    expect(await submit(codeId, '000000')).toEqual({
       kind: 'rejected',
       rejection: 'code-mismatch',
     })
-    expect(await attemptsOn(challengeId)).toBe(1)
-    expect((await submit(challengeId)).kind).toBe('signed-in')
+    expect(await attemptsOn(codeId)).toBe(1)
+    expect((await submit(codeId)).kind).toBe('signed-in')
   })
 
   it('stops accepting guesses once the tries are gone', async () => {
-    const challengeId = await sendCode()
-    for (let i = 0; i < MAX_ATTEMPTS; i += 1) await submit(challengeId, '000000')
+    const codeId = await sendCode()
+    for (let i = 0; i < MAX_ATTEMPTS; i += 1) await submit(codeId, '000000')
 
-    // Even the right code, now: the challenge is finished, not the guess wrong.
-    expect(await submit(challengeId)).toEqual({
+    // Even the right code, now: the code is finished, not the guess wrong.
+    expect(await submit(codeId)).toEqual({
       kind: 'rejected',
       rejection: 'attempts-exhausted',
     })
   })
 
-  it('does not spend a try on a challenge that was already over', async () => {
-    const challengeId = await sendCode()
-    await submit(challengeId)
+  it('does not spend a try on a code that was already over', async () => {
+    const codeId = await sendCode()
+    await submit(codeId)
 
-    await submit(challengeId, '000000')
+    await submit(codeId, '000000')
 
     // Counting this would burn the tries of somebody being told the code is already used.
-    expect(await attemptsOn(challengeId)).toBe(0)
+    expect(await attemptsOn(codeId)).toBe(0)
   })
 
   it('rejects a code a newer one replaced, and creates nobody', async () => {
@@ -158,10 +158,10 @@ describe('signing in with a code', () => {
     expect(await people()).toBe(0)
   })
 
-  it('rejects a challenge that is not there', async () => {
+  it('rejects a code that is not there', async () => {
     const gone = '00000000-0000-0000-0000-000000000000'
 
-    expect(await submit(gone)).toEqual({ kind: 'rejected', rejection: 'no-challenge' })
+    expect(await submit(gone)).toEqual({ kind: 'rejected', rejection: 'no-code' })
   })
 
   it('dates the session by the database clock', async () => {
@@ -169,9 +169,9 @@ describe('signing in with a code', () => {
 
     const session = await db
       .selectFrom('browser_sessions')
-      .innerJoin('ways_in', 'ways_in.user_id', 'browser_sessions.user_id')
+      .innerJoin('credentials', 'credentials.user_id', 'browser_sessions.user_id')
       .select('expires_at')
-      .where('ways_in.subject', 'like', `%${RUN}%`)
+      .where('credentials.subject', 'like', `%${RUN}%`)
       .executeTakeFirstOrThrow()
     const daysAway = (session.expires_at.getTime() - Date.now()) / 86_400_000
 

@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { EmailedCode } from '../features/identity/emailed-code.tsx'
+import { EmailCode } from '../features/identity/email-code.tsx'
 
 type Arrived = {
   email: string
-  challengeId: string
+  codeId: string
   expiresAt: string
   resendAfterSeconds: number
   digits: number
@@ -11,21 +11,21 @@ type Arrived = {
 
 /** All of it is required: without a code sent, there is nothing here to answer. */
 function arrived(search: Record<string, unknown>): Arrived {
-  const { email, challengeId, expiresAt, resendAfterSeconds, digits } = search
+  const { email, codeId, expiresAt, resendAfterSeconds, digits } = search
   if (
     typeof email !== 'string' ||
-    typeof challengeId !== 'string' ||
+    typeof codeId !== 'string' ||
     typeof expiresAt !== 'string' ||
     typeof resendAfterSeconds !== 'number' ||
     typeof digits !== 'number'
   ) {
     throw new Error('this screen needs a code that was sent, to answer')
   }
-  return { email, challengeId, expiresAt, resendAfterSeconds, digits }
+  return { email, codeId, expiresAt, resendAfterSeconds, digits }
 }
 
 function Screen() {
-  return <EmailedCode {...Route.useSearch()} />
+  return <EmailCode {...Route.useSearch()} />
 }
 
 export const Route = createFileRoute('/sign-in_/code')({

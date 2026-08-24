@@ -7,22 +7,14 @@
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
-import { addAddress } from '../db/connect.ts'
+import { addAddress } from '../db/credential.ts'
 import type { Database } from '../db/connection.ts'
-import { api, saysNothing, sends, takes } from './contract.ts'
-import {
-  askForCode as ask,
-  askedForCode,
-  explainRejection,
-  openedBody,
-  submittedCode,
-  waitBody,
-  type SendCode,
-} from './emailed-code.ts'
+import { api, saysNothing, takes } from './contract.ts'
+import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
 import { body, refusal, type Failure } from './failure.ts'
 import { requireSession, type Signed } from './session.ts'
 
-export type WaysInApi = {
+export type CredentialApi = {
   readonly db: Database
   readonly secret: string
   readonly sendCode: SendCode
@@ -35,22 +27,9 @@ export type WaysInApi = {
  */
 const ELSEWHERE: Failure<409> = { reason: 'address-elsewhere', recovery: 'retype', status: 409 }
 
-const askForAddress = createRoute({
-  method: 'post',
-  path: '/me/ways-in/email-codes',
-  summary: 'Ask for a code at an address, to add it to this account',
-  request: { body: takes(askedForCode) },
-  responses: {
-    201: sends(openedBody, 'A code is on its way, or was already sent for this request key'),
-    400: refusal('The body was not the shape it claims, or no letter can reach that address'),
-    401: refusal('Nobody is signed in here'),
-    429: sends(waitBody, 'A code went out moments ago; another would break the one in the inbox'),
-  },
-})
-
 const answerCode = createRoute({
   method: 'post',
-  path: '/me/ways-in/email-codes/{id}/answer',
+  path: '/me/credentials/email-codes/{id}/answer',
   summary: 'Answer the code, which adds the address to this account',
   request: { params: z.object({ id: z.string() }), body: takes(submittedCode) },
   responses: {
@@ -63,37 +42,29 @@ const answerCode = createRoute({
   },
 })
 
-export function waysInApi(deps: WaysInApi) {
+export function credentialApi(deps: CredentialApi) {
   const signedIn = requireSession(deps.db)
+  const asking = sendsACode<'/me/credentials/email-codes', { Variables: Signed }>({
+    path: '/me/credentials/email-codes',
+    summary: 'Ask for a code at an address, to add it to this account',
+    purpose: 'attach',
+    middleware: [signedIn],
+    alsoRefuses: { 401: refusal('Nobody is signed in here') },
+  })
 
   return api<{ Variables: Signed }>()
-    .openapi({ ...askForAddress, middleware: [signedIn] }, async (c) => {
-      const answered = await ask(deps.db, deps.secret, deps.sendCode, {
-        ...c.req.valid('json'),
-        purpose: 'attach',
-      })
-
-      switch (answered.kind) {
-        case 'opened':
-          return c.json(answered.body, 201)
-        case 'undeliverable':
-          return c.json(answered.body, 400)
-        case 'too-soon':
-          c.header('Retry-After', String(answered.retryAfterSeconds))
-          return c.json(answered.body, 429)
-      }
-    })
+    .openapi(asking.route, asking.handler(deps))
 
     .openapi({ ...answerCode, middleware: [signedIn] }, async (c) => {
       const id = c.req.valid('param').id
 
       // An id that is not an id names no code, which is the situation a gone one is in, and gets
       // the answer that situation gets.
-      const failure = z.uuid().safeParse(id).success ? undefined : explainRejection('no-challenge')
+      const failure = z.uuid().safeParse(id).success ? undefined : explainRejection('no-code')
       if (failure !== undefined) return c.json(body(failure), failure.status)
 
       const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
-        challengeId: id,
+        codeId: id,
         code: c.req.valid('json').code,
       })
 

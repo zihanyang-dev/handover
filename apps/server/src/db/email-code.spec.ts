@@ -1,8 +1,8 @@
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { hashCode, RESEND_INTERVAL_SECONDS, verifyChallenge } from '../identity/emailed-code.ts'
-import { openChallenge, type OpenedChallenge } from './email-challenge.ts'
+import { hashCode, RESEND_INTERVAL_SECONDS, checkCode } from '../identity/email-code.ts'
+import { issueCode, type Issued } from './email-code.ts'
 import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 
@@ -31,22 +31,22 @@ beforeEach(() => {
   HASH = hashCode(EMAIL, CODE, SECRET)
 })
 
-async function ask(requestKey: string, email = EMAIL, codeHash = HASH): Promise<OpenedChallenge> {
-  return openChallenge(db, { purpose: 'sign-in', requestKey, email, codeHash })
+async function ask(requestKey: string, email = EMAIL, codeHash = HASH): Promise<Issued> {
+  return issueCode(db, { purpose: 'sign-in', requestKey, email, codeHash })
 }
 
-/** Moves a challenge back in time, so a test can reach past the resend interval without waiting. */
+/** Moves a code back in time, so a test can reach past the resend interval without waiting. */
 async function age(email: string, seconds: number): Promise<void> {
   await db
-    .updateTable('email_challenges')
+    .updateTable('email_codes')
     .set({ created_at: sql`created_at - make_interval(secs => ${seconds})` })
     .where('email', '=', email)
     .execute()
 }
 
-async function challengeRow(id: string) {
+async function codeRow(id: string) {
   return db
-    .selectFrom('email_challenges')
+    .selectFrom('email_codes')
     .select(['code_hash', 'expires_at', 'attempts', 'closed_reason'])
     .where('id', '=', id)
     .executeTakeFirstOrThrow()
@@ -54,21 +54,17 @@ async function challengeRow(id: string) {
 
 /** Only this test's own address: counting the whole table would be counting other tests. */
 async function count(): Promise<number> {
-  const rows = await db
-    .selectFrom('email_challenges')
-    .select('id')
-    .where('email', '=', EMAIL)
-    .execute()
+  const rows = await db.selectFrom('email_codes').select('id').where('email', '=', EMAIL).execute()
   return rows.length
 }
 
-describe('openChallenge', () => {
-  it('opens a challenge that has not been asked for before', async () => {
-    expect(await ask(`${RUN}-k1`)).toMatchObject({ kind: 'opened' })
+describe('issueCode', () => {
+  it('opens a code that has not been asked for before', async () => {
+    expect(await ask(`${RUN}-k1`)).toMatchObject({ kind: 'issued' })
     expect(await count()).toBe(1)
   })
 
-  it('gives the same challenge back for a repeated request key, so no second mail goes out', async () => {
+  it('gives the same code back for a repeated request key, so no second mail goes out', async () => {
     const first = await ask(`${RUN}-k1`)
     const second = await ask(`${RUN}-k1`)
 
@@ -76,19 +72,19 @@ describe('openChallenge', () => {
     expect(await count()).toBe(1)
   })
 
-  it('hands back a challenge that still works, not one the retry itself closed', async () => {
+  it('hands back a code that still works, not one the retry itself closed', async () => {
     const first = await ask(`${RUN}-k1`)
     await ask(`${RUN}-k1`)
 
-    // The person is holding the mail this challenge sent. Closing it on the way to returning it
+    // The person is holding the mail this code sent. Closing it on the way to returning it
     // would make their code read as expired the moment they typed it.
-    expect((await challengeRow((first as { id: string }).id)).closed_reason).toBeNull()
+    expect((await codeRow((first as { id: string }).id)).closed_reason).toBeNull()
   })
 
   it('opens exactly one when the same request key arrives twice at once', async () => {
     const [a, b] = await Promise.all([ask(`${RUN}-k1`), ask(`${RUN}-k1`)])
 
-    expect([a.kind, b.kind].sort()).toEqual(['opened', 'replayed'])
+    expect([a.kind, b.kind].sort()).toEqual(['issued', 'replayed'])
     expect(await count()).toBe(1)
   })
 
@@ -120,7 +116,7 @@ describe('openChallenge', () => {
     await ask(`${RUN}-k1`)
     await age(EMAIL, RESEND_INTERVAL_SECONDS)
 
-    expect((await ask(`${RUN}-k2`)).kind).toBe('opened')
+    expect((await ask(`${RUN}-k2`)).kind).toBe('issued')
     expect(await count()).toBe(2)
   })
 
@@ -138,7 +134,7 @@ describe('openChallenge', () => {
   it('lets a different address have its own code', async () => {
     await ask(`${RUN}-k1`)
 
-    expect((await ask(`${RUN}-k2`, `other-${randomUUID()}@example.com`)).kind).toBe('opened')
+    expect((await ask(`${RUN}-k2`, `other-${randomUUID()}@example.com`)).kind).toBe('issued')
   })
 
   it('answers every one of many simultaneous asks for one address', async () => {
@@ -149,17 +145,17 @@ describe('openChallenge', () => {
 
     const answers = await Promise.all(asks)
 
-    expect(answers.filter((answer) => answer.kind === 'opened')).toHaveLength(1)
+    expect(answers.filter((answer) => answer.kind === 'issued')).toHaveLength(1)
     expect(answers.filter((answer) => answer.kind === 'too-soon')).toHaveLength(19)
     expect(await count()).toBe(1)
   })
 
-  it('closes the previous challenge, so only the newest code works', async () => {
+  it('closes the previous code, so only the newest code works', async () => {
     const old = await ask(`${RUN}-k1`)
     await age(EMAIL, RESEND_INTERVAL_SECONDS)
     await ask(`${RUN}-k2`, EMAIL, hashCode(EMAIL, '111111', SECRET))
 
-    expect((await challengeRow((old as { id: string }).id)).closed_reason).toBe('superseded')
+    expect((await codeRow((old as { id: string }).id)).closed_reason).toBe('superseded')
   })
 
   it('reports the replaced code as expired, not as wrong', async () => {
@@ -167,8 +163,8 @@ describe('openChallenge', () => {
     await age(EMAIL, RESEND_INTERVAL_SECONDS)
     await ask(`${RUN}-k2`, EMAIL, hashCode(EMAIL, '111111', SECRET))
 
-    const row = await challengeRow((old as { id: string }).id)
-    const verdict = verifyChallenge(
+    const row = await codeRow((old as { id: string }).id)
+    const verdict = checkCode(
       {
         email: EMAIL,
         codeHash: row.code_hash,
@@ -188,7 +184,7 @@ describe('openChallenge', () => {
   it('takes its expiry from the database clock, not from the caller', async () => {
     const opened = await ask(`${RUN}-k1`)
 
-    const row = await challengeRow((opened as { id: string }).id)
+    const row = await codeRow((opened as { id: string }).id)
     const minutesAway = (row.expires_at.getTime() - Date.now()) / 60_000
 
     expect(minutesAway).toBeGreaterThan(4)

@@ -78,14 +78,14 @@ export function parseEnv(source: Readonly<Record<string, string | undefined>>): 
  * without saying where its keys live is a compile error, not a provider that silently never
  * appears. Written out rather than derived, because static names are what make `Env` typed.
  */
-export const CREDENTIALS = {
+export const PROVIDER_KEYS = {
   google: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
   github: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
 } as const satisfies Record<Provider, readonly [keyof Env, keyof Env]>
 
 /** An id without its secret, or the other way round, is somebody halfway through a setup. */
 function withPairs(env: Env): Env {
-  const broken = PROVIDERS.map((provider) => CREDENTIALS[provider]).filter(
+  const broken = PROVIDERS.map((provider) => PROVIDER_KEYS[provider]).filter(
     ([id, secret]) => (env[id] === undefined) !== (env[secret] === undefined),
   )
   if (broken.length === 0) return env

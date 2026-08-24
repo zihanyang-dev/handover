@@ -52,10 +52,23 @@ CREATE TABLE public.browser_sessions (
 
 
 --
--- Name: email_challenges; Type: TABLE; Schema: public; Owner: -
+-- Name: credentials; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.email_challenges (
+CREATE TABLE public.credentials (
+    user_id uuid NOT NULL,
+    kind text NOT NULL,
+    subject text NOT NULL,
+    verified_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT credentials_kind_check CHECK ((kind = ANY (ARRAY['email'::text, 'google'::text, 'github'::text])))
+);
+
+
+--
+-- Name: email_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.email_codes (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     email text NOT NULL,
     purpose text NOT NULL,
@@ -66,9 +79,9 @@ CREATE TABLE public.email_challenges (
     expires_at timestamp with time zone NOT NULL,
     closed_at timestamp with time zone,
     closed_reason text,
-    CONSTRAINT email_challenges_closed_reason_check CHECK ((closed_reason = ANY (ARRAY['consumed'::text, 'superseded'::text]))),
-    CONSTRAINT email_challenges_closed_together CHECK (((closed_at IS NULL) = (closed_reason IS NULL))),
-    CONSTRAINT email_challenges_purpose_check CHECK ((purpose = ANY (ARRAY['sign-in'::text, 'attach'::text])))
+    CONSTRAINT email_codes_closed_reason_check CHECK ((closed_reason = ANY (ARRAY['consumed'::text, 'superseded'::text]))),
+    CONSTRAINT email_codes_closed_together CHECK (((closed_at IS NULL) = (closed_reason IS NULL))),
+    CONSTRAINT email_codes_purpose_check CHECK ((purpose = ANY (ARRAY['sign-in'::text, 'attach'::text])))
 );
 
 
@@ -108,19 +121,6 @@ CREATE TABLE public.users (
 
 
 --
--- Name: ways_in; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.ways_in (
-    user_id uuid NOT NULL,
-    kind text NOT NULL,
-    subject text NOT NULL,
-    verified_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT ways_in_kind_check CHECK ((kind = ANY (ARRAY['email'::text, 'google'::text, 'github'::text])))
-);
-
-
---
 -- Name: browser_sessions browser_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -137,19 +137,35 @@ ALTER TABLE ONLY public.browser_sessions
 
 
 --
--- Name: email_challenges email_challenges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: credentials credentials_kind_subject_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.email_challenges
-    ADD CONSTRAINT email_challenges_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.credentials
+    ADD CONSTRAINT credentials_kind_subject_key UNIQUE (kind, subject);
 
 
 --
--- Name: email_challenges email_challenges_request_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: credentials credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.email_challenges
-    ADD CONSTRAINT email_challenges_request_key_key UNIQUE (request_key);
+ALTER TABLE ONLY public.credentials
+    ADD CONSTRAINT credentials_pkey PRIMARY KEY (user_id, kind, subject);
+
+
+--
+-- Name: email_codes email_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_codes
+    ADD CONSTRAINT email_codes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: email_codes email_codes_request_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_codes
+    ADD CONSTRAINT email_codes_request_key_key UNIQUE (request_key);
 
 
 --
@@ -193,33 +209,17 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: ways_in ways_in_kind_subject_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: credentials_one_provider_account_each; Type: INDEX; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.ways_in
-    ADD CONSTRAINT ways_in_kind_subject_key UNIQUE (kind, subject);
-
-
---
--- Name: ways_in ways_in_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.ways_in
-    ADD CONSTRAINT ways_in_pkey PRIMARY KEY (user_id, kind, subject);
+CREATE UNIQUE INDEX credentials_one_provider_account_each ON public.credentials USING btree (user_id, kind) WHERE (kind <> 'email'::text);
 
 
 --
--- Name: email_challenges_open; Type: INDEX; Schema: public; Owner: -
+-- Name: email_codes_live; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX email_challenges_open ON public.email_challenges USING btree (email, purpose) WHERE (closed_at IS NULL);
-
-
---
--- Name: ways_in_one_provider_each; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX ways_in_one_provider_each ON public.ways_in USING btree (user_id, kind) WHERE (kind <> 'email'::text);
+CREATE UNIQUE INDEX email_codes_live ON public.email_codes USING btree (email, purpose) WHERE (closed_at IS NULL);
 
 
 --
@@ -228,6 +228,14 @@ CREATE UNIQUE INDEX ways_in_one_provider_each ON public.ways_in USING btree (use
 
 ALTER TABLE ONLY public.browser_sessions
     ADD CONSTRAINT browser_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: credentials credentials_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.credentials
+    ADD CONSTRAINT credentials_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -244,14 +252,6 @@ ALTER TABLE ONLY public.memberships
 
 ALTER TABLE ONLY public.memberships
     ADD CONSTRAINT memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
-
-
---
--- Name: ways_in ways_in_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.ways_in
-    ADD CONSTRAINT ways_in_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --

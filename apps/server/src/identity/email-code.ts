@@ -12,10 +12,10 @@
 import { Buffer } from 'node:buffer'
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto'
 
-/** Why a challenge stopped being open: spent by a sign-in, or replaced by a newer code. */
+/** Why a code stopped working: spent by a sign-in, or replaced by a newer code. */
 export type ClosedReason = 'consumed' | 'superseded'
 
-export type Challenge = {
+export type SentCode = {
   /** The address it was sent to. A code means nothing apart from its address. */
   readonly email: string
   readonly codeHash: string
@@ -25,15 +25,15 @@ export type Challenge = {
 }
 
 export type Rejection =
-  /** The challenge is gone; there is nothing to go back to but the start. */
-  | 'no-challenge'
+  /** The code is gone; there is nothing to go back to but the start. */
+  | 'no-code'
   /** Someone already signed in with this code. */
   | 'consumed'
   /** Too old, or replaced by a newer code. Ask for another. */
   | 'expired'
-  /** Guessed at too many times. This challenge is finished; start again from the inbox. */
+  /** Guessed at too many times. That code is finished; start again from the inbox. */
   | 'attempts-exhausted'
-  /** Wrong digits. The challenge is still open, so it is worth another try. */
+  /** Wrong digits. The code still works, so it is worth another try. */
   | 'code-mismatch'
 
 export type Verification =
@@ -120,19 +120,22 @@ function sameHash(submitted: string, stored: string): boolean {
  * Order matters. A spent or replaced code is answered as such even when the digits are wrong,
  * because what the person needs to know is that this code is finished, not that they mistyped it.
  */
-export function verifyChallenge(
-  challenge: Challenge | undefined,
-  submittedCode: string,
+export function checkCode(
+  /** What was sent, as the database has it, or nothing if there is no such code. */
+  sent: SentCode | undefined,
+  /** What was typed back. */
+  submitted: string,
   secret: string,
   now: Date,
 ): Verification {
-  if (challenge === undefined) return rejected('no-challenge')
-  if (challenge.closedReason === 'consumed') return rejected('consumed')
+  if (sent === undefined) return rejected('no-code')
+  if (sent.closedReason === 'consumed') return rejected('consumed')
   // A code that a newer one replaced is spent, and the recovery is the one an expired code gets.
-  if (challenge.closedReason === 'superseded') return rejected('expired')
-  if (challenge.expiresAt.getTime() <= now.getTime()) return rejected('expired')
-  if (challenge.attempts >= MAX_ATTEMPTS) return rejected('attempts-exhausted')
-  const submitted = hashCode(challenge.email, submittedCode, secret)
-  if (!sameHash(submitted, challenge.codeHash)) return rejected('code-mismatch')
-  return { kind: 'accepted', verifiedEmail: challenge.email }
+  if (sent.closedReason === 'superseded') return rejected('expired')
+  if (sent.expiresAt.getTime() <= now.getTime()) return rejected('expired')
+  if (sent.attempts >= MAX_ATTEMPTS) return rejected('attempts-exhausted')
+  if (!sameHash(hashCode(sent.email, submitted, secret), sent.codeHash)) {
+    return rejected('code-mismatch')
+  }
+  return { kind: 'accepted', verifiedEmail: sent.email }
 }

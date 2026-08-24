@@ -3,9 +3,9 @@
 import type { Context } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
 import { createMiddleware } from 'hono/factory'
-import { userHolding } from '../db/browser-session.ts'
+import { userHolding } from '../db/session.ts'
 import type { Database } from '../db/connection.ts'
-import { hashSessionToken, LIFETIME_DAYS } from '../identity/browser-session.ts'
+import { hashSessionToken, LIFETIME_DAYS } from '../identity/session.ts'
 import { body, NO_SESSION } from './failure.ts'
 
 export const SESSION_COOKIE = 'handover_session'

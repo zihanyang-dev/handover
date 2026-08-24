@@ -1,8 +1,8 @@
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/emailed-code.ts'
-import { authApi, type SendCode } from './auth-api.ts'
+import { MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/email-code.ts'
+import { signInApi, type SendCode } from './sign-in-api.ts'
 import type { Recovery } from './failure.ts'
 import { SESSION_COOKIE } from './session.ts'
 import { connect, type Database } from '../db/connection.ts'
@@ -30,7 +30,7 @@ const sendCode: SendCode = async (to, code) => {
   sent.push({ to, code })
   return 'sent'
 }
-const app = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
+const app = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
 
 beforeEach(() => {
   sent = []
@@ -44,15 +44,15 @@ async function askForCode(requestKey = `${RUN}-k1`, email = EMAIL): Promise<Resp
   })
 }
 
-async function challengeId(requestKey = `${RUN}-k1`): Promise<string> {
-  const body = (await (await askForCode(requestKey)).json()) as { challengeId: string }
-  return body.challengeId
+async function codeId(requestKey = `${RUN}-k1`): Promise<string> {
+  const body = (await (await askForCode(requestKey)).json()) as { codeId: string }
+  return body.codeId
 }
 
-/** Moves a challenge back in time, so a test can reach past the resend interval without waiting. */
+/** Moves a code back in time, so a test can reach past the resend interval without waiting. */
 async function age(email: string): Promise<void> {
   await db
-    .updateTable('email_challenges')
+    .updateTable('email_codes')
     .set({ created_at: sql`created_at - make_interval(secs => ${RESEND_INTERVAL_SECONDS})` })
     .where('email', '=', email)
     .execute()
@@ -76,7 +76,7 @@ async function failureOf(
 }
 
 describe('asking for a code', () => {
-  it('sends one and names the challenge', async () => {
+  it('sends one and names the code', async () => {
     const response = await askForCode()
 
     expect(response.status).toBe(201)
@@ -124,7 +124,7 @@ describe('asking for a code', () => {
 
 describe('when the letter did not go', () => {
   function whenDeliveryIs(delivery: Awaited<ReturnType<SendCode>>) {
-    return authApi({
+    return signInApi({
       db,
       secret: env.AUTH_SECRET,
       sendCode: async () => delivery,
@@ -132,7 +132,7 @@ describe('when the letter did not go', () => {
     })
   }
 
-  async function ask(app: ReturnType<typeof authApi>, key: string): Promise<Response> {
+  async function ask(app: ReturnType<typeof signInApi>, key: string): Promise<Response> {
     return app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -161,16 +161,18 @@ describe('when the letter did not go', () => {
 
 describe('what a stranger is offered', () => {
   it('names the ways in, so a sign-in page cannot show a door that opens onto an error', async () => {
-    const response = await app.request('/auth/ways-in')
+    const response = await app.request('/auth/credentials')
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ offered: ['email', 'google', 'github'] })
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {
-    const half = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google'] })
+    const half = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google'] })
 
-    const offered = (await (await half.request('/auth/ways-in')).json()) as { offered: string[] }
+    const offered = (await (await half.request('/auth/credentials')).json()) as {
+      offered: string[]
+    }
 
     expect(offered.offered).toEqual(['email', 'google'])
   })
@@ -178,7 +180,7 @@ describe('what a stranger is offered', () => {
 
 describe('handing the code back', () => {
   it('signs the person in and sets a cookie the page cannot read', async () => {
-    const id = await challengeId()
+    const id = await codeId()
 
     const response = await submit(id, sent[0]?.code ?? '')
 
@@ -190,7 +192,7 @@ describe('handing the code back', () => {
   })
 
   it('never puts the stored hash in the cookie', async () => {
-    const id = await challengeId()
+    const id = await codeId()
 
     const response = await submit(id, sent[0]?.code ?? '')
 
@@ -203,8 +205,8 @@ describe('handing the code back', () => {
 })
 
 describe('each way it can fail', () => {
-  it('wrong digits: retype, and the challenge stays open', async () => {
-    const id = await challengeId()
+  it('wrong digits: retype, and the code stays open', async () => {
+    const id = await codeId()
 
     expect(await failureOf(id, '000000')).toEqual({
       status: 400,
@@ -214,7 +216,7 @@ describe('each way it can fail', () => {
   })
 
   it('already used: say so, and ask for another', async () => {
-    const id = await challengeId()
+    const id = await codeId()
     await submit(id, sent[0]?.code ?? '')
 
     expect(await failureOf(id, sent[0]?.code ?? '')).toEqual({
@@ -225,7 +227,7 @@ describe('each way it can fail', () => {
   })
 
   it('replaced by a newer code: expired, and ask for another', async () => {
-    const stale = await challengeId(`${RUN}-k1`)
+    const stale = await codeId(`${RUN}-k1`)
     await age(EMAIL)
     await askForCode(`${RUN}-k2`)
 
@@ -237,7 +239,7 @@ describe('each way it can fail', () => {
   })
 
   it('out of tries: start over', async () => {
-    const id = await challengeId()
+    const id = await codeId()
     for (let i = 0; i < MAX_ATTEMPTS; i += 1) await submit(id, '000000')
 
     expect(await failureOf(id, sent[0]?.code ?? '')).toEqual({
@@ -247,12 +249,12 @@ describe('each way it can fail', () => {
     })
   })
 
-  it('no such challenge: start over', async () => {
+  it('no such code: start over', async () => {
     const gone = '00000000-0000-0000-0000-000000000000'
 
     expect(await failureOf(gone, '000000')).toEqual({
       status: 404,
-      reason: 'no-challenge',
+      reason: 'no-code',
       recovery: 'start-over',
     })
   })
@@ -260,15 +262,15 @@ describe('each way it can fail', () => {
   it('an id that is not an id gets the same answer as one that is gone', async () => {
     expect(await failureOf('not-a-uuid', '000000')).toEqual({
       status: 404,
-      reason: 'no-challenge',
+      reason: 'no-code',
       recovery: 'start-over',
     })
   })
 
   it('keeps used and wrong apart, because only one of them means somebody else got in', async () => {
-    const used = await challengeId(`${RUN}-k1`)
+    const used = await codeId(`${RUN}-k1`)
     await submit(used, sent[0]?.code ?? '')
-    const open = await challengeId(`${RUN}-k2`)
+    const open = await codeId(`${RUN}-k2`)
 
     const a = await failureOf(used, '000000')
     const b = await failureOf(open, '000000')
@@ -277,7 +279,7 @@ describe('each way it can fail', () => {
   })
 
   it('never says which part of the code was right', async () => {
-    const id = await challengeId()
+    const id = await codeId()
     const right = sent[0]?.code ?? ''
     const nearMiss = `${right.slice(0, 5)}${right[5] === '0' ? '1' : '0'}`
 

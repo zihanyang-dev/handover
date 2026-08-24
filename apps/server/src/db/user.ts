@@ -3,18 +3,18 @@
  *
  * Locks, in the order every path here takes them:
  *   1. the advisory lock on the address the key proves
- *   2. the `ways_in` row for the key, via its unique index
+ *   2. the `credentials` row, via its unique index
  */
 
 import { initialDisplayName, type Profile } from '../identity/display-name.ts'
-import { canonical, type Key } from '../identity/way-in.ts'
+import { canonical, type Credential } from '../identity/credential.ts'
 import type { Database, Tx } from './connection.ts'
-import { hang, holdTheAddress, holderOf, keysOf } from './way-in.ts'
+import { credentialsOf, holdTheAddress, holderOf, link } from './credential.ts'
 
 export type Person = {
   readonly id: string
   readonly displayName: string
-  readonly keys: readonly Key[]
+  readonly credentials: readonly Credential[]
 }
 
 export async function personById(db: Database, id: string): Promise<Person | undefined> {
@@ -25,7 +25,7 @@ export async function personById(db: Database, id: string): Promise<Person | und
     .executeTakeFirst()
   if (row === undefined) return undefined
 
-  return { ...row, keys: await keysOf(db, id) }
+  return { ...row, credentials: await credentialsOf(db, id) }
 }
 
 export type Arrival = {
@@ -54,18 +54,18 @@ export type Arrival = {
  * one. Take away the unique index that makes an address reach one account and step 2 has no
  * answer, which is why that index is the load-bearing part and not this function.
  */
-export async function arrive(tx: Tx, key: Key, profile: Profile): Promise<Arrival> {
+export async function arrive(tx: Tx, credential: Credential, profile: Profile): Promise<Arrival> {
   const address = canonical({ kind: 'email', subject: profile.address })
   await holdTheAddress(tx, address.subject)
 
-  const direct = await holderOf(tx, key)
+  const direct = await holderOf(tx, credential)
   if (direct !== undefined) return { userId: direct, merged: false }
 
   // Skipped for an emailed code, where the key *is* the address and step 1 just answered this.
-  if (key.kind !== 'email') {
+  if (credential.kind !== 'email') {
     const byAddress = await holderOf(tx, address)
     if (byAddress !== undefined) {
-      await hang(tx, byAddress, key)
+      await link(tx, byAddress, credential)
       return { userId: byAddress, merged: true }
     }
   }
@@ -76,8 +76,8 @@ export async function arrive(tx: Tx, key: Key, profile: Profile): Promise<Arriva
     .returning('id')
     .executeTakeFirstOrThrow()
 
-  await hang(tx, created.id, address)
-  if (key.kind !== 'email') await hang(tx, created.id, key)
+  await link(tx, created.id, address)
+  if (credential.kind !== 'email') await link(tx, created.id, credential)
 
   return { userId: created.id, merged: false }
 }

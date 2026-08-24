@@ -39,7 +39,9 @@ function open(at: string) {
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
 function offering(...providers: string[]) {
-  return http.get('*/auth/ways-in', () => HttpResponse.json({ offered: ['email', ...providers] }))
+  return http.get('*/auth/credentials', () =>
+    HttpResponse.json({ offered: ['email', ...providers] }),
+  )
 }
 
 /** The code screen asks for nothing on arrival; landing on it is what a test checks. */
@@ -48,7 +50,7 @@ function answering(bodies: Record<string, unknown>[]) {
     bodies.push((await request.json()) as Record<string, unknown>)
     return HttpResponse.json(
       {
-        challengeId: CHALLENGE,
+        codeId: CHALLENGE,
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
         resendAfterSeconds: 30,
         digits: 6,
@@ -129,7 +131,7 @@ describe('choosing a way in', () => {
         if (attempt === 1) return HttpResponse.error()
         return HttpResponse.json(
           {
-            challengeId: CHALLENGE,
+            codeId: CHALLENGE,
             expiresAt: new Date(Date.now() + 300_000).toISOString(),
             resendAfterSeconds: 30,
             digits: 6,

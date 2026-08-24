@@ -4,7 +4,7 @@ import { CheckCircleFill, ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api } from '../api.ts'
 import { DisplayName } from '../features/identity/display-name.tsx'
 import { meQuery, type Me } from '../features/identity/me.ts'
-import { WaysIn } from '../features/identity/ways-in.tsx'
+import { Credentials } from '../features/identity/credentials.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
 import { SpaceList } from '../features/spaces/space-list.tsx'
 import { SignOut } from '../features/identity/sign-out.tsx'
@@ -30,7 +30,7 @@ const WENT_WRONG: Record<string, string> = {
 }
 
 /** The address this account started with, which is the one to show beside signing out. */
-function firstAddress(ways: Me['waysIn']): string {
+function firstAddress(ways: Me['credentials']): string {
   return ways.find((way) => way.kind === 'email')?.address ?? ''
 }
 
@@ -62,9 +62,9 @@ function Screen() {
 
       <SpaceList />
       <NewSpace />
-      <WaysIn />
+      <Credentials />
       <DisplayName />
-      <SignOut account={firstAddress(me.data?.waysIn ?? [])} />
+      <SignOut account={firstAddress(me.data?.credentials ?? [])} />
     </div>
   )
 }

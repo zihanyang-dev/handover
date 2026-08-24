@@ -29,18 +29,18 @@ function signedIn(addresses: string[] = [EMAIL]) {
   return http.get('*/me', () =>
     HttpResponse.json({
       displayName: EMAIL,
-      waysIn: addresses.map((address) => ({ kind: 'email', address, state: 'ready' })),
+      credentials: addresses.map((address) => ({ kind: 'email', address, state: 'ready' })),
       spaces: [],
     }),
   )
 }
 
 function sends(bodies: Record<string, unknown>[] = []) {
-  return http.post('*/me/ways-in/email-codes', async ({ request }) => {
+  return http.post('*/me/credentials/email-codes', async ({ request }) => {
     bodies.push((await request.json()) as Record<string, unknown>)
     return HttpResponse.json(
       {
-        challengeId: CHALLENGE,
+        codeId: CHALLENGE,
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
         resendAfterSeconds: 30,
         digits: 6,
@@ -90,7 +90,7 @@ describe('adding another address', () => {
     server.use(
       signedIn(),
       sends(),
-      http.post('*/me/ways-in/email-codes/:id/answer', async ({ request }) => {
+      http.post('*/me/credentials/email-codes/:id/answer', async ({ request }) => {
         answered = await request.json()
         return new HttpResponse(null, { status: 204 })
       }),
@@ -113,7 +113,7 @@ describe('adding another address', () => {
     server.use(
       signedIn(),
       sends(),
-      http.post('*/me/ways-in/email-codes/:id/answer', () =>
+      http.post('*/me/credentials/email-codes/:id/answer', () =>
         HttpResponse.json({ reason: 'address-elsewhere', recovery: 'retype' }, { status: 409 }),
       ),
     )
@@ -131,7 +131,7 @@ describe('adding another address', () => {
   it('says why nothing was sent, rather than looking like a button that does nothing', async () => {
     server.use(
       signedIn(),
-      http.post('*/me/ways-in/email-codes', () =>
+      http.post('*/me/credentials/email-codes', () =>
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
     )

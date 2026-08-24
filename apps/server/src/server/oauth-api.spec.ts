@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { openSession } from '../db/browser-session.ts'
+import { openSession } from '../db/session.ts'
 import { arrive } from '../db/user.ts'
-import { newSessionToken } from '../identity/browser-session.ts'
+import { newSessionToken } from '../identity/session.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
 import { oauthApi } from './oauth-api.ts'
 import type { Identified, ProviderClient } from './oauth/provider-client.ts'
@@ -241,7 +241,7 @@ describe('coming back', () => {
 
     expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=no-verified-email`)
     const made = await db
-      .selectFrom('ways_in')
+      .selectFrom('credentials')
       .select('user_id')
       .where('subject', 'like', `%${RUN}%`)
       .execute()
@@ -262,7 +262,7 @@ describe('connecting one to an account already signed in', () => {
   it('connects it and comes back with nothing to report', async () => {
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified(MINA))
-    const left = await app.request('/me/ways-in/google/start', {
+    const left = await app.request('/me/credentials/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ next: '/s/acme' }),
@@ -278,7 +278,7 @@ describe('connecting one to an account already signed in', () => {
     // nothing once the account stopped being an address.
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified({ ...MINA, verifiedEmail: `else-${randomUUID()}@example.com` }))
-    const left = await app.request('/me/ways-in/google/start', {
+    const left = await app.request('/me/credentials/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: '{}',
@@ -292,7 +292,7 @@ describe('connecting one to an account already signed in', () => {
   it('refuses to connect anything once the session that asked is gone', async () => {
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified(MINA))
-    const left = await app.request('/me/ways-in/google/start', {
+    const left = await app.request('/me/credentials/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: '{}',
@@ -305,7 +305,7 @@ describe('connecting one to an account already signed in', () => {
   })
 
   it('will not start one at all without a session', async () => {
-    const response = await appWith(identified(MINA)).request('/me/ways-in/google/start', {
+    const response = await appWith(identified(MINA)).request('/me/credentials/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',

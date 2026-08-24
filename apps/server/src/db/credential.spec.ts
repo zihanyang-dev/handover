@@ -1,12 +1,12 @@
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { newSessionToken } from '../identity/browser-session.ts'
-import { hashCode } from '../identity/emailed-code.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { hashCode } from '../identity/email-code.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
-import { WAY_KINDS } from '../identity/way-in.ts'
-import { addAddress, connectProvider } from './connect.ts'
-import { openChallenge } from './email-challenge.ts'
+import { CREDENTIAL_KINDS } from '../identity/credential.ts'
+import { addAddress, connectProvider } from './credential.ts'
+import { issueCode } from './email-code.ts'
 import { signInWithCode, signInWithProvider } from './sign-in.ts'
 import { personById } from './user.ts'
 import { connect, type Database } from './connection.ts'
@@ -51,21 +51,21 @@ async function arrive(identity: ProviderIdentity) {
   return signInWithProvider(db, identity, newSessionToken().hash)
 }
 
-/** Opens a challenge and hands the code straight back, the way the other half of the product does. */
+/** Opens a code and hands the code straight back, the way the other half of the product does. */
 async function sendCode(email: string, requestKey: string, purpose: 'sign-in' | 'attach') {
-  const opened = await openChallenge(db, {
+  const opened = await issueCode(db, {
     requestKey,
     email,
     purpose,
     codeHash: hashCode(email, CODE, env.AUTH_SECRET),
   })
-  if (opened.kind !== 'opened') throw new Error('the fixture asked for codes too fast')
+  if (opened.kind !== 'issued') throw new Error('the fixture asked for codes too fast')
   return opened.id
 }
 
 async function arriveByCode(email: string, requestKey: string): Promise<string> {
   const result = await signInWithCode(db, env.AUTH_SECRET, {
-    challengeId: await sendCode(email, requestKey, 'sign-in'),
+    codeId: await sendCode(email, requestKey, 'sign-in'),
     submittedCode: CODE,
     sessionTokenHash: newSessionToken().hash,
   })
@@ -75,7 +75,7 @@ async function arriveByCode(email: string, requestKey: string): Promise<string> 
 
 async function attach(userId: string, email: string, requestKey: string) {
   return addAddress(db, env.AUTH_SECRET, userId, {
-    challengeId: await sendCode(email, requestKey, 'attach'),
+    codeId: await sendCode(email, requestKey, 'attach'),
     code: CODE,
   })
 }
@@ -83,7 +83,7 @@ async function attach(userId: string, email: string, requestKey: string) {
 /** This test's people. The table holds everybody else's too, and always will. */
 async function people(): Promise<number> {
   const rows = await db
-    .selectFrom('ways_in')
+    .selectFrom('credentials')
     .select('user_id')
     .where('subject', 'like', `%${RUN}%`)
     .where('kind', '=', 'email')
@@ -91,9 +91,9 @@ async function people(): Promise<number> {
   return new Set(rows.map((row) => row.user_id)).size
 }
 
-async function keysOf(userId: string): Promise<readonly string[]> {
+async function opensWith(userId: string): Promise<readonly string[]> {
   const person = await personById(db, userId)
-  return (person?.keys ?? []).map((key) => `${key.kind}:${key.subject}`)
+  return (person?.credentials ?? []).map((held) => `${held.kind}:${held.subject}`)
 }
 
 describe('arriving through a provider', () => {
@@ -102,7 +102,7 @@ describe('arriving through a provider', () => {
 
     expect(arrived.merged).toBe(false)
     expect(await personById(db, arrived.userId)).toMatchObject({ displayName: 'Mina Kim' })
-    expect(await keysOf(arrived.userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
+    expect(await opensWith(arrived.userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
   })
 
   it('comes back to the same account, and does not say it merged anything', async () => {
@@ -172,11 +172,11 @@ describe('arriving through a provider', () => {
 })
 
 describe('connecting a provider while signed in', () => {
-  it('adds a way in', async () => {
+  it('adds another way in', async () => {
     const userId = await arriveByCode(EMAIL, `${RUN}-k1`)
 
     expect(await connectProvider(db, userId, google())).toEqual({ kind: 'connected' })
-    expect(await keysOf(userId)).toContain(`google:${SUBJECT}`)
+    expect(await opensWith(userId)).toContain(`google:${SUBJECT}`)
   })
 
   it('does nothing the second time, rather than refusing', async () => {
@@ -194,7 +194,7 @@ describe('connecting a provider while signed in', () => {
 
     const elsewhere = google({ verifiedEmail: `else-${RUN}@example.com` })
     expect(await connectProvider(db, userId, elsewhere)).toEqual({ kind: 'connected' })
-    expect(await keysOf(userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
+    expect(await opensWith(userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
   })
 
   it('does not quietly adopt the address that provider proved', async () => {
@@ -203,7 +203,7 @@ describe('connecting a provider while signed in', () => {
     const userId = await arriveByCode(EMAIL, `${RUN}-k1`)
     await connectProvider(db, userId, google({ verifiedEmail: `else-${RUN}@example.com` }))
 
-    expect(await keysOf(userId)).not.toContain(`email:else-${RUN}@example.com`)
+    expect(await opensWith(userId)).not.toContain(`email:else-${RUN}@example.com`)
   })
 
   it('refuses one somebody else already reaches their account through', async () => {
@@ -214,7 +214,7 @@ describe('connecting a provider while signed in', () => {
     const stolen = await connectProvider(db, mina, google())
 
     expect(stolen).toEqual({ kind: 'rejected', rejection: 'linked-elsewhere' })
-    expect(await keysOf(mina)).toEqual([`email:${EMAIL}`])
+    expect(await opensWith(mina)).toEqual([`email:${EMAIL}`])
   })
 
   it('refuses a second account at a provider it already reaches, rather than saying nothing', async () => {
@@ -224,7 +224,7 @@ describe('connecting a provider while signed in', () => {
     const second = await connectProvider(db, userId, google({ subject: `google2-${RUN}` }))
 
     expect(second).toEqual({ kind: 'rejected', rejection: 'already-connected' })
-    expect(await keysOf(userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
+    expect(await opensWith(userId)).toEqual([`email:${EMAIL}`, `google:${SUBJECT}`])
   })
 })
 
@@ -234,7 +234,7 @@ describe('adding an address while signed in', () => {
     const second = `zane-${RUN}@example.com`
 
     expect(await attach(userId, second, `${RUN}-k2`)).toEqual({ kind: 'attached' })
-    expect(await keysOf(userId)).toEqual([`email:${EMAIL}`, `email:${second}`])
+    expect(await opensWith(userId)).toEqual([`email:${EMAIL}`, `email:${second}`])
   })
 
   it('lets that address sign in on its own afterwards', async () => {
@@ -259,8 +259,8 @@ describe('adding an address while signed in', () => {
     const taken = await attach(mina, ruiAddress, `${RUN}-k3`)
 
     expect(taken).toEqual({ kind: 'rejected', rejection: 'address-elsewhere' })
-    expect(await keysOf(rui)).toEqual([`email:${ruiAddress}`])
-    expect(await keysOf(mina)).toEqual([`email:${EMAIL}`])
+    expect(await opensWith(rui)).toEqual([`email:${ruiAddress}`])
+    expect(await opensWith(mina)).toEqual([`email:${EMAIL}`])
   })
 
   it('refuses a wrong code without attaching anything', async () => {
@@ -268,12 +268,12 @@ describe('adding an address while signed in', () => {
     const second = `zane-${RUN}@example.com`
 
     const wrong = await addAddress(db, env.AUTH_SECRET, userId, {
-      challengeId: await sendCode(second, `${RUN}-k2`, 'attach'),
+      codeId: await sendCode(second, `${RUN}-k2`, 'attach'),
       code: '000000',
     })
 
     expect(wrong).toEqual({ kind: 'refused', rejection: 'code-mismatch' })
-    expect(await keysOf(userId)).toEqual([`email:${EMAIL}`])
+    expect(await opensWith(userId)).toEqual([`email:${EMAIL}`])
   })
 
   it('will not spend a code that was sent to sign in', async () => {
@@ -283,12 +283,12 @@ describe('adding an address while signed in', () => {
     const second = `zane-${RUN}@example.com`
 
     const crossed = await addAddress(db, env.AUTH_SECRET, userId, {
-      challengeId: await sendCode(second, `${RUN}-k2`, 'sign-in'),
+      codeId: await sendCode(second, `${RUN}-k2`, 'sign-in'),
       code: CODE,
     })
 
-    expect(crossed).toEqual({ kind: 'refused', rejection: 'no-challenge' })
-    expect(await keysOf(userId)).toEqual([`email:${EMAIL}`])
+    expect(crossed).toEqual({ kind: 'refused', rejection: 'no-code' })
+    expect(await opensWith(userId)).toEqual([`email:${EMAIL}`])
   })
 })
 
@@ -301,21 +301,21 @@ describe('the kinds the database will accept', () => {
   it('is exactly the list the code has', async () => {
     const constraint = await sql<{ definition: string }>`
       select pg_get_constraintdef(oid) as definition from pg_constraint
-      where conname = 'ways_in_kind_check'
+      where conname = 'credentials_kind_check'
     `.execute(db)
 
     const allowed = [...(constraint.rows[0]?.definition ?? '').matchAll(/'([a-z]+)'/gu)].map(
       (found) => found[1],
     )
 
-    expect(new Set(allowed)).toEqual(new Set(WAY_KINDS))
+    expect(new Set(allowed)).toEqual(new Set(CREDENTIAL_KINDS))
   })
 
   it('refuses a kind the code never has', async () => {
     const userId = await arriveByCode(EMAIL, `${RUN}-k1`)
 
     const written = db
-      .insertInto('ways_in')
+      .insertInto('credentials')
       .values({ user_id: userId, kind: 'myspace', subject: 's' })
       .execute()
 

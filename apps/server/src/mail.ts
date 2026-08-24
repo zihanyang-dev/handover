@@ -12,7 +12,7 @@ const ENDPOINT = 'https://api.resend.com/emails'
 
 /**
  * A request that never answers would hold the route open behind it. The letter is sent after the
- * challenge is committed, so giving up here costs nothing the person cannot fix by asking again.
+ * code is committed, so giving up here costs nothing the person cannot fix by asking again.
  */
 const GIVE_UP_AFTER_MS = 10_000
 
@@ -27,7 +27,7 @@ export type Delivery = 'sent' | 'refused' | 'unknown'
 export type Mailer = (letter: Letter) => Promise<Delivery>
 
 /**
- * Never throws. A letter that failed to go must not take down a challenge that was committed and
+ * Never throws. A letter that failed to go must not take down a code that was committed and
  * works — the person can ask for another, and that is the whole recovery.
  */
 export function resend(env: Env): Mailer {

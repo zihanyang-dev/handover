@@ -9,16 +9,17 @@
 import { HTTPException } from 'hono/http-exception'
 import type { Provider } from '../identity/provider.ts'
 import type { Log } from '../log.ts'
-import { authApi, type AuthApi } from './auth-api.ts'
+import { signInApi, type SignInApi } from './sign-in-api.ts'
 import { api } from './contract.ts'
 import { body, BROKEN, NOT_A_ROUTE } from './failure.ts'
 import { oauthApi, type OAuthApi } from './oauth-api.ts'
 import { requestLog, type Logged } from './request-log.ts'
+import { meApi } from './me-api.ts'
 import { spaceApi } from './space-api.ts'
-import { waysInApi } from './ways-in-api.ts'
+import { credentialApi } from './credential-api.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
-export type App = Omit<AuthApi, 'providers'> &
+export type App = Omit<SignInApi, 'providers'> &
   Omit<OAuthApi, 'db' | 'secret'> & { readonly log: Log }
 
 /** The document a client is generated from, built from the routes and nothing else. */
@@ -48,8 +49,9 @@ export function handoverApp(deps: App) {
   })
 
   return app
-    .route('/', authApi({ ...deps, providers }))
+    .route('/', signInApi({ ...deps, providers }))
     .route('/', oauthApi(deps))
-    .route('/', spaceApi({ db: deps.db, providers }))
-    .route('/', waysInApi(deps))
+    .route('/', meApi({ db: deps.db, providers }))
+    .route('/', spaceApi(deps.db))
+    .route('/', credentialApi(deps))
 }

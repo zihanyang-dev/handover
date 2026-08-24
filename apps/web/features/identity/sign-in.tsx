@@ -33,14 +33,14 @@ const SAID: Record<string, string> = {
   'address-refused': 'No mail can reach that address. Check it, or use a different one.',
 }
 
-async function waysIn(): Promise<readonly string[]> {
-  const { data } = await api.GET('/auth/ways-in')
+async function offeredKinds(): Promise<readonly string[]> {
+  const { data } = await api.GET('/auth/credentials')
   return data?.offered ?? []
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
 function OtherWays() {
-  const offered = useQuery({ queryKey: ['ways-in'], queryFn: waysIn })
+  const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
   const providers = (offered.data ?? []).filter(known)
 
   const leaveFor = useMutation({

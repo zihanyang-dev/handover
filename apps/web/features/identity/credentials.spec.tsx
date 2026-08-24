@@ -23,8 +23,8 @@ afterAll(() => {
 
 const EMAIL = 'mina@example.com'
 
-function signedIn(waysIn: { kind: string; address?: string; state: string }[]) {
-  return http.get('*/me', () => HttpResponse.json({ displayName: EMAIL, waysIn, spaces: [] }))
+function signedIn(credentials: { kind: string; address?: string; state: string }[]) {
+  return http.get('*/me', () => HttpResponse.json({ displayName: EMAIL, credentials, spaces: [] }))
 }
 
 const ALL = [
@@ -103,7 +103,7 @@ describe('how you get in', () => {
     const asked: string[] = []
     server.use(
       signedIn(ALL),
-      http.post('*/me/ways-in/:provider/start', ({ params }) => {
+      http.post('*/me/credentials/:provider/start', ({ params }) => {
         asked.push(String(params['provider']))
         return HttpResponse.json({ url: 'https://provider.example/authorize' })
       }),

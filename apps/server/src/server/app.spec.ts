@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception'
 import { pino } from 'pino'
 import { LOG_OPTIONS } from '../log.ts'
 import { handoverApp } from './app.ts'
-import type { SendCode } from './auth-api.ts'
+import type { SendCode } from './sign-in-api.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 
@@ -88,12 +88,12 @@ describe('a request that never parsed', () => {
   it('is refused the same way wherever it arrives', async () => {
     const bad = { method: 'POST', headers: { 'content-type': 'application/json' } }
 
-    const toChallenges = await app.request('/auth/email-codes', {
+    const toCodes = await app.request('/auth/email-codes', {
       ...bad,
       body: JSON.stringify({ email: 'not-an-address', requestKey: `${RUN}-k1` }),
     })
-    expect(toChallenges.status).toBe(400)
-    expect(await toChallenges.json()).toEqual({ reason: 'malformed-request', recovery: 'retype' })
+    expect(toCodes.status).toBe(400)
+    expect(await toCodes.json()).toEqual({ reason: 'malformed-request', recovery: 'retype' })
   })
 
   it('learns nothing about the shape of a route it is not allowed to call', async () => {

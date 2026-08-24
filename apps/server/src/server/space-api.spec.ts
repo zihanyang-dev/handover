@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { authApi, type SendCode } from './auth-api.ts'
-import { SESSION_COOKIE } from './session.ts'
+import { signInApi, type SendCode } from './sign-in-api.ts'
 import { spaceApi } from './space-api.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
@@ -25,8 +24,8 @@ const sendCode: SendCode = async (_to, code) => {
   lastCode = code
   return 'sent'
 }
-const auth = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
-const app = spaceApi({ db, providers: ['google', 'github'] })
+const auth = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
+const app = spaceApi(db)
 
 /** Signs somebody in the way a browser would, and returns the cookie it was handed. */
 async function signedIn(email: string): Promise<string> {
@@ -35,9 +34,9 @@ async function signedIn(email: string): Promise<string> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, requestKey: `k-${email}` }),
   })
-  const { challengeId } = (await opened.json()) as { challengeId: string }
+  const { codeId } = (await opened.json()) as { codeId: string }
 
-  const verified = await auth.request(`/auth/email-codes/${challengeId}/answer`, {
+  const verified = await auth.request(`/auth/email-codes/${codeId}/answer`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: lastCode }),
@@ -56,54 +55,6 @@ async function as(cookie: string, path: string, method = 'GET', json?: unknown):
 async function makeSpace(cookie: string, displayName: string, key: string): Promise<Response> {
   return as(cookie, '/spaces', 'POST', { displayName, requestKey: key })
 }
-
-describe('without a live session', () => {
-  it('refuses, and says to sign in', async () => {
-    const response = await app.request('/me')
-
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ reason: 'no-session', recovery: 'sign-in' })
-  })
-
-  it('answers a made-up cookie exactly as it answers no cookie', async () => {
-    const invented = await as(`${SESSION_COOKIE}=not-a-real-token`, '/me')
-    const absent = await app.request('/me')
-
-    expect(invented.status).toBe(absent.status)
-    expect(await invented.json()).toEqual(await absent.json())
-  })
-})
-
-describe('me', () => {
-  it('starts named after the address, and lists it as a way in', async () => {
-    const cookie = await signedIn(`mina-${RUN}@example.com`)
-
-    const me = (await (await as(cookie, '/me')).json()) as {
-      displayName: string
-      waysIn: { kind: string; address?: string; state: string }[]
-      spaces: unknown[]
-    }
-
-    expect(me.displayName).toBe(`mina-${RUN}@example.com`)
-    expect(me.spaces).toEqual([])
-    // The address is named, not folded into an "emailed code" line. Folded, nobody could see how
-    // many inboxes open this account.
-    expect(me.waysIn).toEqual([
-      { kind: 'email', address: `mina-${RUN}@example.com`, state: 'ready' },
-      { kind: 'google', state: 'connectable' },
-      { kind: 'github', state: 'connectable' },
-    ])
-  })
-
-  it('takes a new name', async () => {
-    const cookie = await signedIn(`mina-${RUN}@example.com`)
-
-    expect((await as(cookie, '/me', 'PATCH', { displayName: '  Mina Kim  ' })).status).toBe(204)
-
-    const me = (await (await as(cookie, '/me')).json()) as { displayName: string }
-    expect(me.displayName).toBe('Mina Kim')
-  })
-})
 
 describe('making a Space', () => {
   it('creates it and shows the address it got', async () => {
@@ -152,19 +103,6 @@ describe('making a Space', () => {
       recovery: 'choose-another-name',
     })
   })
-
-  it('lists it afterwards, oldest first', async () => {
-    const cookie = await signedIn(`mina-${RUN}@example.com`)
-    await makeSpace(cookie, `First ${RUN.slice(0, 8)}`, `${RUN}-r1`)
-    await makeSpace(cookie, `Second ${RUN.slice(0, 8)}`, `${RUN}-r2`)
-
-    const me = (await (await as(cookie, '/me')).json()) as { spaces: { slug: string }[] }
-
-    expect(me.spaces.map((space) => space.slug)).toEqual([
-      `first-${RUN.slice(0, 8)}`,
-      `second-${RUN.slice(0, 8)}`,
-    ])
-  })
 })
 
 describe('entering a Space', () => {
@@ -191,16 +129,5 @@ describe('entering a Space', () => {
     expect(notMine.status).toBe(notThere.status)
     expect(mineBody).toEqual(thereBody)
     expect(mineBody).toEqual({ reason: 'unavailable', recovery: 'start-over' })
-  })
-})
-
-describe('leaving', () => {
-  it('makes the cookie stop working', async () => {
-    const cookie = await signedIn(`mina-${RUN}@example.com`)
-    expect((await as(cookie, '/me')).status).toBe(200)
-
-    expect((await as(cookie, '/browser/sessions/current', 'DELETE')).status).toBe(204)
-
-    expect((await as(cookie, '/me')).status).toBe(401)
   })
 })

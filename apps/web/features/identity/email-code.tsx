@@ -2,7 +2,7 @@
  * Handing the code back.
  *
  * How long the code lasts and how long until another may be asked for both arrive with the
- * challenge. A number compiled into this page would be right until somebody changed the server
+ * code. A number compiled into this page would be right until somebody changed the server
  * and not this, and nothing would say which of the two was lying.
  */
 
@@ -28,7 +28,7 @@ const SAID: Record<string, string> = {
   consumed:
     'That code has already been used. If that was not you, ask for another and keep an eye on this inbox.',
   'attempts-exhausted': 'Too many tries. This code is finished — start again from your inbox.',
-  'no-challenge': 'That sign-in is no longer here. Start again.',
+  'no-code': 'That sign-in is no longer here. Start again.',
   'malformed-request': 'That is not the whole code.',
   'address-refused': 'No mail can reach that address. Use a different one.',
   'too-soon': 'A code just went out. Give it a moment.',
@@ -96,15 +96,15 @@ function Resend({ email, after }: { readonly email: string; readonly after: numb
   )
 }
 
-export function EmailedCode({
+export function EmailCode({
   email,
-  challengeId,
+  codeId,
   expiresAt,
   resendAfterSeconds,
   digits: DIGITS,
 }: {
   readonly email: string
-  readonly challengeId: string
+  readonly codeId: string
   readonly expiresAt: string
   readonly resendAfterSeconds: number
   /** How long the code is, from whoever sent it. Compiled in here, it would go stale silently. */
@@ -116,7 +116,7 @@ export function EmailedCode({
   const handBack = useMutation({
     mutationFn: async (digits: string) => {
       const { data, error } = await api.POST('/auth/email-codes/{id}/answer', {
-        params: { path: { id: challengeId } },
+        params: { path: { id: codeId } },
         body: { code: digits },
       })
       if (data === undefined) throw new Error(error.reason)

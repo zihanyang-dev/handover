@@ -5,17 +5,17 @@ import {
   codeLetter,
   hashCode,
   newCode,
-  verifyChallenge,
-  type Challenge,
+  checkCode,
+  type SentCode,
   type Rejection,
-} from './emailed-code.ts'
+} from './email-code.ts'
 
 const NOW = new Date('2026-08-24T12:00:00Z')
 const SECRET = 's'.repeat(32)
 const EMAIL = 'mina@example.com'
 const CODE = '493018'
 
-function open(overrides: Partial<Challenge> = {}): Challenge {
+function live(overrides: Partial<SentCode> = {}): SentCode {
   return {
     email: EMAIL,
     codeHash: hashCode(EMAIL, CODE, SECRET),
@@ -26,46 +26,46 @@ function open(overrides: Partial<Challenge> = {}): Challenge {
   }
 }
 
-function rejectionOf(challenge: Challenge | undefined, code = CODE): Rejection | 'accepted' {
-  const result = verifyChallenge(challenge, code, SECRET, NOW)
+function rejectionOf(sent: SentCode | undefined, submitted = CODE): Rejection | 'accepted' {
+  const result = checkCode(sent, submitted, SECRET, NOW)
   return result.kind === 'accepted' ? 'accepted' : result.rejection
 }
 
-describe('verifyChallenge', () => {
-  it('accepts the right code on an open challenge', () => {
-    expect(rejectionOf(open())).toBe('accepted')
+describe('checking a code that came back', () => {
+  it('accepts the right code on an open code', () => {
+    expect(rejectionOf(live())).toBe('accepted')
   })
 
-  it('reports a challenge that is gone', () => {
-    expect(rejectionOf(undefined)).toBe('no-challenge')
+  it('reports a code that is gone', () => {
+    expect(rejectionOf(undefined)).toBe('no-code')
   })
 
   it('reports a code someone already signed in with', () => {
-    expect(rejectionOf(open({ closedReason: 'consumed' }))).toBe('consumed')
+    expect(rejectionOf(live({ closedReason: 'consumed' }))).toBe('consumed')
   })
 
   it('reports a code past its expiry', () => {
-    expect(rejectionOf(open({ expiresAt: new Date('2026-08-24T11:59:59Z') }))).toBe('expired')
+    expect(rejectionOf(live({ expiresAt: new Date('2026-08-24T11:59:59Z') }))).toBe('expired')
   })
 
   it('reports a code a newer one replaced as expired, not as wrong', () => {
-    expect(rejectionOf(open({ closedReason: 'superseded' }))).toBe('expired')
+    expect(rejectionOf(live({ closedReason: 'superseded' }))).toBe('expired')
   })
 
-  it('reports a challenge that ran out of tries', () => {
-    expect(rejectionOf(open({ attempts: MAX_ATTEMPTS }))).toBe('attempts-exhausted')
+  it('reports a code that ran out of tries', () => {
+    expect(rejectionOf(live({ attempts: MAX_ATTEMPTS }))).toBe('attempts-exhausted')
   })
 
-  it('reports wrong digits on a challenge that is still open', () => {
-    expect(rejectionOf(open(), '000000')).toBe('code-mismatch')
+  it('reports wrong digits on a code that is still open', () => {
+    expect(rejectionOf(live(), '000000')).toBe('code-mismatch')
   })
 
   it('keeps used and wrong apart even when the digits are also wrong', () => {
-    expect(rejectionOf(open({ closedReason: 'consumed' }), '000000')).toBe('consumed')
+    expect(rejectionOf(live({ closedReason: 'consumed' }), '000000')).toBe('consumed')
   })
 
   it('answers finished before mistyped, because that is the more urgent fact', () => {
-    const exhausted = open({ attempts: MAX_ATTEMPTS })
+    const exhausted = live({ attempts: MAX_ATTEMPTS })
 
     expect(rejectionOf(exhausted, '000000')).toBe('attempts-exhausted')
   })
@@ -73,16 +73,16 @@ describe('verifyChallenge', () => {
   it('rejects a code keyed to a different address', () => {
     const elsewhere = hashCode('other@example.com', CODE, SECRET)
 
-    expect(rejectionOf(open({ codeHash: elsewhere }))).toBe('code-mismatch')
+    expect(rejectionOf(live({ codeHash: elsewhere }))).toBe('code-mismatch')
   })
 
   it('gives each of the five failures its own value', () => {
     const seen = new Set([
       rejectionOf(undefined),
-      rejectionOf(open({ closedReason: 'consumed' })),
-      rejectionOf(open({ expiresAt: new Date('2026-08-24T11:00:00Z') })),
-      rejectionOf(open({ attempts: MAX_ATTEMPTS })),
-      rejectionOf(open(), '000000'),
+      rejectionOf(live({ closedReason: 'consumed' })),
+      rejectionOf(live({ expiresAt: new Date('2026-08-24T11:00:00Z') })),
+      rejectionOf(live({ attempts: MAX_ATTEMPTS })),
+      rejectionOf(live(), '000000'),
     ])
 
     expect(seen.size).toBe(5)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hashSessionToken, newSessionToken } from './browser-session.ts'
+import { hashSessionToken, newSessionToken } from './session.ts'
 
 describe('newSessionToken', () => {
   it('never repeats a token', () => {

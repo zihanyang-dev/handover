@@ -18,13 +18,13 @@ const LOOKS: Record<string, { readonly label: string; readonly icon: ReactElemen
   github: { label: 'GitHub', icon: <Github aria-hidden /> },
 }
 
-export function WaysIn() {
+export function Credentials() {
   const me = useQuery(meQuery)
   const heading = useId()
 
   const connect = useMutation({
     mutationFn: async (provider: string) => {
-      const { data } = await api.POST('/me/ways-in/{provider}/start', {
+      const { data } = await api.POST('/me/credentials/{provider}/start', {
         params: { path: { provider } },
         body: { next: '/' },
       })
@@ -40,7 +40,7 @@ export function WaysIn() {
       </div>
 
       <ul className="rows">
-        {(me.data?.waysIn ?? []).map((way) =>
+        {(me.data?.credentials ?? []).map((way) =>
           way.kind === 'email' ? (
             <li key={way.address} className="row">
               <span className="row-name">

@@ -6,25 +6,25 @@
  * about which account it reaches.
  *
  * Locks, in the order every path here takes them:
- *   1. the challenge row, for update, on the emailed-code path
+ *   1. the code row, for update, on the emailed-code path
  *   2. the advisory lock on the address, inside `arrive`
- *   3. the `ways_in` row for the key, via its unique index
+ *   3. the `credentials` row for the key, via its unique index
  *
  * Spending the code and creating the session are one transaction on purpose. Split them and a
  * crash in between leaves the person holding a code the system will now call already used, with
  * nothing they can do next that works.
  */
 
-import type { Rejection } from '../identity/emailed-code.ts'
+import type { Rejection } from '../identity/email-code.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
-import type { Key } from '../identity/way-in.ts'
-import { openSession } from './browser-session.ts'
+import type { Credential } from '../identity/credential.ts'
+import { openSession } from './session.ts'
 import type { Database } from './connection.ts'
-import { spendCode } from './spend-code.ts'
+import { spendCode } from './email-code.ts'
 import { arrive } from './user.ts'
 
 export type SignInAttempt = {
-  readonly challengeId: string
+  readonly codeId: string
   readonly submittedCode: string
   /** The hash of the token that will go to the browser. The token itself never comes here. */
   readonly sessionTokenHash: string
@@ -47,15 +47,19 @@ export async function signInWithCode(
   return db.transaction().execute(async (tx) => {
     const spent = await spendCode(tx, secret, {
       purpose: 'sign-in',
-      challengeId: attempt.challengeId,
+      codeId: attempt.codeId,
       code: attempt.submittedCode,
     })
     if (spent.kind === 'rejected') return { kind: 'rejected', rejection: spent.rejection }
 
     // The key is the address itself, so there is nothing else it could reach. The display name
     // has no provider to come from and falls to the address.
-    const key: Key = { kind: 'email', subject: spent.address }
-    const arrived = await arrive(tx, key, { name: null, username: null, address: spent.address })
+    const credential: Credential = { kind: 'email', subject: spent.address }
+    const arrived = await arrive(tx, credential, {
+      name: null,
+      username: null,
+      address: spent.address,
+    })
 
     return {
       kind: 'signed-in',
@@ -78,10 +82,10 @@ export async function signInWithProvider(
   identity: ProviderIdentity,
   sessionTokenHash: string,
 ): Promise<ProviderSignIn> {
-  const key: Key = { kind: identity.provider, subject: identity.subject }
+  const credential: Credential = { kind: identity.provider, subject: identity.subject }
 
   return db.transaction().execute(async (tx) => {
-    const arrived = await arrive(tx, key, {
+    const arrived = await arrive(tx, credential, {
       name: identity.name,
       username: identity.username,
       address: identity.verifiedEmail,

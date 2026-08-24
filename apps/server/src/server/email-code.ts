@@ -3,23 +3,20 @@
  * out here.
  *
  * Two screens send one — signing in, and attaching an address while already signed in — and they
- * need the same three things in the same order: commit the challenge, send, then decide what the
+ * need the same three things in the same order: commit the code, send, then decide what the
  * sending outcome means. Written twice, one of them would eventually learn something the other
  * did not.
  */
 
-import { z } from '@hono/zod-openapi'
-import { openChallenge } from '../db/email-challenge.ts'
+import { createRoute, z, type RouteHandler } from '@hono/zod-openapi'
+import type { BlankEnv } from 'hono/types'
+import type { Env, MiddlewareHandler } from 'hono'
+import { issueCode } from '../db/email-code.ts'
 import type { Database } from '../db/connection.ts'
-import {
-  DIGITS,
-  hashCode,
-  newCode,
-  type Purpose,
-  type Rejection,
-} from '../identity/emailed-code.ts'
+import { DIGITS, hashCode, newCode, type Purpose, type Rejection } from '../identity/email-code.ts'
 import { normalizeEmail } from '../identity/email-address.ts'
-import { failureBody, type Failure } from './failure.ts'
+import { sends, takes } from './contract.ts'
+import { failureBody, refusal, type Failure } from './failure.ts'
 
 export const askedForCode = z
   .object({
@@ -34,9 +31,9 @@ export const submittedCode = z
   .object({ code: z.string().min(1).max(20).openapi({ example: '493018' }) })
   .openapi('SubmitCode')
 
-export const openedBody = z
+export const issuedBody = z
   .object({
-    challengeId: z.uuid(),
+    codeId: z.uuid(),
     /** When the code stops working. Said here so a page shows what this deployment really does. */
     expiresAt: z.iso.datetime(),
     /** How long until another may be asked for. */
@@ -44,7 +41,7 @@ export const openedBody = z
     /** How long the code is. A page that compiled in a six would submit five if this ever moved. */
     digits: z.number().int().positive(),
   })
-  .openapi('OpenedChallenge')
+  .openapi('IssuedCode')
 
 export const waitBody = failureBody
   .extend({ retryAfterSeconds: z.number().int().positive() })
@@ -71,7 +68,7 @@ export function explainRejection(rejection: Rejection): CodeRefusal {
       return { reason: rejection, recovery: 'request-new-code', status: 409 }
     case 'attempts-exhausted':
       return { reason: rejection, recovery: 'start-over', status: 429 }
-    case 'no-challenge':
+    case 'no-code':
       return { reason: rejection, recovery: 'start-over', status: 404 }
   }
 }
@@ -81,7 +78,7 @@ export function explainRejection(rejection: Rejection): CodeRefusal {
  * may be in flight.
  *
  * It returns its uncertainty instead of throwing it, because a failed send must not take down a
- * challenge that was committed and works.
+ * code that was committed and works.
  */
 export type SendCode = (to: string, code: string) => Promise<'sent' | 'refused' | 'unknown'>
 
@@ -95,7 +92,7 @@ export type CodeRequest = {
  * What came of asking, already in the shape it goes out in.
  *
  * Two screens ask, and each one renders this in four lines that read as its own contract. What
- * they must never do is each decide what a challenge looks like on the wire, or what a refused
+ * they must never do is each decide what a live code looks like on the wire, or what a refused
  * letter is called — so those are decided here, once.
  *
  * `undeliverable` is a refusal and `unknown` is not: the letter may already be in the inbox, and
@@ -103,7 +100,7 @@ export type CodeRequest = {
  * second one.
  */
 export type Asked =
-  | { readonly kind: 'opened'; readonly body: z.infer<typeof openedBody> }
+  | { readonly kind: 'issued'; readonly body: z.infer<typeof issuedBody> }
   | {
       readonly kind: 'too-soon'
       readonly body: z.infer<typeof waitBody>
@@ -118,7 +115,7 @@ export async function askForCode(
   request: CodeRequest,
 ): Promise<Asked> {
   const code = newCode()
-  const opened = await openChallenge(db, {
+  const opened = await issueCode(db, {
     requestKey: request.requestKey,
     email: request.email,
     purpose: request.purpose,
@@ -139,17 +136,71 @@ export async function askForCode(
 
   // A replay means the mail for this request is already sent or already in flight, and the code
   // just minted is not the one inside it. Sending would put two codes in one inbox.
-  if (opened.kind === 'opened' && (await send(request.email, code)) === 'refused') {
+  if (opened.kind === 'issued' && (await send(request.email, code)) === 'refused') {
     return { kind: 'undeliverable', body: { reason: 'address-refused', recovery: 'retype' } }
   }
 
   return {
-    kind: 'opened',
+    kind: 'issued',
     body: {
-      challengeId: opened.id,
+      codeId: opened.id,
       expiresAt: opened.expiresAt.toISOString(),
       resendAfterSeconds: opened.resendAfterSeconds,
       digits: DIGITS,
     },
   }
+}
+
+/**
+ * The route that sends a code. Both screens that send one build theirs from this, so they cannot
+ * end up disagreeing about what a wait, a dead address, or a live code looks like on the wire.
+ *
+ * The literal path flows through the generic, so each caller still gets its own path typed into
+ * the generated contract.
+ */
+export type Sender = {
+  readonly db: Database
+  readonly secret: string
+  readonly sendCode: SendCode
+}
+
+export function sendsACode<P extends string, E extends Env = BlankEnv>(spec: {
+  readonly path: P
+  readonly summary: string
+  readonly purpose: Purpose
+  /** What has to run first. The one behind a session says so here, not at the mounting point. */
+  readonly middleware?: MiddlewareHandler<E>[] | undefined
+  /** What else this path can answer. Only the one behind a session can say nobody is signed in. */
+  readonly alsoRefuses?: Readonly<Record<number, ReturnType<typeof refusal>>>
+}) {
+  const route = createRoute({
+    method: 'post',
+    path: spec.path,
+    summary: spec.summary,
+    ...(spec.middleware === undefined ? {} : { middleware: spec.middleware }),
+    request: { body: takes(askedForCode) },
+    responses: {
+      201: sends(issuedBody, 'A code is on its way, or was already sent for this request key'),
+      400: refusal('The body was not the shape it claims, or no letter can reach that address'),
+      429: sends(waitBody, 'A code went out moments ago; another would break the one in the inbox'),
+      ...spec.alsoRefuses,
+    },
+  })
+
+  const handler =
+    (deps: Sender): RouteHandler<typeof route, E> =>
+    async (c) => {
+      const answered = await askForCode(deps.db, deps.secret, deps.sendCode, {
+        ...c.req.valid('json'),
+        purpose: spec.purpose,
+      })
+
+      if (answered.kind === 'issued') return c.json(answered.body, 201)
+      if (answered.kind === 'undeliverable') return c.json(answered.body, 400)
+
+      c.header('Retry-After', String(answered.retryAfterSeconds))
+      return c.json(answered.body, 429)
+    }
+
+  return { route, handler }
 }

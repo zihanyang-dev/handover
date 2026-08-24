@@ -28,7 +28,7 @@ function signedIn(spaces: { id: string; slug: string; displayName: string }[] = 
     HttpResponse.json({
       displayName: EMAIL,
       verifiedEmail: EMAIL,
-      waysIn: [{ kind: 'email', state: 'ready' }],
+      credentials: [{ kind: 'email', state: 'ready' }],
       spaces,
     }),
   )
@@ -85,7 +85,7 @@ describe('leaving', () => {
         revoked = true
         return new HttpResponse(null, { status: 204 })
       }),
-      http.get('*/auth/ways-in', () => HttpResponse.json({ offered: ['email'] })),
+      http.get('*/auth/credentials', () => HttpResponse.json({ offered: ['email'] })),
     )
     open('/')
 

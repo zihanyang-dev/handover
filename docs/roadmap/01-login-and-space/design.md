@@ -4,10 +4,10 @@
 
 ## owner
 
-| owner      | 拥有                                     | 恢复错误                                   |
-| ---------- | ---------------------------------------- | ------------------------------------------ |
-| `identity` | User、进来的路、验证挑战、浏览器会话     | 码不对 / 过期 / 已用 / 试太多 / 挑战不存在 |
-| `space`    | Space、显示名、slug 归一化规则、成员关系 | 名字无效 / slug 冲突 / 幂等冲突            |
+| owner      | 拥有                                     | 恢复错误                                     |
+| ---------- | ---------------------------------------- | -------------------------------------------- |
+| `identity` | User、进来的路、发出去的码、浏览器会话   | 码不对 / 过期 / 已用 / 试太多 / 这个码不存在 |
+| `space`    | Space、显示名、slug 归一化规则、成员关系 | 名字无效 / slug 冲突 / 幂等冲突              |
 
 `space` 不知道邮箱和会话。`identity` 不知道 Space。
 
@@ -18,9 +18,9 @@ users
   id · display_name · created_at
   账号本身没有内容。它不是一个地址,也不是某个提供商那边的账号
 
-ways_in
+credentials
   user_id · kind(email|google|github) · subject · verified_at
-  唯一(kind, subject)        ← 一把钥匙只开一个账号,这是整套并入规则的支点
+  唯一(kind, subject)        ← 一个凭据只开一个账号,这是整套并入规则的支点
 
   email          subject 是归一化后的地址
   google|github  subject 是提供商那边那个不会变的 id,不是地址
@@ -29,15 +29,18 @@ ways_in
   它就是账号本身" —— 账号不再等于某个地址之后,那条理由没了,表也就不该还在。
   多一种(手机号)是多一个 kind,不是多一张表。
   一个账号可以有多行 email。显示用最早验过的那个,不存"主地址"这个状态
+  verified_at 用 clock_timestamp() 不是 now():now() 是事务开始时间,同一个事务里写进去的
+  地址和提供商凭据会拿到一样的值,「最早那个地址」就成了看行怎么排
 
-email_challenges
+email_codes
   id · email · purpose(sign-in|attach) · code_hash · expires_at · attempts
   closed_at + closed_reason(consumed|superseded)   两个一起有,或一起没有
   request_key 唯一           ← 发码的幂等键
-  唯一(email, purpose) where closed_at is null     ← 一个地址每种用途只有一封开着
+  唯一(email, purpose) where closed_at is null     ← 一个地址每种用途只有一个活着
   purpose 是这封信的用途,不是它的强度:登录的码不能拿去绑定,反过来也不行
-  这张表不跟着 ways_in 泛化:它记的是"往这个地址发过一封信",而发信是邮箱特有的 ——
+  这张表不跟着 credentials 泛化:它记的是"往这个地址发过一封信",而发信是邮箱特有的 ——
   三态投递、信里的措辞、Resend,没有一样能直接给短信用。等真有短信再说
+  它不是凭据,是发信这个外部后果的账本。credentials 决定谁能进,这张表只决定信发没发
   过期不进谓词:Postgres 要求索引谓词 IMMUTABLE,now() 不是。过期由读判定
 
 browser_sessions
@@ -53,31 +56,31 @@ memberships
   request_key 唯一           ← 建 Space 的幂等键,挂在成员关系上
 ```
 
-**不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `ways_in.is_primary`
+**不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `credentials.is_primary`
 (按 `verified_at` 取最早的就够,一个能和事实不一致的状态没有理由存)。
 
 ## 决定
 
-**① 身份是 `users.id`,所有登录方式都只是挂在它上面的钥匙**
+**① 身份是 `users.id`,所有登录方式都只是挂在它上面的凭据**
 
-一张 `ways_in`,一行是一把钥匙。提供商那行记的是那边不会变的 `subject`(不是地址)——用户以后在
+一张 `credentials`,一行是一个凭据。提供商那行记的是那边不会变的 `subject`(不是地址)——用户以后在
 那边改邮箱,链接不断;邮箱那行记的就是归一化后的地址本身。**归一化按 kind 分**:地址要压成小写,
 提供商的 id 一个字符都不能动。
 
-**没登录时**,一把钥匙要找到账号,靠的是这个顺序:
+**没登录时**,一个凭据要找到账号,靠的是这个顺序:
 
 ```
 1. (kind, subject) 命中           → 那个账号。地址后来变了也不影响
-2. ('email', 交回的地址) 命中     → 那个账号,并且把这把钥匙挂上去   ← 并入发生在这里
-3. 都不命中                       → 新账号 + 这个地址 + 这把钥匙
+2. ('email', 交回的地址) 命中     → 那个账号,并且把这个凭据挂上去   ← 并入发生在这里
+3. 都不命中                       → 新账号 + 这个地址 + 这个凭据
 ```
 
 第 2 步是整套设计里唯一一处「没证明自己是账号主人,却进了一个已有账号」。它成立的理由只有一条:
 **提供商交回的是它已验证的地址,而验证一个地址正是邮箱验证码在做的事**,同一个标准,不更弱。
-`ways_in` 上 `(kind, subject)` 的唯一索引是这条规则的支点 —— 一个地址两个账号,第 2 步就没有答案。
+`credentials` 上 `(kind, subject)` 的唯一索引是这条规则的支点 —— 一个地址两个账号,第 2 步就没有答案。
 
-**已经登录时连一把钥匙,不看地址。** 会话已经证明了主人身份,再要求地址一致保护不了任何东西 ——
-那个要求是从"账号就是它的地址"里继承来的,而账号不再是它的地址了。这时只剩一个问题:这把钥匙
+**已经登录时连一个凭据,不看地址。** 会话已经证明了主人身份,再要求地址一致保护不了任何东西 ——
+那个要求是从"账号就是它的地址"里继承来的,而账号不再是它的地址了。这时只剩一个问题:这个凭据
 是不是已经属于别人。
 
 **连提供商不顺手收编地址。** 收编意味着把一个地址从别的账号搬过来,那是接管账号的原语。
@@ -90,15 +93,15 @@ memberships
 ```
 begin → 按邮箱取 advisory lock            同一地址的请求排队,包括它自己的重试
       → 按 request_key 查重放,命中就返回   ← 必须在作废之前,否则它作废掉自己要返回的那条
-      → 作废这个邮箱其他还开着的挑战
-      → 写新挑战(含 code_hash)
+      → 作废这个邮箱这种用途下其他还活着的码
+      → 写新的码(只存 code_hash)
       → commit
-然后才发信。发信失败或结果未知,挑战仍然有效,用户可以重发。
+然后才发信。发信失败或结果未知,码仍然有效,用户可以重发。
 ```
 
-锁按地址加用途,和那个部分唯一索引一致:开着的挑战是**每个地址每种用途一条**,不加锁两个请求会一起撞上它。
+锁按地址加用途,和那个部分唯一索引一致:活着的码是**每个地址每种用途一个**,不加锁两个请求会一起撞上它。
 
-发信本身不在事务里。**响应丢了重试同一个 `request_key`,拿到同一个挑战,所以只发一封。**
+发信本身不在事务里。**响应丢了重试同一个 `request_key`,拿到同一个码,所以只发一封。**
 
 **③ slug 归一化住在 `space` owner,浏览器直接 import**
 
@@ -140,11 +143,11 @@ where token_hash = $1 and revoked_at is null and expires_at > now()
 
 **⑥ 「怎么进来」是读出来的,不是存出来的**
 
-一次查询:`ways_in` 里的每一行各是一条路,再把这个部署有钥匙、而这个账号还没连的提供商
+一次查询:`credentials` 里的每一行各是一条路,再把这个部署有凭据、而这个账号还没连的提供商
 列成「可以去连接」。**不存"这个账号支持哪几种"这样的状态。**
 
-地址是**一条一条列的**,不是折成一句「邮箱验证码可用」。折起来就看不出有几把钥匙,而
-「有几把钥匙」正是这一段存在的理由。
+地址是**一条一条列的**,不是折成一句「邮箱验证码可用」。折起来就看不出有几个凭据,而
+「有几个凭据」正是这一段存在的理由。
 
 断开这一片不做,但约束先写下:**永远不能断开最后一条路**,地址也算路 —— 账号不再等于某一个
 地址,所以最后一个地址和最后一个提供商一样是可以被断到零的,必须挡。
@@ -160,24 +163,24 @@ where token_hash = $1 and revoked_at is null and expires_at > now()
 ```
 succeeded  已投递给邮件服务
 failed     邮件服务明确拒绝     → 用户可以重发
-unknown    没拿到确认           → 挑战有效,用户可以重发;重发用同一个 request_key,不会变成两封
+unknown    没拿到确认           → 码有效,用户可以重发;重发用同一个 request_key,不会变成两封
 ```
 
 ## 接口
 
 ```
-GET   /auth/ways-in                      → 这个部署能提供哪几种。不要会话
+GET   /auth/credentials                  → 这个部署能接受哪几种凭据。不要会话
 POST  /auth/{provider}/start             → { url },浏览器自己去
 GET   /auth/{provider}/callback          → 建会话,跳回 WEB_ORIGIN + next
-POST  /auth/email/challenges             幂等键;→ 挑战 id · 何时过期 · 何时可重发
-POST  /auth/email/challenges/{id}/verify → 建会话
+POST  /auth/email-codes                   幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
+POST  /auth/email-codes/{id}/answer       → 建会话
 DELETE /browser/sessions/current
 
 GET   /me                                → User · 怎么进来 · 他的 Space 列表
 PATCH /me                                → 改 display_name
-POST  /me/ways-in/{provider}/start          → { url },连一个提供商到当前账号
-POST  /me/ways-in/email/challenges         幂等键;→ 挑战 id · 何时过期 · 何时可重发
-POST  /me/ways-in/email/challenges/{id}/verify → 把这个地址加成当前账号的一条路
+POST  /me/credentials/{provider}/start     → { url },连一个提供商到当前账号
+POST  /me/credentials/email-codes              幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
+POST  /me/credentials/email-codes/{id}/answer  → 把这个地址加成当前账号的一条路
 POST  /spaces                            幂等键;→ Space,或带建议的冲突
 GET   /spaces/{slug}                     → Space,或「不可用」
 ```
@@ -195,7 +198,7 @@ GET   /spaces/{slug}                     → Space,或「不可用」
 **真实数据库**:
 
 ```
-同一 request_key 并发发码 → 一个挑战,一封信
+同一 request_key 并发发码 → 一个码,一封信
 发新码作废旧码,旧码报「已过期」不是「不对」
 同一个地址的登录码和绑定码互不作废,也不能互相顶用
 两个账号同时绑同一个地址 → 一个成功,一个明确被拒

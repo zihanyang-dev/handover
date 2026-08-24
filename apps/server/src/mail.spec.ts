@@ -69,10 +69,10 @@ describe('handing a letter to the provider', () => {
     expect(await resend(env)(LETTER)).toBe('unknown')
   })
 
-  it('never throws, so a letter that failed cannot take down a challenge that works', async () => {
+  it('never throws, so a letter that failed cannot take down a code that works', async () => {
     server.use(http.post('https://api.resend.com/emails', () => HttpResponse.error()))
 
-    // The challenge is committed before this runs. Throwing here would fail a request whose real
+    // The code is committed before this runs. Throwing here would fail a request whose real
     // work already succeeded.
     await expect(resend(env)(LETTER)).resolves.toBe('unknown')
   })

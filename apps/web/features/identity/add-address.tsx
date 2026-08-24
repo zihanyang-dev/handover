@@ -19,7 +19,7 @@ const SAID: Record<string, string> = {
   expired: 'That code has expired. Ask for another.',
   consumed: 'That code has already been used. Ask for another.',
   'attempts-exhausted': 'Too many tries. Start again from the address.',
-  'no-challenge': 'That has expired. Start again from the address.',
+  'no-code': 'That has expired. Start again from the address.',
   'malformed-request': 'Check that address.',
 }
 
@@ -41,11 +41,11 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
 
   const send = useMutation({
     mutationFn: async (to: string): Promise<Sent> => {
-      const { data, error } = await api.POST('/me/ways-in/email-codes', {
+      const { data, error } = await api.POST('/me/credentials/email-codes', {
         body: { email: to, requestKey: retryKey(`attach:${to}`) },
       })
       if (data === undefined) throw new Error(error.reason)
-      return { address: to, id: data.challengeId, digits: data.digits }
+      return { address: to, id: data.codeId, digits: data.digits }
     },
     onSuccess: onSent,
   })
@@ -97,7 +97,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
 
   const answer = useMutation({
     mutationFn: async (digits: string) => {
-      const { error, response } = await api.POST('/me/ways-in/email-codes/{id}/answer', {
+      const { error, response } = await api.POST('/me/credentials/email-codes/{id}/answer', {
         params: { path: { id: sent.id } },
         body: { code: digits },
       })

@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'kysely'
-import { LIFETIME_DAYS } from '../identity/browser-session.ts'
+import { LIFETIME_DAYS } from '../identity/session.ts'
 import type { Database } from './connection.ts'
 
 /** Starts a session. Every way in ends here, so a session means the same thing whatever proved it. */

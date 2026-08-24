@@ -43,7 +43,7 @@ function open(at: string) {
 function codeScreen(resendAfterSeconds = '30'): string {
   const search = new URLSearchParams({
     email: EMAIL,
-    challengeId: CHALLENGE,
+    codeId: CHALLENGE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
     resendAfterSeconds,
     digits: '6',
@@ -71,7 +71,7 @@ describe('handing the code back', () => {
         HttpResponse.json({
           displayName: EMAIL,
           verifiedEmail: EMAIL,
-          waysIn: [{ kind: 'email', state: 'ready' }],
+          credentials: [{ kind: 'email', state: 'ready' }],
           spaces: [],
         }),
       ),
@@ -148,7 +148,7 @@ describe('each way it can fail', () => {
     ['expired', 409, /expired/i],
     ['consumed', 409, /already been used/i],
     ['attempts-exhausted', 429, /too many tries/i],
-    ['no-challenge', 404, /no longer here/i],
+    ['no-code', 404, /no longer here/i],
   ]
 
   for (const [reason, status, words] of said) {
