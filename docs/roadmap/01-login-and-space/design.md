@@ -130,20 +130,25 @@ unknown    没拿到确认           → 挑战有效,用户可以重发;重发�
 ## 接口
 
 ```
-POST  /auth/{google|github}/start        → 跳转
-GET   /auth/{google|github}/callback     → 建会话,回到 next
-POST  /auth/email/challenges             幂等键;→ 挑战 id
+GET   /auth/ways-in                      → 这个部署能提供哪几种。不要会话
+POST  /auth/{provider}/start             → { url },浏览器自己去
+GET   /auth/{provider}/callback          → 建会话,跳回 WEB_ORIGIN + next
+POST  /auth/email/challenges             幂等键;→ 挑战 id · 何时过期 · 何时可重发
 POST  /auth/email/challenges/{id}/verify → 建会话
 DELETE /browser/sessions/current
 
-GET   /me                                → User + 他的 Space 列表
+GET   /me                                → User · 怎么进来 · 他的 Space 列表
 PATCH /me                                → 改 display_name
-POST  /me/sign-in-methods/{kind}/start   → 跳转,连一个提供商到当前账号
+POST  /me/sign-in-methods/{provider}/start → { url },连一个提供商到当前账号
 POST  /spaces                            幂等键;→ Space,或带建议的冲突
 GET   /spaces/{slug}                     → Space,或「不可用」
 ```
 
-wire 类型与 zod 从 OpenAPI 生成。
+`start` 返回地址而不是 302:页面用 `fetch` 读不到重定向的目标(浏览器藏起来了),
+而跟着走会把请求本身送去提供商,而不是人。导航是浏览器的事。
+
+**契约从路由本身导出**,不是另写一份:zod 是真相,OpenAPI 是 `pnpm generate` 的产物,
+浏览器的客户端再从它生成。`pnpm check` 断言三者无 diff。
 
 ## 测试
 

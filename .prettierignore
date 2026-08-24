@@ -1,6 +1,6 @@
-generated
+**/generated
 node_modules
 pnpm-lock.yaml
-web/dist
-web/routeTree.gen.ts
-web/generated
+apps/web/dist
+apps/web/routeTree.gen.ts
+apps/web/generated

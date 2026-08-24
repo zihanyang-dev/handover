@@ -7,3 +7,5 @@ node_modules
 # second copy of the routes. Unlike generated/, whose source is a database.
 web/routeTree.gen.ts
 web/dist
+.tanstack
+.DS_Store

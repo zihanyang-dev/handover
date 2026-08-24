@@ -5,22 +5,31 @@
 ## 1. 根目录
 
 ```
-src/
-  <owner>/          一个事实 owner 一个目录,一个文件一条行为
-  db/               持久化边界
-  server/           入站传输
-  host/             常驻,以及 host/<adapter>/ 具体运行时
-  cli/              接入与保持在线
-generated/          生成物,永不手改
-migrations/         已提交的永不修改
-scripts/            生成器与仓库维护脚本
+apps/server/        API
+  src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
+  src/db/           持久化边界
+  src/server/       入站传输
+  src/host/         常驻,以及 host/<adapter>/ 具体运行时
+  src/cli/          接入与保持在线
+  scripts/          生成器与仓库维护脚本
+  migrations/       已提交的永不修改
+  generated/        生成物,永不手改
+apps/web/           浏览器应用
+packages/universal/ 两边必须算出同一个答案的东西
+
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
-web/                浏览器应用
 compose.yml         一个 postgres,两个库
 ```
 
-`src/env.ts` 是**唯一**读 `process.env` 的文件,`lint` 强制。别处拿到的是已经 parse 过的 `Env`,
-所以没有任何代码路径能看见一个没校验过的值。
+**边界由工具强制,不靠自觉。** 按包名跨过去,pnpm 找不到;用 `../` 绕过去,
+`rootDir` 让它编译不过。
+
+`apps/server/src/env.ts` 是**唯一**读 `process.env` 的文件,`src/log.ts` 是唯一写 stdout 的,
+两条都由 `lint` 强制。别处拿到的是已经 parse 过的值。
+
+`packages/universal` 的入包标准就是它的名字:**能在两边跑的才进来**。
+只有一边算得了的东西走网线 —— 响应里的值对发出它的那个部署永远是对的,
+编译进页面的值只在没人改另一边之前是对的。
 
 **具体有哪些 owner 和 adapter 见对应旅程的 `design.md`。** 本文件只规定形态。
 
@@ -61,13 +70,18 @@ AGENTS.md                   交付流程
 ```
 pnpm db:up        起 postgres,等到 healthy
 pnpm db:down      连数据卷一起删
+pnpm migrate      把开发库迁到最新
+pnpm test:db      把测试库迁到最新
 
-pnpm generate     迁移测试库 → dump schema.sql → 生成 db.ts
-pnpm typecheck
-pnpm lint         oxlint,type-aware
+pnpm dev          API
+pnpm web          浏览器应用
+pnpm build        打包浏览器应用
+
+pnpm generate     迁移测试库 → schema.sql → db.ts → openapi.json → 浏览器的类型 → 路由树
+pnpm typecheck    三个包各自的类型世界
+pnpm lint         oxlint,type-aware,按包
 pnpm format       prettier --check
 pnpm test         vitest
-pnpm test:db      只把测试库迁移到最新
 pnpm check        以上全部 + generate 无 diff
 ```
 

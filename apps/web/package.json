@@ -1,0 +1,30 @@
+{
+  "name": "@handover/web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-query": "^5.102.2",
+    "openapi-fetch": "^0.17.0",
+    "react-bootstrap-icons": "^1.11.6",
+    "@handover/universal": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2",
+    "@vitejs/plugin-react": "^6.1.0",
+    "@tanstack/router-plugin": "^1.168.35",
+    "@tanstack/router-cli": "^1.167.33",
+    "openapi-typescript": "^7.13.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "generate": "openapi-typescript ../server/generated/openapi.json -o generated/api.ts && tsr generate"
+  }
+}

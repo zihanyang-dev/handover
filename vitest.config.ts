@@ -5,15 +5,12 @@ process.loadEnvFile('.env.test')
 
 export default defineConfig({
   test: {
-    // The database tests share one database and each empties it, so files cannot overlap. Set
-    // here rather than on that project: inside `projects` it is ignored.
-    fileParallelism: false,
     projects: [
       {
         test: {
           name: 'unit',
-          include: ['src/**/*.spec.ts', 'scripts/**/*.spec.ts'],
-          exclude: ['src/db/**', 'src/server/**'],
+          include: ['apps/server/src/**/*.spec.ts', 'packages/**/*.spec.ts', './*.spec.ts'],
+          exclude: ['apps/server/src/db/**', 'apps/server/src/server/**'],
         },
       },
       {
@@ -22,16 +19,14 @@ export default defineConfig({
         esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
         test: {
           name: 'web',
-          include: ['web/**/*.spec.tsx', 'web/**/*.spec.ts'],
+          include: ['apps/web/**/*.spec.tsx', 'apps/web/**/*.spec.ts'],
           environment: 'happy-dom',
-          setupFiles: ['./vitest.web-harness.tsx'],
         },
       },
       {
         test: {
           name: 'db',
-          include: ['src/db/**/*.spec.ts', 'src/server/**/*.spec.ts'],
-          setupFiles: ['./vitest.setup-db.ts'],
+          include: ['apps/server/src/db/**/*.spec.ts', 'apps/server/src/server/**/*.spec.ts'],
         },
       },
     ],
