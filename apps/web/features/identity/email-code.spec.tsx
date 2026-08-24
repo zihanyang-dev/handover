@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -67,14 +68,7 @@ describe('handing the code back', () => {
         handed = await request.json()
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
-      http.get('*/me', () =>
-        HttpResponse.json({
-          displayName: EMAIL,
-          verifiedEmail: EMAIL,
-          credentials: [{ kind: 'email', state: 'ready' }],
-          spaces: [],
-        }),
-      ),
+      signedIn({ credentials: [{ kind: 'email', address: EMAIL, state: 'ready' }] }),
     )
     open(codeScreen())
 

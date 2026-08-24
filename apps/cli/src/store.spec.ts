@@ -10,7 +10,35 @@ beforeEach(async () => {
   HOME = await mkdtemp(join(tmpdir(), 'handover-store-'))
 })
 
-const ATTACHMENT = { origin: 'http://handover.test', machineId: 'm-1', token: 'hm_token' }
+const ATTACHMENT = {
+  origin: 'http://handover.test',
+  machineId: 'm-1',
+  token: 'hm_token',
+  lookFor: ['claude'],
+}
+
+describe('reading one back', () => {
+  it('is nothing when there is no file, which is a machine nobody has connected', async () => {
+    expect(await readAttachment(join(HOME, 'machine.json'))).toBeUndefined()
+  })
+
+  it('is nothing when a field this version needs is not in the file', async () => {
+    // What an upgrade looks like from here: a file written before `lookFor` existed. Reading it as
+    // one would leave a machine looking for nothing and reporting that it has nothing.
+    const { lookFor: _lookFor, ...older } = ATTACHMENT
+    const path = join(HOME, 'machine.json')
+    await writeFile(path, JSON.stringify(older))
+
+    expect(await readAttachment(path)).toBeUndefined()
+  })
+
+  it('is nothing when the file was cut off half way', async () => {
+    const path = join(HOME, 'machine.json')
+    await writeFile(path, JSON.stringify(ATTACHMENT).slice(0, 20))
+
+    expect(await readAttachment(path)).toBeUndefined()
+  })
+})
 
 describe('where it is kept', () => {
   it('is under the config home when this is somebody running it', () => {

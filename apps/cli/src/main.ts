@@ -22,7 +22,7 @@ import { keepCheckingIn } from './checking-in.ts'
 import { askToConnect, connectWithKey, waitToBeLetIn } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
 import { findAgents } from './discovery.ts'
-import { handoverFor } from './service.ts'
+import { handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
 const run = promisify(execFile)
@@ -41,6 +41,21 @@ const env = readEnv()
 const machineName = values.name ?? hostname()
 const where = attachmentPath(env.configHome, values.system)
 const command = positionals[0] ?? 'connect'
+
+/** Long enough for any throttle a service manager holds a name through, short enough to give up in. */
+const PATIENCE_SECONDS = 30
+
+/**
+ * This program's own path, for the service file to point at.
+ *
+ * Loud when it is missing rather than written as an empty argument: a service whose command is
+ * half-formed starts, does nothing, and says nothing about why.
+ */
+function entryPoint(): string {
+  const here = process.argv[1]
+  if (here === undefined) throw new Error('cannot tell where this program lives')
+  return here
+}
 
 /** Straight to stderr: stdout belongs to whatever a person might want to pipe. */
 function say(line: string): void {
@@ -109,12 +124,16 @@ async function useKey(origin: string, key: string) {
  * this keyboard. Here they can install one and run this again in the same minute.
  */
 async function sayWhatIsHere(attachment: Attachment): Promise<void> {
-  const api = apiFor(attachment.origin, attachment.token)
-  const { data } = await api.POST('/machines/current/poll', { body: { found: [] } })
-  const found = await findAgents(data?.lookFor ?? [], machineEnvironment())
+  const found = await findAgents(attachment.lookFor, machineEnvironment())
+
+  // Reported as it is said, not after. Checking in with an empty report first — just to be told
+  // what to look for — would land on the Space screen as a machine that has nothing.
+  await apiFor(attachment.origin, attachment.token).POST('/machines/current/poll', {
+    body: { found },
+  })
 
   if (found.length === 0) {
-    say(`found     nothing — install one of ${(data?.lookFor ?? []).join(', ')} and run this again`)
+    say(`found     nothing — install one of ${attachment.lookFor.join(', ')} and run this again`)
     return
   }
 
@@ -133,7 +152,7 @@ async function handOver(): Promise<void> {
       // Absolute, and never resolved through a shell: a typo in a profile must not be able to
       // stop a service from starting.
       executable: process.execPath,
-      args: [process.argv[1] ?? '', 'run', ...(values.system ? ['--system'] : [])],
+      args: [entryPoint(), 'run', ...(values.system ? ['--system'] : [])],
       system: values.system,
       label: 'dev.handover.machine',
       // Taken from this terminal, where it is already right. A service inherits four directories
@@ -150,11 +169,59 @@ async function handOver(): Promise<void> {
   await writeFile(handover.path, handover.contents)
 
   for (const step of handover.steps) {
-    say(`         ${step.join(' ')}`)
-    await run(step[0] ?? '', step.slice(1))
+    switch (step.need) {
+      case 'do-it':
+        say(`         ${step.run.join(' ')}`)
+        await attempt(step)
+        break
+      case 'clear-it':
+        // Nothing to clear is what running `connect` on a fresh machine looks like.
+        await works(step)
+        break
+      case 'wait-out':
+        await waitOut(step)
+        break
+    }
   }
 
   say('running. closing this terminal will not stop it.')
+}
+
+async function attempt(step: Step): Promise<void> {
+  const [program, ...rest] = step.run
+  await run(program, rest)
+}
+
+/** Whether a step exits cleanly. For the two needs where failing is an answer rather than an error. */
+async function works(step: Step): Promise<boolean> {
+  return attempt(step).then(
+    () => true,
+    () => false,
+  )
+}
+
+/**
+ * Runs a check until it fails, which is the thing being waited for.
+ *
+ * It says so once it has waited at all, because the wait is measured in seconds and a command
+ * that goes quiet for five of them looks like one that has stopped.
+ */
+async function waitOut(step: Step): Promise<void> {
+  const giveUpAt = Date.now() + PATIENCE_SECONDS * 1000
+  let said = false
+
+  while (await works(step)) {
+    if (!said) {
+      say('         waiting for the one already running to stop')
+      said = true
+    }
+    if (Date.now() > giveUpAt) {
+      throw new Error(
+        `gave up after ${String(PATIENCE_SECONDS)}s: ${step.run.join(' ')} still works`,
+      )
+    }
+    await sleep(0.25)
+  }
 }
 
 async function stayConnected(attachment: Attachment): Promise<void> {
@@ -166,12 +233,13 @@ async function stayConnected(attachment: Attachment): Promise<void> {
   }
 
   const api = apiFor(attachment.origin, attachment.token)
-  const first = await api.POST('/machines/current/poll', { body: { found: [] } })
 
-  // The PATH here is the one the service file carries, put there by `connect`.
+  // Starts from what connecting was told, so the first check-in already carries findings. Every
+  // answer returns the list again, so it follows the server without ever having been guessed.
+  // The PATH is the one the service file carries, put there by `connect`.
   const stopped = await keepCheckingIn(
     api,
-    first.data?.lookFor ?? [],
+    attachment.lookFor,
     { sleep, say, env: machineEnvironment() },
     stopping.signal,
   )

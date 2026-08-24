@@ -8,6 +8,9 @@
 import { answered, type Api } from './api.ts'
 import { findAgents } from './discovery.ts'
 
+/** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
+const RETRY_SECONDS = 5
+
 export type CheckingIn = {
   readonly sleep: (seconds: number) => Promise<void>
   /** Told when something changed, so a person watching a terminal sees why it went quiet. */
@@ -53,6 +56,3 @@ export async function keepCheckingIn(
 
   return { kind: 'asked-to-stop' }
 }
-
-/** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
-const RETRY_SECONDS = 5

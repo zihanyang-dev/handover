@@ -9,6 +9,9 @@
 import { answered, type Api } from './api.ts'
 import type { Attachment } from './store.ts'
 
+/** How often to ask while waiting for a person. Short: somebody is watching a terminal. */
+const POLL_SECONDS = 2
+
 /** What came back from asking, and what was asked with — the name is part of the request. */
 export type Asked = {
   readonly machineName: string
@@ -20,11 +23,7 @@ export type Asked = {
 }
 
 export type Connected =
-  | {
-      readonly kind: 'connected'
-      readonly attachment: Attachment
-      readonly lookFor: readonly string[]
-    }
+  | { readonly kind: 'connected'; readonly attachment: Attachment }
   /** Somebody said no, it ran out, or somebody else took the key. Each ends the attempt. */
   | { readonly kind: 'gave-up'; readonly why: string }
 
@@ -58,8 +57,12 @@ export async function connectWithKey(
 
   return {
     kind: 'connected',
-    attachment: { origin, machineId: came.data.machineId, token: came.data.token },
-    lookFor: came.data.lookFor,
+    attachment: {
+      origin,
+      machineId: came.data.machineId,
+      token: came.data.token,
+      lookFor: came.data.lookFor,
+    },
   }
 }
 
@@ -103,8 +106,12 @@ export async function waitToBeLetIn(
     if (data.kind === 'granted') {
       return {
         kind: 'connected',
-        attachment: { origin, machineId: data.machineId, token: data.token },
-        lookFor: data.lookFor,
+        attachment: {
+          origin,
+          machineId: data.machineId,
+          token: data.token,
+          lookFor: data.lookFor,
+        },
       }
     }
     if (data.kind !== 'waiting') return { kind: 'gave-up', why: data.kind }
@@ -112,6 +119,3 @@ export async function waitToBeLetIn(
     await waiting.sleep(POLL_SECONDS)
   }
 }
-
-/** How often to ask while waiting for a person. Short: somebody is watching a terminal. */
-const POLL_SECONDS = 2

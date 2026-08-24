@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -36,12 +37,6 @@ const SPACES = [
   { id: 's-2', slug: 'beta', displayName: 'Beta' },
 ]
 
-function signedIn(spaces = SPACES) {
-  return http.get('*/me', () =>
-    HttpResponse.json({ displayName: 'mina@example.com', credentials: [], spaces }),
-  )
-}
-
 function waiting(machineName = 'mina-mbp') {
   return http.get('*/enrolments/:code', () =>
     HttpResponse.json({ machineName, expiresAt: new Date(Date.now() + 900_000).toISOString() }),
@@ -50,7 +45,7 @@ function waiting(machineName = 'mina-mbp') {
 
 describe('answering a machine', () => {
   it('finds it by a code somebody typed', async () => {
-    server.use(signedIn(), waiting())
+    server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect')
 
     await userEvent.type(await screen.findByLabelText(/code/i), 'WDJB-MJHT')
@@ -62,7 +57,7 @@ describe('answering a machine', () => {
   it('finds it straight away when the address already carries the code', async () => {
     // The clickable half of what the terminal prints. Somebody who could copy did not have to
     // read eight letters off a screen.
-    server.use(signedIn(), waiting())
+    server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect/WDJB-MJHT')
 
     expect(await screen.findByText('mina-mbp')).toBeDefined()
@@ -71,7 +66,7 @@ describe('answering a machine', () => {
   it('asks which Space, rather than assuming one', async () => {
     // The machine does not name one — it has no standing to choose — so this is the only place
     // the question gets answered.
-    server.use(signedIn(), waiting())
+    server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect/WDJB-MJHT')
 
     await screen.findByText('mina-mbp')
@@ -83,7 +78,7 @@ describe('answering a machine', () => {
   it('lets it in, into the Space that was picked', async () => {
     const approved: string[] = []
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       waiting(),
       http.post('*/spaces/:slug/enrolments/:code/approve', ({ params }) => {
         approved.push(`${String(params['slug'])}/${String(params['code'])}`)
@@ -101,7 +96,7 @@ describe('answering a machine', () => {
   it('turns it away without naming a Space', async () => {
     let refused = false
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       waiting(),
       http.post('*/enrolments/:code/refuse', () => {
         refused = true
@@ -118,7 +113,7 @@ describe('answering a machine', () => {
 
   it('says so when letting it in did not work, rather than looking like nothing happened', async () => {
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       waiting(),
       http.post('*/spaces/:slug/enrolments/:code/approve', () =>
         HttpResponse.json({ reason: 'no-enrolment', recovery: 'start-over' }, { status: 404 }),
@@ -137,6 +132,7 @@ describe('answering a machine', () => {
       // The link arrives on a phone as often as not, and a phone is where somebody is least
       // likely to already be signed in. Landing on a blank approval screen would be a dead end.
       server.use(
+        // Nobody signed in, which is what a link opened on a phone usually lands as.
         http.get('*/me', () =>
           HttpResponse.json({ reason: 'no-session', recovery: 'sign-in' }, { status: 401 }),
         ),
@@ -155,7 +151,7 @@ describe('answering a machine', () => {
     // Never a blank screen. Somebody who clicked and saw nothing cannot tell a failure from a
     // click that did not land.
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       waiting(),
       http.post('*/spaces/:slug/enrolments/:code/approve', () => answer.clone()),
     )
@@ -168,7 +164,7 @@ describe('answering a machine', () => {
 
   it('says something when finding it fails in a way nobody wrote words for', async () => {
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       http.get('*/enrolments/:code', () =>
         HttpResponse.json({ reason: 'kaboom', recovery: 'retry-later' }, { status: 500 }),
       ),
@@ -180,7 +176,7 @@ describe('answering a machine', () => {
 
   it('says nothing is waiting under a code nobody is using', async () => {
     server.use(
-      signedIn(),
+      signedIn({ spaces: SPACES }),
       http.get('*/enrolments/:code', () =>
         HttpResponse.json({ reason: 'no-enrolment', recovery: 'start-over' }, { status: 404 }),
       ),
@@ -192,7 +188,7 @@ describe('answering a machine', () => {
 
   it('offers no answer at all until it has found something to answer about', async () => {
     // Approving before anything is on screen would be approving whatever happens to be waiting.
-    server.use(signedIn())
+    server.use(signedIn({ spaces: SPACES }))
     open('/connect')
 
     await screen.findByLabelText(/code/i)

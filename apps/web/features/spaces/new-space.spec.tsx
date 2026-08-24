@@ -7,6 +7,7 @@ import { setupServer } from 'msw/node'
 import { normalizeSlug } from '@handover/universal'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -21,19 +22,6 @@ afterEach(() => {
 afterAll(() => {
   server.close()
 })
-
-const EMAIL = 'mina@example.com'
-
-function signedIn(spaces: { id: string; slug: string; displayName: string }[] = []) {
-  return http.get('*/me', () =>
-    HttpResponse.json({
-      displayName: EMAIL,
-      verifiedEmail: EMAIL,
-      credentials: [{ kind: 'email', state: 'ready' }],
-      spaces,
-    }),
-  )
-}
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {

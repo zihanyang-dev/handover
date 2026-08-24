@@ -68,7 +68,11 @@ describe('where it goes and what runs', () => {
     const handover = handoverFor(spec({ system: false }), 'darwin', '/Users/mina')
 
     expect(handover.path).toBe('/Users/mina/Library/LaunchAgents/dev.handover.machine.plist')
-    expect(handover.steps[0]?.slice(0, 2)).toEqual(['launchctl', 'bootstrap'])
+    expect(handover.steps.map((step) => step.run.slice(0, 2))).toEqual([
+      ['launchctl', 'bootout'],
+      ['launchctl', 'print'],
+      ['launchctl', 'bootstrap'],
+    ])
   })
 
   it('is a system daemon on a Mac that is a server', () => {
@@ -83,7 +87,7 @@ describe('where it goes and what runs', () => {
     const handover = handoverFor(spec({ system: false }), 'linux', '/home/mina')
 
     expect(handover.path).toBe('/home/mina/.config/systemd/user/handover.service')
-    expect(handover.steps).toEqual([
+    expect(handover.steps.map((step) => step.run)).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', 'handover'],
     ])
@@ -93,10 +97,23 @@ describe('where it goes and what runs', () => {
     const handover = handoverFor(spec({ system: true }), 'linux', '/home/mina')
 
     expect(handover.path).toBe('/etc/systemd/system/handover.service')
-    expect(handover.steps).toEqual([
+    expect(handover.steps.map((step) => step.run)).toEqual([
       ['systemctl', 'daemon-reload'],
       ['systemctl', 'enable', '--now', 'handover'],
     ])
+  })
+
+  it('makes room for itself before taking the name, and waits for the name to be free', () => {
+    // Running `connect` twice is ordinary, and each step has to say what it does then. Unloading
+    // nothing fails, so that one may. `bootout` returns before launchd lets the name go, so the
+    // one after it waits for the name to stop answering rather than racing the throttle window.
+    const handover = handoverFor(spec(), 'darwin', '/Users/mina')
+
+    expect(handover.steps.map((step) => step.need)).toEqual(['clear-it', 'wait-out', 'do-it'])
+    // The name is one launchd will answer about — the session this program is in, not a guess.
+    expect(handover.steps[1]?.run.at(-1)).toBe(
+      `gui/${String(process.getuid?.())}/dev.handover.machine`,
+    )
   })
 
   it('carries the file with it, so nothing has to guess what was written', () => {

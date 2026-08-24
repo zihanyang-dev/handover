@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -25,14 +26,15 @@ const EMAIL = 'mina@example.com'
 const SECOND = 'zane@example.com'
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
-function signedIn(addresses: string[] = [EMAIL]) {
-  return http.get('*/me', () =>
-    HttpResponse.json({
-      displayName: EMAIL,
-      credentials: addresses.map((address) => ({ kind: 'email', address, state: 'ready' })),
-      spaces: [],
-    }),
-  )
+/** This account, with the addresses that already reach it. */
+function holding(addresses: string[] = [EMAIL]) {
+  return signedIn({
+    credentials: addresses.map((address) => ({
+      kind: 'email' as const,
+      address,
+      state: 'ready' as const,
+    })),
+  })
 }
 
 function sends(bodies: Record<string, unknown>[] = []) {
@@ -74,7 +76,7 @@ async function ask(address: string): Promise<void> {
 describe('adding another address', () => {
   it('sends a code to the address that was typed', async () => {
     const bodies: Record<string, unknown>[] = []
-    server.use(signedIn(), sends(bodies))
+    server.use(holding(), sends(bodies))
     open('/')
 
     await ask(SECOND)
@@ -88,7 +90,7 @@ describe('adding another address', () => {
   it('answers on the last digit, with nothing to press', async () => {
     let answered: unknown
     server.use(
-      signedIn(),
+      holding(),
       sends(),
       http.post('*/me/credentials/email-codes/:id/answer', async ({ request }) => {
         answered = await request.json()
@@ -111,7 +113,7 @@ describe('adding another address', () => {
 
   it('says an address that opens somebody else cannot be taken', async () => {
     server.use(
-      signedIn(),
+      holding(),
       sends(),
       http.post('*/me/credentials/email-codes/:id/answer', () =>
         HttpResponse.json({ reason: 'address-elsewhere', recovery: 'retype' }, { status: 409 }),
@@ -130,7 +132,7 @@ describe('adding another address', () => {
 
   it('says why nothing was sent, rather than looking like a button that does nothing', async () => {
     server.use(
-      signedIn(),
+      holding(),
       http.post('*/me/credentials/email-codes', () =>
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
@@ -143,7 +145,7 @@ describe('adding another address', () => {
   })
 
   it('goes back to asking for an address, so a wrong one is not a dead end', async () => {
-    server.use(signedIn(), sends())
+    server.use(holding(), sends())
     open('/')
     await ask(SECOND)
 

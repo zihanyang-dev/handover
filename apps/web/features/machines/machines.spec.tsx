@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -49,7 +50,7 @@ function theSpace(machines: unknown[]) {
       HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
     ),
     http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines })),
-    http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
+    signedIn(),
   ]
 }
 
@@ -123,7 +124,7 @@ describe('the machines in a Space', () => {
         HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
       ),
       http.get('*/spaces/acme/machines', () => HttpResponse.error()),
-      http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
+      signedIn(),
     )
     open('/s/acme')
 
@@ -161,7 +162,7 @@ describe('the machines in a Space', () => {
       http.get('*/spaces/acme/machines', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
-      http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
+      signedIn(),
     )
     open('/s/acme')
 

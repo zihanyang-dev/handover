@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
 
 const server = setupServer()
 
@@ -19,19 +19,6 @@ afterEach(() => {
 afterAll(() => {
   server.close()
 })
-
-const EMAIL = 'mina@example.com'
-
-function signedIn(spaces: { id: string; slug: string; displayName: string }[] = []) {
-  return http.get('*/me', () =>
-    HttpResponse.json({
-      displayName: EMAIL,
-      verifiedEmail: EMAIL,
-      credentials: [{ kind: 'email', state: 'ready' }],
-      spaces,
-    }),
-  )
-}
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
@@ -55,7 +42,7 @@ describe('the Spaces you are in', () => {
   })
 
   it('shows each name and the address it is at', async () => {
-    server.use(signedIn([{ id: 'a', slug: 'acme', displayName: 'Acme' }]))
+    server.use(signedIn({ spaces: [{ id: 'a', slug: 'acme', displayName: 'Acme' }] }))
     open('/')
 
     expect(await screen.findByText('Acme')).toBeDefined()
@@ -64,10 +51,12 @@ describe('the Spaces you are in', () => {
 
   it('keeps them in the order they were made, with no notion of recent', async () => {
     server.use(
-      signedIn([
-        { id: 'a', slug: 'first', displayName: 'First' },
-        { id: 'b', slug: 'second', displayName: 'Second' },
-      ]),
+      signedIn({
+        spaces: [
+          { id: 'a', slug: 'first', displayName: 'First' },
+          { id: 'b', slug: 'second', displayName: 'Second' },
+        ],
+      }),
     )
     open('/')
 

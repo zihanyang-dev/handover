@@ -6,6 +6,8 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
+import { signedIn } from '../../signed-in.ts'
+import type { Me } from './me.ts'
 
 const server = setupServer()
 
@@ -23,11 +25,7 @@ afterAll(() => {
 
 const EMAIL = 'mina@example.com'
 
-function signedIn(credentials: { kind: string; address?: string; state: string }[]) {
-  return http.get('*/me', () => HttpResponse.json({ displayName: EMAIL, credentials, spaces: [] }))
-}
-
-const ALL = [
+const ALL: Me['credentials'] = [
   { kind: 'email', address: EMAIL, state: 'ready' },
   { kind: 'google', state: 'ready' },
   { kind: 'github', state: 'connectable' },
@@ -51,7 +49,7 @@ async function panel() {
 
 describe('how you get in', () => {
   it('gives every way one of two states and nothing else', async () => {
-    server.use(signedIn(ALL))
+    server.use(signedIn({ credentials: ALL }))
     open('/')
 
     const ways = await panel()
@@ -62,7 +60,7 @@ describe('how you get in', () => {
   })
 
   it('says who can get in, beside the list rather than in a settings page', async () => {
-    server.use(signedIn(ALL))
+    server.use(signedIn({ credentials: ALL }))
     open('/')
 
     // The direct consequence of one address meaning one account: whoever reads that inbox is in.
@@ -72,7 +70,7 @@ describe('how you get in', () => {
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {
-    server.use(signedIn([{ kind: 'email', address: EMAIL, state: 'ready' }]))
+    server.use(signedIn({ credentials: [{ kind: 'email', address: EMAIL, state: 'ready' }] }))
     open('/')
 
     const ways = await panel()
@@ -86,10 +84,12 @@ describe('how you get in', () => {
     // and that count is the whole reason the panel exists.
     const second = 'zane@example.com'
     server.use(
-      signedIn([
-        { kind: 'email', address: EMAIL, state: 'ready' },
-        { kind: 'email', address: second, state: 'ready' },
-      ]),
+      signedIn({
+        credentials: [
+          { kind: 'email', address: EMAIL, state: 'ready' },
+          { kind: 'email', address: second, state: 'ready' },
+        ],
+      }),
     )
     open('/')
 
@@ -102,7 +102,7 @@ describe('how you get in', () => {
   it('sends the browser to the provider when one is connected', async () => {
     const asked: string[] = []
     server.use(
-      signedIn(ALL),
+      signedIn({ credentials: ALL }),
       http.post('*/me/credentials/:provider/start', ({ params }) => {
         asked.push(String(params['provider']))
         return HttpResponse.json({ url: 'https://provider.example/authorize' })

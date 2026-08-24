@@ -98,8 +98,7 @@ describe('waiting to be let in', () => {
 
     expect(connected).toMatchObject({
       kind: 'connected',
-      attachment: { origin: ORIGIN, machineId: 'm-1', token: 'hm_token' },
-      lookFor: ['claude'],
+      attachment: { origin: ORIGIN, machineId: 'm-1', token: 'hm_token', lookFor: ['claude'] },
     })
   })
 
@@ -137,7 +136,7 @@ describe('coming in with a key', () => {
 
     const connected = await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
 
-    expect(connected).toMatchObject({ kind: 'connected', lookFor: ['claude'] })
+    expect(connected).toMatchObject({ kind: 'connected', attachment: { lookFor: ['claude'] } })
   })
 
   it('says what it calls itself, because nobody named it when the key was made', async () => {

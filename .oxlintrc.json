@@ -23,6 +23,7 @@
     "max-lines-per-function": ["error", 60],
     "max-statements": ["error", 25],
     "no-else-return": "error",
+    "no-use-before-define": ["error", { "functions": false, "variables": true, "classes": true }],
     "no-var": "error",
     "prefer-const": "error",
     "no-unused-expressions": "error",
@@ -121,6 +122,14 @@
       // measure what this rule was actually for.
       "files": ["apps/web/**/*.tsx"],
       "rules": { "max-lines-per-function": ["error", 120] }
+    },
+    {
+      // `export const Route = createFileRoute(...)({ component: Page })` and then `Route.useLoaderData()`
+      // inside `Page` is the shape the router gives us, and the reference is inside a function
+      // body, so nothing is read before it exists. Off only here: everywhere else the rule is
+      // catching the real thing, a constant read during module evaluation from above its own line.
+      "files": ["apps/web/routes/**"],
+      "rules": { "no-use-before-define": "off" }
     },
     {
       "files": ["apps/web/**/*.tsx", "apps/web/**/*.ts"],

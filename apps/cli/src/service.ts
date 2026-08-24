@@ -109,9 +109,27 @@ ${args}
  */
 export type Handover = {
   readonly path: string
-  readonly steps: readonly (readonly string[])[]
+  readonly steps: readonly Step[]
   readonly contents: string
 }
+
+export type Step = {
+  /** A program and its arguments. Non-empty by construction: a step with nothing to run is not one. */
+  readonly run: readonly [string, ...string[]]
+  readonly need: Need
+}
+
+/**
+ * Running `connect` twice is an ordinary thing — a new key, a moved repository, a second look —
+ * so every step here has to say what it does when the machine is already connected.
+ *
+ * ```
+ * do-it     the work. Failing here is the command failing.
+ * clear-it  clears the way. There being nothing to clear is the ordinary case.
+ * wait-out  run until it fails. That failure is what is being waited for.
+ * ```
+ */
+export type Need = 'do-it' | 'clear-it' | 'wait-out'
 
 export function handoverFor(spec: ServiceSpec, platform: NodeJS.Platform, home: string): Handover {
   if (platform === 'darwin') return toLaunchd(spec, home)
@@ -127,11 +145,21 @@ function toLaunchd(spec: ServiceSpec, home: string): Handover {
   // which session a service went into. Falling back to uid 0 would name root's session, which is
   // not a safer guess than none — it is a different machine's worth of wrong.
   const domain = spec.system ? 'system' : `gui/${String(uid())}`
+  const service = `${domain}/${spec.label}`
 
   return {
     path,
     contents: plistFor(spec),
-    steps: [['launchctl', 'bootstrap', domain, path]],
+    steps: [
+      { run: ['launchctl', 'bootout', service], need: 'clear-it' },
+      // `bootout` returns before launchd lets the name go: it keeps the job for the whole
+      // ThrottleInterval, so a `bootstrap` right behind it lands in a five-second window where
+      // the name is still taken and fails with an error that says only "Input/output error".
+      // Waiting for the old one to actually be gone is the precondition, so it is written as one
+      // rather than as a retry that would hide what is being waited for.
+      { run: ['launchctl', 'print', service], need: 'wait-out' },
+      { run: ['launchctl', 'bootstrap', domain, path], need: 'do-it' },
+    ],
   }
 }
 
@@ -142,14 +170,16 @@ function toSystemd(spec: ServiceSpec, home: string): Handover {
 
   // `--user` is not a flavour of the same thing: it is a different manager, owned by the person
   // rather than the machine, which is exactly the difference between a laptop and a server.
-  const scope = spec.system ? [] : ['--user']
+  const systemctl = spec.system ? (['systemctl'] as const) : (['systemctl', '--user'] as const)
 
   return {
     path,
     contents: unitFor(spec),
+    // Both are already repeatable: reloading is always safe, and enabling something enabled and
+    // running does nothing. Nothing here needs clearing out of the way or waiting for.
     steps: [
-      ['systemctl', ...scope, 'daemon-reload'],
-      ['systemctl', ...scope, 'enable', '--now', 'handover'],
+      { run: [...systemctl, 'daemon-reload'], need: 'do-it' },
+      { run: [...systemctl, 'enable', '--now', 'handover'], need: 'do-it' },
     ],
   }
 }

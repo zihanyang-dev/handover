@@ -14,7 +14,7 @@ import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { unitFor } from '../src/service.ts'
+import { handoverFor, unitFor, type ServiceSpec } from '../src/service.ts'
 
 const run = promisify(execFile)
 
@@ -62,14 +62,13 @@ afterAll(async () => {
   await run('docker', ['rm', '--force', CONTAINER])
 })
 
+function spec(system: boolean): ServiceSpec {
+  return { executable: STUB, args: [], system, label: 'dev.handover.machine', path: PATH }
+}
+
+/** The file the CLI would write, in the place it would write it, with the steps it would run. */
 async function install(system: boolean): Promise<void> {
-  const unit = unitFor({
-    executable: STUB,
-    args: [],
-    system,
-    label: 'dev.handover.machine',
-    path: PATH,
-  })
+  const unit = unitFor(spec(system))
   const where = system
     ? '/etc/systemd/system/handover.service'
     : '/home/mina/.config/systemd/user/handover.service'
@@ -77,14 +76,18 @@ async function install(system: boolean): Promise<void> {
   await inside(`mkdir -p $(dirname ${where}) && cat > ${where} <<'UNIT'\n${unit}UNIT`)
 
   if (system) {
-    await inside('systemctl daemon-reload && systemctl enable --now handover')
+    // The steps the CLI would run, in the order it would run them.
+    for (const step of handoverFor(spec(true), 'linux', '/home/mina').steps) {
+      await inside(step.run.join(' '))
+    }
     return
   }
 
   await inside('chown -R mina:mina /home/mina/.config && loginctl enable-linger mina')
-  await inside(
-    `su - mina -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload && systemctl --user enable --now handover'`,
-  )
+  const steps = handoverFor(spec(false), 'linux', '/home/mina')
+    .steps.map((step) => step.run.join(' '))
+    .join(' && ')
+  await inside(`su - mina -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); ${steps}'`)
 }
 
 describe('the unit we generate', () => {
@@ -147,6 +150,14 @@ describe('handing a system service over', () => {
   it('puts its output where the system keeps output, not in a directory of our own', async () => {
     expect(await inside('journalctl -u handover --no-pager -n 1 -q || true')).not.toBe('')
   })
+
+  it('survives being handed over a second time, which is what running connect twice is', async () => {
+    // The macOS side needs a step to make room for itself here. This says the Linux side does
+    // not — and says it by running the same steps again rather than by reading them.
+    await install(true)
+
+    expect(await inside('systemctl is-active handover')).toBe('active')
+  }, 120_000)
 })
 
 describe('handing a user service over', () => {
@@ -161,4 +172,14 @@ describe('handing a user service over', () => {
 
     expect(active).toBe('active')
   })
+
+  it('survives being handed over a second time too', async () => {
+    await install(false)
+
+    const active = await inside(
+      `su - mina -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user is-active handover'`,
+    )
+
+    expect(active).toBe('active')
+  }, 120_000)
 })
