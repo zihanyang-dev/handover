@@ -14,7 +14,7 @@
 
 ```
 enrolments
-  id · space_id(批准前为空) · machine_name
+  id · space_id(批准前为空) · machine_name(钥匙那条路上为空,由机器自报)
   secret_hash 唯一          ← 命令行轮询时出示的东西,只存哈希
   user_code   唯一(可空)     ← 给人看的短码;网页生成的那条路没有
   approved_by → users(可空) · approved_at(可空)
@@ -48,7 +48,7 @@ agents
 
 ## 决定
 
-**① 机器不选 Space,批准的人选**
+**① 机器不选 Space,批准的人选;名字反过来,只有机器自己知道**
 
 `POST /enrolments` 不要会话 —— 一台还没被批准的机器没有任何身份可言。正因为如此,它**不能**报自己
 要进哪个 Space:那会让一个没登录的人拿 slug 挨个试,从 201 还是 404 里读出哪个 Space 存在,而
@@ -57,6 +57,10 @@ agents
 Space 在批准的那一刻由人给出。Tailscale 就是这样:设备不选网络,授权的账号选。
 
 `space_id` 因此在批准前为空,并由一条约束钉住:**批过的行一定有 Space**。
+
+名字走的是相反的方向。**代码那条路**上它在发起时就有,批准的人看着它点的同意 —— 来的机器叫别的,就
+不是他同意的那台。**钥匙那条路**上没有人可看也没什么可看:钥匙生成的时候还不存在哪台机器,所以名字
+随收下它的那台一起到,`machine_name` 在那之前为空。
 
 **② 两条接入路径共用一张表,区别只在建的时候批没批**
 
@@ -212,23 +216,28 @@ POST /machines/current/poll     挂住约 25 秒
 ## 接口
 
 ```
-POST   /enrolments                      命令行发起,不要会话,也不报 Space
-                                        → { userCode, verifyUrl, verifyUrlComplete,
-                                            interval, expiresAt }
-POST   /enrolments/claim                命令行轮询,出示 secret → 未批 / 过期 / 被拒 / 机器凭据
-GET    /enrolments/{userCode}           网页给人看:哪台机器、进哪个 Space
-POST   /enrolments/{userCode}/approve   人批准
-POST   /enrolments/{userCode}/refuse    人拒绝
+POST   /enrolments                       机器发起。不要会话,也不报 Space
+                                         → { secret, userCode, verifyUrl,
+                                             verifyUrlComplete, pollSeconds, expiresAt }
+POST   /enrolments/collect               机器轮询,出示 secret 和自己的名字
+                                         → granted(带凭据和该找什么)/ waiting
+                                           / refused / expired / spent / no-enrolment
 
-POST   /spaces/{slug}/machine-keys      网页生成一条已批准的,明文只回一次
+GET    /enrolments/{userCode}            网页给人看:哪台机器在等
+POST   /spaces/{slug}/enrolments/{userCode}/approve   放它进这个 Space
+POST   /enrolments/{userCode}/refuse     回绝。不带 Space:拒绝不是对某个 Space 做的事
+POST   /spaces/{slug}/machine-keys       生成一条已经批过的接入请求,明文只回一次
 
-POST   /machines/current/poll           长轮询约 25 秒;带上扫到的 agent
-DELETE /machines/current/session       干净停止时说再见,立刻转离线
-GET    /spaces/{slug}/machines          Space 页面读这个
-DELETE /machines/{id}                   移除
+POST   /machines/current/poll            机器报到,带上扫到的东西
+                                         → { pollSeconds, lookFor }
+DELETE /machines/current/session         说再见,立刻转离线
+GET    /spaces/{slug}/machines           Space 页面读这个
+DELETE /spaces/{slug}/machines/{id}      移除
 ```
 
-`/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验"这个 id 是不是你",而凭据本来就说明了你是谁。
+`/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验「这个 id 是不是你」,而凭据本来就说明了你是谁。
+
+**批准在路径里带 Space,回绝不带。** 放进来是对某个 Space 做的事,由那道成员门管;回绝只是把这次请求作废,和任何 Space 无关。
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
 

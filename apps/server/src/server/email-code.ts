@@ -18,7 +18,7 @@ import { normalizeEmail } from '../identity/email-address.ts'
 import { sends, takes } from './contract.ts'
 import { failureBody, refusal, type Failure } from './failure.ts'
 
-export const askedForCode = z
+const askedForCode = z
   .object({
     // Folded here, at the edge, so nothing past this point has to remember to.
     email: z.email().transform(normalizeEmail).openapi({ example: 'mina@example.com' }),
@@ -31,7 +31,7 @@ export const submittedCode = z
   .object({ code: z.string().min(1).max(20).openapi({ example: '493018' }) })
   .openapi('SubmitCode')
 
-export const issuedBody = z
+const issuedBody = z
   .object({
     codeId: z.uuid(),
     /** When the code stops working. Said here so a page shows what this deployment really does. */

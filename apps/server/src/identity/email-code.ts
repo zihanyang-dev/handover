@@ -50,7 +50,7 @@ export const MAX_ATTEMPTS = 5
  * They stay apart so a code somebody was talked into forwarding cannot be spent on the other
  * thing, and so asking to attach an address does not quietly kill a sign-in halfway through.
  */
-export const PURPOSES = ['sign-in', 'attach'] as const
+const PURPOSES = ['sign-in', 'attach'] as const
 
 export type Purpose = (typeof PURPOSES)[number]
 

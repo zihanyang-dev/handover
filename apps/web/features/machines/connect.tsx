@@ -103,7 +103,10 @@ export function Connect({ typed }: { readonly typed: string }) {
         : await api.POST('/enrolments/{userCode}/refuse', {
             params: { path: { userCode: asked } },
           })
-      if (!response.ok) throw new Error(error?.reason ?? 'unavailable')
+      // No reason to read means the server did not answer in the shape it promises — a crash, a
+      // proxy, a gateway. Calling that "unavailable" would say the Space is gone, which is a
+      // different thing and one somebody would go and look for.
+      if (!response.ok) throw new Error(error?.reason ?? 'unknown')
       return into.yes
     },
   })

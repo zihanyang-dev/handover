@@ -124,8 +124,9 @@ function toLaunchd(spec: ServiceSpec, home: string): Handover {
     : `${home}/Library/LaunchAgents/${spec.label}.plist`
 
   // `bootstrap` rather than the older `load`: it names the domain, so there is no question about
-  // which session a service went into.
-  const domain = spec.system ? 'system' : `gui/${String(process.getuid?.() ?? 0)}`
+  // which session a service went into. Falling back to uid 0 would name root's session, which is
+  // not a safer guess than none — it is a different machine's worth of wrong.
+  const domain = spec.system ? 'system' : `gui/${String(uid())}`
 
   return {
     path,
@@ -151,4 +152,10 @@ function toSystemd(spec: ServiceSpec, home: string): Handover {
       ['systemctl', ...scope, 'enable', '--now', 'handover'],
     ],
   }
+}
+
+/** Only ever absent on Windows, which has neither of the two service managers this supports. */
+function uid(): number {
+  if (process.getuid === undefined) throw new Error('no user id here; only macOS and Linux')
+  return process.getuid()
 }

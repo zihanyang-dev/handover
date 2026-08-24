@@ -116,6 +116,68 @@ describe('answering a machine', () => {
     expect(await screen.findByText(/turned away/i)).toBeDefined()
   })
 
+  it('says so when letting it in did not work, rather than looking like nothing happened', async () => {
+    server.use(
+      signedIn(),
+      waiting(),
+      http.post('*/spaces/:slug/enrolments/:code/approve', () =>
+        HttpResponse.json({ reason: 'no-enrolment', recovery: 'start-over' }, { status: 404 }),
+      ),
+    )
+    open('/connect/WDJB-MJHT')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Acme' }))
+
+    expect(await screen.findByText(/nothing is waiting under that code/i)).toBeDefined()
+  })
+
+  it.each(['/connect', '/connect/WDJB-MJHT'])(
+    'sends somebody who is not signed in at %s to sign in first',
+    async (at) => {
+      // The link arrives on a phone as often as not, and a phone is where somebody is least
+      // likely to already be signed in. Landing on a blank approval screen would be a dead end.
+      server.use(
+        http.get('*/me', () =>
+          HttpResponse.json({ reason: 'no-session', recovery: 'sign-in' }, { status: 401 }),
+        ),
+        http.get('*/auth/credentials', () => HttpResponse.json({ offered: ['email'] })),
+      )
+      open(at)
+
+      expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    },
+  )
+
+  it.each([
+    ['a reason nobody wrote words for', HttpResponse.json({ reason: 'kaboom' }, { status: 500 })],
+    ['no answer in the shape it promises', new HttpResponse(null, { status: 502 })],
+  ])('still says something when %s comes back', async (_, answer) => {
+    // Never a blank screen. Somebody who clicked and saw nothing cannot tell a failure from a
+    // click that did not land.
+    server.use(
+      signedIn(),
+      waiting(),
+      http.post('*/spaces/:slug/enrolments/:code/approve', () => answer.clone()),
+    )
+    open('/connect/WDJB-MJHT')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Acme' }))
+
+    expect(await screen.findByText(/could not be done/i)).toBeDefined()
+  })
+
+  it('says something when finding it fails in a way nobody wrote words for', async () => {
+    server.use(
+      signedIn(),
+      http.get('*/enrolments/:code', () =>
+        HttpResponse.json({ reason: 'kaboom', recovery: 'retry-later' }, { status: 500 }),
+      ),
+    )
+    open('/connect/WDJB-MJHT')
+
+    expect(await screen.findByText(/could not be checked/i)).toBeDefined()
+  })
+
   it('says nothing is waiting under a code nobody is using', async () => {
     server.use(
       signedIn(),

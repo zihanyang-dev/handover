@@ -133,6 +133,43 @@ describe('the machines in a Space', () => {
     expect(machines.queryByText(/agents run on/i)).toBeNull()
   })
 
+  it('names an agent this page does not know, rather than showing nothing', async () => {
+    // A server that learned a new agent should give this page a row it can still read, not a
+    // blank. The name it does not recognise is better than the name it does not have.
+    server.use(
+      ...theSpace([
+        {
+          id: 'm-1',
+          name: 'mina-mbp',
+          presence: HERE,
+          agents: [{ kind: 'some-agent-from-next-year', version: '1.0.0' }],
+        },
+      ]),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+
+    expect(await machines.findByText(/some-agent-from-next-year 1\.0\.0/u)).toBeDefined()
+  })
+
+  it('says it could not read them when the server refuses, not only when it is unreachable', async () => {
+    server.use(
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/machines', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
+      ),
+      http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+
+    expect(await machines.findByText(/could not read the machines/i)).toBeDefined()
+  })
+
   it('takes one away when asked', async () => {
     const removed: string[] = []
     server.use(

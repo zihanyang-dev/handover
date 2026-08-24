@@ -102,13 +102,6 @@
   },
   "overrides": [
     {
-      "files": ["**/*.spec.ts", "**/*.spec.tsx", "apps/server/scripts/**"],
-      "rules": {
-        "max-lines-per-function": "off",
-        "max-statements": "off"
-      }
-    },
-    {
       "files": ["apps/server/src/env.ts", "apps/cli/src/env.ts"],
       "rules": {
         "no-restricted-properties": "off"
@@ -135,6 +128,16 @@
         "react/rules-of-hooks": "error",
         "react/jsx-key": "error",
         "react/no-danger": "error"
+      }
+    },
+    {
+      // Last on purpose: everything above it is about the shape of code that runs in production,
+      // and a spec is not that. Placed earlier, the JSX allowance below would switch the line
+      // limit back on for browser tests, which is how it read before anybody noticed.
+      "files": ["**/*.spec.ts", "**/*.spec.tsx", "apps/server/scripts/**"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-statements": "off"
       }
     }
   ]
