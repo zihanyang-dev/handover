@@ -4,10 +4,10 @@
 
 ## owner
 
-| owner      | 拥有                                             | 恢复错误                                   |
-| ---------- | ------------------------------------------------ | ------------------------------------------ |
-| `identity` | User、已验证地址、登录方式、验证挑战、浏览器会话 | 码不对 / 过期 / 已用 / 试太多 / 挑战不存在 |
-| `space`    | Space、显示名、slug 归一化规则、成员关系         | 名字无效 / slug 冲突 / 幂等冲突            |
+| owner      | 拥有                                     | 恢复错误                                   |
+| ---------- | ---------------------------------------- | ------------------------------------------ |
+| `identity` | User、进来的路、验证挑战、浏览器会话     | 码不对 / 过期 / 已用 / 试太多 / 挑战不存在 |
+| `space`    | Space、显示名、slug 归一化规则、成员关系 | 名字无效 / slug 冲突 / 幂等冲突            |
 
 `space` 不知道邮箱和会话。`identity` 不知道 Space。
 
@@ -18,21 +18,26 @@ users
   id · display_name · created_at
   账号本身没有内容。它不是一个地址,也不是某个提供商那边的账号
 
-email_addresses
-  user_id · address 唯一 · verified_at
-  唯一(address)              ← 一个地址只属于一个账号,这是整套并入规则的支点
-  一个账号可以有多行。最早的那行是显示用的那个,不存"主地址"这个状态
+ways_in
+  user_id · kind(email|google|github) · subject · verified_at
+  唯一(kind, subject)        ← 一把钥匙只开一个账号,这是整套并入规则的支点
 
-sign_in_methods
-  user_id · kind(google|github) · subject · linked_at
-  唯一(kind, subject)          ← 一个提供商账号只能连一个 User
+  email          subject 是归一化后的地址
+  google|github  subject 是提供商那边那个不会变的 id,不是地址
+
+  能打开这扇门的东西是一个概念,所以是一张表。邮箱曾经单独一张,理由是"它不是连上去的,
+  它就是账号本身" —— 账号不再等于某个地址之后,那条理由没了,表也就不该还在。
+  多一种(手机号)是多一个 kind,不是多一张表。
+  一个账号可以有多行 email。显示用最早验过的那个,不存"主地址"这个状态
 
 email_challenges
   id · email · purpose(sign-in|attach) · code_hash · expires_at · attempts
   closed_at + closed_reason(consumed|superseded)   两个一起有,或一起没有
   request_key 唯一           ← 发码的幂等键
   唯一(email, purpose) where closed_at is null     ← 一个地址每种用途只有一封开着
-  purpose 是钥匙的用途,不是它的强度:登录的码不能拿去绑定,反过来也不行
+  purpose 是这封信的用途,不是它的强度:登录的码不能拿去绑定,反过来也不行
+  这张表不跟着 ways_in 泛化:它记的是"往这个地址发过一封信",而发信是邮箱特有的 ——
+  三态投递、信里的措辞、Resend,没有一样能直接给短信用。等真有短信再说
   过期不进谓词:Postgres 要求索引谓词 IMMUTABLE,now() 不是。过期由读判定
 
 browser_sessions
@@ -48,27 +53,28 @@ memberships
   request_key 唯一           ← 建 Space 的幂等键,挂在成员关系上
 ```
 
-**不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `email_addresses.is_primary`
+**不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `ways_in.is_primary`
 (按 `verified_at` 取最早的就够,一个能和事实不一致的状态没有理由存)。
 
 ## 决定
 
 **① 身份是 `users.id`,所有登录方式都只是挂在它上面的钥匙**
 
-`sign_in_methods` 记住提供商那边的稳定 `subject`(不是地址)——用户以后在那边改邮箱,链接不断。
-`email_addresses` 记住每一个验过的地址。两张表地位相同。
+一张 `ways_in`,一行是一把钥匙。提供商那行记的是那边不会变的 `subject`(不是地址)——用户以后在
+那边改邮箱,链接不断;邮箱那行记的就是归一化后的地址本身。**归一化按 kind 分**:地址要压成小写,
+提供商的 id 一个字符都不能动。
 
 **没登录时**,一把钥匙要找到账号,靠的是这个顺序:
 
 ```
-1. (kind, subject) 命中      → 那个账号。地址后来变了也不影响
-2. 交回的地址命中 address    → 那个账号,并且把这把钥匙挂上去   ← 并入发生在这里
-3. 都不命中                  → 新账号 + 这个地址 + 这把钥匙
+1. (kind, subject) 命中           → 那个账号。地址后来变了也不影响
+2. ('email', 交回的地址) 命中     → 那个账号,并且把这把钥匙挂上去   ← 并入发生在这里
+3. 都不命中                       → 新账号 + 这个地址 + 这把钥匙
 ```
 
 第 2 步是整套设计里唯一一处「没证明自己是账号主人,却进了一个已有账号」。它成立的理由只有一条:
 **提供商交回的是它已验证的地址,而验证一个地址正是邮箱验证码在做的事**,同一个标准,不更弱。
-`email_addresses.address` 的唯一索引是这条规则的支点 —— 一个地址两个账号,第 2 步就没有答案。
+`ways_in` 上 `(kind, subject)` 的唯一索引是这条规则的支点 —— 一个地址两个账号,第 2 步就没有答案。
 
 **已经登录时连一把钥匙,不看地址。** 会话已经证明了主人身份,再要求地址一致保护不了任何东西 ——
 那个要求是从"账号就是它的地址"里继承来的,而账号不再是它的地址了。这时只剩一个问题:这把钥匙
@@ -134,8 +140,8 @@ where token_hash = $1 and revoked_at is null and expires_at > now()
 
 **⑥ 「怎么进来」是读出来的,不是存出来的**
 
-两次查询:`email_addresses` 里的每一行各是一条路,`sign_in_methods` 里的每一行各是一条路,
-这个部署没有钥匙的提供商列成「可以去连接」。**不存"这个账号支持哪几种"这样的状态。**
+一次查询:`ways_in` 里的每一行各是一条路,再把这个部署有钥匙、而这个账号还没连的提供商
+列成「可以去连接」。**不存"这个账号支持哪几种"这样的状态。**
 
 地址是**一条一条列的**,不是折成一句「邮箱验证码可用」。折起来就看不出有几把钥匙,而
 「有几把钥匙」正是这一段存在的理由。
@@ -169,9 +175,9 @@ DELETE /browser/sessions/current
 
 GET   /me                                → User · 怎么进来 · 他的 Space 列表
 PATCH /me                                → 改 display_name
-POST  /me/sign-in-methods/{provider}/start → { url },连一个提供商到当前账号
-POST  /me/email-addresses/challenges       幂等键;→ 挑战 id · 何时过期 · 何时可重发
-POST  /me/email-addresses/challenges/{id}/verify → 把这个地址加到当前账号
+POST  /me/ways-in/{provider}/start          → { url },连一个提供商到当前账号
+POST  /me/ways-in/email/challenges         幂等键;→ 挑战 id · 何时过期 · 何时可重发
+POST  /me/ways-in/email/challenges/{id}/verify → 把这个地址加成当前账号的一条路
 POST  /spaces                            幂等键;→ Space,或带建议的冲突
 GET   /spaces/{slug}                     → Space,或「不可用」
 ```
