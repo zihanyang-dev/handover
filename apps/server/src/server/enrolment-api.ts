@@ -44,7 +44,13 @@ const askedBody = z
   })
   .openapi('AskedToConnect')
 
-const collecting = z.object({ secret: z.string().min(1).max(200) }).openapi('CollectEnrolment')
+const collecting = z
+  .object({
+    secret: z.string().min(1).max(200),
+    /** What this machine calls itself. Used only when nobody named it at approval. */
+    machineName: z.string().min(1).max(200).openapi({ example: 'build-server-1' }),
+  })
+  .openapi('CollectEnrolment')
 
 const collectedBody = z
   .discriminatedUnion('kind', [
@@ -114,9 +120,11 @@ export function enrolmentApi(deps: EnrolmentApi) {
 
     .openapi(collect, async (c) => {
       const token = newMachineToken()
+      const asked = c.req.valid('json')
       const collected = await collectEnrolment(deps.db, {
-        secretHash: hashSecret(c.req.valid('json').secret),
+        secretHash: hashSecret(asked.secret),
         tokenHash: token.hash,
+        machineName: asked.machineName,
       })
 
       if (collected.kind === 'granted') {

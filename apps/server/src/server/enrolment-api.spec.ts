@@ -6,6 +6,7 @@ import { openSession } from '../db/session.ts'
 import { arrive } from '../db/user.ts'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/session.ts'
+import { hashSecret } from '../machine/secret.ts'
 import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { SESSION_COOKIE } from './session.ts'
@@ -68,13 +69,22 @@ async function as(path: string, method = 'GET', json?: unknown): Promise<Respons
   })
 }
 
-async function collect(secret: string): Promise<{ kind: string; token?: string }> {
+async function collect(
+  secret: string,
+  machineName = 'mina-mbp',
+): Promise<{ kind: string; token?: string }> {
   const answered = await app.request('/enrolments/collect', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ secret }),
+    body: JSON.stringify({ secret, machineName }),
   })
   return (await answered.json()) as { kind: string; token?: string }
+}
+
+/** A key generated in a Space: an enrolment that arrived approved. */
+async function makeKey(slug = SLUG): Promise<string> {
+  const made = await as(`/spaces/${slug}/machine-keys`, 'POST')
+  return ((await made.json()) as { key: string }).key
 }
 
 describe('asking to come in', () => {
@@ -209,5 +219,60 @@ describe('without a session', () => {
 
     expect(answered.status).toBe(401)
     expect(await collect(asked.secret)).toEqual({ kind: 'waiting' })
+  })
+})
+
+describe('a key for a machine with no browser', () => {
+  it('lets a machine straight in, because generating it was the approving', async () => {
+    // Not a second mechanism: the same collect, on a row that arrived with the decision on it.
+    const key = await makeKey()
+
+    expect(await collect(key, 'build-server-1')).toMatchObject({ kind: 'granted' })
+  })
+
+  it('takes the name from the machine, because nobody named it when the key was made', async () => {
+    const key = await makeKey()
+
+    await collect(key, `build-server-${RUN.slice(0, 8)}`)
+
+    const named = await db
+      .selectFrom('machines')
+      .select('name')
+      .where('name', '=', `build-server-${RUN.slice(0, 8)}`)
+      .executeTakeFirst()
+
+    expect(named).toBeDefined()
+  })
+
+  it('works once, and says so plainly the second time', async () => {
+    // A key pasted onto ten servers admits one. The other nine are told somebody used it, not
+    // that it never existed.
+    const key = await makeKey()
+    await collect(key, 'build-server-1')
+
+    expect(await collect(key, 'build-server-2')).toEqual({ kind: 'spent' })
+  })
+
+  it('is not made for a Space this person is not in', async () => {
+    expect((await as(`/spaces/not-mine-${RUN.slice(0, 8)}/machine-keys`, 'POST')).status).toBe(404)
+  })
+
+  it('is not made by nobody', async () => {
+    const answered = await app.request(`/spaces/${SLUG}/machine-keys`, { method: 'POST' })
+
+    expect(answered.status).toBe(401)
+  })
+
+  it('carries no code, because a code nobody will read can only leak', async () => {
+    const key = await makeKey()
+
+    const made = await db
+      .selectFrom('enrolments')
+      .select(['user_code', 'approved_at'])
+      .where('secret_hash', '=', hashSecret(key))
+      .executeTakeFirstOrThrow()
+
+    expect(made.user_code).toBeNull()
+    expect(made.approved_at).not.toBeNull()
   })
 })

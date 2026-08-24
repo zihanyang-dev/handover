@@ -54,7 +54,7 @@ export interface Enrolments {
   created_at: Generated<Timestamp>;
   expires_at: Timestamp;
   id: Generated<string>;
-  machine_name: string;
+  machine_name: string | null;
   refused_at: Timestamp | null;
   secret_hash: string;
   space_id: string | null;

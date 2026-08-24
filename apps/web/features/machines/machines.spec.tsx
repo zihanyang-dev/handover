@@ -150,3 +150,57 @@ describe('the machines in a Space', () => {
     expect(removed).toEqual(['m-1'])
   })
 })
+
+describe('a key for a machine with no browser', () => {
+  it('is offered right where the machines are', async () => {
+    server.use(
+      ...theSpace([]),
+      http.post('*/spaces/acme/machine-keys', () =>
+        HttpResponse.json(
+          { key: 'hk_secret', expiresAt: new Date().toISOString() },
+          { status: 201 },
+        ),
+      ),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+    await userEvent.click(await machines.findByRole('button', { name: /no browser/i }))
+
+    expect(await machines.findByText(/handover connect --key hk_secret/u)).toBeDefined()
+  })
+
+  it('says the key will not be shown again, because only its hash is kept', async () => {
+    // Somebody who closes this without copying it needs another key, not a way to look it up.
+    server.use(
+      ...theSpace([]),
+      http.post('*/spaces/acme/machine-keys', () =>
+        HttpResponse.json(
+          { key: 'hk_secret', expiresAt: new Date().toISOString() },
+          { status: 201 },
+        ),
+      ),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+    await userEvent.click(await machines.findByRole('button', { name: /no browser/i }))
+
+    expect(await machines.findByText(/shown once/i)).toBeDefined()
+  })
+
+  it('says it could not make one, rather than looking like a button that does nothing', async () => {
+    server.use(
+      ...theSpace([]),
+      http.post('*/spaces/acme/machine-keys', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
+      ),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+    await userEvent.click(await machines.findByRole('button', { name: /no browser/i }))
+
+    expect(await machines.findByText(/could not make a key/i)).toBeDefined()
+  })
+})

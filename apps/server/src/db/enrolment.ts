@@ -25,7 +25,11 @@ export type OpeningEnrolment = {
    * machine naming one would let an unauthenticated caller tell a real slug from a missing one.
    */
   readonly spaceId: string | undefined
-  readonly machineName: string
+  /**
+   * Absent on the key path: a key is generated before anybody knows which machine will use it,
+   * and the machine that collects it is the only party that knows its own name.
+   */
+  readonly machineName: string | undefined
   readonly secretHash: string
   /** Absent on the key path: nobody reads a code there, and one nobody types can only leak. */
   readonly userCode: UserCode | undefined
@@ -45,7 +49,7 @@ export async function openEnrolment(db: Database, opening: OpeningEnrolment): Pr
     .insertInto('enrolments')
     .values({
       space_id: opening.spaceId ?? null,
-      machine_name: opening.machineName,
+      machine_name: opening.machineName ?? null,
       secret_hash: opening.secretHash,
       user_code: opening.userCode ?? null,
       approved_by: opening.approvedBy ?? null,
@@ -75,6 +79,9 @@ export async function enrolmentWaiting(
   const row = await db
     .selectFrom('enrolments')
     .select(['machine_name as machineName', 'expires_at as expiresAt'])
+    // Only the code path has a `user_code`, and only that path records a name — so a row found
+    // here always has one, and nothing downstream has to wonder what to show.
+    .$narrowType<{ machineName: string }>()
     .where('user_code', '=', userCode)
     .where('approved_at', 'is', null)
     .where('refused_at', 'is', null)

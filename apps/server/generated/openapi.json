@@ -474,10 +474,17 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "machineName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "build-server-1"
           }
         },
         "required": [
-          "secret"
+          "secret",
+          "machineName"
         ]
       },
       "MachineWaiting": {
@@ -493,6 +500,22 @@
         },
         "required": [
           "machineName",
+          "expiresAt"
+        ]
+      },
+      "MachineKey": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "key",
           "expiresAt"
         ]
       },
@@ -1445,6 +1468,53 @@
           },
           "404": {
             "description": "Nothing is waiting under that code, or no such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/machine-keys": {
+      "post": {
+        "summary": "Make a key a machine can come in with, without anybody approving it later",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The key, shown this once and never again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineKey"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
             "content": {
               "application/json": {
                 "schema": {

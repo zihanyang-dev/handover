@@ -105,6 +105,7 @@ describe('opening one', () => {
     const collected = await collectEnrolment(db, {
       secretHash: secret.hash,
       tokenHash: newMachineToken().hash,
+      machineName: 'mina-mbp',
     })
 
     expect(collected.kind).toBe('granted')

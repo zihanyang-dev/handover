@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
-import { askToConnect, waitToBeLetIn, type Asked } from './connect.ts'
+import { askToConnect, connectWithKey, waitToBeLetIn, type Asked } from './connect.ts'
 
 const server = setupServer()
 const ORIGIN = 'http://handover.test'
@@ -18,6 +18,7 @@ afterAll(() => {
 })
 
 const ASKED: Asked = {
+  machineName: 'mina-mbp',
   secret: 'hk_secret',
   userCode: 'WDJB-MJHT',
   verifyUrl: `${ORIGIN}/connect`,
@@ -127,5 +128,48 @@ describe('waiting to be let in', () => {
 
     expect(connected.kind).toBe('connected')
     expect(asked).toBe(3)
+  })
+})
+
+describe('coming in with a key', () => {
+  it('does not wait, because generating the key was the approving', async () => {
+    server.use(answers('granted'))
+
+    const connected = await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
+
+    expect(connected).toMatchObject({ kind: 'connected', lookFor: ['claude'] })
+  })
+
+  it('says what it calls itself, because nobody named it when the key was made', async () => {
+    let sent: unknown
+    server.use(
+      http.post(`${ORIGIN}/enrolments/collect`, async ({ request }) => {
+        sent = await request.json()
+        return HttpResponse.json({ kind: 'granted', token: 'hm_t', machineId: 'm', lookFor: [] })
+      }),
+    )
+
+    await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
+
+    expect(sent).toEqual({ secret: 'hk_key', machineName: 'build-server-1' })
+  })
+
+  it('gives up on a key somebody else already used, rather than waiting for nothing', async () => {
+    // There is nobody to wait for. A key that is spent will not become unspent.
+    server.use(answers('spent'))
+
+    expect(await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')).toEqual({
+      kind: 'gave-up',
+      why: 'spent',
+    })
+  })
+
+  it('gives up when the server cannot be reached at all', async () => {
+    server.use(http.post(`${ORIGIN}/enrolments/collect`, () => HttpResponse.error()))
+
+    expect(await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')).toEqual({
+      kind: 'gave-up',
+      why: 'unreachable',
+    })
   })
 })

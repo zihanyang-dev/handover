@@ -975,6 +975,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{slug}/machine-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a key a machine can come in with, without anybody approving it later */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The key, shown this once and never again */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MachineKey"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/enrolments/{userCode}/refuse": {
         parameters: {
             query?: never;
@@ -1366,9 +1422,16 @@ export interface components {
         };
         CollectEnrolment: {
             secret: string;
+            /** @example build-server-1 */
+            machineName: string;
         };
         MachineWaiting: {
             machineName: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        MachineKey: {
+            key: string;
             /** Format: date-time */
             expiresAt: string;
         };

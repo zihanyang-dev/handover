@@ -70,6 +70,7 @@ async function attached(name = 'mina-mbp'): Promise<string> {
   const collected = await collectEnrolment(db, {
     secretHash: await approved(name),
     tokenHash: newMachineToken().hash,
+    machineName: 'mina-mbp',
   })
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
   return collected.machineId
@@ -88,7 +89,11 @@ describe('collecting an approved enrolment', () => {
 
     const collected = await Promise.all(
       Array.from({ length: 10 }, async () =>
-        collectEnrolment(db, { secretHash, tokenHash: newMachineToken().hash }),
+        collectEnrolment(db, {
+          secretHash,
+          tokenHash: newMachineToken().hash,
+          machineName: 'mina-mbp',
+        }),
       ),
     )
 
@@ -98,9 +103,17 @@ describe('collecting an approved enrolment', () => {
 
   it('says spent rather than absent, because somebody else got in with it', async () => {
     const secretHash = await approved()
-    await collectEnrolment(db, { secretHash, tokenHash: newMachineToken().hash })
+    await collectEnrolment(db, {
+      secretHash,
+      tokenHash: newMachineToken().hash,
+      machineName: 'mina-mbp',
+    })
 
-    const again = await collectEnrolment(db, { secretHash, tokenHash: newMachineToken().hash })
+    const again = await collectEnrolment(db, {
+      secretHash,
+      tokenHash: newMachineToken().hash,
+      machineName: 'mina-mbp',
+    })
 
     expect(again).toEqual({ kind: 'spent' })
   })
@@ -115,7 +128,13 @@ describe('collecting an approved enrolment', () => {
       approvedBy: undefined,
     })
 
-    expect(await collectEnrolment(db, { secretHash: secret.hash, tokenHash: 'x' })).toEqual({
+    expect(
+      await collectEnrolment(db, {
+        secretHash: secret.hash,
+        tokenHash: 'x',
+        machineName: 'mina-mbp',
+      }),
+    ).toEqual({
       kind: 'waiting',
     })
   })
@@ -132,7 +151,13 @@ describe('collecting an approved enrolment', () => {
     })
     await refuseEnrolment(db, userCode)
 
-    expect(await collectEnrolment(db, { secretHash: secret.hash, tokenHash: 'x' })).toEqual({
+    expect(
+      await collectEnrolment(db, {
+        secretHash: secret.hash,
+        tokenHash: 'x',
+        machineName: 'mina-mbp',
+      }),
+    ).toEqual({
       kind: 'refused',
     })
   })
@@ -145,12 +170,18 @@ describe('collecting an approved enrolment', () => {
       .where('secret_hash', '=', secretHash)
       .execute()
 
-    expect(await collectEnrolment(db, { secretHash, tokenHash: 'x' })).toEqual({ kind: 'expired' })
+    expect(
+      await collectEnrolment(db, { secretHash, tokenHash: 'x', machineName: 'mina-mbp' }),
+    ).toEqual({ kind: 'expired' })
   })
 
   it('says there is no such enrolment for a secret nobody opened', async () => {
     expect(
-      await collectEnrolment(db, { secretHash: newEnrolmentSecret().hash, tokenHash: 'x' }),
+      await collectEnrolment(db, {
+        secretHash: newEnrolmentSecret().hash,
+        tokenHash: 'x',
+        machineName: 'mina-mbp',
+      }),
     ).toEqual({ kind: 'no-enrolment' })
   })
 })
@@ -224,7 +255,11 @@ describe('taking one away', () => {
   it('stops its credential working', async () => {
     const secretHash = await approved()
     const token = newMachineToken()
-    const collected = await collectEnrolment(db, { secretHash, tokenHash: token.hash })
+    const collected = await collectEnrolment(db, {
+      secretHash,
+      tokenHash: token.hash,
+      machineName: 'mina-mbp',
+    })
     if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
 
     expect(await machineHolding(db, token.hash)).toBe(collected.machineId)

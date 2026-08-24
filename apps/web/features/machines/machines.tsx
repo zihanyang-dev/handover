@@ -7,7 +7,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
 
@@ -110,6 +110,60 @@ export function Machines({ slug }: { readonly slug: string }) {
           </li>
         ))}
       </ul>
+
+      <MachineKey slug={slug} />
     </section>
+  )
+}
+
+/**
+ * A key for a machine with no browser to open.
+ *
+ * Generating one here *is* the approving: somebody standing in this Space made the decision that
+ * the code path asks a person to make later. Nothing about the mechanism differs after that.
+ */
+function MachineKey({ slug }: { readonly slug: string }) {
+  const [key, setKey] = useState<string>()
+
+  const make = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await api.POST('/spaces/{slug}/machine-keys', {
+        params: { path: { slug } },
+      })
+      if (data === undefined) throw new Error(error.reason)
+      return data.key
+    },
+    onSuccess: setKey,
+  })
+
+  if (key !== undefined) {
+    return (
+      <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
+        <p className="label">Run this on that machine, within 15 minutes</p>
+        <code className="field">handover connect --key {key}</code>
+        {/*
+          Said because it is true and cannot be undone: only the hash is kept, so this is the one
+          moment it can be read. Somebody who closes this without copying it needs another key,
+          not a way to look this one up.
+        */}
+        <p className="note">Shown once. Close this and you will need a new one.</p>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      className="button button-quiet"
+      type="button"
+      style={{ marginTop: '0.75rem' }}
+      disabled={make.isPending}
+      onClick={() => {
+        make.mutate()
+      }}
+    >
+      <span className="button-label">
+        {make.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
+      </span>
+    </button>
   )
 }

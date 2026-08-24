@@ -8,7 +8,13 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { approveEnrolment, enrolmentWaiting, refuseEnrolment } from '../db/enrolment.ts'
+import {
+  approveEnrolment,
+  enrolmentWaiting,
+  openEnrolment,
+  refuseEnrolment,
+} from '../db/enrolment.ts'
+import { newEnrolmentSecret } from '../machine/secret.ts'
 import { readUserCode } from '../machine/user-code.ts'
 import { api, saysNothing, sends } from './contract.ts'
 import { body, refusal, type Failure } from './failure.ts'
@@ -47,6 +53,35 @@ const approve = createRoute({
     204: saysNothing('It may come in'),
     401: refusal('Nobody is signed in here'),
     404: refusal('Nothing is waiting under that code, or no such Space'),
+  },
+})
+
+/**
+ * A key: an enrolment that arrived approved.
+ *
+ * Not a second mechanism. Somebody standing in a Space, generating one, has already made the
+ * decision the code path asks a person to make — so the row is written with that decision on it,
+ * and the machine that presents it skips only the waiting.
+ *
+ * For a machine with no browser to open, which is most machines that are not somebody's laptop.
+ */
+const keyBody = z
+  .object({
+    /** Shown once. Only its hash is kept, so this is the only moment it can be read. */
+    key: z.string(),
+    expiresAt: z.iso.datetime(),
+  })
+  .openapi('MachineKey')
+
+const makeKey = createRoute({
+  method: 'post',
+  path: '/spaces/{slug}/machine-keys',
+  summary: 'Make a key a machine can come in with, without anybody approving it later',
+  request: { params: z.object({ slug: z.string() }) },
+  responses: {
+    201: sends(keyBody, 'The key, shown this once and never again'),
+    401: refusal('Nobody is signed in here'),
+    404: refusal('No such Space'),
   },
 })
 
@@ -90,6 +125,22 @@ export function approvalApi(deps: ApprovalApi) {
       if (answered.kind === 'not-waiting') return c.json(body(NOT_WAITING), NOT_WAITING.status)
 
       return c.body(null, 204)
+    })
+
+    .openapi({ ...makeKey, middleware: inSpace }, async (c) => {
+      const secret = newEnrolmentSecret()
+
+      const opened = await openEnrolment(deps.db, {
+        spaceId: c.get('space').id,
+        // Nobody knows yet. The machine that collects this is the only party that does.
+        machineName: undefined,
+        secretHash: secret.hash,
+        // No code: nobody will read one, and a code nobody reads can only leak.
+        userCode: undefined,
+        approvedBy: c.get('userId'),
+      })
+
+      return c.json({ key: secret.secret, expiresAt: opened.expiresAt.toISOString() }, 201)
     })
 
     .openapi({ ...refuse, middleware: [signedIn] }, async (c) => {

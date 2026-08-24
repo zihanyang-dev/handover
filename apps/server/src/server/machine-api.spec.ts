@@ -73,7 +73,7 @@ async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: 
     await enrolments.request('/enrolments/collect', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ secret: asked.secret }),
+      body: JSON.stringify({ secret: asked.secret, machineName }),
     })
   ).json()) as { token: string; machineId: string }
 

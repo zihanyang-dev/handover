@@ -9,7 +9,9 @@
 import { answered, type Api } from './api.ts'
 import type { Attachment } from './store.ts'
 
+/** What came back from asking, and what was asked with — the name is part of the request. */
 export type Asked = {
+  readonly machineName: string
   readonly secret: string
   readonly userCode: string
   readonly verifyUrl: string
@@ -32,11 +34,40 @@ export type Waiting = {
   readonly sleep: (seconds: number) => Promise<void>
 }
 
+/**
+ * Collects a credential with a key somebody already generated.
+ *
+ * No waiting and no code: generating the key in a Space *was* the approval, so there is nobody
+ * left to ask. For a machine with no browser to open, which is most machines that are not
+ * somebody's laptop.
+ */
+export async function connectWithKey(
+  api: Api,
+  origin: string,
+  key: string,
+  machineName: string,
+): Promise<Connected> {
+  // Unlike the waiting path there is nothing to sit through: a key that does not work now will
+  // not start working, so a failure here ends the attempt rather than becoming a retry.
+  const came = await answered(
+    api.POST('/enrolments/collect', { body: { secret: key, machineName } }),
+  )
+
+  if (came?.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
+  if (came.data.kind !== 'granted') return { kind: 'gave-up', why: came.data.kind }
+
+  return {
+    kind: 'connected',
+    attachment: { origin, machineId: came.data.machineId, token: came.data.token },
+    lookFor: came.data.lookFor,
+  }
+}
+
 export async function askToConnect(api: Api, machineName: string): Promise<Asked> {
   const { data, error } = await api.POST('/enrolments', { body: { machineName } })
   if (data === undefined) throw new Error(error.reason)
 
-  return data
+  return { machineName, ...data }
 }
 
 /**
@@ -54,7 +85,11 @@ export async function waitToBeLetIn(
   waiting.show(asked)
 
   for (;;) {
-    const came = await answered(api.POST('/enrolments/collect', { body: { secret: asked.secret } }))
+    const came = await answered(
+      api.POST('/enrolments/collect', {
+        body: { secret: asked.secret, machineName: asked.machineName },
+      }),
+    )
 
     if (came?.data === undefined) {
       // Unreachable, or refused to parse. Nothing about the enrolment changed while the network

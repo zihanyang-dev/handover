@@ -19,6 +19,8 @@ export type Collecting = {
   readonly secretHash: string
   /** The credential this machine will hold afterwards. The token itself never comes here. */
   readonly tokenHash: string
+  /** What the machine calls itself. Used only when nobody named it at approval. */
+  readonly machineName: string
 }
 
 /**
@@ -50,7 +52,9 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
       .insertInto('machines')
       .values({
         space_id: won.space_id,
-        name: won.machine_name,
+        // What was approved wins: somebody looked at a name and said yes to it, and a machine
+        // that arrived calling itself something else is not the one they agreed to.
+        name: won.machine_name ?? collecting.machineName,
         token_hash: collecting.tokenHash,
         enrolled_from: won.id,
       })

@@ -105,7 +105,7 @@ CREATE TABLE public.email_codes (
 CREATE TABLE public.enrolments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     space_id uuid,
-    machine_name text NOT NULL,
+    machine_name text,
     secret_hash text NOT NULL,
     user_code text,
     approved_by uuid,

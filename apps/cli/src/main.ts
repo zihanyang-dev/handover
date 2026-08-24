@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util'
 import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn } from './checking-in.ts'
-import { askToConnect, waitToBeLetIn } from './connect.ts'
+import { askToConnect, connectWithKey, waitToBeLetIn } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
 import { findAgents } from './discovery.ts'
 import { handoverFor } from './service.ts'
@@ -32,6 +32,7 @@ const { values, positionals } = parseArgs({
     origin: { type: 'string' },
     name: { type: 'string' },
     system: { type: 'boolean', default: false },
+    key: { type: 'string' },
   },
   allowPositionals: true,
 })
@@ -67,22 +68,9 @@ if (command === 'connect') {
 }
 
 async function enrol(): Promise<Attachment> {
-  const asked = await askToConnect(apiFor(values.origin ?? env.origin), machineName)
-
-  const connected = await waitToBeLetIn(
-    apiFor(values.origin ?? env.origin),
-    values.origin ?? env.origin,
-    asked,
-    {
-      show: (shown) => {
-        say(`open  ${shown.verifyUrl}`)
-        say(`code  ${shown.userCode}`)
-        say('')
-        say(`or open  ${shown.verifyUrlComplete}`)
-      },
-      sleep,
-    },
-  )
+  const origin = values.origin ?? env.origin
+  const connected =
+    values.key === undefined ? await askAndWait(origin) : await useKey(origin, values.key)
 
   if (connected.kind === 'gave-up') {
     say(`did not get in: ${connected.why}`)
@@ -92,6 +80,26 @@ async function enrol(): Promise<Attachment> {
   await writeAttachment(where, connected.attachment)
   say(`connected as ${machineName}`)
   return connected.attachment
+}
+
+/** The way in for a machine somebody is sitting at: show a code, wait for them to say yes. */
+async function askAndWait(origin: string) {
+  const asked = await askToConnect(apiFor(origin), machineName)
+
+  return waitToBeLetIn(apiFor(origin), origin, asked, {
+    show: (shown) => {
+      say(`open  ${shown.verifyUrl}`)
+      say(`code  ${shown.userCode}`)
+      say('')
+      say(`or open  ${shown.verifyUrlComplete}`)
+    },
+    sleep,
+  })
+}
+
+/** The way in for a machine with no browser: the approving already happened, in a Space. */
+async function useKey(origin: string, key: string) {
+  return connectWithKey(apiFor(origin), origin, key, machineName)
 }
 
 /**
