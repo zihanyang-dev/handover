@@ -13,7 +13,7 @@ function stateOf(rows: readonly Shown[], kind: Shown['kind']): string | undefine
   return rows.find((way) => way.kind === kind)?.state
 }
 
-describe('the one form a key is written in', () => {
+describe('the one form a credential is written in', () => {
   it('folds an address, so one person is never two accounts', () => {
     expect(canonical(email('Mina@Example.COM'))).toEqual(email('mina@example.com'))
   })

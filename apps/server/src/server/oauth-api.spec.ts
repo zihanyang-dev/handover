@@ -289,6 +289,44 @@ describe('connecting one to an account already signed in', () => {
     expect(back.headers.get('location')).toBe(`${WEB}/`)
   })
 
+  it("says which way it failed when that provider account is somebody else's", async () => {
+    // The rejection has to reach the page. It was silent once, and a connection that failed
+    // silently is indistinguishable from a button that does nothing.
+    const rui = await signedInCookie(`rui-${randomUUID()}@example.com`)
+    const taken = appWith(identified(MINA))
+    const first = await taken.request('/me/credentials/google/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: rui.cookie },
+      body: '{}',
+    })
+    await comeBack(taken, `${rui.cookie}; ${cookiesOf(first)}`)
+
+    const mina = await signedInCookie(EMAIL)
+    const app = appWith(identified(MINA))
+    const left = await app.request('/me/credentials/google/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: mina.cookie },
+      body: '{}',
+    })
+
+    const back = await comeBack(app, `${mina.cookie}; ${cookiesOf(left)}`)
+
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=linked-elsewhere`)
+  })
+
+  it('answers a provider it has no keys for the same way it answers a made-up name', async () => {
+    const { cookie } = await signedInCookie(EMAIL)
+
+    const asked = await appWith(identified(MINA)).request('/me/credentials/myspace/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: '{}',
+    })
+
+    expect(asked.status).toBe(404)
+    expect(await asked.json()).toMatchObject({ reason: 'provider-unavailable' })
+  })
+
   it('refuses to connect anything once the session that asked is gone', async () => {
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified(MINA))

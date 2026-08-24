@@ -93,7 +93,7 @@ async function people(): Promise<number> {
 
 async function opensWith(userId: string): Promise<readonly string[]> {
   const person = await personById(db, userId)
-  return (person?.credentials ?? []).map((held) => `${held.kind}:${held.subject}`)
+  return person.credentials.map((held) => `${held.kind}:${held.subject}`)
 }
 
 describe('arriving through a provider', () => {

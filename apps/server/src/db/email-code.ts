@@ -1,9 +1,13 @@
 /**
- * Persisting the emailed-code code that `identity` owns.
+ * The row for a code we emailed: issuing one, and spending it.
+ *
+ * Both halves live here because they are the same row's two moments, and because whether a code
+ * can still be spent is decided entirely by what issuing wrote — the purpose, the expiry, and
+ * whether a newer one has since replaced it.
  *
  * Locks, in the order every path here takes them:
  *   1. an advisory lock keyed on the address and what the code is for
- *   2. the open code row for that address, if there is one
+ *   2. the live row for that address and purpose, if there is one
  *
  * The advisory lock is what makes step 2 safe to skip when there is no row yet. Without it, two
  * requests for the same address could both find nothing to close and both insert, and the second

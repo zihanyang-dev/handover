@@ -17,13 +17,20 @@ export type Person = {
   readonly credentials: readonly Credential[]
 }
 
-export async function personById(db: Database, id: string): Promise<Person | undefined> {
+/**
+ * The person behind a live session.
+ *
+ * It throws rather than returning nothing, because a session that names a missing person cannot
+ * happen: `browser_sessions.user_id` references `users`, so the row cannot go while a session
+ * points at it. A caller branching on absence would be handling a state the database forbids, and
+ * that branch could never be tested — which is the same as saying nobody knows if it works.
+ */
+export async function personById(db: Database, id: string): Promise<Person> {
   const row = await db
     .selectFrom('users')
     .select(['id', 'display_name as displayName'])
     .where('id', '=', id)
-    .executeTakeFirst()
-  if (row === undefined) return undefined
+    .executeTakeFirstOrThrow()
 
   return { ...row, credentials: await credentialsOf(db, id) }
 }

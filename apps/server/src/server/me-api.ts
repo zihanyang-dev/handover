@@ -15,11 +15,8 @@ import { shown } from '../identity/credential.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { hashSessionToken } from '../identity/session.ts'
 import { api, saysNothing, sends, takes } from './contract.ts'
-import { body, refusal, type Failure } from './failure.ts'
+import { refusal } from './failure.ts'
 import { requireSession, SESSION_COOKIE, type Signed } from './session.ts'
-
-/** The session names somebody the database no longer has. Nothing to be signed in as. */
-const GONE: Failure<404> = { reason: 'unavailable', recovery: 'start-over', status: 404 }
 
 const spaceBody = z
   .object({ id: z.uuid(), slug: z.string(), displayName: z.string() })
@@ -58,7 +55,6 @@ const whoAmI = createRoute({
   responses: {
     200: sends(meBody, 'The person behind this session'),
     401: refusal('Nobody is signed in here'),
-    404: refusal('The session names somebody who is no longer here'),
   },
 })
 
@@ -101,7 +97,6 @@ export function meApi({ db, providers }: MeApi) {
   return api<{ Variables: Signed }>()
     .openapi({ ...whoAmI, middleware: [signedIn] }, async (c) => {
       const person = await personById(db, c.get('userId'))
-      if (person === undefined) return c.json(body(GONE), GONE.status)
 
       return c.json(
         {

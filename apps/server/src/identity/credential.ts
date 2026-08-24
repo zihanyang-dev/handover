@@ -21,7 +21,7 @@ export type Credential = {
 }
 
 /**
- * The one form a key is written and looked up in. The two rules are opposites and that is the
+ * The one form a credential is written and looked up in. The two rules are opposites and that is the
  * whole reason this exists: an address is folded, because otherwise one person becomes two
  * accounts; a provider's id is copied exactly, because it is theirs and not ours to reshape.
  */

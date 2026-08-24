@@ -644,16 +644,6 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "The session names somebody who is no longer here",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
           }
         }
       },

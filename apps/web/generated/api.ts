@@ -389,15 +389,6 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description The session names somebody who is no longer here */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
             };
         };
         put?: never;

@@ -1,11 +1,11 @@
 /**
- * The transport half of the emailed code: what goes on the wire, and what a rejection is called
- * out here.
+ * The transport half of the emailed code: what goes on the wire, what a rejection is called out
+ * here, and the route that sends one.
  *
- * Two screens send one — signing in, and attaching an address while already signed in — and they
- * need the same three things in the same order: commit the code, send, then decide what the
- * sending outcome means. Written twice, one of them would eventually learn something the other
- * did not.
+ * Two screens send a code — signing in, and adding an address while already signed in — and they
+ * differ in exactly two ways: the path, and what the proof is spent on. Everything else is the
+ * same, so everything else is here, once. Written twice, one of them would eventually learn
+ * something the other did not.
  */
 
 import { createRoute, z, type RouteHandler } from '@hono/zod-openapi'
