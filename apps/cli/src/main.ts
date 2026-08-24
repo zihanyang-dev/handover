@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util'
 import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn } from './checking-in.ts'
-import { askToConnect, connectWithKey, waitToBeLetIn } from './connect.ts'
+import { askToConnect, connectWithKey, SAID, waitToBeLetIn } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
 import { findAgents } from './discovery.ts'
 import { handoverFor, type Step } from './service.ts'
@@ -84,11 +84,12 @@ if (command === 'connect') {
 
 async function enrol(): Promise<Attachment> {
   const origin = values.origin ?? env.origin
-  const connected =
-    values.key === undefined ? await askAndWait(origin) : await useKey(origin, values.key)
+  const key = values.key
+  const connected = key === undefined ? await askAndWait(origin) : await useKey(origin, key)
 
   if (connected.kind === 'gave-up') {
-    say(`did not get in: ${connected.why}`)
+    // Which door was used decides the words, because it decides what there is to do next.
+    say(`did not get in — ${SAID[key === undefined ? 'code' : 'key'][connected.why]}`)
     process.exit(1)
   }
 

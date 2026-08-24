@@ -7,6 +7,7 @@
  */
 
 import { answered, type Api } from './api.ts'
+import type { components } from '../generated/api.ts'
 import type { Attachment } from './store.ts'
 
 /** How often to ask while waiting for a person. Short: somebody is watching a terminal. */
@@ -25,7 +26,40 @@ export type Asked = {
 export type Connected =
   | { readonly kind: 'connected'; readonly attachment: Attachment }
   /** Somebody said no, it ran out, or somebody else took the key. Each ends the attempt. */
-  | { readonly kind: 'gave-up'; readonly why: string }
+  | { readonly kind: 'gave-up'; readonly why: Why }
+
+/** Every way this ends without getting in — taken from the contract, plus the one only we can see. */
+export type Why =
+  Exclude<components['schemas']['Collected']['kind'], 'granted' | 'waiting'> | 'unreachable'
+
+/**
+ * What to say about each, which depends on which door was used.
+ *
+ * The same word off the wire means two different things to a person: `spent` at a terminal
+ * showing a code is "somebody else typed it, run this again", and `spent` with a key pasted in is
+ * "that key is used up, make another in the Space". One is something to redo here, the other is
+ * something to go and do elsewhere, and telling somebody the wrong one sends them to the wrong
+ * screen. Written as two lists rather than one, because they really are two.
+ *
+ * `Record<Why, string>` twice over is the guard: a kind the server starts returning has nowhere to
+ * hide, and neither does a door that forgot to answer for it.
+ */
+export const SAID: Record<'code' | 'key', Record<Why, string>> = {
+  code: {
+    refused: 'somebody said no. Nothing changed — run this again to ask afresh.',
+    expired: 'the code ran out before anybody answered. Run this again for a new one.',
+    spent: 'that code was already used. Run this again for a new one.',
+    'no-enrolment': 'nothing is waiting under that code any more. Run this again.',
+    unreachable: 'could not reach the server. Check it is up, then run this again.',
+  },
+  key: {
+    refused: 'that key was turned down. Make a new one in the Space.',
+    expired: 'that key has run out. Make a new one in the Space.',
+    spent: 'that key has already been used. A key works once — make a new one in the Space.',
+    'no-enrolment': 'that key does not work. Make a new one in the Space.',
+    unreachable: 'could not reach the server. Check it is up, then run this again.',
+  },
+}
 
 export type Waiting = {
   /** Called once, with what to show. Printing is the caller's job, not this loop's. */
@@ -53,7 +87,15 @@ export async function connectWithKey(
   )
 
   if (came?.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
-  if (came.data.kind !== 'granted') return { kind: 'gave-up', why: came.data.kind }
+
+  if (came.data.kind !== 'granted') {
+    const { kind } = came.data
+    // Making a key is the approving, so nothing a key opens can still be waiting on an answer.
+    // One that is means a key was made nobody approved, and there is no code to show anybody
+    // about it — nothing this can say to a person would be true, so it says it here instead.
+    if (kind === 'waiting') throw new Error('a key came back waiting: it was never approved')
+    return { kind: 'gave-up', why: kind }
+  }
 
   return {
     kind: 'connected',

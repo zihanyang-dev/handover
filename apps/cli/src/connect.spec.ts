@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
-import { askToConnect, connectWithKey, waitToBeLetIn, type Asked } from './connect.ts'
+import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Asked } from './connect.ts'
 
 const server = setupServer()
 const ORIGIN = 'http://handover.test'
@@ -170,5 +170,24 @@ describe('coming in with a key', () => {
       kind: 'gave-up',
       why: 'unreachable',
     })
+  })
+})
+
+describe('what somebody is told when it does not work', () => {
+  it('sends them somewhere different depending on which door they used', () => {
+    // The same word off the wire is two situations. At a terminal showing a code, `spent` means
+    // somebody else typed it and asking again here is the fix. With a key, it means that key is
+    // used up and the fix is in the Space. Telling either one the other's sentence sends them to
+    // the wrong screen.
+    expect(SAID.code.spent).toContain('Run this again')
+    expect(SAID.key.spent).toContain('Space')
+  })
+
+  it('never hands back the word the wire used, which names nothing anybody can act on', () => {
+    for (const door of Object.values(SAID)) {
+      for (const [why, said] of Object.entries(door)) {
+        expect(said).not.toContain(why)
+      }
+    }
   })
 })
