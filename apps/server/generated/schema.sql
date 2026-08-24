@@ -38,6 +38,19 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: agents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agents (
+    machine_id uuid NOT NULL,
+    kind text NOT NULL,
+    version text NOT NULL,
+    found_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT agents_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text, 'cursor-agent'::text])))
+);
+
+
+--
 -- Name: browser_sessions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -86,6 +99,45 @@ CREATE TABLE public.email_codes (
 
 
 --
+-- Name: enrolments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.enrolments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    space_id uuid NOT NULL,
+    machine_name text NOT NULL,
+    secret_hash text NOT NULL,
+    user_code text,
+    approved_by uuid,
+    approved_at timestamp with time zone,
+    refused_at timestamp with time zone,
+    claimed_at timestamp with time zone,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT enrolments_approved_together CHECK (((approved_at IS NULL) = (approved_by IS NULL))),
+    CONSTRAINT enrolments_claimed_after_approval CHECK (((claimed_at IS NULL) OR (approved_at IS NOT NULL))),
+    CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL)))
+);
+
+
+--
+-- Name: machines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.machines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    space_id uuid NOT NULL,
+    name text NOT NULL,
+    token_hash text NOT NULL,
+    enrolled_from uuid NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    left_at timestamp with time zone,
+    removed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: memberships; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -118,6 +170,14 @@ CREATE TABLE public.users (
     display_name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
+
+--
+-- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agents
+    ADD CONSTRAINT agents_pkey PRIMARY KEY (machine_id, kind);
 
 
 --
@@ -166,6 +226,46 @@ ALTER TABLE ONLY public.email_codes
 
 ALTER TABLE ONLY public.email_codes
     ADD CONSTRAINT email_codes_request_key_key UNIQUE (request_key);
+
+
+--
+-- Name: enrolments enrolments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: enrolments enrolments_secret_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_secret_hash_key UNIQUE (secret_hash);
+
+
+--
+-- Name: enrolments enrolments_user_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_user_code_key UNIQUE (user_code);
+
+
+--
+-- Name: machines machines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.machines
+    ADD CONSTRAINT machines_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: machines machines_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.machines
+    ADD CONSTRAINT machines_token_hash_key UNIQUE (token_hash);
 
 
 --
@@ -223,6 +323,28 @@ CREATE UNIQUE INDEX email_codes_live ON public.email_codes USING btree (email, p
 
 
 --
+-- Name: enrolments_waiting_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (user_code) WHERE ((claimed_at IS NULL) AND (refused_at IS NULL));
+
+
+--
+-- Name: machines_in_space; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX machines_in_space ON public.machines USING btree (space_id) WHERE (removed_at IS NULL);
+
+
+--
+-- Name: agents agents_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agents
+    ADD CONSTRAINT agents_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id) ON DELETE CASCADE;
+
+
+--
 -- Name: browser_sessions browser_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -236,6 +358,38 @@ ALTER TABLE ONLY public.browser_sessions
 
 ALTER TABLE ONLY public.credentials
     ADD CONSTRAINT credentials_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: enrolments enrolments_approved_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id);
+
+
+--
+-- Name: enrolments enrolments_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
+
+
+--
+-- Name: machines machines_enrolled_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.machines
+    ADD CONSTRAINT machines_enrolled_from_fkey FOREIGN KEY (enrolled_from) REFERENCES public.enrolments(id);
+
+
+--
+-- Name: machines machines_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.machines
+    ADD CONSTRAINT machines_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
 
 
 --

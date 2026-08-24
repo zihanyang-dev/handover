@@ -11,6 +11,13 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+export interface Agents {
+  found_at: Generated<Timestamp>;
+  kind: string;
+  machine_id: string;
+  version: string;
+}
+
 export interface BrowserSessions {
   created_at: Generated<Timestamp>;
   expires_at: Timestamp;
@@ -40,6 +47,32 @@ export interface EmailCodes {
   request_key: string;
 }
 
+export interface Enrolments {
+  approved_at: Timestamp | null;
+  approved_by: string | null;
+  claimed_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  machine_name: string;
+  refused_at: Timestamp | null;
+  secret_hash: string;
+  space_id: string;
+  user_code: string | null;
+}
+
+export interface Machines {
+  created_at: Generated<Timestamp>;
+  enrolled_from: string;
+  id: Generated<string>;
+  last_seen_at: Generated<Timestamp>;
+  left_at: Timestamp | null;
+  name: string;
+  removed_at: Timestamp | null;
+  space_id: string;
+  token_hash: string;
+}
+
 export interface Memberships {
   created_at: Generated<Timestamp>;
   request_key: string;
@@ -61,9 +94,12 @@ export interface Users {
 }
 
 export interface DB {
+  agents: Agents;
   browser_sessions: BrowserSessions;
   credentials: Credentials;
   email_codes: EmailCodes;
+  enrolments: Enrolments;
+  machines: Machines;
   memberships: Memberships;
   spaces: Spaces;
   users: Users;
