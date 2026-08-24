@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
+import { HTTPException } from 'hono/http-exception'
 import { pino } from 'pino'
 import { LOG_OPTIONS } from '../log.ts'
 import { handoverApp } from './app.ts'
@@ -24,14 +25,16 @@ const unreachable = {
     throw new Error('not reached in these tests')
   },
 }
-const app = handoverApp({
+const deps = {
   db,
   secret: env.AUTH_SECRET,
   sendCode: throwing,
   log,
   origin: 'http://localhost:3000',
+  webOrigin: 'http://localhost:5173',
   clients: { google: unreachable, github: unreachable },
-})
+}
+const app = handoverApp(deps)
 
 afterAll(async () => {
   await db.destroy()
@@ -98,6 +101,23 @@ describe('a request that never parsed', () => {
     // validator to find out which fields a route wants.
     expect(nonsense.status).toBe(401)
     expect(await nonsense.json()).toEqual(await fine.json())
+  })
+})
+
+describe('a refusal Hono made on our behalf', () => {
+  it('keeps the status it came with, rather than becoming our fault', async () => {
+    const refusing: SendCode = () => {
+      throw new HTTPException(413, { message: 'too big' })
+    }
+    const strict = handoverApp({ ...deps, sendCode: refusing })
+
+    const response = await strict.request('/auth/email/challenges', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'mina@example.com', requestKey: 'k9' }),
+    })
+
+    expect(response.status).toBe(413)
   })
 })
 

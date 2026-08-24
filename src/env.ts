@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod'
+import { PROVIDERS, type Provider } from './identity/provider.ts'
 
 const SHAPE = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
@@ -21,6 +22,11 @@ const SHAPE = z.object({
    * and will refuse any that was not registered over there, so it cannot be guessed per request.
    */
   PUBLIC_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:3000'),
+  /**
+   * Where the browser app lives. It is not always where this server lives: a provider sends the
+   * browser back here, and here has to send it on to a page, which may be a separate deployment.
+   */
+  WEB_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:5173'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /**
@@ -60,14 +66,19 @@ export function parseEnv(source: Readonly<Record<string, string | undefined>>): 
   throw new Error(`environment is not usable:\n${problems}\n\nsee .env.example`)
 }
 
+/**
+ * Where each provider's keys are read from. Required, one entry per provider: adding a name
+ * without saying where its keys live is a compile error, not a provider that silently never
+ * appears. Written out rather than derived, because static names are what make `Env` typed.
+ */
+export const CREDENTIALS = {
+  google: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+  github: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+} as const satisfies Record<Provider, readonly [keyof Env, keyof Env]>
+
 /** An id without its secret, or the other way round, is somebody halfway through a setup. */
 function withPairs(env: Env): Env {
-  const halves = [
-    ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
-    ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
-  ] as const
-
-  const broken = halves.filter(
+  const broken = PROVIDERS.map((provider) => CREDENTIALS[provider]).filter(
     ([id, secret]) => (env[id] === undefined) !== (env[secret] === undefined),
   )
   if (broken.length === 0) return env

@@ -14,6 +14,10 @@ import { sql } from 'kysely'
 import { LIFETIME_MINUTES, RESEND_INTERVAL_SECONDS } from '../identity/emailed-code.ts'
 import type { Database } from './connection.ts'
 
+/** How long until another code may be asked for, by the database's clock and not the caller's. */
+const WAIT = sql<number>`ceil(extract(epoch from
+  created_at + make_interval(secs => ${RESEND_INTERVAL_SECONDS}) - now()))::int`.as('wait')
+
 export type ChallengeRequest = {
   /** The caller's idempotency key. Retrying with the same one must not send a second mail. */
   readonly requestKey: string
@@ -21,15 +25,56 @@ export type ChallengeRequest = {
   readonly codeHash: string
 }
 
+/**
+ * When it stops working and when another may be asked for. Both travel with the challenge so a
+ * page can say what this deployment actually does, rather than a number compiled into it.
+ */
+export type OpenChallenge = {
+  readonly id: string
+  readonly expiresAt: Date
+  readonly resendAfterSeconds: number
+}
+
 export type OpenedChallenge =
-  | { readonly kind: 'opened'; readonly id: string }
+  | ({ readonly kind: 'opened' } & OpenChallenge)
   /**
    * This request key already opened a challenge. The mail for it is sent or in flight, so the
    * caller must not send another.
    */
-  | { readonly kind: 'replayed'; readonly id: string }
+  | ({ readonly kind: 'replayed' } & OpenChallenge)
   /** A code was sent to this address moments ago. Sending now would break the one in the inbox. */
   | { readonly kind: 'too-soon'; readonly retryAfterSeconds: number }
+
+/** The challenge this request key already opened, if it opened one. */
+async function replayOf(db: Database, requestKey: string): Promise<OpenChallenge | undefined> {
+  const found = await db
+    .selectFrom('email_challenges')
+    .select(['id', 'expires_at', WAIT])
+    .where('request_key', '=', requestKey)
+    .executeTakeFirst()
+
+  if (found === undefined) return undefined
+  return {
+    id: found.id,
+    expiresAt: found.expires_at,
+    resendAfterSeconds: Math.max(found.wait, 0),
+  }
+}
+
+/**
+ * How long until this address may be sent another code. The clock is the database's: a caller
+ * cannot talk its way past this by disagreeing about the time.
+ */
+async function waitLeft(db: Database, email: string): Promise<number> {
+  const open = await db
+    .selectFrom('email_challenges')
+    .select(WAIT)
+    .where('email', '=', email)
+    .where('closed_at', 'is', null)
+    .executeTakeFirst()
+
+  return Math.max(open?.wait ?? 0, 0)
+}
 
 /**
  * Opens a challenge, hands back the one this request key already opened, or says to wait.
@@ -46,29 +91,11 @@ export async function openChallenge(
 
     // Before anything is closed. A retry must hand back a working challenge, and closing first
     // would supersede the very one it is about to return.
-    const existing = await tx
-      .selectFrom('email_challenges')
-      .select('id')
-      .where('request_key', '=', request.requestKey)
-      .executeTakeFirst()
+    const replayed = await replayOf(tx, request.requestKey)
+    if (replayed !== undefined) return { kind: 'replayed', ...replayed }
 
-    if (existing !== undefined) return { kind: 'replayed', id: existing.id }
-
-    // Asked before the last code had a chance. The clock is the database's: a caller cannot talk
-    // its way past this by disagreeing about the time.
-    const recent = await tx
-      .selectFrom('email_challenges')
-      .select(
-        sql<number>`ceil(extract(epoch from
-          created_at + make_interval(secs => ${RESEND_INTERVAL_SECONDS}) - now()))::int`.as('wait'),
-      )
-      .where('email', '=', request.email)
-      .where('closed_at', 'is', null)
-      .executeTakeFirst()
-
-    if (recent !== undefined && recent.wait > 0) {
-      return { kind: 'too-soon', retryAfterSeconds: recent.wait }
-    }
+    const wait = await waitLeft(tx, request.email)
+    if (wait > 0) return { kind: 'too-soon', retryAfterSeconds: wait }
 
     // Whatever else is open for this address is now stale, and reads as expired rather than wrong.
     await tx
@@ -89,9 +116,14 @@ export async function openChallenge(
         request_key: request.requestKey,
         expires_at: sql`now() + make_interval(mins => ${LIFETIME_MINUTES})`,
       })
-      .returning('id')
+      .returning(['id', 'expires_at'])
       .executeTakeFirstOrThrow()
 
-    return { kind: 'opened', id: opened.id }
+    return {
+      kind: 'opened',
+      id: opened.id,
+      expiresAt: opened.expires_at,
+      resendAfterSeconds: RESEND_INTERVAL_SECONDS,
+    }
   })
 }

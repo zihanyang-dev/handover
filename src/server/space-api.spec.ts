@@ -13,7 +13,7 @@ const sendCode: SendCode = async (_to, code) => {
   lastCode = code
   return 'sent'
 }
-const auth = authApi({ db, secret: env.AUTH_SECRET, sendCode })
+const auth = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
 const app = spaceApi({ db, providers: ['google', 'github'] })
 
 afterAll(async () => {

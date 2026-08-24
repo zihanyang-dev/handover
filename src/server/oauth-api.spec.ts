@@ -13,6 +13,7 @@ const env = loadEnv()
 const db: Database = connect(env)
 const EMAIL = 'mina@example.com'
 const ORIGIN = 'http://localhost:3000'
+const WEB = 'http://localhost:5173'
 
 afterAll(async () => {
   await db.destroy()
@@ -47,6 +48,7 @@ function appWith(answer: Identified): ReturnType<typeof oauthApi> {
     db,
     secret: env.AUTH_SECRET,
     origin: ORIGIN,
+    webOrigin: WEB,
     clients: { google: client, github: client },
   })
 }
@@ -91,12 +93,13 @@ async function signedInCookie(email: string): Promise<{ cookie: string; userId: 
 describe('leaving for a provider', () => {
   it('sends the browser there and remembers the trip', async () => {
     const response = await start(appWith(identified(MINA)))
+    const sent = (await response.json()) as { url: string }
+    const remembered = response.headers.getSetCookie().join(';')
 
-    expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toContain('provider.example/authorize')
-    const handoff = response.headers.getSetCookie().join(';')
-    expect(handoff).toContain('handover_oauth=')
-    expect(handoff).toContain('HttpOnly')
+    expect(response.status).toBe(200)
+    expect(sent.url).toContain('provider.example/authorize')
+    expect(remembered).toContain('handover_oauth=')
+    expect(remembered).toContain('HttpOnly')
   })
 
   it('never remembers a destination on somebody else’s site', async () => {
@@ -105,7 +108,7 @@ describe('leaving for a provider', () => {
 
     const back = await comeBack(app, cookiesOf(left))
 
-    expect(back.headers.get('location')).toBe('/')
+    expect(back.headers.get('location')).toBe(`${WEB}/`)
   })
 
   it('refuses a name that is not a provider, without describing the route', async () => {
@@ -128,6 +131,7 @@ describe('leaving for a provider', () => {
       db,
       secret: env.AUTH_SECRET,
       origin: ORIGIN,
+      webOrigin: WEB,
       clients: { google: client },
     })
 
@@ -155,7 +159,7 @@ describe('coming back', () => {
     const back = await comeBack(app, cookiesOf(left))
 
     expect(back.status).toBe(303)
-    expect(back.headers.get('location')).toBe('/s/acme')
+    expect(back.headers.get('location')).toBe(`${WEB}/s/acme`)
     expect(back.headers.getSetCookie().join(';')).toContain(`${SESSION_COOKIE}=`)
   })
 
@@ -166,13 +170,13 @@ describe('coming back', () => {
 
     const back = await comeBack(app, cookiesOf(left))
 
-    expect(back.headers.get('location')).toBe('/?handover_result=merged')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=merged`)
   })
 
   it('turns away an arrival that did not start here', async () => {
     const back = await comeBack(appWith(identified(MINA)), '')
 
-    expect(back.headers.get('location')).toBe('/?handover_result=expired')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
     expect(back.headers.getSetCookie().join(';')).not.toContain(SESSION_COOKIE)
   })
 
@@ -187,7 +191,7 @@ describe('coming back', () => {
       '/auth/github/callback',
     )
 
-    expect(back.headers.get('location')).toBe('/?handover_result=expired')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
   })
 
   it('turns away a handoff whose signature does not hold', async () => {
@@ -197,7 +201,7 @@ describe('coming back', () => {
 
     const back = await comeBack(app, tampered)
 
-    expect(back.headers.get('location')).toBe('/?handover_result=expired')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
   })
 
   it('says nothing happened when the person said no over there', async () => {
@@ -206,7 +210,7 @@ describe('coming back', () => {
 
     const back = await comeBack(app, cookiesOf(left), '?error=access_denied')
 
-    expect(back.headers.get('location')).toBe('/s/acme?handover_result=cancelled')
+    expect(back.headers.get('location')).toBe(`${WEB}/s/acme?handover_result=cancelled`)
     expect(back.headers.getSetCookie().join(';')).not.toContain(SESSION_COOKIE)
   })
 
@@ -216,7 +220,7 @@ describe('coming back', () => {
 
     const back = await comeBack(app, cookiesOf(left))
 
-    expect(back.headers.get('location')).toBe('/?handover_result=no-verified-email')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=no-verified-email`)
     expect(await db.selectFrom('users').select('id').execute()).toEqual([])
   })
 
@@ -242,7 +246,7 @@ describe('connecting one to an account already signed in', () => {
 
     const back = await comeBack(app, `${cookie}; ${cookiesOf(left)}`)
 
-    expect(back.headers.get('location')).toBe('/s/acme')
+    expect(back.headers.get('location')).toBe(`${WEB}/s/acme`)
   })
 
   it('says which way it failed when the provider proves another address', async () => {
@@ -256,7 +260,7 @@ describe('connecting one to an account already signed in', () => {
 
     const back = await comeBack(app, `${cookie}; ${cookiesOf(left)}`)
 
-    expect(back.headers.get('location')).toBe('/?handover_result=email-mismatch')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=email-mismatch`)
   })
 
   it('refuses to connect anything once the session that asked is gone', async () => {
@@ -271,7 +275,7 @@ describe('connecting one to an account already signed in', () => {
     // The handoff comes back without the session it was started under.
     const back = await comeBack(app, cookiesOf(left))
 
-    expect(back.headers.get('location')).toBe('/?handover_result=expired')
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
   })
 
   it('will not start one at all without a session', async () => {

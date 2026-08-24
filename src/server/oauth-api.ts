@@ -7,17 +7,17 @@
  * the URL is what an attacker gets to write.
  */
 
-import { zValidator } from '@hono/zod-validator'
-import { Hono, type Context } from 'hono'
+import { createRoute, z } from '@hono/zod-openapi'
+import type { Context } from 'hono'
 import { deleteCookie, getSignedCookie, setCookie, setSignedCookie } from 'hono/cookie'
-import { z } from 'zod'
 import type { Database } from '../db/connection.ts'
 import { connectProvider, signInWithProvider } from '../db/provider-sign-in.ts'
 import { LIFETIME_DAYS, newSessionToken } from '../identity/browser-session.ts'
-import type { Provider } from '../identity/provider.ts'
-import { body, refuse, type Failure } from './failure.ts'
-import { returnPath } from './return-path.ts'
+import { PROVIDERS, type Provider } from '../identity/provider.ts'
+import { api, saysNothing, sends, takes } from './contract.ts'
+import { body, refusal, type Failure } from './failure.ts'
 import type { ProviderClient } from './oauth/provider-client.ts'
+import { returnPath } from './return-path.ts'
 import { currentUser, requireSession, SESSION_COOKIE, type Signed } from './session.ts'
 
 const HANDOFF_COOKIE = 'handover_oauth'
@@ -28,10 +28,8 @@ const HANDOFF_SECONDS = 600
 /** One name carries whatever the round trip has to say, so a page reads one thing. */
 const RESULT = 'handover_result'
 
-const PROVIDERS = ['google', 'github'] as const
-
 /** Asked for by name, but this deployment was given no keys for it. */
-const NO_SUCH_PROVIDER: Failure = {
+const NO_SUCH_PROVIDER: Failure<404> = {
   reason: 'provider-unavailable',
   recovery: 'start-over',
   status: 404,
@@ -49,29 +47,75 @@ type Handoff = z.infer<typeof handoff>
 
 const asked = z.object({ next: z.string().optional() })
 
-const named = z.object({ provider: z.enum(PROVIDERS) })
+/**
+ * Not an enum. Whether a name is a way in is answered by looking for its client — a made-up name
+ * and a real one this deployment has no keys for are the same situation, and asking twice would
+ * only create two ways to answer it.
+ */
+const named = z.object({ provider: z.string() })
 
 /**
- * A name that is not a provider gets the same answer as a provider without keys. Both mean there
- * is no way in by that name, the person does the same thing next, and neither answer is allowed
- * to describe the route it refused.
+ * The URL to go to, not a redirect to it. A page reading a 303 with `fetch` cannot see where it
+ * points — the browser hides the target of an opaque redirect — and following it would send the
+ * request itself to the provider instead of the person. Navigating is the browser's job.
  */
-const unknownProvider = (result: { success: boolean }): void => {
-  if (!result.success) refuse(NO_SUCH_PROVIDER)
-}
+const handoffBody = z.object({ url: z.url() }).openapi('Handoff')
+
+const startSignIn = createRoute({
+  method: 'post',
+  path: '/auth/{provider}/start',
+  summary: 'Leave to sign in with a provider',
+  request: { params: named, body: takes(asked) },
+  responses: {
+    200: sends(handoffBody, 'Send the browser here'),
+    400: refusal('The body was not the shape it claims'),
+    404: refusal('No way in by that name'),
+  },
+})
+
+const startConnect = createRoute({
+  method: 'post',
+  path: '/me/sign-in-methods/{provider}/start',
+  summary: 'Leave to connect a provider to this account',
+  request: { params: named, body: takes(asked) },
+  responses: {
+    200: sends(handoffBody, 'Send the browser here'),
+    400: refusal('The body was not the shape it claims'),
+    401: refusal('Nobody is signed in here'),
+    404: refusal('No way in by that name'),
+  },
+})
+
+const comeBack = createRoute({
+  method: 'get',
+  path: '/auth/{provider}/callback',
+  summary: 'Where the provider sends the browser back to',
+  request: { params: named },
+  responses: {
+    303: saysNothing('Follow the Location; any `handover_result` says what became of the trip'),
+    404: refusal('No way in by that name'),
+  },
+})
 
 export type OAuthApi = {
   readonly db: Database
   readonly secret: string
+  /** Where a provider is told to send the browser back to. Registered over there, so it is fixed. */
   readonly origin: string
+  /** Where the browser is sent once the trip is over. Not always the same place. */
+  readonly webOrigin: string
   /** Only the providers this deployment has keys for. The rest are not offered at all. */
   readonly clients: Readonly<Partial<Record<Provider, ProviderClient>>>
 }
 
-function back(to: string, result?: string): string {
-  if (result === undefined) return to
-  const separator = to.includes('?') ? '&' : '?'
-  return `${to}${separator}${RESULT}=${encodeURIComponent(result)}`
+/**
+ * Where to put the browser down. `path` has already been through {@link returnPath}, so it names
+ * somewhere on the app and not somewhere else entirely.
+ */
+function back(webOrigin: string, path: string, result?: string): string {
+  const landing = new URL(path, webOrigin)
+  if (result !== undefined) landing.searchParams.set(RESULT, result)
+  return landing.href
 }
 
 /** Reads the handoff and spends it: a round trip is good once, whatever it ends in. */
@@ -99,42 +143,57 @@ async function settle(
   currentUser: string | undefined,
 ): Promise<Outcome> {
   const to = returnPath(taken.next)
+  const landing = (result?: string) => back(deps.webOrigin, to, result)
 
   // The provider says the person said no. Nothing happened, and nothing should look like it did.
-  if (returned.searchParams.get('error') !== null) return { to: back(to, 'cancelled') }
+  if (returned.searchParams.get('error') !== null) return { to: landing('cancelled') }
 
-  const client = deps.clients[taken.provider]
-  if (client === undefined) return { to: back(to, 'expired') }
+  const found = wayIn(deps, taken.provider)
+  if (found === undefined) return { to: landing('expired') }
 
-  const found = await client.identify({
+  const identified = await found.client.identify({
     url: returned,
     state: taken.state,
     pkceVerifier: taken.pkceVerifier,
   })
-  if (found.kind === 'no-verified-email') return { to: back(to, 'no-verified-email') }
+  if (identified.kind === 'no-verified-email') return { to: landing('no-verified-email') }
 
   if (taken.purpose === 'connect') {
     // The session that started this has to still be the session finishing it.
-    if (currentUser === undefined) return { to: back(to, 'expired') }
+    if (currentUser === undefined) return { to: landing('expired') }
 
-    const connected = await connectProvider(deps.db, currentUser, found.identity)
-    return { to: back(to, connected.kind === 'connected' ? undefined : connected.rejection) }
+    const connected = await connectProvider(deps.db, currentUser, identified.identity)
+    return { to: landing(connected.kind === 'connected' ? undefined : connected.rejection) }
   }
 
   const session = newSessionToken()
-  const arrived = await signInWithProvider(deps.db, found.identity, session.hash)
-  return { to: back(to, arrived.merged ? 'merged' : undefined), sessionToken: session.token }
+  const arrived = await signInWithProvider(deps.db, identified.identity, session.hash)
+  return { to: landing(arrived.merged ? 'merged' : undefined), sessionToken: session.token }
 }
 
+/**
+ * The one place a name becomes a provider. A name nobody recognises and a provider this
+ * deployment has no keys for come out the same: nothing.
+ */
+function wayIn(deps: OAuthApi, name: string) {
+  const provider = PROVIDERS.find((known) => known === name)
+  if (provider === undefined) return undefined
+
+  const client = deps.clients[provider]
+  return client === undefined ? undefined : { provider, client }
+}
+
+/** Remembers the trip and says where to send the browser, or nothing if there is no such way in. */
 async function leave(
   c: Context,
   deps: OAuthApi,
-  leaving: { provider: Provider; purpose: Handoff['purpose']; next: string | undefined },
-): Promise<Response> {
-  const { provider, purpose } = leaving
-  const client = deps.clients[provider]
-  if (client === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
+  leaving: { name: string; purpose: Handoff['purpose']; next: string | undefined },
+): Promise<{ url: string } | undefined> {
+  const found = wayIn(deps, leaving.name)
+  if (found === undefined) return undefined
 
+  const { provider, client } = found
+  const { purpose } = leaving
   const begun = await client.begin(`${deps.origin}/auth/${provider}/callback`)
 
   const remembered: Handoff = {
@@ -155,43 +214,38 @@ async function leave(
     maxAge: HANDOFF_SECONDS,
   })
 
-  return c.redirect(begun.url.href, 303)
+  return { url: begun.url.href }
 }
 
 export function oauthApi(deps: OAuthApi) {
   const signedIn = requireSession(deps.db)
 
-  return new Hono<{ Variables: Signed }>()
-    .post(
-      '/auth/:provider/start',
-      zValidator('param', named, unknownProvider),
-      zValidator('json', asked),
-      async (c) =>
-        leave(c, deps, {
-          provider: c.req.valid('param').provider,
-          purpose: 'sign-in',
-          next: c.req.valid('json').next,
-        }),
-    )
+  return api<{ Variables: Signed }>()
+    .openapi(startSignIn, async (c) => {
+      const sent = await leave(c, deps, {
+        name: c.req.valid('param').provider,
+        purpose: 'sign-in',
+        next: c.req.valid('json').next,
+      })
+      if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
+      return c.json(sent, 200)
+    })
 
-    .post(
-      '/me/sign-in-methods/:provider/start',
-      signedIn,
-      zValidator('param', named, unknownProvider),
-      zValidator('json', asked),
-      async (c) =>
-        leave(c, deps, {
-          provider: c.req.valid('param').provider,
-          purpose: 'connect',
-          next: c.req.valid('json').next,
-        }),
-    )
+    .openapi({ ...startConnect, middleware: [signedIn] }, async (c) => {
+      const sent = await leave(c, deps, {
+        name: c.req.valid('param').provider,
+        purpose: 'connect',
+        next: c.req.valid('json').next,
+      })
+      if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
+      return c.json(sent, 200)
+    })
 
-    .get('/auth/:provider/callback', zValidator('param', named, unknownProvider), async (c) => {
+    .openapi(comeBack, async (c) => {
       const taken = await takeHandoff(c, deps.secret)
       // No handoff, or one belonging to a different provider: this arrival did not start here.
       if (taken === undefined || taken.provider !== c.req.valid('param').provider) {
-        return c.redirect(back('/', 'expired'), 303)
+        return c.redirect(back(deps.webOrigin, '/', 'expired'), 303)
       }
 
       const outcome = await settle(deps, taken, new URL(c.req.url), await currentUser(deps.db, c))

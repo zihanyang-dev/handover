@@ -1,13 +1,14 @@
+import { sql } from 'kysely'
 import { afterAll, describe, expect, it } from 'vitest'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/browser-session.ts'
 import { hashCode } from '../identity/emailed-code.ts'
-import type { ProviderIdentity } from '../identity/provider.ts'
+import { PROVIDERS, type ProviderIdentity } from '../identity/provider.ts'
 import { connect, type Database } from './connection.ts'
 import { openChallenge } from './email-challenge.ts'
 import { connectProvider, signInWithProvider } from './provider-sign-in.ts'
 import { signIn } from './sign-in.ts'
-import { personById } from './user.ts'
+import { personById, personFor } from './user.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
@@ -153,5 +154,36 @@ describe('connecting a provider to an account already signed in', () => {
 
     expect(stolen).toEqual({ kind: 'rejected', rejection: 'linked-elsewhere' })
     expect(await personById(db, mina)).toMatchObject({ connected: [] })
+  })
+})
+
+describe('the names the database will accept', () => {
+  /**
+   * The constraint lives in SQL and the list lives in TypeScript, and no compiler crosses that
+   * line. Comparing them directly catches a drift in either direction: a provider added to the
+   * code without a migration, and one dropped from the code but still allowed by the database.
+   */
+  it('is exactly the list the code offers', async () => {
+    const constraint = await sql<{ definition: string }>`
+      select pg_get_constraintdef(oid) as definition from pg_constraint
+      where conname = 'sign_in_methods_kind_check'
+    `.execute(db)
+
+    const allowed = [...(constraint.rows[0]?.definition ?? '').matchAll(/'([a-z]+)'/gu)].map(
+      (found) => found[1],
+    )
+
+    expect(new Set(allowed)).toEqual(new Set(PROVIDERS))
+  })
+
+  it('refuses a name the code never offers', async () => {
+    const person = await personFor(db, { name: null, username: null, verifiedEmail: EMAIL })
+
+    const written = db
+      .insertInto('sign_in_methods')
+      .values({ user_id: person, kind: 'myspace', subject: 's' })
+      .execute()
+
+    await expect(written).rejects.toThrow(/violates check constraint/iu)
   })
 })

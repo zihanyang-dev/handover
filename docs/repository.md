@@ -13,7 +13,6 @@ src/
   cli/              接入与保持在线
 generated/          生成物,永不手改
 migrations/         已提交的永不修改
-queries/            SQL 是真相
 scripts/            生成器与仓库维护脚本
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
 web/                浏览器应用

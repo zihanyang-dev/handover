@@ -1,4 +1,5 @@
-import { HTTPException } from 'hono/http-exception'
+import { z } from '@hono/zod-openapi'
+import { sends } from './contract.ts'
 
 /**
  * What a failure looks like on the wire.
@@ -24,40 +25,59 @@ export type Recovery =
   /** Nothing the person did caused this, and nothing they do fixes it. */
   | 'retry-later'
 
-export type Failure = {
+/** Every status a refusal is allowed to carry. A route narrows this to the ones it can answer. */
+export type Status = 400 | 401 | 404 | 409 | 429 | 500
+
+export type Failure<S extends Status = Status> = {
   readonly reason: string
   readonly recovery: Recovery
-  readonly status: 400 | 401 | 404 | 409 | 429 | 500
+  readonly status: S
+}
+
+const RECOVERIES = [
+  'retype',
+  'request-new-code',
+  'start-over',
+  'sign-in',
+  'choose-another-name',
+  'wait',
+  'retry-later',
+] as const satisfies readonly Recovery[]
+
+/** What every refusal looks like on the wire, and what a generated client branches on. */
+export const failureBody = z
+  .object({
+    reason: z.string().openapi({ example: 'code-mismatch' }),
+    recovery: z.enum(RECOVERIES),
+  })
+  .openapi('Failure')
+
+export function refusal(description: string) {
+  return sends(failureBody, description)
 }
 
 /** Nothing about which of the two it was: an absent session and an expired one look identical. */
-export const MALFORMED: Failure = { reason: 'malformed-request', recovery: 'retype', status: 400 }
+export const MALFORMED: Failure<400> = {
+  reason: 'malformed-request',
+  recovery: 'retype',
+  status: 400,
+}
 
-export const NO_SESSION: Failure = { reason: 'no-session', recovery: 'sign-in', status: 401 }
+export const NO_SESSION: Failure<401> = { reason: 'no-session', recovery: 'sign-in', status: 401 }
 
-export const NOT_A_ROUTE: Failure = { reason: 'no-such-route', recovery: 'start-over', status: 404 }
+export const NOT_A_ROUTE: Failure<404> = {
+  reason: 'no-such-route',
+  recovery: 'start-over',
+  status: 404,
+}
 
 /**
  * What anything unhandled turns into. It says nothing about what broke: an error message can
  * carry a query, a value, or a path, and none of that is the caller's to see.
  */
-export const BROKEN: Failure = { reason: 'unavailable', recovery: 'retry-later', status: 500 }
+export const BROKEN: Failure<500> = { reason: 'unavailable', recovery: 'retry-later', status: 500 }
 
 /** The two fields that go on the wire. The status travels beside them, not inside them. */
 export function body(failure: Failure): { reason: string; recovery: Recovery } {
   return { reason: failure.reason, recovery: failure.recovery }
-}
-
-/**
- * Refuses a request that never parsed.
- *
- * The line this draws: a product outcome — wrong code, name taken, not a member — is returned,
- * because it is something the person can act on and each route says it differently. A body that
- * is not the shape it claims is not an outcome; the answer is the same everywhere and never
- * varies, so it throws once and `onError` renders it.
- */
-export function refuse(failure: Failure): never {
-  throw new HTTPException(failure.status, {
-    res: Response.json(body(failure), { status: failure.status }),
-  })
 }

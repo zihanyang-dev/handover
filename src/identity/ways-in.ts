@@ -9,7 +9,7 @@
  * out of their own account.
  */
 
-import type { Provider } from './provider.ts'
+import { PROVIDERS, type Provider } from './provider.ts'
 
 export type Way = {
   readonly kind: Provider | 'email-code'
@@ -21,16 +21,13 @@ export type Way = {
  * offer somebody a door that opens onto an error. One already connected still shows: taking it
  * off the list would leave them wondering how they got here.
  */
-/** Stated, not sorted. The order a list of ways in appears in should not change by itself. */
-const ORDER: readonly Provider[] = ['google', 'github']
-
 export function waysIn(connected: Iterable<Provider>, offered: Iterable<Provider>): readonly Way[] {
   const linked = new Set(connected)
   const available = new Set(offered)
 
   return [
     { kind: 'email-code', state: 'ready' },
-    ...ORDER.filter((kind) => available.has(kind) || linked.has(kind)).map((kind) => ({
+    ...PROVIDERS.filter((kind) => available.has(kind) || linked.has(kind)).map((kind) => ({
       kind,
       state: linked.has(kind) ? ('ready' as const) : ('connectable' as const),
     })),

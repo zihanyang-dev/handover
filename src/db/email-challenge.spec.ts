@@ -50,7 +50,7 @@ describe('openChallenge', () => {
     const first = await ask('k1')
     const second = await ask('k1')
 
-    expect(second).toEqual({ kind: 'replayed', id: (first as { id: string }).id })
+    expect(second).toMatchObject({ kind: 'replayed', id: (first as { id: string }).id })
     expect(await count()).toBe(1)
   })
 
@@ -107,7 +107,7 @@ describe('openChallenge', () => {
 
     // A browser retrying a lost response is not somebody clicking resend, and must not be told to
     // wait for a code it is already holding.
-    expect(await ask('k1')).toEqual({ kind: 'replayed', id: (first as { id: string }).id })
+    expect(await ask('k1')).toMatchObject({ kind: 'replayed', id: (first as { id: string }).id })
   })
 
   it('lets a different address have its own code', async () => {
@@ -168,5 +168,14 @@ describe('openChallenge', () => {
 
     expect(minutesAway).toBeGreaterThan(4)
     expect(minutesAway).toBeLessThan(6)
+  })
+
+  it('says when it expires and when another may be asked for, so no page has to guess', async () => {
+    const opened = await ask('k1')
+    if (opened.kind === 'too-soon') throw new Error('unexpected')
+
+    // A number compiled into a page is right until somebody changes this one and not that one.
+    expect(opened.expiresAt.getTime()).toBeGreaterThan(Date.now())
+    expect(opened.resendAfterSeconds).toBe(RESEND_INTERVAL_SECONDS)
   })
 })

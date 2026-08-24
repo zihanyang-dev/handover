@@ -17,6 +17,17 @@ export default defineConfig({
         },
       },
       {
+        // Vitest transforms with esbuild, which does not read the browser tsconfig. Said here so
+        // a .tsx test compiles the same way the app does.
+        esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
+        test: {
+          name: 'web',
+          include: ['web/**/*.spec.tsx', 'web/**/*.spec.ts'],
+          environment: 'happy-dom',
+          setupFiles: ['./vitest.web-harness.tsx'],
+        },
+      },
+      {
         test: {
           name: 'db',
           include: ['src/db/**/*.spec.ts', 'src/server/**/*.spec.ts'],

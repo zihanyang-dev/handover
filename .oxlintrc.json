@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn"],
+  "plugins": ["typescript", "unicorn", "react"],
   "categories": {
     "correctness": "error"
   },
@@ -8,7 +8,14 @@
     "reportUnusedDisableDirectives": "error",
     "typeAware": true
   },
-  "ignorePatterns": ["generated/**", "node_modules/**", "**/*.config.ts"],
+  "ignorePatterns": [
+    "generated/**",
+    "node_modules/**",
+    "**/*.config.ts",
+    "web/generated/**",
+    "web/routeTree.gen.ts",
+    "web/dist/**"
+  ],
   "rules": {
     "max-depth": ["error", 2],
     "complexity": ["error", 10],
@@ -112,6 +119,23 @@
       "files": ["src/log.ts"],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      // A line of JSX is not a line of logic. `max-lines-per-function` asks whether a function is
+      // doing too many things, and after prettier a form with four fields is forty lines of
+      // markup doing one. Splitting to satisfy the number would only invent components that
+      // exist for the number. `complexity` and `max-nested-callbacks` still apply, and they
+      // measure what this rule was actually for.
+      "files": ["web/**/*.tsx"],
+      "rules": { "max-lines-per-function": ["error", 120] }
+    },
+    {
+      "files": ["web/**/*.tsx", "web/**/*.ts"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/jsx-key": "error",
+        "react/no-danger": "error"
       }
     }
   ]

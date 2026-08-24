@@ -16,7 +16,7 @@ const sendCode: SendCode = async (to, code) => {
   sent.push({ to, code })
   return 'sent'
 }
-const app = authApi({ db, secret: env.AUTH_SECRET, sendCode })
+const app = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
 
 beforeEach(() => {
   sent = []
@@ -109,6 +109,23 @@ describe('asking for a code', () => {
 
     expect(response.status).toBe(400)
     expect(sent).toEqual([])
+  })
+})
+
+describe('what a stranger is offered', () => {
+  it('names the ways in, so a sign-in page cannot show a door that opens onto an error', async () => {
+    const response = await app.request('/auth/ways-in')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ offered: ['email-code', 'google', 'github'] })
+  })
+
+  it('leaves out a provider this deployment has no keys for', async () => {
+    const half = authApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google'] })
+
+    const offered = (await (await half.request('/auth/ways-in')).json()) as { offered: string[] }
+
+    expect(offered.offered).toEqual(['email-code', 'google'])
   })
 })
 

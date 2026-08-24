@@ -1,0 +1,804 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Handover",
+    "version": "0"
+  },
+  "components": {
+    "schemas": {
+      "WaysIn": {
+        "type": "object",
+        "properties": {
+          "offered": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email-code",
+                "google",
+                "github"
+              ]
+            }
+          }
+        },
+        "required": [
+          "offered"
+        ]
+      },
+      "OpenedChallenge": {
+        "type": "object",
+        "properties": {
+          "challengeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resendAfterSeconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "challengeId",
+          "expiresAt",
+          "resendAfterSeconds"
+        ]
+      },
+      "Failure": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "example": "code-mismatch"
+          },
+          "recovery": {
+            "type": "string",
+            "enum": [
+              "retype",
+              "request-new-code",
+              "start-over",
+              "sign-in",
+              "choose-another-name",
+              "wait",
+              "retry-later"
+            ]
+          }
+        },
+        "required": [
+          "reason",
+          "recovery"
+        ]
+      },
+      "TooSoon": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Failure"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "retryAfterSeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              }
+            },
+            "required": [
+              "retryAfterSeconds"
+            ]
+          }
+        ]
+      },
+      "AskForCode": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "mina@example.com"
+          },
+          "requestKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "email",
+          "requestKey"
+        ]
+      },
+      "SignedIn": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "SubmitCode": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "example": "493018"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "Handoff": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "verifiedEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "waysIn": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WayIn"
+            }
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Space"
+            }
+          }
+        },
+        "required": [
+          "displayName",
+          "verifiedEmail",
+          "waysIn",
+          "spaces"
+        ]
+      },
+      "WayIn": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "email-code",
+              "google",
+              "github"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "connectable"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "state"
+        ]
+      },
+      "Space": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "displayName"
+        ]
+      },
+      "NewDisplayName": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      },
+      "SlugTaken": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "slug-taken"
+            ]
+          },
+          "recovery": {
+            "type": "string",
+            "enum": [
+              "choose-another-name"
+            ]
+          },
+          "suggestion": {
+            "type": "string",
+            "example": "acme-2"
+          }
+        },
+        "required": [
+          "reason",
+          "recovery",
+          "suggestion"
+        ]
+      },
+      "NewSpace": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "徐悦泰 Studio"
+          },
+          "requestKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "displayName",
+          "requestKey"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/auth/ways-in": {
+      "get": {
+        "summary": "Which ways in this deployment can actually offer",
+        "responses": {
+          "200": {
+            "description": "Everything a stranger can use to get in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaysIn"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/email/challenges": {
+      "post": {
+        "summary": "Ask for a code at an address",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskForCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A code is on its way, or was already sent for this request key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenedChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A code went out moments ago; another would break the one in the inbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooSoon"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/email/challenges/{id}/verify": {
+      "post": {
+        "summary": "Hand a code back",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; the session is in a cookie the page cannot read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedIn"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Wrong digits, or a body that was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This code is finished — used already, or replaced by a newer one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "This challenge has no tries left",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/{provider}/start": {
+      "post": {
+        "summary": "Leave to sign in with a provider",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "provider",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "next": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Send the browser here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No way in by that name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/sign-in-methods/{provider}/start": {
+      "post": {
+        "summary": "Leave to connect a provider to this account",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "provider",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "next": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Send the browser here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No way in by that name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/{provider}/callback": {
+      "get": {
+        "summary": "Where the provider sends the browser back to",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "provider",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Follow the Location; any `handover_result` says what became of the trip"
+          },
+          "404": {
+            "description": "No way in by that name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "summary": "Who is signed in, and what they can reach",
+        "responses": {
+          "200": {
+            "description": "The person behind this session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The session names somebody who is no longer here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change the name everything shows",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDisplayName"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Renamed"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces": {
+      "post": {
+        "summary": "Make a Space",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSpace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "This request key already made one, and this is that one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Space"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Made, with the requester as its first member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Space"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The name has no address in it, or the body was the wrong shape",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Somebody holds that address; the suggestion is held for nobody",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlugTaken"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}": {
+      "get": {
+        "summary": "Enter a Space",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Space at this address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Space"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not there, or not yours — the same answer on purpose",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser/sessions/current": {
+      "delete": {
+        "summary": "Stop being signed in",
+        "responses": {
+          "204": {
+            "description": "The session is revoked and the cookie is cleared"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

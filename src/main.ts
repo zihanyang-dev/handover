@@ -8,9 +8,9 @@
 
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
-import { loadEnv } from './env.ts'
+import { CREDENTIALS, loadEnv } from './env.ts'
 import { createLog } from './log.ts'
-import type { Provider } from './identity/provider.ts'
+import { PROVIDERS, type Provider } from './identity/provider.ts'
 import { handoverApp } from './server/app.ts'
 import type { SendCode } from './server/auth-api.ts'
 import { githubClient } from './server/oauth/github.ts'
@@ -36,15 +36,26 @@ const sendCode: SendCode = async (to, code) => {
 }
 
 /**
- * Built once, at startup. Google's is discovered over the network, so an unreachable provider is
- * something this finds out now rather than the first time somebody tries to sign in with it.
+ * How each provider's client is made. Required, one entry per provider: adding a name without
+ * saying how to build it is a compile error, not a way in that quietly never appears.
+ *
+ * The values are the hand-written modules, not rows in a table. Google discovers its endpoints
+ * over the network and GitHub does not, and that difference belongs in those files rather than in
+ * a shape they both have to be squeezed into.
  */
+const BUILD = {
+  google: googleClient,
+  github: async (id: string, secret: string) => githubClient(id, secret),
+} as const satisfies Record<Provider, (id: string, secret: string) => Promise<ProviderClient>>
+
+/** Built at startup, so an unreachable provider is found now and not at somebody's first sign-in. */
 const clients: Partial<Record<Provider, ProviderClient>> = {}
-if (env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_SECRET !== undefined) {
-  clients.google = await googleClient(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET)
-}
-if (env.GITHUB_CLIENT_ID !== undefined && env.GITHUB_CLIENT_SECRET !== undefined) {
-  clients.github = githubClient(env.GITHUB_CLIENT_ID, env.GITHUB_CLIENT_SECRET)
+for (const provider of PROVIDERS) {
+  const [idKey, secretKey] = CREDENTIALS[provider]
+  const id = env[idKey]
+  const secret = env[secretKey]
+  if (id !== undefined && secret !== undefined)
+    clients[provider] = await BUILD[provider](id, secret)
 }
 log.info({ providers: Object.keys(clients) }, 'sign-in providers')
 
@@ -55,6 +66,7 @@ const app = handoverApp({
   sendCode,
   log,
   origin: env.PUBLIC_ORIGIN,
+  webOrigin: env.WEB_ORIGIN,
   clients,
 })
 
