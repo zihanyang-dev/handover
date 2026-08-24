@@ -2,10 +2,10 @@ node_modules
 *.log
 .env
 .DS_Store
+coverage
 
 # Derived from the filesystem, which is already in git, so committing it would only be a
 # second copy of the routes. Unlike generated/, whose source is a database.
-web/routeTree.gen.ts
-web/dist
+apps/web/routeTree.gen.ts
+apps/web/dist
 .tanstack
-.DS_Store

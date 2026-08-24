@@ -12,6 +12,33 @@ const ISSUER = new URL('https://accounts.google.com')
 const SCOPE = 'openid email profile'
 
 /**
+ * `email_verified` is the whole of what makes this an identity. An address Google holds but has
+ * not confirmed proves nothing, and taking it as proof hands over somebody's account.
+ *
+ * Separated from the token exchange because this is the whole of the rule, and a rule only
+ * reachable through a signed token exchange is a rule nothing checks.
+ */
+export function identityFrom(claims: oauth.IDToken | undefined): Identified {
+  const email = claims?.['email']
+  const name = claims?.['name']
+
+  if (claims === undefined || claims['email_verified'] !== true || typeof email !== 'string') {
+    return { kind: 'no-verified-email' }
+  }
+
+  return {
+    kind: 'identified',
+    identity: {
+      provider: 'google',
+      subject: claims.sub,
+      verifiedEmail: normalizeEmail(email),
+      name: typeof name === 'string' ? name : null,
+      username: null,
+    },
+  }
+}
+
+/**
  * Discovery happens once, at startup. If Google cannot be reached the process should find out
  * then, not the first time somebody tries to sign in.
  */
@@ -24,28 +51,7 @@ export async function googleClient(
   return {
     begin: async (redirectUri) => begin(config, SCOPE, redirectUri),
 
-    identify: async (returned): Promise<Identified> => {
-      const tokens = await exchange(config, returned)
-      const claims = tokens.claims()
-      const email = claims?.['email']
-      const name = claims?.['name']
-
-      // `email_verified` is the whole of what makes this an identity. An address Google holds but
-      // has not confirmed proves nothing, and taking it as proof hands over somebody's account.
-      if (claims === undefined || claims['email_verified'] !== true || typeof email !== 'string') {
-        return { kind: 'no-verified-email' }
-      }
-
-      return {
-        kind: 'identified',
-        identity: {
-          provider: 'google',
-          subject: claims.sub,
-          verifiedEmail: normalizeEmail(email),
-          name: typeof name === 'string' ? name : null,
-          username: null,
-        },
-      }
-    },
+    identify: async (returned): Promise<Identified> =>
+      identityFrom((await exchange(config, returned)).claims()),
   }
 }

@@ -19,9 +19,17 @@ const SCOPE = 'read:user user:email'
 
 const API = 'https://api.github.com'
 
-type Account = { readonly id: number; readonly login: string; readonly name: string | null }
+export type Account = {
+  readonly id: number
+  readonly login: string
+  readonly name: string | null
+}
 
-type Address = { readonly email: string; readonly primary: boolean; readonly verified: boolean }
+export type Address = {
+  readonly email: string
+  readonly primary: boolean
+  readonly verified: boolean
+}
 
 async function ask<T>(
   config: oauth.Configuration,
@@ -43,10 +51,29 @@ async function ask<T>(
 /**
  * The address GitHub shows on a profile is whatever somebody typed there. Only `/user/emails`
  * says which ones they proved, and only a proved one may become an identity here.
+ *
+ * Separated from the two requests that feed it because this is the whole of the rule, and a rule
+ * only reachable through a signed token exchange is a rule nothing checks.
  */
-function proved(addresses: readonly Address[]): string | undefined {
-  const verified = addresses.filter((address) => address.verified)
-  return (verified.find((address) => address.primary) ?? verified[0])?.email
+export function identityFrom(
+  account: Account | undefined,
+  addresses: readonly Address[] | undefined,
+): Identified {
+  const verified = (addresses ?? []).filter((address) => address.verified)
+  const email = (verified.find((address) => address.primary) ?? verified[0])?.email
+
+  if (account === undefined || email === undefined) return { kind: 'no-verified-email' }
+
+  return {
+    kind: 'identified',
+    identity: {
+      provider: 'github',
+      subject: String(account.id),
+      verifiedEmail: normalizeEmail(email),
+      name: account.name,
+      username: account.login,
+    },
+  }
 }
 
 export function githubClient(clientId: string, clientSecret: string): ProviderClient {
@@ -57,22 +84,11 @@ export function githubClient(clientId: string, clientSecret: string): ProviderCl
 
     identify: async (returned): Promise<Identified> => {
       const tokens = await exchange(config, returned)
-      const account = await ask<Account>(config, tokens.access_token, '/user')
-      const addresses = await ask<Address[]>(config, tokens.access_token, '/user/emails')
-      const email = addresses === undefined ? undefined : proved(addresses)
 
-      if (account === undefined || email === undefined) return { kind: 'no-verified-email' }
-
-      return {
-        kind: 'identified',
-        identity: {
-          provider: 'github',
-          subject: String(account.id),
-          verifiedEmail: normalizeEmail(email),
-          name: account.name,
-          username: account.login,
-        },
-      }
+      return identityFrom(
+        await ask<Account>(config, tokens.access_token, '/user'),
+        await ask<Address[]>(config, tokens.access_token, '/user/emails'),
+      )
     },
   }
 }

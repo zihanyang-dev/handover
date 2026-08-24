@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  LIFETIME_MINUTES,
   MAX_ATTEMPTS,
+  codeLetter,
   hashCode,
   newCode,
   verifyChallenge,
@@ -84,6 +86,28 @@ describe('verifyChallenge', () => {
     ])
 
     expect(seen.size).toBe(5)
+  })
+})
+
+describe('what the letter says', () => {
+  it('puts the code in the subject, so it is readable from a notification', () => {
+    expect(codeLetter('493018').subject).toContain('493018')
+  })
+
+  it('states the lifetime this code actually has', () => {
+    // A letter that says five minutes while the code lives three is worse than a letter that
+    // says nothing: somebody waits, then blames themselves for typing it wrong.
+    expect(codeLetter('493018').text).toContain(`${String(LIFETIME_MINUTES)} minutes`)
+  })
+
+  it('says only the newest one works, because the last one just stopped working', () => {
+    expect(codeLetter('493018').text).toMatch(/only the newest one works/i)
+  })
+
+  it('tells somebody who did not ask that ignoring it is enough', () => {
+    // The one thing a person who did not ask for this needs to know, and the one thing a letter
+    // like this usually leaves out.
+    expect(codeLetter('493018').text).toMatch(/did not ask/i)
   })
 })
 

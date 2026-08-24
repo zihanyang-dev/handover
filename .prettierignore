@@ -1,5 +1,6 @@
 **/generated
 node_modules
+coverage
 pnpm-lock.yaml
 apps/web/dist
 apps/web/routeTree.gen.ts
