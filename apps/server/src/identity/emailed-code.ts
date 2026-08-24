@@ -57,6 +57,24 @@ export const RESEND_INTERVAL_SECONDS = 30
 const DIGITS = 6
 const RANGE = 10 ** DIGITS
 
+/**
+ * What the letter says.
+ *
+ * The words live with the concept, not with whoever delivers them. A delivery adapter that also
+ * wrote the copy would be two jobs in one place, and the copy would be the one nobody reviewed.
+ */
+export function codeLetter(code: string): { readonly subject: string; readonly text: string } {
+  return {
+    subject: `${code} is your Handover code`,
+    text: [
+      `Your code is ${code}.`,
+      ``,
+      `It works for ${String(LIFETIME_MINUTES)} minutes, and only the newest one works.`,
+      `If you did not ask for it, you can ignore this — nobody can get in without it.`,
+    ].join('\n'),
+  }
+}
+
 /** Six digits, drawn without the bias that taking a remainder would introduce. */
 export function newCode(): string {
   return String(randomInt(0, RANGE)).padStart(DIGITS, '0')

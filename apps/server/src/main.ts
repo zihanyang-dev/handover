@@ -9,7 +9,9 @@
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
 import { CREDENTIALS, loadEnv } from './env.ts'
+import { codeLetter } from './identity/emailed-code.ts'
 import { createLog } from './log.ts'
+import { resend, type Mailer } from './mail.ts'
 import { PROVIDERS, type Provider } from './identity/provider.ts'
 import { handoverApp } from './server/app.ts'
 import type { SendCode } from './server/auth-api.ts'
@@ -23,16 +25,31 @@ const GRACE_MS = 10_000
 const env = loadEnv()
 const log = createLog(env)
 
-// There is no mail provider yet, and the stand-in puts the code where the logs are. That is fine
-// while the only reader is whoever is running it, and never fine anywhere else.
-if (env.NODE_ENV === 'production') {
+// Without a key the code goes to the log, which is fine while the only reader is whoever is
+// running it, and never fine anywhere else.
+if (env.RESEND_API_KEY === undefined && env.NODE_ENV === 'production') {
   log.fatal('no mail provider is configured; refusing to start')
   process.exit(1)
 }
 
+const deliver: Mailer =
+  env.RESEND_API_KEY === undefined
+    ? async (letter) => {
+        log.warn(
+          { to: letter.to, plainLetter: letter.text },
+          'no mail provider: the letter is only here',
+        )
+        return 'sent'
+      }
+    : resend(env)
+
+// The route answers the same way whatever comes back, so this is the only place the outcome is
+// ever written down. A refusal that nobody logged is a person waiting for a letter that will
+// never arrive, and no way to find out why.
 const sendCode: SendCode = async (to, code) => {
-  log.warn({ to, plainCode: code }, 'no mail provider: the code is only here')
-  return 'sent'
+  const delivery = await deliver({ to, ...codeLetter(code) })
+  if (delivery !== 'sent') log.error({ to, delivery }, 'the code may not have arrived')
+  return delivery
 }
 
 /**

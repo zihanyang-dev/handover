@@ -33,6 +33,13 @@ const SHAPE = z.object({
    * A provider is offered only when both of its values are here. Half a pair is a configuration
    * mistake, not a provider, and it fails the pair below rather than half-working at sign-in.
    */
+  /** Given, letters go out. Missing, they do not, and the process says so rather than pretending. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /**
+   * Whom letters come from. Resend only accepts an address on a domain it has verified, apart
+   * from its own sandbox one, which reaches the account holder and nobody else.
+   */
+  MAIL_FROM: z.email().default('onboarding@resend.dev'),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   GITHUB_CLIENT_ID: z.string().min(1).optional(),
