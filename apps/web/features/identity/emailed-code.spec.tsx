@@ -40,12 +40,12 @@ function open(at: string) {
 }
 
 /** Where somebody lands after asking for a code, with what the server told them. */
-function codeScreen(): string {
+function codeScreen(resendAfterSeconds = '30'): string {
   const search = new URLSearchParams({
     email: EMAIL,
     challengeId: CHALLENGE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
-    resendAfterSeconds: '30',
+    resendAfterSeconds,
   })
   return `/sign-in/code?${search.toString()}`
 }
@@ -122,6 +122,21 @@ describe('handing the code back', () => {
     const back = await screen.findByRole('link', { name: /use a different address/i })
 
     expect(back.getAttribute('href')).toContain(encodeURIComponent(EMAIL))
+  })
+})
+
+describe('asking for another one', () => {
+  it('says why nothing was sent, rather than looking like a button that does nothing', async () => {
+    server.use(
+      http.post('*/auth/email/challenges', () =>
+        HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
+      ),
+    )
+    open(codeScreen('0'))
+
+    await userEvent.click(await screen.findByRole('button', { name: /send another/i }))
+
+    expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
   })
 })
 

@@ -32,6 +32,8 @@ const SAID: Record<string, string> = {
   'attempts-exhausted': 'Too many tries. This code is finished — start again from your inbox.',
   'no-challenge': 'That sign-in is no longer here. Start again.',
   'malformed-request': 'The code is six digits.',
+  'address-refused': 'No mail can reach that address. Use a different one.',
+  'too-soon': 'A code just went out. Give it a moment.',
 }
 
 function useCountdown(seconds: number): number {
@@ -58,19 +60,24 @@ function Resend({ email, after }: { readonly email: string; readonly after: numb
   const resend = useMutation({
     mutationFn: async () => {
       retryKeyDone(`code:${email}`)
-      const { data } = await api.POST('/auth/email/challenges', {
+      const { data, error } = await api.POST('/auth/email/challenges', {
         body: { email, requestKey: retryKey(`code:${email}`) },
       })
+      if (data === undefined) throw new Error(error.reason)
       return data
     },
-    onSuccess: async (opened) => {
-      if (opened === undefined) return
-      await navigate({ to: '/sign-in/code', search: { email, ...opened } })
-    },
+    onSuccess: async (opened) => navigate({ to: '/sign-in/code', search: { email, ...opened } }),
   })
 
   return (
     <div className="card stack-tight" style={{ marginTop: '0.75rem' }}>
+      {/* A button that did nothing looks the same as a letter that never came. */}
+      {resend.isError && (
+        <p className="said said-bad">
+          <ExclamationCircleFill aria-hidden />
+          {SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.'}
+        </p>
+      )}
       <button
         className="button button-secondary"
         type="button"

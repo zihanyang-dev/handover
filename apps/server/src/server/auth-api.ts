@@ -20,8 +20,12 @@ import { startSession } from './session.ts'
 
 /**
  * Handing a code to somebody. Three answers, because "we do not know" is a real one — the mail
- * may be in flight. Whichever it is, this route answers the same way: the challenge is valid and
- * the person can ask for another code. Recording the outcome belongs to whoever sends the mail.
+ * may be in flight.
+ *
+ * `unknown` is answered like a success: the letter may already be in the inbox, and asking again
+ * with the same request key will not produce a second one. `refused` is not, because it is the
+ * one case we are certain nothing arrived, and telling somebody to go check their inbox is then
+ * a lie they can only discover by waiting.
  *
  * It returns its uncertainty instead of throwing it, because a failed send must not take down a
  * challenge that was committed and works.
@@ -84,7 +88,7 @@ const askForCode = createRoute({
   request: { body: takes(askedForCode) },
   responses: {
     201: sends(openedBody, 'A code is on its way, or was already sent for this request key'),
-    400: refusal('The body was not the shape it claims'),
+    400: refusal('The body was not the shape it claims, or no letter can reach that address'),
     429: sends(waitBody, 'A code went out moments ago; another would break the one in the inbox'),
   },
 })
@@ -136,6 +140,8 @@ type Opened =
       readonly resendAfterSeconds: number
     }
   | { readonly kind: 'too-soon'; readonly retryAfterSeconds: number }
+  /** The provider would not take it. Whatever the address is, no letter went to it. */
+  | { readonly kind: 'undeliverable' }
 
 async function open(deps: AuthApi, asked: z.infer<typeof askedForCode>): Promise<Opened> {
   const code = newCode()
@@ -148,7 +154,9 @@ async function open(deps: AuthApi, asked: z.infer<typeof askedForCode>): Promise
   if (opened.kind === 'too-soon') return opened
   // A replay means the mail for this request is already sent or already in flight, and the code
   // just minted is not the one inside it. Sending would put two codes in one inbox.
-  if (opened.kind === 'opened') await deps.sendCode(asked.email, code)
+  if (opened.kind === 'opened' && (await deps.sendCode(asked.email, code)) === 'refused') {
+    return { kind: 'undeliverable' }
+  }
 
   return {
     kind: 'opened',
@@ -203,6 +211,9 @@ export function authApi(deps: AuthApi) {
             },
             429,
           )
+        }
+        if (outcome.kind === 'undeliverable') {
+          return c.json({ reason: 'address-refused', recovery: 'retype' as const }, 400)
         }
         const { challengeId, expiresAt, resendAfterSeconds } = outcome
         return c.json({ challengeId, expiresAt, resendAfterSeconds }, 201)

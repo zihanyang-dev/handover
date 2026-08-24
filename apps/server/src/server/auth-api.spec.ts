@@ -122,6 +122,43 @@ describe('asking for a code', () => {
   })
 })
 
+describe('when the letter did not go', () => {
+  function whenDeliveryIs(delivery: Awaited<ReturnType<SendCode>>) {
+    return authApi({
+      db,
+      secret: env.AUTH_SECRET,
+      sendCode: async () => delivery,
+      providers: ['google', 'github'],
+    })
+  }
+
+  async function ask(app: ReturnType<typeof authApi>, key: string): Promise<Response> {
+    return app.request('/auth/email/challenges', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, requestKey: key }),
+    })
+  }
+
+  it('refuses when the provider refused, instead of sending somebody to an empty inbox', async () => {
+    const answered = await ask(whenDeliveryIs('refused'), `${RUN}-refused`)
+
+    expect(answered.status).toBe(400)
+    expect(await answered.json()).toEqual({
+      reason: 'address-refused',
+      recovery: 'retype' satisfies Recovery,
+    })
+  })
+
+  it('still says a code is on its way when nobody knows, because it may already be', async () => {
+    // The letter may be in flight. Refusing here would tell somebody to retype an address that
+    // is about to receive a code, and the retry would then be the second one in their inbox.
+    const answered = await ask(whenDeliveryIs('unknown'), `${RUN}-unknown`)
+
+    expect(answered.status).toBe(201)
+  })
+})
+
 describe('what a stranger is offered', () => {
   it('names the ways in, so a sign-in page cannot show a door that opens onto an error', async () => {
     const response = await app.request('/auth/ways-in')

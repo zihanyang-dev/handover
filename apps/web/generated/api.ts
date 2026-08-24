@@ -72,7 +72,7 @@ export interface paths {
                         "application/json": components["schemas"]["OpenedChallenge"];
                     };
                 };
-                /** @description The body was not the shape it claims */
+                /** @description The body was not the shape it claims, or no letter can reach that address */
                 400: {
                     headers: {
                         [name: string]: unknown;

@@ -30,6 +30,7 @@ function known(kind: string): kind is Provider {
 const SAID: Record<string, string> = {
   'too-soon': 'A code just went out. Give it a moment.',
   'malformed-request': 'Check that address.',
+  'address-refused': 'No mail can reach that address. Check it, or use a different one.',
 }
 
 async function waysIn(): Promise<readonly string[]> {

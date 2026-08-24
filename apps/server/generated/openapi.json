@@ -328,7 +328,7 @@
             }
           },
           "400": {
-            "description": "The body was not the shape it claims",
+            "description": "The body was not the shape it claims, or no letter can reach that address",
             "content": {
               "application/json": {
                 "schema": {

@@ -101,6 +101,23 @@ describe('choosing a way in', () => {
     expect(bodies[0]).toMatchObject({ email: 'mina@example.com' })
   })
 
+  it('says an address cannot be reached instead of sending somebody to an empty inbox', async () => {
+    server.use(
+      offering(),
+      http.post('*/auth/email/challenges', () =>
+        HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
+      ),
+    )
+    open('/sign-in')
+
+    await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
+    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+
+    expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
+    // Staying put is the point: the code screen would be a wait for a letter that never comes.
+    expect(screen.queryByText(/check your email/i)).toBeNull()
+  })
+
   it('reuses one key across a retry, so one intention is never two mails', async () => {
     const bodies: Record<string, unknown>[] = []
     let attempt = 0
