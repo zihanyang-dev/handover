@@ -13,6 +13,10 @@ apps/server/        API
   migrations/       已提交的永不修改
   generated/        生成物,永不手改
 apps/web/           浏览器应用
+apps/cli/           装在机器上的那个命令
+  src/              一个文件一条行为
+  service-check/    交给 systemd 这件事的测试,连同它需要的那台机器
+  generated/        生成物,永不手改
 packages/universal/ 两边必须算出同一个答案的东西
 
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
@@ -22,8 +26,8 @@ compose.yml         一个 postgres,两个库
 **边界由工具强制,不靠自觉。** 按包名跨过去,pnpm 找不到;用 `../` 绕过去,
 `rootDir` 让它编译不过。
 
-`apps/server/src/env.ts` 是**唯一**读 `process.env` 的文件,`src/log.ts` 是唯一写 stdout 的,
-两条都由 `lint` 强制。别处拿到的是已经 parse 过的值。
+`apps/server/src/env.ts` 和 `apps/cli/src/env.ts` 是**唯二**读 `process.env` 的文件,
+`src/log.ts` 是唯一写 stdout 的,两条都由 `lint` 强制。别处拿到的是已经 parse 过的值。
 
 `packages/universal` 的入包标准就是它的名字:**能在两边跑的才进来**。
 只有一边算得了的东西走网线 —— 响应里的值对发出它的那个部署永远是对的,
@@ -41,8 +45,13 @@ compose.yml         一个 postgres,两个库
 ```
 generated/schema.sql   pg_dump 出的当前 schema,评审时能直接读
 generated/db.ts        kysely-codegen 出的类型
+generated/openapi.json 从路由导出的契约
+generated/api.ts       web 和 cli 各一份,从上面那个 json 生成
 其余                   手写
 ```
+
+**契约共享,客户端不共享。** 两个应用从同一份 `openapi.json` 各生成一份类型,但浏览器那个靠
+cookie、命令行那个靠 bearer token —— 抽成一个客户端只会逼出一个两边都别扭的最小公倍数。
 
 两份都由 `pnpm generate` 产生,**逐字节可复现**:pg_dump 的 `\restrict` key 定死,
 postgres 镜像钉到补丁版本。否则 `git diff --exit-code generated` 会红在无关的原因上。
@@ -82,7 +91,7 @@ pnpm generate     迁移测试库 → schema.sql → db.ts → openapi.json → 
 pnpm typecheck    三个包各自的类型世界
 pnpm lint         oxlint,type-aware,按包
 pnpm format       prettier --check
-pnpm test         vitest
+pnpm test         vitest —— 四组:unit · web · db(要 postgres)· service(要 docker 里的 systemd)
 pnpm coverage     跑一遍并打一张表。不设阈值:百分比不是关于正确性的事实
 pnpm check        以上全部 + generate 无 diff
 ```
