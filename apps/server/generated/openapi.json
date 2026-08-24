@@ -380,12 +380,19 @@
               "machineId": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "lookFor": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
               "kind",
               "token",
-              "machineId"
+              "machineId",
+              "lookFor"
             ]
           },
           {
@@ -496,10 +503,17 @@
             "type": "integer",
             "minimum": 0,
             "exclusiveMinimum": true
+          },
+          "lookFor": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
-          "pollSeconds"
+          "pollSeconds",
+          "lookFor"
         ]
       },
       "MachineReport": {

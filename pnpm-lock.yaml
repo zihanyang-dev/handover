@@ -36,6 +36,16 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(happy-dom@20.11.6)(jiti@2.7.0)(lightningcss@1.33.0)(msw@2.15.0(@types/node@24.13.3)(typescript@5.9.3))(tsx@4.23.12)(yaml@2.9.0)
 
+  apps/cli:
+    dependencies:
+      openapi-fetch:
+        specifier: ^0.17.0
+        version: 0.17.0
+    devDependencies:
+      openapi-typescript:
+        specifier: ^7.13.0
+        version: 7.13.0(typescript@5.9.3)
+
   apps/server:
     dependencies:
       '@handover/universal':

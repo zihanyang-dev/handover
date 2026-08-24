@@ -10,6 +10,7 @@ import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { openEnrolment } from '../db/enrolment.ts'
 import { collectEnrolment } from '../db/machine.ts'
+import { AGENT_COMMANDS } from '../machine/agent-kind.ts'
 import { POLL_SECONDS } from '../machine/presence.ts'
 import { hashSecret, newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
@@ -47,7 +48,13 @@ const collecting = z.object({ secret: z.string().min(1).max(200) }).openapi('Col
 
 const collectedBody = z
   .discriminatedUnion('kind', [
-    z.object({ kind: z.literal('granted'), token: z.string(), machineId: z.uuid() }),
+    z.object({
+      kind: z.literal('granted'),
+      token: z.string(),
+      machineId: z.uuid(),
+      /** So a machine knows what to look for before its first check-in, not 25 seconds after. */
+      lookFor: z.array(z.string()).readonly(),
+    }),
     z.object({ kind: z.literal('waiting') }),
     z.object({ kind: z.literal('refused') }),
     z.object({ kind: z.literal('expired') }),
@@ -114,7 +121,12 @@ export function enrolmentApi(deps: EnrolmentApi) {
 
       if (collected.kind === 'granted') {
         return c.json(
-          { kind: 'granted' as const, token: token.secret, machineId: collected.machineId },
+          {
+            kind: 'granted' as const,
+            token: token.secret,
+            machineId: collected.machineId,
+            lookFor: AGENT_COMMANDS,
+          },
           200,
         )
       }

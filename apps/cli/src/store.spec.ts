@@ -1,0 +1,73 @@
+import { mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { attachmentPath, readAttachment, writeAttachment } from './store.ts'
+
+let HOME = ''
+
+beforeEach(async () => {
+  HOME = await mkdtemp(join(tmpdir(), 'handover-store-'))
+})
+
+const ATTACHMENT = { origin: 'http://handover.test', machineId: 'm-1', token: 'hm_token' }
+
+describe('where it is kept', () => {
+  it('is under the config home when this is somebody running it', () => {
+    expect(attachmentPath('/home/mina/.config', false)).toBe(
+      '/home/mina/.config/handover/machine.json',
+    )
+  })
+
+  it('falls back to the conventional place when nothing says otherwise', () => {
+    expect(attachmentPath(undefined, false)).toMatch(/\.config\/handover\/machine\.json$/u)
+  })
+
+  it('is outside any home directory when it is a system service', () => {
+    // A system service runs as root or a service user and cannot read somebody's home. Two
+    // locations because they belong to two different things, not because one is a fallback.
+    expect(attachmentPath('/home/mina/.config', true)).toBe('/etc/handover/machine.json')
+  })
+})
+
+describe('keeping it', () => {
+  it('reads back exactly what was written', async () => {
+    const path = join(HOME, 'machine.json')
+
+    await writeAttachment(path, ATTACHMENT)
+
+    expect(await readAttachment(path)).toEqual(ATTACHMENT)
+  })
+
+  it('is readable by nobody else', async () => {
+    // It is a credential. A file anyone on the machine can read is a credential anyone on the
+    // machine has.
+    const path = join(HOME, 'machine.json')
+
+    await writeAttachment(path, ATTACHMENT)
+
+    expect((await stat(path)).mode & 0o077).toBe(0)
+  })
+
+  it('narrows a file that was already there with wider permissions', async () => {
+    const path = join(HOME, 'machine.json')
+    await writeFile(path, '{}', { mode: 0o644 })
+
+    await writeAttachment(path, ATTACHMENT)
+
+    expect((await stat(path)).mode & 0o077).toBe(0)
+  })
+
+  it('has nothing to read before anything was written', async () => {
+    expect(await readAttachment(join(HOME, 'never-written.json'))).toBeUndefined()
+  })
+
+  it('has nothing to read when the file is not what it should be', async () => {
+    // Half-written by a machine that lost power, or edited by hand. Both mean the same thing to
+    // the caller: there is nothing here to be, so ask to come in.
+    const path = join(HOME, 'machine.json')
+    await writeFile(path, '{ not json')
+
+    expect(await readAttachment(path)).toBeUndefined()
+  })
+})

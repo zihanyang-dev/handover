@@ -9,7 +9,7 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
-import { agentsFound, AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
+import { agentsFound, AGENT_COMMANDS, AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import { POLL_SECONDS, presence } from '../machine/presence.ts'
 import { api, saysNothing, sends, takes } from './contract.ts'
 import { body, refusal, type Failure } from './failure.ts'
@@ -39,7 +39,17 @@ const reporting = z
   .openapi('MachineReport')
 
 const nothingYetBody = z
-  .object({ pollSeconds: z.number().int().positive() })
+  .object({
+    /**
+     * How long to wait before asking again.
+     *
+     * Told rather than compiled in, so the rate is this deployment's to set. Once there is work to
+     * wait for, the server holds the request instead and this becomes how long it holds.
+     */
+    pollSeconds: z.number().int().positive(),
+    /** Which commands to look for. Told every time, so the list can change without a release. */
+    lookFor: z.array(z.string()).readonly(),
+  })
   .openapi('NothingForThisMachine')
 
 const agentBody = z
@@ -116,7 +126,7 @@ export function machineApi(deps: MachineApi) {
 
       // Nothing to hand out in this slice. The shape is the one work will arrive in, so adding it
       // is adding to this answer rather than replacing this route.
-      return c.json({ pollSeconds: POLL_SECONDS }, 200)
+      return c.json({ pollSeconds: POLL_SECONDS, lookFor: AGENT_COMMANDS }, 200)
     })
 
     .openapi({ ...leave, middleware: [attached] }, async (c) => {

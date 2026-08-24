@@ -16,6 +16,15 @@ export type AgentKind = keyof typeof AGENT_KINDS
 
 export const AGENT_KIND_NAMES = Object.keys(AGENT_KINDS) as readonly AgentKind[]
 
+/**
+ * The commands a machine should look for.
+ *
+ * Told to machines rather than compiled into them: this deployment decides what it knows how to
+ * run, so adding an agent here is every machine looking for it on its next check-in, with nothing
+ * to install and nothing to upgrade.
+ */
+export const AGENT_COMMANDS = AGENT_KIND_NAMES.map((kind) => AGENT_KINDS[kind].command)
+
 /** What a machine found: which kind, and which version of it answered. */
 export type FoundAgent = {
   readonly kind: AgentKind

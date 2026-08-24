@@ -1,0 +1,18 @@
+{
+  "name": "@handover/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "handover": "./src/main.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../server/generated/openapi.json -o generated/api.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0"
+  }
+}
