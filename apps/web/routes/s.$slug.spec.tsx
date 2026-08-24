@@ -54,4 +54,24 @@ describe('entering a Space', () => {
     // Telling them apart would make the address bar a way to find out what exists.
     expect(await screen.findByText(/this space is not available/i)).toBeDefined()
   })
+
+  it('offers a way out from inside, not only from the Spaces list', async () => {
+    // Somebody who came straight to a Space by its address should not have to go somewhere else
+    // to leave. `prd.md` asks for this on every screen in here.
+    server.use(
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/me', () =>
+        HttpResponse.json({
+          displayName: 'mina@example.com',
+          credentials: [{ kind: 'email', address: 'mina@example.com', state: 'ready' }],
+          spaces: [],
+        }),
+      ),
+    )
+    open('/s/acme')
+
+    expect(await screen.findByRole('button', { name: /sign out/i })).toBeDefined()
+  })
 })

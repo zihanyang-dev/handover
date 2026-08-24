@@ -4,5 +4,6 @@
   "routesDirectory": "./routes",
   "generatedRouteTree": "./routeTree.gen.ts",
   "quoteStyle": "single",
-  "semicolons": false
+  "semicolons": false,
+  "routeFileIgnorePattern": "\\.spec\\.tsx?$"
 }

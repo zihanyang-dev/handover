@@ -1,9 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { CheckCircleFill, ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api } from '../api.ts'
 import { DisplayName } from '../features/identity/display-name.tsx'
-import { meQuery, type Me } from '../features/identity/me.ts'
 import { Credentials } from '../features/identity/credentials.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
 import { SpaceList } from '../features/spaces/space-list.tsx'
@@ -29,13 +27,7 @@ const WENT_WRONG: Record<string, string> = {
   'already-connected': 'You already have one of those connected.',
 }
 
-/** The address this account started with, which is the one to show beside signing out. */
-function firstAddress(ways: Me['credentials']): string {
-  return ways.find((way) => way.kind === 'email')?.address ?? ''
-}
-
 function Screen() {
-  const me = useQuery(meQuery)
   const { handover_result: result } = Route.useSearch()
   const wentWrong = result === undefined ? undefined : WENT_WRONG[result]
 
@@ -64,7 +56,7 @@ function Screen() {
       <NewSpace />
       <Credentials />
       <DisplayName />
-      <SignOut account={firstAddress(me.data?.credentials ?? [])} />
+      <SignOut />
     </div>
   )
 }

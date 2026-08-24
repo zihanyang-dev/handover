@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { api } from '../api.ts'
+import { SignOut } from '../features/identity/sign-out.tsx'
 
 function Screen() {
   const { slug } = Route.useParams()
@@ -39,6 +40,9 @@ function Screen() {
       <section className="panel">
         <p className="empty">Nothing lives in a Space yet.</p>
       </section>
+      {/* Reachable from in here, not only from the Spaces list: somebody who came straight to a
+          Space by its address should not have to go somewhere else to leave. */}
+      <SignOut />
     </div>
   )
 }
