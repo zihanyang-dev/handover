@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { api } from '../api.ts'
 import { SignOut } from '../features/identity/sign-out.tsx'
+import { Machines } from '../features/machines/machines.tsx'
 
 function Screen() {
   const { slug } = Route.useParams()
@@ -12,6 +13,18 @@ function Screen() {
       return data ?? null
     },
   })
+
+  // Nothing is known yet. Rendering the Space now would show its frame with no name in it, and
+  // for a moment a Space that turns out not to exist looks like one that does.
+  if (space.isPending) {
+    return (
+      <div className="page">
+        <section className="panel">
+          <p className="empty">Looking…</p>
+        </section>
+      </div>
+    )
+  }
 
   // Not there and not yours are the same answer, so this page cannot tell them apart either.
   if (space.data === null) {
@@ -37,9 +50,7 @@ function Screen() {
           All Spaces
         </Link>
       </div>
-      <section className="panel">
-        <p className="empty">Nothing lives in a Space yet.</p>
-      </section>
+      <Machines slug={slug} />
       {/* Reachable from in here, not only from the Spaces list: somebody who came straight to a
           Space by its address should not have to go somewhere else to leave. */}
       <SignOut />

@@ -37,6 +37,8 @@ describe('entering a Space', () => {
       http.get('*/spaces/acme', () =>
         HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
       ),
+      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
+      http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
     )
     open('/s/acme')
 
@@ -48,6 +50,8 @@ describe('entering a Space', () => {
       http.get('*/spaces/:slug', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
+      http.get('*/spaces/:slug/machines', () => HttpResponse.json({ machines: [] })),
+      http.get('*/me', () => HttpResponse.json({ displayName: '', credentials: [], spaces: [] })),
     )
     open('/s/somebody-elses')
 
@@ -62,6 +66,7 @@ describe('entering a Space', () => {
       http.get('*/spaces/acme', () =>
         HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
       ),
+      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
       http.get('*/me', () =>
         HttpResponse.json({
           displayName: 'mina@example.com',
