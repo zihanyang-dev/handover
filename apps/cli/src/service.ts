@@ -78,3 +78,55 @@ ${args}
 </plist>
 `
 }
+
+/**
+ * Where the file goes, and what to run to make it take effect.
+ *
+ * Both are printed before anything happens. A program that installs a service and does not say
+ * where leaves somebody unable to look at it, change it, or turn it off without guessing.
+ */
+export type Handover = {
+  readonly path: string
+  readonly steps: readonly (readonly string[])[]
+  readonly contents: string
+}
+
+export function handoverFor(spec: ServiceSpec, platform: NodeJS.Platform, home: string): Handover {
+  if (platform === 'darwin') return toLaunchd(spec, home)
+  return toSystemd(spec, home)
+}
+
+function toLaunchd(spec: ServiceSpec, home: string): Handover {
+  const path = spec.system
+    ? `/Library/LaunchDaemons/${spec.label}.plist`
+    : `${home}/Library/LaunchAgents/${spec.label}.plist`
+
+  // `bootstrap` rather than the older `load`: it names the domain, so there is no question about
+  // which session a service went into.
+  const domain = spec.system ? 'system' : `gui/${String(process.getuid?.() ?? 0)}`
+
+  return {
+    path,
+    contents: plistFor(spec),
+    steps: [['launchctl', 'bootstrap', domain, path]],
+  }
+}
+
+function toSystemd(spec: ServiceSpec, home: string): Handover {
+  const path = spec.system
+    ? '/etc/systemd/system/handover.service'
+    : `${home}/.config/systemd/user/handover.service`
+
+  // `--user` is not a flavour of the same thing: it is a different manager, owned by the person
+  // rather than the machine, which is exactly the difference between a laptop and a server.
+  const scope = spec.system ? [] : ['--user']
+
+  return {
+    path,
+    contents: unitFor(spec),
+    steps: [
+      ['systemctl', ...scope, 'daemon-reload'],
+      ['systemctl', ...scope, 'enable', '--now', 'handover'],
+    ],
+  }
+}

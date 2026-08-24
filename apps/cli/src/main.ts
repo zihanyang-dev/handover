@@ -2,20 +2,32 @@
 /**
  * The command a person runs on the machine they want to connect.
  *
- * It runs in the foreground and stays there. Nothing here forks, writes a pid file or invents a
- * log directory: staying alive across a logout or a reboot is what a service manager is for, and
- * a program that does it itself ends up owning a worse copy of one.
+ * `connect` does the whole thing, including handing the machine to whatever keeps things running
+ * here, so closing the terminal is not the end of it. `run` is the same work in the foreground
+ * with nothing installed, for finding out why something is not working.
+ *
+ * Nothing here forks, writes a pid file, or decides when to restart. Those belong to a service
+ * manager and it is better at all three; a program that does them itself ends up owning a worse
+ * copy of one, along with the questions that come with it.
  */
 
+import { execFile } from 'node:child_process'
+import { hostname, homedir } from 'node:os'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
-import { hostname } from 'node:os'
+import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
-import { askToConnect, waitToBeLetIn } from './connect.ts'
 import { keepCheckingIn } from './checking-in.ts'
+import { askToConnect, waitToBeLetIn } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
-import { attachmentPath, readAttachment, writeAttachment } from './store.ts'
+import { handoverFor } from './service.ts'
+import { resolvedPath } from './shell-path.ts'
+import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
-const { values } = parseArgs({
+const run = promisify(execFile)
+
+const { values, positionals } = parseArgs({
   options: {
     origin: { type: 'string' },
     name: { type: 'string' },
@@ -25,75 +37,128 @@ const { values } = parseArgs({
 })
 
 const env = readEnv()
-const origin = values.origin ?? env.origin
+const machineName = values.name ?? hostname()
 const where = attachmentPath(env.configHome, values.system)
+const command = positionals[0] ?? 'connect'
+
+/** Straight to stderr: stdout belongs to whatever a person might want to pipe. */
+function say(line: string): void {
+  process.stderr.write(`${line}\n`)
+}
 
 const sleep = async (seconds: number): Promise<void> =>
   new Promise((wake) => setTimeout(wake, seconds * 1000))
 
-const stopping = new AbortController()
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => {
-    stopping.abort()
-  })
-}
-
-const existing = await readAttachment(where)
-const attachment = existing ?? (await enrol())
-
-const api = apiFor(attachment.origin, attachment.token)
-const stopped = await keepCheckingIn(
-  api,
-  await lookForNow(),
-  { sleep, say: report, env: machineEnvironment() },
-  stopping.signal,
-)
-
-if (stopped.kind === 'removed') {
-  report('this machine was taken out of its Space; connect it again to come back')
+if (command === 'connect') {
+  if ((await readAttachment(where)) === undefined) await enrol()
+  await handOver()
+} else if (command === 'run') {
+  const attachment = await readAttachment(where)
+  if (attachment === undefined) {
+    say('this machine is not connected yet; run `handover connect` first')
+    process.exit(1)
+  }
+  await stayConnected(attachment)
+} else {
+  say(`no such command: ${command}`)
+  say('try: handover connect   ·   handover run')
   process.exit(1)
 }
 
-// Said on the way out so the Space shows it gone at once, rather than after the silence runs long
-// enough to count.
-await api.DELETE('/machines/current/session')
-report('stopped')
+async function enrol(): Promise<Attachment> {
+  const asked = await askToConnect(apiFor(values.origin ?? env.origin), machineName)
 
-async function enrol() {
-  const asked = await askToConnect(apiFor(origin), values.name ?? hostname())
-
-  const connected = await waitToBeLetIn(apiFor(origin), origin, asked, {
-    show: (shown) => {
-      report(`open  ${shown.verifyUrl}`)
-      report(`code  ${shown.userCode}`)
-      report('')
-      report(`or open  ${shown.verifyUrlComplete}`)
+  const connected = await waitToBeLetIn(
+    apiFor(values.origin ?? env.origin),
+    values.origin ?? env.origin,
+    asked,
+    {
+      show: (shown) => {
+        say(`open  ${shown.verifyUrl}`)
+        say(`code  ${shown.userCode}`)
+        say('')
+        say(`or open  ${shown.verifyUrlComplete}`)
+      },
+      sleep,
     },
-    sleep,
-  })
+  )
 
   if (connected.kind === 'gave-up') {
-    report(`did not get in: ${connected.why}`)
+    say(`did not get in: ${connected.why}`)
     process.exit(1)
   }
 
   await writeAttachment(where, connected.attachment)
-  report(`connected as ${values.name ?? hostname()}`)
+  say(`connected as ${machineName}`)
   return connected.attachment
 }
 
 /**
- * What to look for on the very first pass.
+ * Writes the service file and runs what makes it take effect, saying both first.
  *
- * A machine that just connected was told; one starting again from a stored credential asks. Both
- * come from the server, so neither carries a list that could be older than the one it reports to.
+ * The path is printed whether or not this works, because a machine somebody cannot find the
+ * service for is one they cannot change, look at, or turn off without guessing.
  */
-async function lookForNow(): Promise<readonly string[]> {
-  const { data } = await api.POST('/machines/current/poll', { body: { found: [] } })
-  return data?.lookFor ?? []
+async function handOver(): Promise<void> {
+  const handover = handoverFor(
+    {
+      // Absolute, and never resolved through a shell: a typo in a profile must not be able to
+      // stop a service from starting.
+      executable: process.execPath,
+      args: [process.argv[1] ?? '', 'run', ...(values.system ? ['--system'] : [])],
+      system: values.system,
+      label: 'dev.handover.machine',
+    },
+    process.platform,
+    homedir(),
+  )
+
+  say(`service  ${handover.path}`)
+
+  await mkdir(dirname(handover.path), { recursive: true })
+  await writeFile(handover.path, handover.contents)
+
+  for (const step of handover.steps) {
+    say(`         ${step.join(' ')}`)
+    await run(step[0] ?? '', step.slice(1))
+  }
+
+  say('running. closing this terminal will not stop it.')
 }
 
-/** Straight to stderr: stdout belongs to whatever a person might want to pipe. */
-function report(line: string): void {
-  process.stderr.write(`${line}\n`)
+async function stayConnected(attachment: Attachment): Promise<void> {
+  const stopping = new AbortController()
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      stopping.abort()
+    })
+  }
+
+  const api = apiFor(attachment.origin, attachment.token)
+
+  // Asking the login shell, because a service does not inherit one. Said out loud: "no agents
+  // found" reads differently depending on which PATH was searched.
+  const looking = await resolvedPath(machineEnvironment(), env.shell)
+  say(`looking on ${looking.from === 'login-shell' ? 'your shell PATH' : "this process's PATH"}`)
+
+  const first = await apiFor(attachment.origin, attachment.token).POST('/machines/current/poll', {
+    body: { found: [] },
+  })
+
+  const stopped = await keepCheckingIn(
+    api,
+    first.data?.lookFor ?? [],
+    { sleep, say, env: { ...machineEnvironment(), PATH: looking.path } },
+    stopping.signal,
+  )
+
+  if (stopped.kind === 'removed') {
+    say('this machine was taken out of its Space; connect it again to come back')
+    process.exit(1)
+  }
+
+  // Said on the way out so the Space shows it gone at once, rather than after the silence runs
+  // long enough to count.
+  await api.DELETE('/machines/current/session')
+  say('stopped')
 }
