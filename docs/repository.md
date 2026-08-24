@@ -9,8 +9,6 @@ apps/server/        API
   src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
   src/db/           持久化边界
   src/server/       入站传输
-  src/host/         常驻,以及 host/<adapter>/ 具体运行时
-  src/cli/          接入与保持在线
   scripts/          生成器与仓库维护脚本
   migrations/       已提交的永不修改
   generated/        生成物,永不手改
@@ -33,7 +31,10 @@ compose.yml         一个 postgres,两个库
 
 **具体有哪些 owner 和 adapter 见对应旅程的 `design.md`。** 本文件只规定形态。
 
-根目录只放上面这些。新增一个根目录条目需要和新增一个 owner 同等的理由。
+上面这些是**现在真有的**。还没开始的那一片会带来的目录,写在它自己的 `design.md` 里,
+不预先列在这里 —— 一个找不到的目录和一个不该存在的目录一样费解。
+
+新增一个根目录条目需要和新增一个 owner 同等的理由。
 
 ## 2. 生成物与手写物物理分开
 
@@ -82,6 +83,7 @@ pnpm typecheck    三个包各自的类型世界
 pnpm lint         oxlint,type-aware,按包
 pnpm format       prettier --check
 pnpm test         vitest
+pnpm coverage     跑一遍并打一张表。不设阈值:百分比不是关于正确性的事实
 pnpm check        以上全部 + generate 无 diff
 ```
 
