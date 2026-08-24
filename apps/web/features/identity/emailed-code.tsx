@@ -8,7 +8,7 @@
 
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 
@@ -111,7 +111,6 @@ export function EmailedCode({
 }) {
   const navigate = useNavigate()
   const [code, setCode] = useState('')
-  const form = useRef<HTMLFormElement>(null)
 
   const handBack = useMutation({
     mutationFn: async (digits: string) => {
@@ -129,7 +128,6 @@ export function EmailedCode({
   return (
     <main className="sheet">
       <form
-        ref={form}
         className="card stack"
         onSubmit={(event) => {
           event.preventDefault()
@@ -163,8 +161,10 @@ export function EmailedCode({
           onChange={(event) => {
             const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, DIGITS)
             setCode(digits)
-            // Six digits and nothing left to decide, so there is nothing to press.
-            if (digits.length === DIGITS) form.current?.requestSubmit()
+            // Six digits and nothing left to decide, so there is nothing to press. The digits go
+            // straight in: submitting the form here would read a `code` this keystroke has not
+            // reached yet, and hand back five.
+            if (digits.length === DIGITS) handBack.mutate(digits)
           }}
         />
 

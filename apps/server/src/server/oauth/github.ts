@@ -8,9 +8,14 @@ import { normalizeEmail } from '../../identity/verified-email.ts'
 import { begin, exchange } from './handshake.ts'
 import type { Identified, ProviderClient } from './provider-client.ts'
 
-/** No discovery document to fetch: GitHub is not OpenID Connect, so the endpoints are stated. */
+/**
+ * No discovery document to fetch: GitHub is not OpenID Connect, so the endpoints are stated.
+ *
+ * The issuer is `/login/oauth`, not `github.com`. GitHub sends `iss` back on the callback and it
+ * is checked against this, so the shorter, more obvious value fails every sign-in.
+ */
 const SERVER: oauth.ServerMetadata = {
-  issuer: 'https://github.com',
+  issuer: 'https://github.com/login/oauth',
   authorization_endpoint: 'https://github.com/login/oauth/authorize',
   token_endpoint: 'https://github.com/login/oauth/access_token',
 }

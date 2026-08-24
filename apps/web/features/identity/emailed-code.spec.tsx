@@ -59,11 +59,11 @@ async function typeCode(digits: string): Promise<void> {
 }
 
 describe('handing the code back', () => {
-  it('submits on the sixth digit, with nothing to press', async () => {
-    let handed = false
+  it('submits all six on the sixth digit, with nothing to press', async () => {
+    let handed: unknown
     server.use(
-      http.post('*/verify', () => {
-        handed = true
+      http.post('*/verify', async ({ request }) => {
+        handed = await request.json()
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
       http.get('*/me', () =>
@@ -79,9 +79,10 @@ describe('handing the code back', () => {
 
     await typeCode('493018')
 
-    // Six digits and nothing left to decide.
+    // Whether a request went out is not the question. The last keystroke is the one that is
+    // easy to leave behind, and a code missing it is the code somebody is told is wrong.
     await waitFor(() => {
-      expect(handed).toBe(true)
+      expect(handed).toEqual({ code: '493018' })
     })
     // The real route tree, so this is where somebody actually ends up.
     expect(await screen.findByText(/your spaces/i)).toBeDefined()
