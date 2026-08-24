@@ -83,7 +83,7 @@ export function SignIn({ email: initial = '' }: { readonly email?: string | unde
 
   const askForCode = useMutation({
     mutationFn: async (address: string) => {
-      const { data, error } = await api.POST('/auth/email/challenges', {
+      const { data, error } = await api.POST('/auth/email-codes', {
         body: { email: address, requestKey: retryKey(`code:${address}`) },
       })
       if (data === undefined) throw new Error(error.reason)

@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 
-export function SignOut({ email }: { readonly email: string }) {
+export function SignOut({ account }: { readonly account: string }) {
   const navigate = useNavigate()
 
   const leave = useMutation({
@@ -16,7 +16,7 @@ export function SignOut({ email }: { readonly email: string }) {
 
   return (
     <div className="row">
-      <span className="row-where">{email}</span>
+      <span className="row-where">{account}</span>
       <button
         className="button button-quiet"
         type="button"

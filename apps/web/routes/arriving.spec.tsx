@@ -27,7 +27,7 @@ function signedIn(spaces: { id: string; slug: string; displayName: string }[] = 
     HttpResponse.json({
       displayName: EMAIL,
       verifiedEmail: EMAIL,
-      waysIn: [{ kind: 'email-code', state: 'ready' }],
+      waysIn: [{ kind: 'email', state: 'ready' }],
       spaces,
     }),
   )
@@ -62,11 +62,37 @@ describe('arriving after a trip through a provider', () => {
     expect(screen.queryByText(/you already had an account here/i)).toBeNull()
   })
 
-  it('says nothing when the trip ended some other way', async () => {
+  it('does not call an ordinary arrival a merge', async () => {
     server.use(signedIn())
     open('/?handover_result=cancelled')
 
     await screen.findByText(/your spaces/i)
     expect(screen.queryByText(/you already had an account here/i)).toBeNull()
+  })
+
+  /**
+   * Every one of these was silent once, and a test asserted the silence was correct. A trip that
+   * failed and said nothing is indistinguishable from a button that does nothing, which is
+   * exactly what it looked like the first time somebody tried it for real.
+   */
+  it.each([
+    ['cancelled', /nothing was connected/i],
+    ['expired', /took too long/i],
+    ['no-verified-email', /no confirmed address/i],
+    ['linked-elsewhere', /already connected to a different/i],
+    ['already-connected', /already have one of those connected/i],
+  ])('says what went wrong when a trip ends in %s', async (result, said) => {
+    server.use(signedIn())
+    open(`/?handover_result=${result}`)
+
+    expect(await screen.findByText(said)).toBeDefined()
+  })
+
+  it('says nothing at all when the trip left nothing behind', async () => {
+    server.use(signedIn())
+    open('/')
+
+    await screen.findByText(/your spaces/i)
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

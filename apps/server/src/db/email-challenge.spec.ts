@@ -32,7 +32,7 @@ beforeEach(() => {
 })
 
 async function ask(requestKey: string, email = EMAIL, codeHash = HASH): Promise<OpenedChallenge> {
-  return openChallenge(db, { requestKey, email, codeHash })
+  return openChallenge(db, { purpose: 'sign-in', requestKey, email, codeHash })
 }
 
 /** Moves a challenge back in time, so a test can reach past the resend interval without waiting. */

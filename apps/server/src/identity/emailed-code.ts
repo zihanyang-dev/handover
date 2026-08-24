@@ -45,6 +45,15 @@ export type Verification =
 export const MAX_ATTEMPTS = 5
 
 /** Long enough to go find a mail app, short enough that a code seen over a shoulder goes stale. */
+/**
+ * What a letter is for. Not how strong it is — both prove the same address to the same standard.
+ * They stay apart so a code somebody was talked into forwarding cannot be spent on the other
+ * thing, and so asking to attach an address does not quietly kill a sign-in halfway through.
+ */
+export const PURPOSES = ['sign-in', 'attach'] as const
+
+export type Purpose = (typeof PURPOSES)[number]
+
 export const LIFETIME_MINUTES = 5
 
 /**
@@ -54,7 +63,7 @@ export const LIFETIME_MINUTES = 5
  */
 export const RESEND_INTERVAL_SECONDS = 30
 
-const DIGITS = 6
+export const DIGITS = 6
 const RANGE = 10 ** DIGITS
 
 /**

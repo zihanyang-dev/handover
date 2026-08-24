@@ -4,8 +4,8 @@ import { beforeEach, afterAll, describe, expect, it } from 'vitest'
 import { newSessionToken } from '../identity/browser-session.ts'
 import { hashCode, MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/emailed-code.ts'
 import { openChallenge } from './email-challenge.ts'
-import { signIn, type SignIn } from './sign-in.ts'
-import { personFor } from './user.ts'
+import { signInWithCode, type SignIn } from './sign-in.ts'
+import { arrive } from './user.ts'
 import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 
@@ -31,6 +31,7 @@ const CODE = '493018'
 
 async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string> {
   const opened = await openChallenge(db, {
+    purpose: 'sign-in',
     requestKey,
     email,
     codeHash: hashCode(email, CODE, env.AUTH_SECRET),
@@ -40,7 +41,7 @@ async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string
 }
 
 async function submit(challengeId: string, code = CODE): Promise<SignIn> {
-  return signIn(db, env.AUTH_SECRET, {
+  return signInWithCode(db, env.AUTH_SECRET, {
     challengeId,
     submittedCode: code,
     sessionTokenHash: newSessionToken().hash,
@@ -56,23 +57,23 @@ async function age(email: string): Promise<void> {
     .execute()
 }
 
-/** Sessions belonging to this test's people. */
+/** This test's people, counted through the keys that name them. */
 async function people(): Promise<number> {
   const rows = await db
-    .selectFrom('users')
-    .select('id')
-    .where('verified_email', 'like', `%${RUN}%`)
+    .selectFrom('ways_in')
+    .select('user_id')
+    .where('subject', 'like', `%${RUN}%`)
     .execute()
-  return rows.length
+  return new Set(rows.map((row) => row.user_id)).size
 }
 
 /** Sessions belonging to this test's people. */
 async function sessions(): Promise<number> {
   const rows = await db
     .selectFrom('browser_sessions')
-    .innerJoin('users', 'users.id', 'browser_sessions.user_id')
+    .innerJoin('ways_in', 'ways_in.user_id', 'browser_sessions.user_id')
     .select('browser_sessions.id')
-    .where('users.verified_email', 'like', `%${RUN}%`)
+    .where('ways_in.subject', 'like', `%${RUN}%`)
     .execute()
   return rows.length
 }
@@ -86,17 +87,17 @@ async function attemptsOn(challengeId: string): Promise<number> {
   return row.attempts
 }
 
-describe('signIn', () => {
+describe('signing in with a code', () => {
   it('creates the account on the first correct code, and a session with it', async () => {
     const result = await submit(await sendCode())
 
     expect(result.kind).toBe('signed-in')
-    const users = await db
-      .selectFrom('users')
-      .select('verified_email')
-      .where('verified_email', 'like', `%${RUN}%`)
+    const keys = await db
+      .selectFrom('ways_in')
+      .select(['kind', 'subject'])
+      .where('subject', 'like', `%${RUN}%`)
       .execute()
-    expect(users).toEqual([{ verified_email: EMAIL }])
+    expect(keys).toEqual([{ kind: 'email', subject: EMAIL }])
     expect(await sessions()).toBe(1)
   })
 
@@ -168,9 +169,9 @@ describe('signIn', () => {
 
     const session = await db
       .selectFrom('browser_sessions')
-      .innerJoin('users', 'users.id', 'browser_sessions.user_id')
+      .innerJoin('ways_in', 'ways_in.user_id', 'browser_sessions.user_id')
       .select('expires_at')
-      .where('users.verified_email', 'like', `%${RUN}%`)
+      .where('ways_in.subject', 'like', `%${RUN}%`)
       .executeTakeFirstOrThrow()
     const daysAway = (session.expires_at.getTime() - Date.now()) / 86_400_000
 
@@ -179,17 +180,23 @@ describe('signIn', () => {
   })
 })
 
-describe('two sign-ins racing to create the same person', () => {
-  it('makes one account, and both end up in it', async () => {
-    // Whoever loses the unique index has to find the winner's account rather than fail: it is the
-    // same address, so it is the same person, and neither of them did anything wrong.
-    const arriving = Array.from({ length: 20 }, async () =>
-      personFor(db, { name: null, username: null, verifiedEmail: EMAIL }),
+/** One arrival, in its own transaction, the way every caller in the product does it. */
+async function arriveOnce() {
+  return db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: EMAIL }, { name: null, username: null, address: EMAIL }),
     )
+}
 
-    const ids = await Promise.all(arriving)
+describe('twenty sign-ins racing to create the same person', () => {
+  it('makes one account, and all of them end up in it', async () => {
+    // Two was not enough to force contention; twenty is. Whoever loses has to find the winner's
+    // account rather than fail: it is the same address, so it is the same person, and none of
+    // them did anything wrong.
+    const arrived = await Promise.all(Array.from({ length: 20 }, arriveOnce))
 
-    expect(new Set(ids).size).toBe(1)
+    expect(new Set(arrived.map((one) => one.userId)).size).toBe(1)
     expect(await people()).toBe(1)
   })
 })

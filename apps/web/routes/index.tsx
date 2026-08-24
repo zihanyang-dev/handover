@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { CheckCircleFill } from 'react-bootstrap-icons'
+import { CheckCircleFill, ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api } from '../api.ts'
 import { DisplayName } from '../features/identity/display-name.tsx'
-import { meQuery } from '../features/identity/me.ts'
+import { meQuery, type Me } from '../features/identity/me.ts'
 import { WaysIn } from '../features/identity/ways-in.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
 import { SpaceList } from '../features/spaces/space-list.tsx'
@@ -15,16 +15,36 @@ function arrived(search: Record<string, unknown>): { handover_result?: string } 
   return typeof result === 'string' ? { handover_result: result } : {}
 }
 
+/**
+ * Every way a trip can end badly, in words about what to do next.
+ *
+ * A trip that failed and said nothing looks exactly like a button that does nothing. Every one of
+ * these was silent once, and the silence was indistinguishable from the feature being broken.
+ */
+const WENT_WRONG: Record<string, string> = {
+  cancelled: 'Nothing was connected, and nothing changed.',
+  expired: 'That took too long. Try connecting it again.',
+  'no-verified-email': 'That account has no confirmed address, so it cannot be used here.',
+  'linked-elsewhere': 'That account is already connected to a different Handover account.',
+  'already-connected': 'You already have one of those connected.',
+}
+
+/** The address this account started with, which is the one to show beside signing out. */
+function firstAddress(ways: Me['waysIn']): string {
+  return ways.find((way) => way.kind === 'email')?.address ?? ''
+}
+
 function Screen() {
   const me = useQuery(meQuery)
   const { handover_result: result } = Route.useSearch()
+  const wentWrong = result === undefined ? undefined : WENT_WRONG[result]
 
   return (
     <div className="page">
       {/*
-        Said once, on the answer that caused it. The link is made exactly once per provider per
-        account, so the response that made it is the one time to mention it — nothing has to
-        remember having said it, and a reload does not say it again.
+        Said once, on the answer that caused it. The key goes on exactly once, so the response
+        that put it there is the one time to mention it — nothing has to remember having said it,
+        and a reload does not say it again.
       */}
       {result === 'merged' && (
         <p className="said said-good">
@@ -33,11 +53,18 @@ function Screen() {
         </p>
       )}
 
+      {wentWrong !== undefined && (
+        <p className="said said-bad">
+          <ExclamationCircleFill aria-hidden />
+          {wentWrong}
+        </p>
+      )}
+
       <SpaceList />
       <NewSpace />
       <WaysIn />
       <DisplayName />
-      <SignOut email={me.data?.verifiedEmail ?? ''} />
+      <SignOut account={firstAddress(me.data?.waysIn ?? [])} />
     </div>
   )
 }

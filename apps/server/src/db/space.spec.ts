@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Slug } from '@handover/universal'
 import { createSpace, type SpaceCreation } from './space.ts'
 import { connect, type Database } from './connection.ts'
+import { arrive } from './user.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
@@ -21,14 +22,15 @@ beforeEach(() => {
   ACME = `acme-${RUN.slice(0, 8)}` as Slug
 })
 
+/** Somebody who exists the way everybody exists: an address that opens an account. */
 async function someone(label: string): Promise<string> {
-  const email = `${label}-${randomUUID()}@example.com`
-  const user = await db
-    .insertInto('users')
-    .values({ verified_email: email, display_name: email })
-    .returning('id')
-    .executeTakeFirstOrThrow()
-  return user.id
+  const address = `${label}-${randomUUID()}@example.com`
+  const arrived = await db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
+  return arrived.userId
 }
 
 async function request(userId: string, requestKey: string, slug: Slug): Promise<SpaceCreation> {

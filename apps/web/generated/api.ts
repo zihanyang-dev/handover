@@ -40,7 +40,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/email/challenges": {
+    "/auth/email-codes": {
         parameters: {
             query?: never;
             header?: never;
@@ -98,7 +98,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/email/challenges/{id}/verify": {
+    "/auth/email-codes/{id}/answer": {
         parameters: {
             query?: never;
             header?: never;
@@ -107,7 +107,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Hand a code back */
+        /** Answer a code, which signs you in */
         post: {
             parameters: {
                 query?: never;
@@ -238,7 +238,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/sign-in-methods/{provider}/start": {
+    "/me/ways-in/{provider}/start": {
         parameters: {
             query?: never;
             header?: never;
@@ -623,12 +623,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/ways-in/email-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a code at an address, to add it to this account */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskForCode"];
+                };
+            };
+            responses: {
+                /** @description A code is on its way, or was already sent for this request key */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OpenedChallenge"];
+                    };
+                };
+                /** @description The body was not the shape it claims, or no letter can reach that address */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description A code went out moments ago; another would break the one in the inbox */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TooSoon"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/ways-in/email-codes/{id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer the code, which adds the address to this account */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SubmitCode"];
+                };
+            };
+            responses: {
+                /** @description The address now opens this account, or already did */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Wrong digits, or a body that was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description There is no such code */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description This code is finished, or the address opens a different account */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description This code has no tries left */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         WaysIn: {
-            offered: ("email-code" | "google" | "github")[];
+            offered: ("email" | "google" | "github")[];
         };
         OpenedChallenge: {
             /** Format: uuid */
@@ -636,6 +788,7 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
             resendAfterSeconds: number;
+            digits: number;
         };
         Failure: {
             /** @example code-mismatch */
@@ -668,14 +821,19 @@ export interface components {
         };
         Me: {
             displayName: string;
-            /** Format: email */
-            verifiedEmail: string;
             waysIn: components["schemas"]["WayIn"][];
             spaces: components["schemas"]["Space"][];
         };
         WayIn: {
             /** @enum {string} */
-            kind: "email-code" | "google" | "github";
+            kind: "email";
+            /** Format: email */
+            address: string;
+            /** @enum {string} */
+            state: "ready";
+        } | {
+            /** @enum {string} */
+            kind: "google" | "github";
             /** @enum {string} */
             state: "ready" | "connectable";
         };

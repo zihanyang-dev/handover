@@ -9,7 +9,7 @@
 export type Profile = {
   readonly name: string | null
   readonly username: string | null
-  readonly verifiedEmail: string
+  readonly address: string
 }
 
 function stated(value: string | null): string | null {
@@ -22,5 +22,5 @@ function stated(value: string | null): string | null {
  * the address is what is left.
  */
 export function initialDisplayName(profile: Profile): string {
-  return stated(profile.name) ?? stated(profile.username) ?? profile.verifiedEmail
+  return stated(profile.name) ?? stated(profile.username) ?? profile.address
 }

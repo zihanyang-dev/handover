@@ -27,7 +27,7 @@ function signedIn(spaces: { id: string; slug: string; displayName: string }[] = 
     HttpResponse.json({
       displayName: EMAIL,
       verifiedEmail: EMAIL,
-      waysIn: [{ kind: 'email-code', state: 'ready' }],
+      waysIn: [{ kind: 'email', state: 'ready' }],
       spaces,
     }),
   )

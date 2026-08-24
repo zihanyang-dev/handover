@@ -37,7 +37,7 @@ beforeEach(() => {
 })
 
 async function askForCode(requestKey = `${RUN}-k1`, email = EMAIL): Promise<Response> {
-  return app.request('/auth/email/challenges', {
+  return app.request('/auth/email-codes', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, requestKey }),
@@ -59,7 +59,7 @@ async function age(email: string): Promise<void> {
 }
 
 async function submit(id: string, code: string): Promise<Response> {
-  return app.request(`/auth/email/challenges/${id}/verify`, {
+  return app.request(`/auth/email-codes/${id}/answer`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -111,7 +111,7 @@ describe('asking for a code', () => {
   })
 
   it('refuses an address that is not one', async () => {
-    const response = await app.request('/auth/email/challenges', {
+    const response = await app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'not-an-address', requestKey: `${RUN}-k1` }),
@@ -133,7 +133,7 @@ describe('when the letter did not go', () => {
   }
 
   async function ask(app: ReturnType<typeof authApi>, key: string): Promise<Response> {
-    return app.request('/auth/email/challenges', {
+    return app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: EMAIL, requestKey: key }),
@@ -164,7 +164,7 @@ describe('what a stranger is offered', () => {
     const response = await app.request('/auth/ways-in')
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ offered: ['email-code', 'google', 'github'] })
+    expect(await response.json()).toEqual({ offered: ['email', 'google', 'github'] })
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {
@@ -172,7 +172,7 @@ describe('what a stranger is offered', () => {
 
     const offered = (await (await half.request('/auth/ways-in')).json()) as { offered: string[] }
 
-    expect(offered.offered).toEqual(['email-code', 'google'])
+    expect(offered.offered).toEqual(['email', 'google'])
   })
 })
 

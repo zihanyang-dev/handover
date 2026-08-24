@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -23,14 +23,12 @@ afterAll(() => {
 
 const EMAIL = 'mina@example.com'
 
-function signedIn(waysIn: { kind: string; state: string }[]) {
-  return http.get('*/me', () =>
-    HttpResponse.json({ displayName: EMAIL, verifiedEmail: EMAIL, waysIn, spaces: [] }),
-  )
+function signedIn(waysIn: { kind: string; address?: string; state: string }[]) {
+  return http.get('*/me', () => HttpResponse.json({ displayName: EMAIL, waysIn, spaces: [] }))
 }
 
 const ALL = [
-  { kind: 'email-code', state: 'ready' },
+  { kind: 'email', address: EMAIL, state: 'ready' },
   { kind: 'google', state: 'ready' },
   { kind: 'github', state: 'connectable' },
 ]
@@ -46,14 +44,21 @@ function open(at: string) {
   )
 }
 
+/** The panel itself. The account screen shows the address elsewhere too, and this is not that. */
+async function panel() {
+  return within(await screen.findByRole('region', { name: /how you get in/i }))
+}
+
 describe('how you get in', () => {
   it('gives every way one of two states and nothing else', async () => {
     server.use(signedIn(ALL))
     open('/')
 
-    expect(await screen.findByText('Emailed code')).toBeDefined()
-    expect(screen.getAllByText('Ready')).toHaveLength(2)
-    expect(screen.getByRole('button', { name: /connect/i })).toBeDefined()
+    const ways = await panel()
+
+    expect(await ways.findByText(EMAIL)).toBeDefined()
+    expect(ways.getAllByText('Ready')).toHaveLength(2)
+    expect(ways.getByRole('button', { name: /^connect$/i })).toBeDefined()
   })
 
   it('says who can get in, beside the list rather than in a settings page', async () => {
@@ -62,32 +67,50 @@ describe('how you get in', () => {
 
     // The direct consequence of one address meaning one account: whoever reads that inbox is in.
     expect(
-      await screen.findByText(
-        /the emailed code always works, because the account is that address/i,
-      ),
+      await screen.findByText(/whoever can read one of those inboxes can sign in/i),
     ).toBeDefined()
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {
-    server.use(signedIn([{ kind: 'email-code', state: 'ready' }]))
+    server.use(signedIn([{ kind: 'email', address: EMAIL, state: 'ready' }]))
     open('/')
 
-    await screen.findByText('Emailed code')
-    expect(screen.queryByText('GitHub')).toBeNull()
+    const ways = await panel()
+
+    expect(await ways.findByText(EMAIL)).toBeDefined()
+    expect(ways.queryByText('GitHub')).toBeNull()
+  })
+
+  it('names every address on its own row, so the number of keys is visible', async () => {
+    // Folded into one "emailed code" line, nobody could see that two inboxes open this account,
+    // and that count is the whole reason the panel exists.
+    const second = 'zane@example.com'
+    server.use(
+      signedIn([
+        { kind: 'email', address: EMAIL, state: 'ready' },
+        { kind: 'email', address: second, state: 'ready' },
+      ]),
+    )
+    open('/')
+
+    const ways = await panel()
+
+    expect(await ways.findByText(EMAIL)).toBeDefined()
+    expect(ways.getByText(second)).toBeDefined()
   })
 
   it('sends the browser to the provider when one is connected', async () => {
     const asked: string[] = []
     server.use(
       signedIn(ALL),
-      http.post('*/me/sign-in-methods/:provider/start', ({ params }) => {
+      http.post('*/me/ways-in/:provider/start', ({ params }) => {
         asked.push(String(params['provider']))
         return HttpResponse.json({ url: 'https://provider.example/authorize' })
       }),
     )
     open('/')
 
-    await userEvent.click(await screen.findByRole('button', { name: /connect/i }))
+    await userEvent.click(await (await panel()).findByRole('button', { name: /^connect$/i }))
 
     expect(asked).toEqual(['github'])
   })

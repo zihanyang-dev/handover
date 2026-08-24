@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeEmail } from './verified-email.ts'
+import { normalizeEmail } from './email-address.ts'
 
 describe('normalizeEmail', () => {
   it('folds case, so one inbox is one account', () => {

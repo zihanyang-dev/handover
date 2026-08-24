@@ -14,7 +14,7 @@
             "items": {
               "type": "string",
               "enum": [
-                "email-code",
+                "email",
                 "google",
                 "github"
               ]
@@ -39,12 +39,18 @@
           "resendAfterSeconds": {
             "type": "integer",
             "minimum": 0
+          },
+          "digits": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
           }
         },
         "required": [
           "challengeId",
           "expiresAt",
-          "resendAfterSeconds"
+          "resendAfterSeconds",
+          "digits"
         ]
       },
       "Failure": {
@@ -155,10 +161,6 @@
           "displayName": {
             "type": "string"
           },
-          "verifiedEmail": {
-            "type": "string",
-            "format": "email"
-          },
           "waysIn": {
             "type": "array",
             "items": {
@@ -174,33 +176,61 @@
         },
         "required": [
           "displayName",
-          "verifiedEmail",
           "waysIn",
           "spaces"
         ]
       },
       "WayIn": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "email-code",
-              "google",
-              "github"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "email"
+                ]
+              },
+              "address": {
+                "type": "string",
+                "format": "email"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ready"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "address",
+              "state"
             ]
           },
-          "state": {
-            "type": "string",
-            "enum": [
-              "ready",
-              "connectable"
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "google",
+                  "github"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "connectable"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "state"
             ]
           }
-        },
-        "required": [
-          "kind",
-          "state"
         ]
       },
       "Space": {
@@ -303,7 +333,7 @@
         }
       }
     },
-    "/auth/email/challenges": {
+    "/auth/email-codes": {
       "post": {
         "summary": "Ask for a code at an address",
         "requestBody": {
@@ -350,9 +380,9 @@
         }
       }
     },
-    "/auth/email/challenges/{id}/verify": {
+    "/auth/email-codes/{id}/answer": {
       "post": {
-        "summary": "Hand a code back",
+        "summary": "Answer a code, which signs you in",
         "parameters": [
           {
             "schema": {
@@ -489,7 +519,7 @@
         }
       }
     },
-    "/me/sign-in-methods/{provider}/start": {
+    "/me/ways-in/{provider}/start": {
       "post": {
         "summary": "Leave to connect a provider to this account",
         "parameters": [
@@ -789,6 +819,143 @@
           },
           "401": {
             "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/ways-in/email-codes": {
+      "post": {
+        "summary": "Ask for a code at an address, to add it to this account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskForCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A code is on its way, or was already sent for this request key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenedChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims, or no letter can reach that address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A code went out moments ago; another would break the one in the inbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooSoon"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/ways-in/email-codes/{id}/answer": {
+      "post": {
+        "summary": "Answer the code, which adds the address to this account",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The address now opens this account, or already did"
+          },
+          "400": {
+            "description": "Wrong digits, or a body that was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no such code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This code is finished, or the address opens a different account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "This code has no tries left",
             "content": {
               "application/json": {
                 "schema": {

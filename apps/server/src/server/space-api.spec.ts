@@ -30,14 +30,14 @@ const app = spaceApi({ db, providers: ['google', 'github'] })
 
 /** Signs somebody in the way a browser would, and returns the cookie it was handed. */
 async function signedIn(email: string): Promise<string> {
-  const opened = await auth.request('/auth/email/challenges', {
+  const opened = await auth.request('/auth/email-codes', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, requestKey: `k-${email}` }),
   })
   const { challengeId } = (await opened.json()) as { challengeId: string }
 
-  const verified = await auth.request(`/auth/email/challenges/${challengeId}/verify`, {
+  const verified = await auth.request(`/auth/email-codes/${challengeId}/answer`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: lastCode }),
@@ -75,19 +75,21 @@ describe('without a live session', () => {
 })
 
 describe('me', () => {
-  it('starts named after the address, with the emailed code as the way in', async () => {
+  it('starts named after the address, and lists it as a way in', async () => {
     const cookie = await signedIn(`mina-${RUN}@example.com`)
 
     const me = (await (await as(cookie, '/me')).json()) as {
       displayName: string
-      waysIn: { kind: string; state: string }[]
+      waysIn: { kind: string; address?: string; state: string }[]
       spaces: unknown[]
     }
 
     expect(me.displayName).toBe(`mina-${RUN}@example.com`)
     expect(me.spaces).toEqual([])
+    // The address is named, not folded into an "emailed code" line. Folded, nobody could see how
+    // many inboxes open this account.
     expect(me.waysIn).toEqual([
-      { kind: 'email-code', state: 'ready' },
+      { kind: 'email', address: `mina-${RUN}@example.com`, state: 'ready' },
       { kind: 'google', state: 'connectable' },
       { kind: 'github', state: 'connectable' },
     ])

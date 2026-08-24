@@ -13,7 +13,7 @@ import { createSpace, spaceForMember, spacesOf } from '../db/space.ts'
 import { personById, renamePerson } from '../db/user.ts'
 import { hashSessionToken } from '../identity/browser-session.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
-import { waysIn } from '../identity/ways-in.ts'
+import { waysIn } from '../identity/way-in.ts'
 import { normalizeSlug } from '@handover/universal'
 import { api, saysNothing, sends, takes } from './contract.ts'
 import { body, refusal, type Failure } from './failure.ts'
@@ -41,17 +41,30 @@ const spaceBody = z
   .object({ id: z.uuid(), slug: z.string(), displayName: z.string() })
   .openapi('Space')
 
+/**
+ * Two shapes, not one with an optional address, so nothing can render a provider row with an
+ * address on it or an address row without one. An address is always ready — it is only here
+ * because somebody proved it.
+ */
 const wayBody = z
-  .object({
-    kind: z.enum(['email-code', ...PROVIDERS]),
-    state: z.enum(['ready', 'connectable']),
-  })
+  .union([
+    z.object({
+      kind: z.literal('email'),
+      address: z.email(),
+      state: z.literal('ready'),
+    }),
+    z.object({
+      kind: z.enum(PROVIDERS),
+      state: z.enum(['ready', 'connectable']),
+    }),
+  ])
   .openapi('WayIn')
 
 const meBody = z
   .object({
     displayName: z.string(),
-    verifiedEmail: z.email(),
+    // No single address: there is no such thing any more. Every one this account holds is a row
+    // in `waysIn`, which is also the only place that says how many keys there are.
     waysIn: z.array(wayBody).readonly(),
     spaces: z.array(spaceBody).readonly(),
   })
@@ -147,8 +160,7 @@ export function spaceApi({ db, providers }: SpaceApi) {
       return c.json(
         {
           displayName: person.displayName,
-          verifiedEmail: person.verifiedEmail,
-          waysIn: waysIn(person.connected, providers),
+          waysIn: waysIn(person.keys, providers),
           spaces: await spacesOf(db, person.id),
         },
         200,

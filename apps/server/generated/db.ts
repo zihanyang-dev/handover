@@ -29,6 +29,7 @@ export interface EmailChallenges {
   email: string;
   expires_at: Timestamp;
   id: Generated<string>;
+  purpose: string;
   request_key: string;
 }
 
@@ -36,13 +37,6 @@ export interface Memberships {
   created_at: Generated<Timestamp>;
   request_key: string;
   space_id: string;
-  user_id: string;
-}
-
-export interface SignInMethods {
-  kind: string;
-  linked_at: Generated<Timestamp>;
-  subject: string;
   user_id: string;
 }
 
@@ -57,14 +51,20 @@ export interface Users {
   created_at: Generated<Timestamp>;
   display_name: string;
   id: Generated<string>;
-  verified_email: string;
+}
+
+export interface WaysIn {
+  kind: string;
+  subject: string;
+  user_id: string;
+  verified_at: Generated<Timestamp>;
 }
 
 export interface DB {
   browser_sessions: BrowserSessions;
   email_challenges: EmailChallenges;
   memberships: Memberships;
-  sign_in_methods: SignInMethods;
   spaces: Spaces;
   users: Users;
+  ways_in: WaysIn;
 }

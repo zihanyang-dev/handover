@@ -50,7 +50,7 @@ const app = handoverApp(deps)
 
 describe('when something breaks that no route planned for', () => {
   it('answers in the same shape as every other failure', async () => {
-    const response = await app.request('/auth/email/challenges', {
+    const response = await app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `mina-${RUN}@example.com`, requestKey: `${RUN}-k1` }),
@@ -63,7 +63,7 @@ describe('when something breaks that no route planned for', () => {
   it('writes what broke to the log, where it belongs', async () => {
     written.length = 0
 
-    await app.request('/auth/email/challenges', {
+    await app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `mina-${RUN}@example.com`, requestKey: `${RUN}-k3` }),
@@ -73,7 +73,7 @@ describe('when something breaks that no route planned for', () => {
   })
 
   it('tells the caller nothing about what broke', async () => {
-    const response = await app.request('/auth/email/challenges', {
+    const response = await app.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `mina-${RUN}@example.com`, requestKey: `${RUN}-k2` }),
@@ -88,7 +88,7 @@ describe('a request that never parsed', () => {
   it('is refused the same way wherever it arrives', async () => {
     const bad = { method: 'POST', headers: { 'content-type': 'application/json' } }
 
-    const toChallenges = await app.request('/auth/email/challenges', {
+    const toChallenges = await app.request('/auth/email-codes', {
       ...bad,
       body: JSON.stringify({ email: 'not-an-address', requestKey: `${RUN}-k1` }),
     })
@@ -119,7 +119,7 @@ describe('a refusal Hono made on our behalf', () => {
     }
     const strict = handoverApp({ ...deps, sendCode: refusing })
 
-    const response = await strict.request('/auth/email/challenges', {
+    const response = await strict.request('/auth/email-codes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `mina-${RUN}@example.com`, requestKey: `${RUN}-k9` }),

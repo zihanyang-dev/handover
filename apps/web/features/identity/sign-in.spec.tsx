@@ -39,20 +39,19 @@ function open(at: string) {
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
 function offering(...providers: string[]) {
-  return http.get('*/auth/ways-in', () =>
-    HttpResponse.json({ offered: ['email-code', ...providers] }),
-  )
+  return http.get('*/auth/ways-in', () => HttpResponse.json({ offered: ['email', ...providers] }))
 }
 
 /** The code screen asks for nothing on arrival; landing on it is what a test checks. */
 function answering(bodies: Record<string, unknown>[]) {
-  return http.post('*/auth/email/challenges', async ({ request }) => {
+  return http.post('*/auth/email-codes', async ({ request }) => {
     bodies.push((await request.json()) as Record<string, unknown>)
     return HttpResponse.json(
       {
         challengeId: CHALLENGE,
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
         resendAfterSeconds: 30,
+        digits: 6,
       },
       { status: 201 },
     )
@@ -104,7 +103,7 @@ describe('choosing a way in', () => {
   it('says an address cannot be reached instead of sending somebody to an empty inbox', async () => {
     server.use(
       offering(),
-      http.post('*/auth/email/challenges', () =>
+      http.post('*/auth/email-codes', () =>
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
     )
@@ -123,7 +122,7 @@ describe('choosing a way in', () => {
     let attempt = 0
     server.use(
       offering(),
-      http.post('*/auth/email/challenges', async ({ request }) => {
+      http.post('*/auth/email-codes', async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>)
         attempt += 1
         // The first answer never arrives. This is the case the key exists for.
@@ -133,6 +132,7 @@ describe('choosing a way in', () => {
             challengeId: CHALLENGE,
             expiresAt: new Date(Date.now() + 300_000).toISOString(),
             resendAfterSeconds: 30,
+            digits: 6,
           },
           { status: 201 },
         )
@@ -156,7 +156,7 @@ describe('choosing a way in', () => {
   it('says what to do when a code went out moments ago', async () => {
     server.use(
       offering(),
-      http.post('*/auth/email/challenges', () =>
+      http.post('*/auth/email-codes', () =>
         HttpResponse.json({ reason: 'too-soon', recovery: 'wait' }, { status: 429 }),
       ),
     )

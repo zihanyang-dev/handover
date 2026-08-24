@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
 import { openSession } from '../db/browser-session.ts'
-import { personFor } from '../db/user.ts'
+import { arrive } from '../db/user.ts'
 import { newSessionToken } from '../identity/browser-session.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
 import { oauthApi } from './oauth-api.ts'
@@ -98,11 +98,15 @@ async function comeBack(
   return app.request(`${path}${query}`, { headers: { cookie } })
 }
 
-async function signedInCookie(email: string): Promise<{ cookie: string; userId: string }> {
-  const userId = await personFor(db, { name: null, username: null, verifiedEmail: email })
+async function signedInCookie(address: string): Promise<{ cookie: string; userId: string }> {
+  const arrived = await db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
   const token = newSessionToken()
-  await openSession(db, userId, token.hash)
-  return { cookie: `${SESSION_COOKIE}=${token.token}`, userId }
+  await openSession(db, arrived.userId, token.hash)
+  return { cookie: `${SESSION_COOKIE}=${token.token}`, userId: arrived.userId }
 }
 
 describe('leaving for a provider', () => {
@@ -237,9 +241,9 @@ describe('coming back', () => {
 
     expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=no-verified-email`)
     const made = await db
-      .selectFrom('users')
-      .select('id')
-      .where('verified_email', 'like', `%${RUN}%`)
+      .selectFrom('ways_in')
+      .select('user_id')
+      .where('subject', 'like', `%${RUN}%`)
       .execute()
     expect(made).toEqual([])
   })
@@ -258,7 +262,7 @@ describe('connecting one to an account already signed in', () => {
   it('connects it and comes back with nothing to report', async () => {
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified(MINA))
-    const left = await app.request('/me/sign-in-methods/google/start', {
+    const left = await app.request('/me/ways-in/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ next: '/s/acme' }),
@@ -269,10 +273,12 @@ describe('connecting one to an account already signed in', () => {
     expect(back.headers.get('location')).toBe(`${WEB}/s/acme`)
   })
 
-  it('says which way it failed when the provider proves another address', async () => {
+  it('takes one that proves a different address, because the session already proved the account', async () => {
+    // The session is the proof of whose account this is. Demanding the addresses match protected
+    // nothing once the account stopped being an address.
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified({ ...MINA, verifiedEmail: `else-${randomUUID()}@example.com` }))
-    const left = await app.request('/me/sign-in-methods/google/start', {
+    const left = await app.request('/me/ways-in/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: '{}',
@@ -280,13 +286,13 @@ describe('connecting one to an account already signed in', () => {
 
     const back = await comeBack(app, `${cookie}; ${cookiesOf(left)}`)
 
-    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=email-mismatch`)
+    expect(back.headers.get('location')).toBe(`${WEB}/`)
   })
 
   it('refuses to connect anything once the session that asked is gone', async () => {
     const { cookie } = await signedInCookie(EMAIL)
     const app = appWith(identified(MINA))
-    const left = await app.request('/me/sign-in-methods/google/start', {
+    const left = await app.request('/me/ways-in/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: '{}',
@@ -299,7 +305,7 @@ describe('connecting one to an account already signed in', () => {
   })
 
   it('will not start one at all without a session', async () => {
-    const response = await appWith(identified(MINA)).request('/me/sign-in-methods/google/start', {
+    const response = await appWith(identified(MINA)).request('/me/ways-in/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',

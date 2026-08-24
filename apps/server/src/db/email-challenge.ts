@@ -2,7 +2,7 @@
  * Persisting the emailed-code challenge that `identity` owns.
  *
  * Locks, in the order every path here takes them:
- *   1. an advisory lock keyed on the address
+ *   1. an advisory lock keyed on the address and what the code is for
  *   2. the open challenge row for that address, if there is one
  *
  * The advisory lock is what makes step 2 safe to skip when there is no row yet. Without it, two
@@ -11,7 +11,11 @@
  */
 
 import { sql } from 'kysely'
-import { LIFETIME_MINUTES, RESEND_INTERVAL_SECONDS } from '../identity/emailed-code.ts'
+import {
+  LIFETIME_MINUTES,
+  RESEND_INTERVAL_SECONDS,
+  type Purpose,
+} from '../identity/emailed-code.ts'
 import type { Database } from './connection.ts'
 
 /** How long until another code may be asked for, by the database's clock and not the caller's. */
@@ -22,6 +26,8 @@ export type ChallengeRequest = {
   /** The caller's idempotency key. Retrying with the same one must not send a second mail. */
   readonly requestKey: string
   readonly email: string
+  /** What the code is for. Signing in and attaching an address never share one. */
+  readonly purpose: Purpose
   readonly codeHash: string
 }
 
@@ -65,11 +71,12 @@ async function replayOf(db: Database, requestKey: string): Promise<OpenChallenge
  * How long until this address may be sent another code. The clock is the database's: a caller
  * cannot talk its way past this by disagreeing about the time.
  */
-async function waitLeft(db: Database, email: string): Promise<number> {
+async function waitLeft(db: Database, email: string, purpose: Purpose): Promise<number> {
   const open = await db
     .selectFrom('email_challenges')
     .select(WAIT)
     .where('email', '=', email)
+    .where('purpose', '=', purpose)
     .where('closed_at', 'is', null)
     .executeTakeFirst()
 
@@ -87,21 +94,25 @@ export async function openChallenge(
   request: ChallengeRequest,
 ): Promise<OpenedChallenge> {
   return db.transaction().execute(async (tx) => {
-    await sql`select pg_advisory_xact_lock(hashtext(${request.email}))`.execute(tx)
+    await sql`select pg_advisory_xact_lock(hashtext(${`${request.purpose}:${request.email}`}))`.execute(
+      tx,
+    )
 
     // Before anything is closed. A retry must hand back a working challenge, and closing first
     // would supersede the very one it is about to return.
     const replayed = await replayOf(tx, request.requestKey)
     if (replayed !== undefined) return { kind: 'replayed', ...replayed }
 
-    const wait = await waitLeft(tx, request.email)
+    const wait = await waitLeft(tx, request.email, request.purpose)
     if (wait > 0) return { kind: 'too-soon', retryAfterSeconds: wait }
 
-    // Whatever else is open for this address is now stale, and reads as expired rather than wrong.
+    // Whatever else is open for this address and this purpose is now stale, and reads as expired
+    // rather than wrong. A sign-in halfway through is left alone: it is a different letter.
     await tx
       .updateTable('email_challenges')
       .set({ closed_at: sql`now()`, closed_reason: 'superseded' })
       .where('email', '=', request.email)
+      .where('purpose', '=', request.purpose)
       .where('closed_at', 'is', null)
       .execute()
 
@@ -112,6 +123,7 @@ export async function openChallenge(
       .insertInto('email_challenges')
       .values({
         email: request.email,
+        purpose: request.purpose,
         code_hash: request.codeHash,
         request_key: request.requestKey,
         expires_at: sql`now() + make_interval(mins => ${LIFETIME_MINUTES})`,

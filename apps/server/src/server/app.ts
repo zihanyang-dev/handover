@@ -15,6 +15,7 @@ import { body, BROKEN, NOT_A_ROUTE } from './failure.ts'
 import { oauthApi, type OAuthApi } from './oauth-api.ts'
 import { requestLog, type Logged } from './request-log.ts'
 import { spaceApi } from './space-api.ts'
+import { waysInApi } from './ways-in-api.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
 export type App = Omit<AuthApi, 'providers'> &
@@ -50,4 +51,5 @@ export function handoverApp(deps: App) {
     .route('/', authApi({ ...deps, providers }))
     .route('/', oauthApi(deps))
     .route('/', spaceApi({ db: deps.db, providers }))
+    .route('/', waysInApi(deps))
 }

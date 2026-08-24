@@ -4,7 +4,7 @@
  */
 
 import * as oauth from 'openid-client'
-import { normalizeEmail } from '../../identity/verified-email.ts'
+import { normalizeEmail } from '../../identity/email-address.ts'
 import { begin, exchange } from './handshake.ts'
 import type { Identified, ProviderClient } from './provider-client.ts'
 

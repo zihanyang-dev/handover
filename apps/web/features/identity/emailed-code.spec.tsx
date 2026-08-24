@@ -46,23 +46,24 @@ function codeScreen(resendAfterSeconds = '30'): string {
     challengeId: CHALLENGE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
     resendAfterSeconds,
+    digits: '6',
   })
   return `/sign-in/code?${search.toString()}`
 }
 
 function refusing(reason: string, status: number) {
-  return http.post('*/verify', () => HttpResponse.json({ reason, recovery: 'retype' }, { status }))
+  return http.post('*/answer', () => HttpResponse.json({ reason, recovery: 'retype' }, { status }))
 }
 
 async function typeCode(digits: string): Promise<void> {
-  await userEvent.type(await screen.findByLabelText(/six-digit code/i), digits)
+  await userEvent.type(await screen.findByLabelText(/6-digit code/i), digits)
 }
 
 describe('handing the code back', () => {
   it('submits all six on the sixth digit, with nothing to press', async () => {
     let handed: unknown
     server.use(
-      http.post('*/verify', async ({ request }) => {
+      http.post('*/answer', async ({ request }) => {
         handed = await request.json()
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
@@ -70,7 +71,7 @@ describe('handing the code back', () => {
         HttpResponse.json({
           displayName: EMAIL,
           verifiedEmail: EMAIL,
-          waysIn: [{ kind: 'email-code', state: 'ready' }],
+          waysIn: [{ kind: 'email', state: 'ready' }],
           spaces: [],
         }),
       ),
@@ -91,7 +92,7 @@ describe('handing the code back', () => {
   it('does not submit before there are six', async () => {
     let handed = false
     server.use(
-      http.post('*/verify', () => {
+      http.post('*/answer', () => {
         handed = true
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
@@ -129,7 +130,7 @@ describe('handing the code back', () => {
 describe('asking for another one', () => {
   it('says why nothing was sent, rather than looking like a button that does nothing', async () => {
     server.use(
-      http.post('*/auth/email/challenges', () =>
+      http.post('*/auth/email-codes', () =>
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
     )

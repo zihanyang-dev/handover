@@ -11,7 +11,8 @@ import { createRoute, z } from '@hono/zod-openapi'
 import type { Context } from 'hono'
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Database } from '../db/connection.ts'
-import { connectProvider, signInWithProvider } from '../db/provider-sign-in.ts'
+import { connectProvider } from '../db/connect.ts'
+import { signInWithProvider } from '../db/sign-in.ts'
 import { newSessionToken } from '../identity/browser-session.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { api, saysNothing, sends, takes } from './contract.ts'
@@ -75,7 +76,7 @@ const startSignIn = createRoute({
 
 const startConnect = createRoute({
   method: 'post',
-  path: '/me/sign-in-methods/{provider}/start',
+  path: '/me/ways-in/{provider}/start',
   summary: 'Leave to connect a provider to this account',
   request: { params: named, body: takes(asked) },
   responses: {

@@ -13,7 +13,8 @@ import { newSessionToken } from '../identity/browser-session.ts'
 import { userHolding, revokeSession } from './browser-session.ts'
 import { connect, type Database } from './connection.ts'
 import { openChallenge } from './email-challenge.ts'
-import { signIn } from './sign-in.ts'
+import { signInWithCode } from './sign-in.ts'
+import { arrive } from './user.ts'
 import { createSpace } from './space.ts'
 import type { Slug } from '@handover/universal'
 
@@ -41,6 +42,7 @@ describe('two instances at once', () => {
     const request = {
       requestKey: `${RUN}-k1`,
       email: EMAIL,
+      purpose: 'sign-in' as const,
       codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
     }
 
@@ -54,12 +56,16 @@ describe('two instances at once', () => {
 
   it('let exactly one of them create a Space with a given name', async () => {
     const person = await one
-      .insertInto('users')
-      .values({ verified_email: EMAIL, display_name: EMAIL })
-      .returning('id')
-      .executeTakeFirstOrThrow()
+      .transaction()
+      .execute(async (tx) =>
+        arrive(
+          tx,
+          { kind: 'email', subject: EMAIL },
+          { name: null, username: null, address: EMAIL },
+        ),
+      )
     const asked = {
-      userId: person.id,
+      userId: person.userId,
       displayName: 'Acme',
       slug: `acme-${RUN.slice(0, 8)}` as Slug,
     }
@@ -74,6 +80,7 @@ describe('two instances at once', () => {
 
   it('let exactly one of them spend a code', async () => {
     const opened = await openChallenge(one, {
+      purpose: 'sign-in',
       requestKey: `${RUN}-k1`,
       email: EMAIL,
       codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
@@ -82,8 +89,14 @@ describe('two instances at once', () => {
 
     const attempt = { challengeId: opened.id, submittedCode: CODE }
     const [a, b] = await Promise.all([
-      signIn(one, env.AUTH_SECRET, { ...attempt, sessionTokenHash: newSessionToken().hash }),
-      signIn(two, env.AUTH_SECRET, { ...attempt, sessionTokenHash: newSessionToken().hash }),
+      signInWithCode(one, env.AUTH_SECRET, {
+        ...attempt,
+        sessionTokenHash: newSessionToken().hash,
+      }),
+      signInWithCode(two, env.AUTH_SECRET, {
+        ...attempt,
+        sessionTokenHash: newSessionToken().hash,
+      }),
     ])
 
     // One session, not two: a code that let two browsers in would be a code used twice.
@@ -91,22 +104,23 @@ describe('two instances at once', () => {
     expect(
       await one
         .selectFrom('browser_sessions')
-        .innerJoin('users', 'users.id', 'browser_sessions.user_id')
+        .innerJoin('ways_in', 'ways_in.user_id', 'browser_sessions.user_id')
         .select('browser_sessions.id')
-        .where('users.verified_email', '=', EMAIL)
+        .where('ways_in.subject', '=', EMAIL)
         .execute(),
     ).toHaveLength(1)
   })
 
   it('honour a session the other one issued', async () => {
     const opened = await openChallenge(one, {
+      purpose: 'sign-in',
       requestKey: `${RUN}-k1`,
       email: EMAIL,
       codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
     })
     if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
     const token = newSessionToken()
-    await signIn(one, env.AUTH_SECRET, {
+    await signInWithCode(one, env.AUTH_SECRET, {
       challengeId: opened.id,
       submittedCode: CODE,
       sessionTokenHash: token.hash,
@@ -117,13 +131,14 @@ describe('two instances at once', () => {
 
   it('stop honouring it the moment the other one revokes it', async () => {
     const opened = await openChallenge(one, {
+      purpose: 'sign-in',
       requestKey: `${RUN}-k1`,
       email: EMAIL,
       codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
     })
     if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
     const token = newSessionToken()
-    await signIn(one, env.AUTH_SECRET, {
+    await signInWithCode(one, env.AUTH_SECRET, {
       challengeId: opened.id,
       submittedCode: CODE,
       sessionTokenHash: token.hash,
