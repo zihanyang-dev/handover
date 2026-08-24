@@ -104,7 +104,7 @@ CREATE TABLE public.email_codes (
 
 CREATE TABLE public.enrolments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    space_id uuid NOT NULL,
+    space_id uuid,
     machine_name text NOT NULL,
     secret_hash text NOT NULL,
     user_code text,
@@ -114,6 +114,7 @@ CREATE TABLE public.enrolments (
     claimed_at timestamp with time zone,
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT enrolments_approved_into_a_space CHECK (((approved_at IS NULL) OR (space_id IS NOT NULL))),
     CONSTRAINT enrolments_approved_together CHECK (((approved_at IS NULL) = (approved_by IS NULL))),
     CONSTRAINT enrolments_claimed_after_approval CHECK (((claimed_at IS NULL) OR (approved_at IS NOT NULL))),
     CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL)))

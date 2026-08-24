@@ -56,13 +56,13 @@ async function approved(name = 'mina-mbp'): Promise<string> {
   const secret = newEnrolmentSecret()
   const userCode = newUserCode()
   await openEnrolment(db, {
-    spaceId: SPACE,
+    spaceId: undefined,
     machineName: name,
     secretHash: secret.hash,
     userCode,
     approvedBy: undefined,
   })
-  await approveEnrolment(db, userCode, PERSON)
+  await approveEnrolment(db, userCode, { userId: PERSON, spaceId: SPACE })
   return secret.hash
 }
 
@@ -108,7 +108,7 @@ describe('collecting an approved enrolment', () => {
   it('waits while nobody has answered', async () => {
     const secret = newEnrolmentSecret()
     await openEnrolment(db, {
-      spaceId: SPACE,
+      spaceId: undefined,
       machineName: 'mina-mbp',
       secretHash: secret.hash,
       userCode: newUserCode(),
@@ -124,7 +124,7 @@ describe('collecting an approved enrolment', () => {
     const secret = newEnrolmentSecret()
     const userCode = newUserCode()
     await openEnrolment(db, {
-      spaceId: SPACE,
+      spaceId: undefined,
       machineName: 'mina-mbp',
       secretHash: secret.hash,
       userCode,

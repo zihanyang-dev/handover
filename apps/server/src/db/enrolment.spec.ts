@@ -53,7 +53,7 @@ beforeEach(async () => {
 
 function opening(overrides: Partial<OpeningEnrolment> = {}): OpeningEnrolment {
   return {
-    spaceId: SPACE,
+    spaceId: undefined,
     machineName: `mina-mbp-${RUN.slice(0, 8)}`,
     secretHash: newEnrolmentSecret().hash,
     userCode: newUserCode(),
@@ -80,19 +80,25 @@ describe('opening one', () => {
     })
   })
 
-  it('names the Space, because that is what somebody is being asked to agree to', async () => {
+  it("does not carry a Space, because that is the approver's to choose", async () => {
+    // A machine naming one would also let an unauthenticated caller tell a real slug from a
+    // missing one by the answer it got.
     const asked = opening()
     await openEnrolment(db, asked)
 
-    expect(await enrolmentWaiting(db, asked.userCode as UserCode)).toMatchObject({
-      spaceName: `Acme ${RUN.slice(0, 8)}`,
-    })
+    const row = await db
+      .selectFrom('enrolments')
+      .select('space_id')
+      .where('secret_hash', '=', asked.secretHash)
+      .executeTakeFirstOrThrow()
+
+    expect(row.space_id).toBeNull()
   })
 
   it('is already answered when a person generated it, so nothing waits on a code', async () => {
     // The key path. Generating it in a browser is the approval; there is no second step and no
     // code, because a code nobody will ever type can only leak.
-    const asked = opening({ userCode: undefined, approvedBy: PERSON })
+    const asked = opening({ spaceId: SPACE, userCode: undefined, approvedBy: PERSON })
     const secret = newEnrolmentSecret()
     await openEnrolment(db, { ...asked, secretHash: secret.hash })
 
@@ -111,7 +117,9 @@ describe('answering one', () => {
     await openEnrolment(db, asked)
     const code = asked.userCode as UserCode
 
-    expect(await approveEnrolment(db, code, PERSON)).toEqual({ kind: 'answered' })
+    expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({
+      kind: 'answered',
+    })
     expect(await refuseEnrolment(db, code)).toEqual({ kind: 'not-waiting' })
   })
 
@@ -123,7 +131,9 @@ describe('answering one', () => {
     const code = asked.userCode as UserCode
 
     const answers = await Promise.all(
-      Array.from({ length: 10 }, async () => approveEnrolment(db, code, PERSON)),
+      Array.from({ length: 10 }, async () =>
+        approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE }),
+      ),
     )
 
     expect(answers.filter((answer) => answer.kind === 'answered')).toHaveLength(1)
@@ -135,7 +145,9 @@ describe('answering one', () => {
     const code = asked.userCode as UserCode
     await ageOut(code)
 
-    expect(await approveEnrolment(db, code, PERSON)).toEqual({ kind: 'not-waiting' })
+    expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({
+      kind: 'not-waiting',
+    })
     expect(await enrolmentWaiting(db, code)).toBeUndefined()
   })
 

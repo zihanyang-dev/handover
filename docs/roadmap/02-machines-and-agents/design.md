@@ -14,7 +14,7 @@
 
 ```
 enrolments
-  id · space_id · machine_name
+  id · space_id(批准前为空) · machine_name
   secret_hash 唯一          ← 命令行轮询时出示的东西,只存哈希
   user_code   唯一(可空)     ← 给人看的短码;网页生成的那条路没有
   approved_by → users(可空) · approved_at(可空)
@@ -48,7 +48,17 @@ agents
 
 ## 决定
 
-**① 两条接入路径共用一张表,区别只在建的时候批没批**
+**① 机器不选 Space,批准的人选**
+
+`POST /enrolments` 不要会话 —— 一台还没被批准的机器没有任何身份可言。正因为如此,它**不能**报自己
+要进哪个 Space:那会让一个没登录的人拿 slug 挨个试,从 201 还是 404 里读出哪个 Space 存在,而
+`prd.md` 01 的承诺 ⑥ 说的是**不存在和不是成员,同一个回答**。
+
+Space 在批准的那一刻由人给出。Tailscale 就是这样:设备不选网络,授权的账号选。
+
+`space_id` 因此在批准前为空,并由一条约束钉住:**批过的行一定有 Space**。
+
+**② 两条接入路径共用一张表,区别只在建的时候批没批**
 
 ```
 笔记本  命令行建一行:未批准、有 user_code、secret 只有它自己知道
@@ -61,7 +71,7 @@ agents
 
 **auth key 不是另一套机制,是一条已经批过的接入请求。** 这条来自 Tailscale —— 它的 key 属性里就有一个 `pre-approved`。
 
-**② 用设备码,不用本地回调**
+**③ 用设备码,不用本地回调**
 
 本地回调(命令行在 `127.0.0.1` 开个端口等浏览器跳回来)要求**浏览器能连到命令行所在的机器**。命令行在服务器上就连不到,于是要么让用户开 SSH 隧道,要么去猜自己的出口 IP 判断拓扑。
 
@@ -76,7 +86,7 @@ agents
 被拒了    终态,不能重试
 ```
 
-**③ 用户码用 RFC 8628 那个字符集,并且干净网址是主路径**
+**④ 用户码用 RFC 8628 那个字符集,并且干净网址是主路径**
 
 字符集是 `BCDFGHJKLMNPQRSTVWXZ` —— 大小写不敏感的 A–Z,**去掉全部数字,再去掉元音**。
 
@@ -94,13 +104,13 @@ agents
 
 字符集和分组是纯规则,住在 `machine` owner 里,测试钉住:**不含数字、不含元音、不随机成词。**
 
-**④ 机器的凭据不是 `credentials` 表里的一行**
+**⑤ 机器的凭据不是 `credentials` 表里的一行**
 
 那张表是**人**的:一行是一把能打开浏览器那扇门的东西。机器凭据打不开那扇门,人凭据也当不了机器。两张表、两个中间件、两种 401。
 
 四家调研对象无一例外都这么分:Multica 的 `mul_`(人)对 `mcn_`(节点),Coder 的 session key 对 agent token,GitHub 的 PAT 对 runner credentials,Tailscale 的用户登录对 node key。
 
-**⑤ 发现是扫 PATH 对一张写死的清单**
+**⑥ 发现是扫 PATH 对一张写死的清单**
 
 不是插件协议,不是让 agent 自己注册。一张 `kind → 命令名` 的表,`--version` 问一次版本。四家一致。
 
@@ -108,7 +118,7 @@ agents
 
 发现在**每次报到时**做,不只是启动时。别人 `brew upgrade` 之后我们跟着更新版本号,不重启、不重接。
 
-**⑥ 常驻交给操作系统,而且用什么身份跑决定装哪一种**
+**⑦ 常驻交给操作系统,而且用什么身份跑决定装哪一种**
 
 ```
 不是 root  →  用户服务   ~/Library/LaunchAgents/  或  ~/.config/systemd/user/
@@ -133,7 +143,7 @@ end
 
 `handover run` 单独留着:前台、什么都不装。调试和"先看看能不能通"需要一个不碰服务的入口,GitHub runner 的 `run.sh` 就是这个位置。
 
-**⑦ 启动用绝对路径,找 agent 问登录 shell**
+**⑧ 启动用绝对路径,找 agent 问登录 shell**
 
 服务不继承 shell 的 PATH。launchd 给的是 `/usr/bin:/bin:/usr/sbin:/sbin`,systemd 给的更少 —— **而这个 CLI 的核心工作就是扫 PATH 找 agent**。在终端里跑得好好的,装成服务之后一个都扫不到,报的还是"这台机器上没有 agent",完全指不到真正的原因。
 
@@ -151,7 +161,7 @@ end
 
 问登录 shell 是有名的做法也有名的坑 —— VS Code 的 `Unable to resolve your shell environment` 就是它,重的 shell 配置会超时。所以必须有超时和退化,而且 `handover status` 要打印**服务实际用的那份 PATH**,以及它是问来的还是退化的。
 
-**⑧ 一个长轮询的端点,不是一个心跳端点**
+**⑨ 一个长轮询的端点,不是一个心跳端点**
 
 ```
 POST /machines/current/poll     挂住约 25 秒
@@ -165,7 +175,7 @@ POST /machines/current/poll     挂住约 25 秒
 
 **干净停止时说一声再见**(`DELETE /machines/current/session`),立刻转离线。GitHub 的 runner 退出时调 `DeleteSessionAsync` 是同一件事。**常见情况准确,异常情况才靠阈值猜。**
 
-**⑨ 以后接长连接,变的只有传输**
+**⑩ 以后接长连接,变的只有传输**
 
 `last_seen_at` 仍然是在线与否的唯一真相,WebSocket 只让延迟变短。
 
@@ -173,7 +183,7 @@ POST /machines/current/poll     挂住约 25 秒
 
 所以加长连接时:**表不动、产品不动,只换谁来写 `last_seen_at`、机器怎么更快知道有活。**
 
-**⑩ 服务器永远不主动连机器**
+**⑪ 服务器永远不主动连机器**
 
 不是偏好,是 NAT 和防火墙决定的:机器在别人家的网络里,连不进去。所以只能机器往外连着 —— **长期外连的进程这个形状是被逼出来的,不是选出来的。**
 
@@ -188,7 +198,7 @@ POST /machines/current/poll     挂住约 25 秒
 ## 接口
 
 ```
-POST   /spaces/{slug}/enrolments        命令行发起
+POST   /enrolments                      命令行发起,不要会话,也不报 Space
                                         → { userCode, verifyUrl, verifyUrlComplete,
                                             interval, expiresAt }
 POST   /enrolments/claim                命令行轮询,出示 secret → 未批 / 过期 / 被拒 / 机器凭据

@@ -20,7 +20,11 @@ import type { UserCode } from '../machine/user-code.ts'
 import type { Database } from './connection.ts'
 
 export type OpeningEnrolment = {
-  readonly spaceId: string
+  /**
+   * Absent when a machine opened it: which Space it joins is the approver's to choose, and a
+   * machine naming one would let an unauthenticated caller tell a real slug from a missing one.
+   */
+  readonly spaceId: string | undefined
   readonly machineName: string
   readonly secretHash: string
   /** Absent on the key path: nobody reads a code there, and one nobody types can only leak. */
@@ -40,7 +44,7 @@ export async function openEnrolment(db: Database, opening: OpeningEnrolment): Pr
   const row = await db
     .insertInto('enrolments')
     .values({
-      space_id: opening.spaceId,
+      space_id: opening.spaceId ?? null,
       machine_name: opening.machineName,
       secret_hash: opening.secretHash,
       user_code: opening.userCode ?? null,
@@ -54,10 +58,13 @@ export async function openEnrolment(db: Database, opening: OpeningEnrolment): Pr
   return { id: row.id, expiresAt: row.expires_at }
 }
 
-/** What the approval page shows: which machine is asking, and to join what. */
+/**
+ * What the approval page shows: which machine is asking.
+ *
+ * Not which Space — that is the question the page asks, not one it answers.
+ */
 export type Waiting = {
   readonly machineName: string
-  readonly spaceName: string
   readonly expiresAt: Date
 }
 
@@ -67,12 +74,7 @@ export async function enrolmentWaiting(
 ): Promise<Waiting | undefined> {
   const row = await db
     .selectFrom('enrolments')
-    .innerJoin('spaces', 'spaces.id', 'enrolments.space_id')
-    .select([
-      'enrolments.machine_name as machineName',
-      'spaces.display_name as spaceName',
-      'enrolments.expires_at as expiresAt',
-    ])
+    .select(['machine_name as machineName', 'expires_at as expiresAt'])
     .where('user_code', '=', userCode)
     .where('approved_at', 'is', null)
     .where('refused_at', 'is', null)
@@ -96,9 +98,13 @@ export type Answered =
 export async function approveEnrolment(
   db: Database,
   userCode: UserCode,
-  userId: string,
+  into: { readonly userId: string; readonly spaceId: string },
 ): Promise<Answered> {
-  return answer(db, userCode, { approved_by: userId, approved_at: sql`clock_timestamp()` })
+  return answer(db, userCode, {
+    approved_by: into.userId,
+    space_id: into.spaceId,
+    approved_at: sql`clock_timestamp()`,
+  })
 }
 
 export async function refuseEnrolment(db: Database, userCode: UserCode): Promise<Answered> {

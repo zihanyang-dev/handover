@@ -57,7 +57,7 @@ export interface Enrolments {
   machine_name: string;
   refused_at: Timestamp | null;
   secret_hash: string;
-  space_id: string;
+  space_id: string | null;
   user_code: string | null;
 }
 

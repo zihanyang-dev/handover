@@ -39,6 +39,9 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
       .where('claimed_at', 'is', null)
       .where('expires_at', '>', sql<Date>`now()`)
       .returning(['id', 'space_id', 'machine_name'])
+      // `enrolments_approved_into_a_space` says an approved row has one, and only approved rows
+      // reach here. The column is nullable because an unapproved enrolment has no Space yet.
+      .$narrowType<{ space_id: string }>()
       .executeTakeFirst()
 
     if (won === undefined) return whyNot(tx, collecting.secretHash)
