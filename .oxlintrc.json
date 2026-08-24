@@ -1,0 +1,118 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn"],
+  "categories": {
+    "correctness": "error"
+  },
+  "options": {
+    "reportUnusedDisableDirectives": "error",
+    "typeAware": true
+  },
+  "ignorePatterns": ["generated/**", "node_modules/**", "**/*.config.ts"],
+  "rules": {
+    "max-depth": ["error", 2],
+    "complexity": ["error", 10],
+    "max-params": ["error", 4],
+    "max-nested-callbacks": ["error", 3],
+    "max-lines-per-function": ["error", 60],
+    "max-statements": ["error", 25],
+    "no-else-return": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-unused-expressions": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/return-await": ["error", "error-handling-correctness-only"],
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/promise-function-async": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": false,
+        "requireDefaultForNonUnion": true
+      }
+    ],
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/no-non-null-asserted-nullish-coalescing": "error",
+    "typescript/no-confusing-void-expression": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-extraneous-class": "error",
+    "typescript/method-signature-style": ["error", "property"],
+    "typescript/no-dynamic-delete": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/restrict-plus-operands": [
+      "error",
+      {
+        "allowAny": false,
+        "allowBoolean": false,
+        "allowNullish": false,
+        "allowNumberAndString": false,
+        "allowRegExp": false
+      }
+    ],
+    "typescript/ban-ts-comment": [
+      "error",
+      {
+        "minimumDescriptionLength": 20
+      }
+    ],
+    "typescript/unbound-method": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/no-array-reduce": "error",
+    "unicorn/no-lonely-if": "error",
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "process",
+        "property": "env",
+        "message": "parse the environment once in src/env.ts and pass the result down"
+      }
+    ],
+    "no-console": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts", "**/*.test.ts", "scripts/**"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-statements": "off"
+      }
+    },
+    {
+      "files": ["src/env.ts"],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": ["src/log.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+name: handover
+
+# One server, two databases. Which one a process talks to is decided by DATABASE_URL, so the
+# test database is out of reach of anything pointed at the development one. `pnpm test:db`
+# creates it on first run; nothing here has to know it exists.
+#
+# The port is deliberately not 5432. A development machine runs several projects at once, and
+# whoever claims the conventional port makes every other checkout fail to start.
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: handover
+      POSTGRES_PASSWORD: handover
+      POSTGRES_DB: handover
+    ports: ['5442:5432']
+    volumes: ['db-data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U handover -d handover']
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  db-data:

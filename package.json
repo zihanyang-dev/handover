@@ -1,0 +1,45 @@
+{
+  "name": "handover",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/main.ts",
+    "start": "node src/main.ts",
+    "db:up": "docker compose up --detach --wait",
+    "db:down": "docker compose down --volumes",
+    "migrate": "node --env-file=.env scripts/migrate.ts",
+    "test:db": "node --env-file=.env.test scripts/migrate.ts",
+    "generate": "node --env-file=.env.test scripts/generate.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run",
+    "check": "pnpm generate && git diff --exit-code generated && pnpm typecheck && pnpm lint && pnpm format && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "dbmate": "^2.35.0",
+    "kysely-codegen": "^0.20.0",
+    "oxlint": "^1.0.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.4.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@hono/zod-validator": "^0.9.0",
+    "hono": "^4.13.4",
+    "kysely": "^0.29.5",
+    "openid-client": "^6.8.7",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  }
+}
