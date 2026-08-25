@@ -12,7 +12,7 @@ import { useId, useState, type ReactElement } from 'react'
 import { ExclamationCircleFill, Github } from 'react-bootstrap-icons'
 import { api, retryKey } from '../../api.ts'
 import { Mark } from '../../mark.tsx'
-import { GmailMark, GoogleMark } from './provider-marks.tsx'
+import { GoogleMark } from './provider-marks.tsx'
 
 /**
  * Required, one entry per provider: a name added without a label and a mark is a compile error,
@@ -134,7 +134,6 @@ export function SignIn({
 
         <div className="stack-tight">
           <label className="label" htmlFor={field}>
-            <GmailMark size={14} />
             Email address
           </label>
           <input
@@ -152,8 +151,12 @@ export function SignIn({
           />
         </div>
 
-        <button className="button button-primary" type="submit" disabled={askForCode.isPending}>
-          <span className="button-label">{askForCode.isPending ? 'Sending…' : 'Send a code'}</span>
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={email.trim() === '' || askForCode.isPending}
+        >
+          <span className="button-label">Continue</span>
         </button>
       </form>
     </main>

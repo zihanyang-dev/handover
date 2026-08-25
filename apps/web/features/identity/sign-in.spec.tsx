@@ -95,7 +95,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     // The real route tree, so this is the screen somebody would actually arrive at.
     expect(await screen.findByText(/check your email/i)).toBeDefined()
@@ -112,7 +112,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
     // Staying put is the point: the code screen would be a wait for a letter that never comes.
@@ -143,12 +143,12 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await waitFor(() => {
       expect(bodies).toHaveLength(1)
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByText(/check your email/i)
 
     expect(bodies).toHaveLength(2)
@@ -165,7 +165,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/a code just went out/i)).toBeDefined()
   })
