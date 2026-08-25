@@ -50,18 +50,35 @@ function useCountdown(seconds: number): number {
   return left
 }
 
-/** Asking again is a new request, so the key that stood for the last one is spent first. */
-function Resend({ email, after }: { readonly email: string; readonly after: number }) {
+/**
+ * Asking for another one.
+ *
+ * Its own name, held until a letter is really out. Retiring the last one first and minting a new
+ * one every attempt was the exact thing the name exists to prevent: the mail goes, the answer is
+ * lost, the person presses again — and the second letter arrives and kills the first, which is the
+ * one already in their inbox.
+ */
+function Resend({
+  email,
+  after,
+  answering,
+}: {
+  readonly email: string
+  readonly after: number
+  /** Which letter is being replaced. One resend per letter, so the name can retire with it. */
+  readonly answering: string
+}) {
   const navigate = useNavigate()
   const waiting = useCountdown(after)
+  const intention = `code:${email}:after:${answering}`
 
   const resend = useMutation({
     mutationFn: async () => {
-      retryKeyDone(`code:${email}`)
       const { data, error } = await api.POST('/auth/email-codes', {
-        body: { email, requestKey: retryKey(`code:${email}`) },
+        body: { email, requestKey: retryKey(intention) },
       })
       if (data === undefined) throw new Error(error.reason)
+      retryKeyDone(intention)
       return data
     },
     onSuccess: async (opened) => navigate({ to: '/sign-in/code', search: { email, ...opened } }),
@@ -174,7 +191,7 @@ export function EmailCode({
         </button>
       </form>
 
-      <Resend email={email} after={resendAfterSeconds} />
+      <Resend email={email} after={resendAfterSeconds} answering={codeId} />
     </main>
   )
 }

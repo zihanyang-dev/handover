@@ -27,8 +27,11 @@ const sendCode: SendCode = async (_to, code) => {
   return 'sent'
 }
 
+/** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
+const WEB = 'http://localhost:5173'
+
 const deps = { db, secret: env.AUTH_SECRET, sendCode }
-const auth = signInApi({ ...deps, providers: ['google', 'github'] })
+const auth = signInApi({ ...deps, providers: ['google', 'github'], webOrigin: WEB })
 const app = credentialApi(deps)
 const me = meApi({ db, providers: ['google', 'github'] })
 

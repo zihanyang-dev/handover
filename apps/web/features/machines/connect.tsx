@@ -193,7 +193,10 @@ export function Connect({ typed }: { readonly typed: string }) {
           </div>
         </div>
 
-        {waiting.data !== undefined && (
+        {/* Only while the box still says what was looked up. Editing it and pressing approve
+            would let go of a machine somebody is no longer looking at: the screen says code B and
+            the button answers for code A. */}
+        {waiting.data !== undefined && code.trim().toUpperCase() === asked.trim().toUpperCase() && (
           <Answer
             machineName={waiting.data.machineName}
             who={me.data?.displayName ?? ''}

@@ -21,6 +21,12 @@ export type { SendCode }
 
 export type SignInApi = {
   readonly db: Database
+  /**
+   * Where a browser reaches this app. It decides whether the session cookie is marked `Secure` —
+   * read from the request, TLS that ends at a proxy would look like plain HTTP and it never would
+   * be.
+   */
+  readonly webOrigin: string
   /** The providers this deployment has keys for. A way in nobody can use is not offered. */
   readonly providers: readonly Provider[]
   readonly secret: string
@@ -108,7 +114,7 @@ function answering(deps: SignInApi) {
         return c.json(body(failure), failure.status)
       }
 
-      startSession(c, session.token)
+      startSession(c, session.token, deps.webOrigin)
 
       return c.json({ userId: result.userId }, 200)
     },

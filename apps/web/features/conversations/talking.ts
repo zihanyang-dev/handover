@@ -87,7 +87,10 @@ export function useSay(slug: string, id: string) {
 
   return useMutation({
     mutationFn: async (asked: Saying) => {
-      const intention = `say:${id}:${asked.text}`
+      // The whole of what was asked, not only the words. Named by the text alone, somebody whose
+      // first attempt was lost and who then picked a different model would send the same name —
+      // and be told it was said already, with the choice they had just made thrown away.
+      const intention = `say:${id}:${JSON.stringify([asked.text, asked.model, asked.effort])}`
       const { error } = await api.POST('/spaces/{slug}/conversations/{id}/messages', {
         params: { path: { slug, id } },
         body: { key: retryKey(intention), asked },

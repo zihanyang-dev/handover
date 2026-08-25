@@ -19,7 +19,14 @@ import { api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
 import { BEHIND_A_SESSION, MALFORMED_BODY, body, refusal, type Failure } from './failure.ts'
 import type { ProviderClient } from './oauth/provider-client.ts'
 import { returnPath } from './return-path.ts'
-import { currentUser, requireSession, startSession, type Signed } from './session.ts'
+import {
+  currentUser,
+  overHttps,
+  requireSession,
+  sessionHeld,
+  startSession,
+  type Signed,
+} from './session.ts'
 
 const HANDOFF_COOKIE = 'handover_oauth'
 
@@ -42,6 +49,14 @@ const handoff = z.object({
   state: z.string().min(1),
   pkceVerifier: z.string().min(1),
   next: z.string(),
+  /**
+   * Which session started this, for a trip that connects a way in to an account.
+   *
+   * The account is decided when the browser comes back, and "whoever is signed in now" is not the
+   * same person: sign out and in as somebody else mid-trip and the provider credential lands on
+   * their account. The hash, so a cookie that leaks is not a session token.
+   */
+  startedBy: z.string().optional(),
 })
 
 type Handoff = z.infer<typeof handoff>
@@ -105,9 +120,10 @@ async function settle(
   deps: OAuthApi,
   taken: Handoff,
   returned: URL,
-  currentUser: string | undefined,
+  /** Who is signed in on the browser that came back, and which session that is. */
+  browser: { readonly userId: string | undefined; readonly session: string | undefined },
 ): Promise<Outcome> {
-  const to = returnPath(taken.next)
+  const to = returnPath(taken.next, deps.webOrigin)
   const landing = (result?: string) => back(deps.webOrigin, to, result)
 
   // The provider says the person said no. Nothing happened, and nothing should look like it did.
@@ -124,16 +140,19 @@ async function settle(
   if (identified.kind === 'no-verified-email') return { to: landing('no-verified-email') }
 
   if (taken.purpose === 'connect') {
-    // The session that started this has to still be the session finishing it.
-    if (currentUser === undefined) return { to: landing('expired') }
+    // The session that started this has to be the session finishing it — not merely some session.
+    // Compared by the token this browser is holding, because that is the only thing that says the
+    // person who left is the person who came back.
+    const same = taken.startedBy !== undefined && taken.startedBy === browser.session
+    if (browser.userId === undefined || !same) return { to: landing('expired') }
 
-    const connected = await connectProvider(deps.db, currentUser, identified.identity)
+    const connected = await connectProvider(deps.db, browser.userId, identified.identity)
     return { to: landing(connected.kind === 'connected' ? undefined : connected.rejection) }
   }
 
   const session = newSessionToken()
-  const arrived = await signInWithProvider(deps.db, identified.identity, session.hash)
-  return { to: landing(arrived.merged ? 'merged' : undefined), sessionToken: session.token }
+  const signedIn = await signInWithProvider(deps.db, identified.identity, session.hash)
+  return { to: landing(signedIn.merged ? 'merged' : undefined), sessionToken: session.token }
 }
 
 /**
@@ -152,7 +171,12 @@ function wayIn(deps: OAuthApi, name: string) {
 async function leave(
   c: Context,
   deps: OAuthApi,
-  leaving: { name: string; purpose: Handoff['purpose']; next: string | undefined },
+  leaving: {
+    name: string
+    purpose: Handoff['purpose']
+    next: string | undefined
+    startedBy: string | undefined
+  },
 ): Promise<{ url: string } | undefined> {
   const found = wayIn(deps, leaving.name)
   if (found === undefined) return undefined
@@ -166,7 +190,8 @@ async function leave(
     purpose,
     state: begun.state,
     pkceVerifier: begun.pkceVerifier,
-    next: returnPath(leaving.next),
+    next: returnPath(leaving.next, deps.webOrigin),
+    ...(leaving.startedBy === undefined ? {} : { startedBy: leaving.startedBy }),
   }
 
   await setSignedCookie(c, HANDOFF_COOKIE, JSON.stringify(remembered), deps.secret, {
@@ -175,7 +200,7 @@ async function leave(
     // Strict would withhold the cookie on exactly that arrival.
     sameSite: 'Lax',
     path: '/',
-    secure: new URL(c.req.url).protocol === 'https:',
+    secure: overHttps(deps.webOrigin),
     maxAge: HANDOFF_SECONDS,
   })
 
@@ -216,6 +241,8 @@ function leavingToSignIn(deps: OAuthApi) {
         name: c.req.valid('param').provider,
         purpose: 'sign-in',
         next: c.req.valid('json').next,
+        // Nobody is signed in yet, and that is what this trip is for. There is no session to bind.
+        startedBy: undefined,
       })
       if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
       return c.json(sent, 200)
@@ -245,6 +272,7 @@ function leavingToConnect(deps: OAuthApi) {
         name: c.req.valid('param').provider,
         purpose: 'connect',
         next: c.req.valid('json').next,
+        startedBy: sessionHeld(c),
       })
       if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
       return c.json(sent, 200)
@@ -273,10 +301,13 @@ function comingBack(deps: OAuthApi) {
         return c.redirect(back(deps.webOrigin, '/', 'expired'), 303)
       }
 
-      const outcome = await settle(deps, taken, new URL(c.req.url), await currentUser(deps.db, c))
+      const outcome = await settle(deps, taken, new URL(c.req.url), {
+        userId: await currentUser(deps.db, c),
+        session: sessionHeld(c),
+      })
 
       if (outcome.sessionToken !== undefined) {
-        startSession(c, outcome.sessionToken)
+        startSession(c, outcome.sessionToken, deps.webOrigin)
       }
       return c.redirect(outcome.to, 303)
     },

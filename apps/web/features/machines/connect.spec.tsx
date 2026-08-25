@@ -208,4 +208,15 @@ describe('answering a machine', () => {
 
     expect(screen.queryByRole('button', { name: 'Acme' })).toBeNull()
   })
+
+  it('lets go of the machine it found once the code has been edited', async () => {
+    // The screen would otherwise say code B while the approve button still answers for code A.
+    server.use(signedIn({ spaces: SPACES }), waiting())
+    open('/connect/WDJB-MJHT')
+    await screen.findByText('mina-mbp')
+
+    await userEvent.type(screen.getByLabelText('Code'), 'X')
+
+    expect(screen.queryByText('mina-mbp')).toBeNull()
+  })
 })

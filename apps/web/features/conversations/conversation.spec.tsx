@@ -62,6 +62,23 @@ const say = (seq: number, role: string, content: unknown): Message => ({
   at: AT,
 })
 
+const OFFERS: Offers = [
+  {
+    id: 'default',
+    name: 'Default',
+    about: 'Whatever it would pick',
+    efforts: [],
+    isDefault: true,
+  },
+  {
+    id: 'opus-5',
+    name: 'Opus 5',
+    about: 'The slow careful one',
+    efforts: ['low', 'high'],
+    isDefault: false,
+  },
+]
+
 describe('reading a conversation', () => {
   it('shows what was said, in order', async () => {
     server.use(
@@ -213,6 +230,38 @@ describe('while it is working', () => {
     expect(await screen.findByText(/machine is not here/i)).toBeDefined()
   })
 
+  it('sends a changed choice as a new message, not as the same one again', async () => {
+    // The first attempt landed and the answer was lost; the person changes the model and presses
+    // Send again. Named by the words alone, the server would call it a repeat and the choice they
+    // just made would be thrown away.
+    const names: string[] = []
+    server.use(
+      ...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS),
+      http.post('*/spaces/acme/conversations/c-1/messages', async ({ request }) => {
+        names.push(((await request.json()) as { key: string }).key)
+        return HttpResponse.json(
+          { reason: 'unavailable', recovery: 'retry-later' },
+          { status: 503 },
+        )
+      }),
+    )
+
+    open('/s/acme/c/c-1')
+    await userEvent.type(await screen.findByLabelText('Say something'), 'hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => {
+      expect(names).toHaveLength(1)
+    })
+
+    await userEvent.selectOptions(screen.getByLabelText('Model'), 'opus-5')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(names).toHaveLength(2)
+    })
+    expect(names[0]).not.toBe(names[1])
+  })
+
   it('sends the same words under the same name, so a lost answer is not two messages', async () => {
     // The one case the name exists for: the message landed and the answer did not come back, so
     // somebody presses Send again on words that are already in there.
@@ -242,23 +291,6 @@ describe('while it is working', () => {
     expect(names[0]).toBe(names[1])
   })
 })
-
-const OFFERS: Offers = [
-  {
-    id: 'default',
-    name: 'Default',
-    about: 'Whatever it would pick',
-    efforts: [],
-    isDefault: true,
-  },
-  {
-    id: 'opus-5',
-    name: 'Opus 5',
-    about: 'The slow careful one',
-    efforts: ['low', 'high'],
-    isDefault: false,
-  },
-]
 
 describe('choosing what to ask with', () => {
   it('has no control at all when the agent offers no choice', async () => {

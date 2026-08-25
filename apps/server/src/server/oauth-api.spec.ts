@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
 import { openSession } from '../db/session.ts'
 import { arrive } from '../db/user.ts'
+import { credentialsOf } from '../db/credential.ts'
 import { newSessionToken } from '../identity/session.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
 import { oauthApi } from './oauth-api.ts'
@@ -340,6 +341,28 @@ describe('connecting one to an account already signed in', () => {
     const back = await comeBack(app, cookiesOf(left))
 
     expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
+  })
+
+  it('will not hand the credential to whoever is signed in when it comes back', async () => {
+    // Alice starts a connection, signs out, and Bob signs in on the same browser before the trip
+    // finishes. "Whoever is signed in now" is not the person who asked, and the way in would land
+    // on Bob's account.
+    const alice = await signedInCookie(`alice-${randomUUID()}@example.com`)
+    const bob = await signedInCookie(`bob-${randomUUID()}@example.com`)
+    const app = appWith(identified(MINA))
+    const left = await app.request('/me/credentials/google/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: '{}',
+    })
+
+    const back = await comeBack(app, `${cookiesOf(left)}; ${bob.cookie}`)
+
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
+    expect(await credentialsOf(db, bob.userId)).not.toContainEqual({
+      kind: 'google',
+      subject: MINA.subject,
+    })
   })
 
   it('will not start one at all without a session', async () => {

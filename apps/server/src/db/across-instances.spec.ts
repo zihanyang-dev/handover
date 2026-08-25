@@ -16,6 +16,7 @@ import { issueCode } from './email-code.ts'
 import { signInWithCode } from './sign-in.ts'
 import { arrive } from './user.ts'
 import { createSpace } from './space.ts'
+import { connectProvider } from './credential.ts'
 import type { Slug } from '@handover/universal'
 
 const env = loadEnv()
@@ -149,4 +150,38 @@ describe('two instances at once', () => {
     // No cache to go stale. This is the whole reason sessions are not kept anywhere else.
     expect(await userHolding(two, token.hash)).toBeUndefined()
   })
+
+  it('tell the loser of a connect race that it did not connect', async () => {
+    // Both instances read nothing, both try to write, and the unique index picks one. Reporting
+    // the loser as connected would show a way in that is not there — and on a second account,
+    // that way in belongs to somebody else.
+    const subject = `google-${RUN}`
+    const mina = await someone(`mina-${RUN}@example.com`)
+    const other = await someone(`other-${RUN}@example.com`)
+    const identity = {
+      provider: 'google',
+      subject,
+      verifiedEmail: EMAIL,
+      name: null,
+      username: null,
+    } as const
+
+    const [first, second] = await Promise.all([
+      connectProvider(one, mina, identity),
+      connectProvider(two, other, identity),
+    ])
+
+    const outcomes = [first.kind, second.kind].sort()
+    expect(outcomes).toEqual(['connected', 'rejected'])
+  })
 })
+
+/** An account, made the way arriving makes one. */
+async function someone(address: string): Promise<string> {
+  const arrived = await one
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
+  return arrived.userId
+}

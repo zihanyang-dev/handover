@@ -107,8 +107,17 @@ export async function connectProvider(
       return { kind: 'rejected', rejection: 'already-connected' }
     }
 
-    await link(tx, userId, credential)
-    return { kind: 'connected' }
+    // The index decides the race, not the read above: two transactions can both find nothing.
+    // The loser writes nothing, and telling it "connected" would show a way in that is not there.
+    if (await link(tx, userId, credential)) return { kind: 'connected' }
+
+    const won = await holderOf(tx, credential)
+    if (won === userId) return { kind: 'connected' }
+
+    return {
+      kind: 'rejected',
+      rejection: won === undefined ? 'already-connected' : 'linked-elsewhere',
+    }
   })
 }
 

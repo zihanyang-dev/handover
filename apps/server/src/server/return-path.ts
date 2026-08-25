@@ -8,10 +8,23 @@
 
 const HOME = '/'
 
-/** Keeps only a path on this site. Anything else becomes the front door. */
-export function returnPath(asked: string | undefined): string {
-  if (asked === undefined || !asked.startsWith('/')) return HOME
-  // `//host` and `/\host` are how a browser reads a protocol-relative URL: still another origin.
-  if (asked.startsWith('//') || asked.startsWith('/\\')) return HOME
-  return asked
+/**
+ * Keeps only a path on this site. Anything else becomes the front door.
+ *
+ * Resolved against our own origin rather than inspected as text, because a browser does not read
+ * it as text either: it strips tabs and newlines before parsing, so `/\t/evil.example/x` — which
+ * starts with a slash and is not `//` — is `https://evil.example/x` to `new URL()`. Every check
+ * written against the characters is a check the browser has already undone.
+ *
+ * What comes back is rebuilt from the parsed URL, so nothing survives that the parse did not
+ * understand.
+ */
+export function returnPath(asked: string | undefined, origin: string): string {
+  if (asked === undefined) return HOME
+
+  const here = new URL(origin)
+  const landing = URL.parse(asked, here.href)
+  if (landing === null || landing.origin !== here.origin) return HOME
+
+  return `${landing.pathname}${landing.search}${landing.hash}`
 }

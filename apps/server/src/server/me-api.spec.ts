@@ -18,6 +18,9 @@ beforeEach(() => {
 })
 
 const env = loadEnv()
+
+/** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
+const WEB = 'http://localhost:5173'
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -29,7 +32,13 @@ const sendCode: SendCode = async (_to, code) => {
   lastCode = code
   return 'sent'
 }
-const auth = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
+const auth = signInApi({
+  db,
+  secret: env.AUTH_SECRET,
+  sendCode,
+  providers: ['google', 'github'],
+  webOrigin: WEB,
+})
 const app = meApi({ db, providers: ['google', 'github'] })
 
 /** Signs somebody in the way a browser would, and returns the cookie it was handed. */

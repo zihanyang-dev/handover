@@ -253,19 +253,19 @@ ALTER TABLE ONLY public.credentials
 
 
 --
+-- Name: email_codes email_codes_asked_once; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_codes
+    ADD CONSTRAINT email_codes_asked_once UNIQUE (request_key, email, purpose);
+
+
+--
 -- Name: email_codes email_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.email_codes
     ADD CONSTRAINT email_codes_pkey PRIMARY KEY (id);
-
-
---
--- Name: email_codes email_codes_request_key_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.email_codes
-    ADD CONSTRAINT email_codes_request_key_key UNIQUE (request_key);
 
 
 --
@@ -309,19 +309,19 @@ ALTER TABLE ONLY public.machines
 
 
 --
+-- Name: memberships memberships_asked_once; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memberships
+    ADD CONSTRAINT memberships_asked_once UNIQUE (user_id, request_key);
+
+
+--
 -- Name: memberships memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memberships
     ADD CONSTRAINT memberships_pkey PRIMARY KEY (space_id, user_id);
-
-
---
--- Name: memberships memberships_request_key_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.memberships
-    ADD CONSTRAINT memberships_request_key_key UNIQUE (request_key);
 
 
 --

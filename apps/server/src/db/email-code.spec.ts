@@ -199,4 +199,18 @@ describe('issueCode', () => {
     expect(opened.expiresAt.getTime()).toBeGreaterThan(Date.now())
     expect(opened.resendAfterSeconds).toBe(RESEND_INTERVAL_SECONDS)
   })
+
+  it('does not call a letter to another address the same request', async () => {
+    // The key is the caller's own string. Matched on its own, the same key sent for a different
+    // address hands back the first letter's id and expiry and says a code is on its way — to an
+    // inbox nothing was ever sent to.
+    const key = `${RUN}-shared`
+    const first = await ask(key)
+
+    const second = await ask(key, `other-${RUN}@example.com`)
+
+    expect(first.kind).toBe('issued')
+    expect(second.kind).toBe('issued')
+    expect(second.kind !== 'too-soon' && second.id).not.toBe(first.kind !== 'too-soon' && first.id)
+  })
 })

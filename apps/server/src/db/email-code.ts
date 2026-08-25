@@ -59,12 +59,20 @@ export type Issued =
   /** A code went to this address moments ago. Sending now would break the one in the inbox. */
   | { readonly kind: 'too-soon'; readonly retryAfterSeconds: number }
 
-/** The code this request key already issued, if it issued one. */
-async function replayOf(db: Database, requestKey: string): Promise<IssuedCode | undefined> {
+/**
+ * The code this request already issued, if it issued one.
+ *
+ * The address and the purpose are part of what makes it the same request. Keyed on the caller's
+ * string alone, the same key sent for a different address hands back the first letter's id and
+ * expiry and says a code is on its way — to an inbox nothing was ever sent to.
+ */
+async function replayOf(db: Database, request: CodeToSend): Promise<IssuedCode | undefined> {
   const found = await db
     .selectFrom('email_codes')
     .select(['id', 'expires_at', WAIT])
-    .where('request_key', '=', requestKey)
+    .where('request_key', '=', request.requestKey)
+    .where('email', '=', request.email)
+    .where('purpose', '=', request.purpose)
     .executeTakeFirst()
 
   if (found === undefined) return undefined
@@ -105,7 +113,7 @@ export async function issueCode(db: Database, request: CodeToSend): Promise<Issu
 
     // Before anything is closed. A retry must hand back a working code, and closing first
     // would supersede the very one it is about to return.
-    const replayed = await replayOf(tx, request.requestKey)
+    const replayed = await replayOf(tx, request)
     if (replayed !== undefined) return { kind: 'replayed', ...replayed }
 
     const wait = await waitLeft(tx, request.email, request.purpose)
@@ -159,7 +167,17 @@ export type Spent =
 export async function spendCode(tx: Tx, secret: string, answer: Answer): Promise<Spent> {
   const row = await tx
     .selectFrom('email_codes')
-    .select(['email', 'code_hash', 'expires_at', 'attempts', 'closed_reason'])
+    .select([
+      'email',
+      'code_hash',
+      'expires_at',
+      'attempts',
+      'closed_reason',
+      // The database's clock, read in the same statement as the row it judges. Two instances whose
+      // own clocks disagree would otherwise accept the same code on one and refuse it on the
+      // other, and every other deadline in this project is already the database's to decide.
+      sql<Date>`now()`.as('asOf'),
+    ])
     .where('id', '=', answer.codeId)
     // A code sent to sign in is not a code sent to add an address. Looked up without this, one
     // could be spent on the other, and somebody talked into forwarding a code would have handed
@@ -179,7 +197,7 @@ export async function spendCode(tx: Tx, secret: string, answer: Answer): Promise
           closedReason: row.closed_reason as ClosedReason | null,
         }
 
-  const verdict = checkCode(code, answer.code, secret, new Date())
+  const verdict = checkCode(code, answer.code, secret, row?.asOf ?? new Date())
 
   if (verdict.kind === 'rejected') {
     // Only a wrong guess costs a try. The others are already final, and counting them would burn

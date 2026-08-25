@@ -9,6 +9,9 @@ import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
+
+/** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
+const WEB = 'http://localhost:5173'
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -30,7 +33,13 @@ const sendCode: SendCode = async (to, code) => {
   sent.push({ to, code })
   return 'sent'
 }
-const app = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google', 'github'] })
+const app = signInApi({
+  db,
+  secret: env.AUTH_SECRET,
+  sendCode,
+  providers: ['google', 'github'],
+  webOrigin: WEB,
+})
 
 beforeEach(() => {
   sent = []
@@ -125,6 +134,7 @@ describe('asking for a code', () => {
 describe('when the letter did not go', () => {
   function whenDeliveryIs(delivery: Awaited<ReturnType<SendCode>>) {
     return signInApi({
+      webOrigin: WEB,
       db,
       secret: env.AUTH_SECRET,
       sendCode: async () => delivery,
@@ -168,7 +178,13 @@ describe('what a stranger is offered', () => {
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {
-    const half = signInApi({ db, secret: env.AUTH_SECRET, sendCode, providers: ['google'] })
+    const half = signInApi({
+      db,
+      secret: env.AUTH_SECRET,
+      sendCode,
+      providers: ['google'],
+      webOrigin: WEB,
+    })
 
     const offered = (await (await half.request('/auth/credentials')).json()) as {
       offered: string[]

@@ -6,7 +6,7 @@
  * from inside a Space too, and a prop would have made that screen fetch `/me` for one string.
  */
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { meQuery } from './me.ts'
@@ -16,11 +16,21 @@ export function SignOut() {
   const me = useQuery(meQuery)
   const account = me.data?.credentials.find((one) => one.kind === 'email')?.address ?? ''
 
+  const client = useQueryClient()
+
   const leave = useMutation({
     mutationFn: async () => {
-      await api.DELETE('/browser/sessions/current')
+      const { response } = await api.DELETE('/browser/sessions/current')
+      // Not left. Navigating anyway would show the sign-in page to somebody still signed in, and
+      // the next screen they open would be their account again.
+      if (!response.ok) throw new Error('still-here')
     },
-    onSuccess: async () => navigate({ to: '/sign-in' }),
+    onSuccess: async () => {
+      // Everything that was true because of who was signed in. Kept, the next account to sign in
+      // on this tab sees the last one's name, Spaces and ways in until each query refetches.
+      client.clear()
+      await navigate({ to: '/sign-in' })
+    },
   })
 
   return (
@@ -33,7 +43,7 @@ export function SignOut() {
           leave.mutate()
         }}
       >
-        <span className="button-label">Sign out</span>
+        <span className="button-label">{leave.isError ? 'Could not sign out' : 'Sign out'}</span>
       </button>
     </div>
   )

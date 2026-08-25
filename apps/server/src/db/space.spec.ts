@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import type { Slug } from '@handover/universal'
+import { normalizeSlug, type Slug } from '@handover/universal'
 import { createSpace, type SpaceCreation } from './space.ts'
 import { connect, type Database } from './connection.ts'
 import { arrive } from './user.ts'
@@ -139,5 +139,29 @@ describe('createSpace', () => {
     const zoe = await someone('zoe@example.com')
     expect((await request(zoe, `${RUN}-k3`, `${ACME}-2` as Slug)).kind).toBe('created')
     expect((await request(rui, `${RUN}-k4`, `${ACME}-2` as Slug)).kind).toBe('slug-taken')
+  })
+
+  it('does not hand somebody else\u2019s Space to a reused request key', async () => {
+    // The key is the caller's own string. Read globally, anybody who guessed or reused one would
+    // be told the id, address and name of a private Space they are not a member of.
+    const mine = await createSpace(db, {
+      requestKey: `${RUN}-shared`,
+      userId: await someone('owner'),
+      displayName: `Acme ${RUN.slice(0, 6)}`,
+      slug: normalizeSlug(`Acme ${RUN.slice(0, 6)}`) as Slug,
+    })
+    expect(mine.kind).toBe('created')
+
+    const theirs = await createSpace(db, {
+      requestKey: `${RUN}-shared`,
+      userId: await someone('stranger'),
+      displayName: `Beta ${RUN.slice(0, 6)}`,
+      slug: normalizeSlug(`Beta ${RUN.slice(0, 6)}`) as Slug,
+    })
+
+    expect(theirs.kind).toBe('created')
+    expect(theirs.kind === 'created' && theirs.space.id).not.toBe(
+      mine.kind === 'created' && mine.space.id,
+    )
   })
 })

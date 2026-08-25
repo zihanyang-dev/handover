@@ -38,12 +38,24 @@ export type SpaceCreation =
   /** Someone else holds the slug. The suggestion is not held for anyone. */
   | { readonly kind: 'slug-taken'; readonly suggestion: Slug }
 
-async function spaceFor(db: Database, requestKey: string): Promise<Space | undefined> {
+/**
+ * The Space this person's own retry already made.
+ *
+ * Keyed on who as well as on what: a request key is the caller's own string, and read globally,
+ * anybody who guessed or reused one would be handed the id, slug and name of a private Space they
+ * are not a member of.
+ */
+async function spaceFor(
+  db: Database,
+  requestKey: string,
+  userId: string,
+): Promise<Space | undefined> {
   const row = await db
     .selectFrom('memberships')
     .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
     .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
     .where('memberships.request_key', '=', requestKey)
+    .where('memberships.user_id', '=', userId)
     .executeTakeFirst()
   return row
 }
@@ -66,7 +78,7 @@ export async function createSpace(db: Database, request: SpaceRequest): Promise<
   return db.transaction().execute(async (tx) => {
     await sql`select pg_advisory_xact_lock(hashtext(${request.requestKey}))`.execute(tx)
 
-    const already = await spaceFor(tx, request.requestKey)
+    const already = await spaceFor(tx, request.requestKey, request.userId)
     if (already !== undefined) return { kind: 'replayed', space: already }
 
     const created = await tx
