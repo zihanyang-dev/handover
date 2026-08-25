@@ -577,11 +577,22 @@ textarea.field {
 
 .auth-error {
   margin: 0;
-  /* One line is always reserved: an error that pushes the button down mid-form reads as
-     the whole form lurching, not as a message arriving. */
-  min-height: 1.125rem;
   color: var(--danger);
   font-size: var(--text-xxs);
+  /* No reserved line: an empty slot is dead space between field and button. Instead the
+     message arrives with a short height+fade, so the button glides down rather than jumps. */
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  interpolate-size: allow-keywords;
+  transition:
+    height 180ms ease-out,
+    opacity 140ms ease-out;
+}
+
+.auth-error[data-shown] {
+  height: auto;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

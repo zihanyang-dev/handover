@@ -105,7 +105,7 @@ function Resend({
         </span>
       </button>
       {/* A button that did nothing looks the same as a letter that never came. */}
-      <p className="auth-error" style={resend.isError ? undefined : { visibility: 'hidden' }}>
+      <p className="auth-error" data-shown={resend.isError ? '' : undefined}>
         {resend.isError
           ? (SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.')
           : null}
@@ -166,40 +166,42 @@ export function EmailCode({
           </p>
         </div>
 
-        <div className="auth-code-row">
-          <input
-            className="code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={DIGITS}
-            autoFocus
-            aria-invalid={handBack.isError}
-            aria-label={`${String(DIGITS)}-digit code`}
-            value={code}
-            onChange={(event) => {
-              const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, DIGITS)
-              setCode(digits)
-              // A wrong answer's red lifts as they retype; it described the code they sent.
-              handBack.reset()
-              // Six digits and nothing left to decide, so there is nothing to press. The digits go
-              // straight in: submitting the form here would read a `code` this keystroke has not
-              // reached yet, and hand back five.
-              if (digits.length === DIGITS) handBack.mutate(digits)
-            }}
-          />
-          <Resend email={email} after={resendAfterSeconds} />
+        <div className="stack-tight">
+          <div className="auth-code-row">
+            <input
+              className="code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={DIGITS}
+              autoFocus
+              aria-invalid={handBack.isError}
+              aria-label={`${String(DIGITS)}-digit code`}
+              value={code}
+              onChange={(event) => {
+                const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, DIGITS)
+                setCode(digits)
+                // A wrong answer's red lifts as they retype; it described the code they sent.
+                handBack.reset()
+                // Six digits and nothing left to decide, so there is nothing to press. The digits go
+                // straight in: submitting the form here would read a `code` this keystroke has not
+                // reached yet, and hand back five.
+                if (digits.length === DIGITS) handBack.mutate(digits)
+              }}
+            />
+            <Resend email={email} after={resendAfterSeconds} />
+          </div>
+
+          <p className="auth-error" data-shown={handBack.isError ? '' : undefined}>
+            {handBack.isError
+              ? (SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.')
+              : null}
+          </p>
+
+          <button className="button button-primary" type="submit" disabled={handBack.isPending}>
+            <span className="button-label">{handBack.isPending ? 'Signing in…' : 'Continue'}</span>
+          </button>
         </div>
-
-        <p className="auth-error" style={handBack.isError ? undefined : { visibility: 'hidden' }}>
-          {handBack.isError
-            ? (SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.')
-            : null}
-        </p>
-
-        <button className="button button-primary" type="submit" disabled={handBack.isPending}>
-          <span className="button-label">{handBack.isPending ? 'Signing in…' : 'Continue'}</span>
-        </button>
 
         {/* Going back carries the address, so nobody retypes what they just typed. */}
         <Link className="note auth-alt" to="/sign-in" search={{ email }}>

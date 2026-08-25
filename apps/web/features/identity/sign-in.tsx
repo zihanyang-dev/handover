@@ -156,22 +156,22 @@ export function SignIn({
               askForCode.reset()
             }}
           />
-          <p className="auth-error" style={invalid ? undefined : { visibility: 'hidden' }}>
+          <p className="auth-error" data-shown={invalid ? '' : undefined}>
             {invalid
               ? refused || askForCode.error === null
                 ? SAID['malformed-request']
                 : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
               : null}
           </p>
-        </div>
 
-        <button
-          className="button button-primary"
-          type="submit"
-          disabled={email.trim() === '' || askForCode.isPending}
-        >
-          <span className="button-label">Continue</span>
-        </button>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={email.trim() === '' || askForCode.isPending}
+          >
+            <span className="button-label">Continue</span>
+          </button>
+        </div>
       </form>
     </main>
   )
