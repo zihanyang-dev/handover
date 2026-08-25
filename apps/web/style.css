@@ -392,9 +392,9 @@ textarea.field {
   --content: #34322d; /* manus --text-primary */
   --basic: #858481; /* manus --text-tertiary */
   --tertiary-light: #5e5e5b; /* manus --text-secondary */
-  --primary: #1a1a19; /* manus --Button-black */
-  --primary-200: #34322d;
-  --primary-500: #1a1a19;
+  --primary: #0075de; /* notion's blue */
+  --primary-200: #0069c8;
+  --primary-500: #0075de;
   --grey-300: #b9b9b7; /* manus --text-disable, placeholder */
   --grey-800: #0000001f; /* hairlines */
   --grey-900: #f7f7f5;
@@ -403,7 +403,7 @@ textarea.field {
   --neutral-950: #0000001f; /* 12% black: their 6% hairline reads as no button at all */
   --neutral-500: #00000024; /* manus --border-dark, the focus ring */
   --neutral-900: #0000000f;
-  --danger: #b3381f;
+  --danger: #e5484d; /* the coral red manus marks an invalid field with */
   --success: #3e7a1e;
   --control: 2.5rem; /* manus controls are 40px */
   --radius: 0.5rem; /* manus fields and the primary button are 8px */
@@ -412,16 +412,15 @@ textarea.field {
   display: grid;
   place-items: center;
   /* Rows pack into one column, centered as a whole — the resend row sits under the form,
-     not in a second stretched track of its own. */
+     not in a second stretched track of its own. The bottom padding biases the column
+     above the middle: dead center reads as sunk on a tall window. */
   place-content: center;
   min-height: 100dvh;
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 14vh;
   /* Inheritance crossed the body before these tokens existed; what is not said here stays dark. */
   color: var(--content);
   background: var(--base);
-  /* Manus's stack, not ours: the login speaks system, the app speaks Outfit. */
-  font-family:
-    -apple-system, system-ui, 'Segoe UI Variable Display', 'Segoe UI', Helvetica, Arial, sans-serif;
+  /* The product's own face: the system stack read as generic SaaS. */
 }
 
 /* Manus's heading: 24/30, medium, centered. Ours defaults heavier. */
@@ -431,18 +430,10 @@ textarea.field {
   line-height: 1.25;
 }
 
-/* Their press is a fade, not OpenHands's scale; their hover dims instead of bolding. */
-.auth .button:enabled:active {
-  transform: none;
-  opacity: 0.8;
-}
-
-.auth .button:enabled:hover {
-  opacity: 0.7;
-}
-
+/* No bolder words on this surface, and no hover fill on the white ones: the dark app's
+   bold-on-hover shouts here. The spacers stay at zero so nothing reflows either. */
 .auth .button:enabled:hover .button-label {
-  font-weight: 500;
+  font-weight: inherit;
 }
 
 .auth .button-label::before,
@@ -450,23 +441,27 @@ textarea.field {
   width: 0;
 }
 
+/* Off, but still a button: the frame stays, only the words fade. */
+.auth .button-secondary:disabled {
+  opacity: 1;
+  color: var(--basic);
+}
+
 .auth .button {
   gap: 0.75rem; /* manus puts 12px between the mark and the words */
 }
 
-/* On their white buttons the label is centered and the provider's mark sits fixed at
+/* The ways in sit 12px apart inside their group; 20px read as two unrelated offers. */
+.auth-ways {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* On the white way-in buttons the label is centered and the provider's mark sits fixed at
    left 14px — not centered along with the words. */
 .auth .button-secondary {
   position: relative;
-}
-
-.auth .button-secondary svg {
-  position: absolute;
-  left: 14px;
-}
-
-/* The white way-in buttons: hairline and a whisper of a shadow, radius 10. */
-.auth .button-secondary {
   border-radius: 0.625rem;
   box-shadow:
     inset 0 0 0 0.5px var(--neutral-950),
@@ -474,11 +469,9 @@ textarea.field {
   background: #ffffff;
 }
 
-.auth .button-secondary:enabled:hover {
-  background: #ffffff;
-  box-shadow:
-    inset 0 0 0 0.5px var(--neutral-950),
-    0 1px 2px -0.5px #16191d0a;
+.auth .button-secondary svg {
+  position: absolute;
+  left: 14px;
 }
 
 /* Manus's disabled primary is a solid grey that owns being off, not a faded black. */
@@ -487,24 +480,41 @@ textarea.field {
   opacity: 1;
 }
 
-/* Manus's corner is a serif wordmark (an image of one); ours is set in Libre Baskerville,
-   the face theirs is drawn in. */
-.auth-mark {
-  position: absolute;
-  top: 1.5rem;
-  left: 1.75rem;
-  font-family: 'Libre Baskerville', ui-serif, Georgia, serif;
-  font-size: var(--text-m);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
 .auth-stack {
   display: flex;
   flex-direction: column;
   gap: 1.25rem; /* manus separates the groups by 20px */
   width: 100%;
-  max-width: 22.5rem; /* manus's column is 360px */
+  max-width: 26rem;
+  animation: auth-in 180ms ease-out both;
+}
+
+/* Arriving and moving on both get one short rise; the mark carries the continuity. */
+@keyframes auth-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The code and asking again share one row, exactly the width of the Continue below it. */
+.auth-code-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem 0.75rem;
+}
+
+.auth-code-row .auth-error {
+  grid-column: 1 / -1;
+}
+
+/* The countdown words change length every second; the button holds its width. */
+.auth-code-row .button {
+  min-width: 7.5rem;
 }
 
 .auth-head {
@@ -533,23 +543,39 @@ textarea.field {
   padding: 0 0.75rem; /* theirs is 12px */
 }
 
+/* The way back sits centered under the form. */
+.auth-alt {
+  align-self: center;
+}
+
 .auth .or {
   color: var(--basic);
 }
 
-/* What follows the form — sending again, going back — is beside it, not in a second card. */
-.auth-aside {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  max-width: 22.5rem;
-  margin-top: 1.25rem;
+/* The code is six digits at control height, sharing a row with asking again. */
+.auth .code {
+  height: var(--control);
+  border-radius: var(--radius);
+  font-size: var(--text-m);
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
 }
 
-.auth-aside .button {
-  width: 100%;
+/* Manus says a field is wrong in the field: coral ring, coral words beneath it. */
+.auth .field[aria-invalid='true'],
+.auth .code[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.auth .field[aria-invalid='true']:focus,
+.auth .code[aria-invalid='true']:focus {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.auth-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-xxs);
 }
 
 @media (prefers-reduced-motion: reduce) {

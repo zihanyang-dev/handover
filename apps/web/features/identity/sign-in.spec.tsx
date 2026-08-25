@@ -65,7 +65,7 @@ describe('choosing a way in', () => {
     server.use(offering('google'))
     open('/sign-in')
 
-    const said = await screen.findByText(/the same address reaches the same account/i)
+    const said = await screen.findByText(/every way in reaches the same account/i)
     const google = await screen.findByRole('button', { name: /continue with google/i })
 
     // Whether somebody dares click a different button than last time is decided by reading this

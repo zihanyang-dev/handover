@@ -109,7 +109,7 @@ describe('handing the code back', () => {
   it('makes somebody wait before another code, and says how long', async () => {
     open(codeScreen())
 
-    const again = await screen.findByRole('button', { name: /send another in \d+s/i })
+    const again = await screen.findByRole('button', { name: /resend in \d+s/i })
 
     expect(again.hasAttribute('disabled')).toBe(true)
   })
@@ -132,7 +132,7 @@ describe('asking for another one', () => {
     )
     open(codeScreen('0'))
 
-    await userEvent.click(await screen.findByRole('button', { name: /send another/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /resend/i }))
 
     expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
   })

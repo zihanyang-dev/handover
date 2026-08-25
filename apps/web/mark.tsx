@@ -21,7 +21,8 @@ import type { CSSProperties } from 'react'
 export type MarkState = 'idle' | 'thinking' | 'working' | 'success'
 
 const BODY = '#2b292a'
-const ACCENT = '#f08d3c'
+/* A green that lets the white through a little; the solid orange read murky on the page. */
+const ACCENT = '#34a853e6'
 
 export function Mark({
   state = 'idle',

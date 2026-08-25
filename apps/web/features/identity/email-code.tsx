@@ -9,8 +9,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ExclamationCircleFill } from 'react-bootstrap-icons'
-import { returnPath } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Mark } from '../../mark.tsx'
 
@@ -93,14 +91,7 @@ function Resend({
   })
 
   return (
-    <div className="auth-aside">
-      {/* A button that did nothing looks the same as a letter that never came. */}
-      {resend.isError && (
-        <p className="said said-bad" role="alert">
-          <ExclamationCircleFill aria-hidden />
-          {SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.'}
-        </p>
-      )}
+    <>
       <button
         className="button button-secondary"
         type="button"
@@ -110,14 +101,16 @@ function Resend({
         }}
       >
         <span className="button-label">
-          {waiting > 0 ? `Send another in ${String(waiting)}s` : 'Send another'}
+          {waiting > 0 ? `Resend in ${String(waiting)}s` : 'Resend'}
         </span>
       </button>
-      {/* Going back carries the address, so nobody retypes what they just typed. */}
-      <Link className="note" to="/sign-in" search={{ email }}>
-        Use a different address
-      </Link>
-    </div>
+      {/* A button that did nothing looks the same as a letter that never came. */}
+      {resend.isError && (
+        <p className="auth-error">
+          {SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.'}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -157,7 +150,6 @@ export function EmailCode({
 
   return (
     <main className="auth">
-      <span className="auth-mark">Handover</span>
       <form
         className="auth-stack"
         onSubmit={(event) => {
@@ -166,7 +158,7 @@ export function EmailCode({
         }}
       >
         <div className="auth-head">
-          <Mark size={80} state={handBack.isPending ? 'working' : 'idle'} />
+          <Mark size={80} state={handBack.isPending ? 'working' : 'thinking'} />
           <h1>Check your email</h1>
           <p className="lede">
             We sent a {DIGITS}-digit code to <span className="address">{email}</span>. It works for{' '}
@@ -174,38 +166,46 @@ export function EmailCode({
           </p>
         </div>
 
+        <div className="auth-code-row">
+          <input
+            className="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={DIGITS}
+            autoFocus
+            aria-invalid={handBack.isError}
+            aria-label={`${String(DIGITS)}-digit code`}
+            value={code}
+            onChange={(event) => {
+              const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, DIGITS)
+              setCode(digits)
+              // A wrong answer's red lifts as they retype; it described the code they sent.
+              handBack.reset()
+              // Six digits and nothing left to decide, so there is nothing to press. The digits go
+              // straight in: submitting the form here would read a `code` this keystroke has not
+              // reached yet, and hand back five.
+              if (digits.length === DIGITS) handBack.mutate(digits)
+            }}
+          />
+          <Resend email={email} after={resendAfterSeconds} />
+        </div>
+
         {handBack.isError && (
-          <p className="said said-bad" role="alert">
-            <ExclamationCircleFill aria-hidden />
+          <p className="auth-error">
             {SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.'}
           </p>
         )}
 
-        <input
-          className="otp"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={DIGITS}
-          autoFocus
-          aria-label={`${String(DIGITS)}-digit code`}
-          value={code}
-          onChange={(event) => {
-            const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, DIGITS)
-            setCode(digits)
-            // Six digits and nothing left to decide, so there is nothing to press. The digits go
-            // straight in: submitting the form here would read a `code` this keystroke has not
-            // reached yet, and hand back five.
-            if (digits.length === DIGITS) handBack.mutate(digits)
-          }}
-        />
-
         <button className="button button-primary" type="submit" disabled={handBack.isPending}>
           <span className="button-label">{handBack.isPending ? 'Signing in…' : 'Continue'}</span>
         </button>
-      </form>
 
-      <Resend email={email} after={resendAfterSeconds} answering={codeId} next={next} />
+        {/* Going back carries the address, so nobody retypes what they just typed. */}
+        <Link className="note auth-alt" to="/sign-in" search={{ email }}>
+          Use a different address
+        </Link>
+      </form>
     </main>
   )
 }

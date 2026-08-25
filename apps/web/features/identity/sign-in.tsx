@@ -9,10 +9,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type ReactElement } from 'react'
-import { ExclamationCircleFill, Github } from 'react-bootstrap-icons'
 import { api, retryKey } from '../../api.ts'
 import { Mark } from '../../mark.tsx'
-import { GoogleMark } from './provider-marks.tsx'
+import { GitHubMark, GoogleMark } from './provider-marks.tsx'
 
 /**
  * Required, one entry per provider: a name added without a label and a mark is a compile error,
@@ -22,7 +21,7 @@ type Provider = 'google' | 'github'
 
 const LOOKS: Record<Provider, { readonly label: string; readonly icon: ReactElement }> = {
   google: { label: 'Google', icon: <GoogleMark /> },
-  github: { label: 'GitHub', icon: <Github size={18} aria-hidden /> },
+  github: { label: 'GitHub', icon: <GitHubMark /> },
 }
 
 function known(kind: string): kind is Provider {
@@ -41,7 +40,6 @@ async function offeredKinds(): Promise<readonly string[]> {
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
-/* A way-in is offered at one size: both marks render at 18px, not each at its own default. */
 function OtherWays() {
   const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
   const providers = (offered.data ?? []).filter(isProvider)
@@ -63,19 +61,21 @@ function OtherWays() {
 
   return (
     <>
-      {providers.map((provider) => (
-        <button
-          key={provider}
-          className="button button-secondary"
-          type="button"
-          onClick={() => {
-            leaveFor.mutate(provider)
-          }}
-        >
-          {PROVIDERS[provider].icon}
-          <span className="button-label">Continue with {PROVIDERS[provider].label}</span>
-        </button>
-      ))}
+      <div className="auth-ways">
+        {providers.map((provider) => (
+          <button
+            key={provider}
+            className="button button-secondary"
+            type="button"
+            onClick={() => {
+              leaveFor.mutate(provider)
+            }}
+          >
+            {LOOKS[provider].icon}
+            <span className="button-label">Continue with {LOOKS[provider].label}</span>
+          </button>
+        ))}
+      </div>
       <div className="or">or</div>
     </>
   )
@@ -91,6 +91,8 @@ export function SignIn({
 }) {
   const navigate = useNavigate()
   const [email, setEmail] = useState(initial)
+  /** A format the form itself can rule out; anything subtler is the server's to say. */
+  const [refused, setRefused] = useState(false)
   const field = useId()
 
   const askForCode = useMutation({
@@ -108,30 +110,30 @@ export function SignIn({
       }),
   })
 
+  const invalid = refused || askForCode.isError
+
   return (
     <main className="auth">
-      <span className="auth-mark">Handover</span>
       <form
         className="auth-stack"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault()
-          askForCode.mutate(email)
+          const address = email.trim()
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+            setRefused(true)
+            return
+          }
+          askForCode.mutate(address)
         }}
       >
         <div className="auth-head">
-          <Mark size={80} state={askForCode.isPending ? 'working' : 'idle'} />
+          <Mark size={80} state={askForCode.isPending ? 'working' : 'thinking'} />
           <h1>Sign in or sign up</h1>
-          <p className="lede">However you sign in, the same address reaches the same account.</p>
+          <p className="lede">Every way in reaches the same account.</p>
         </div>
 
-        {askForCode.isError && (
-          <p className="said said-bad" role="alert">
-            <ExclamationCircleFill aria-hidden />
-            {SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.'}
-          </p>
-        )}
-
-        <OtherWays next={next} />
+        <OtherWays />
 
         <div className="stack-tight">
           <label className="label" htmlFor={field}>
@@ -144,12 +146,23 @@ export function SignIn({
             name="email"
             autoComplete="email"
             required
+            aria-invalid={invalid}
             placeholder="you@example.com"
             value={email}
             onChange={(event) => {
               setEmail(event.target.value)
+              // The red lifts as they retype; it described what they sent, not what is there.
+              setRefused(false)
+              askForCode.reset()
             }}
           />
+          {invalid && (
+            <p className="auth-error">
+              {refused || askForCode.error === null
+                ? SAID['malformed-request']
+                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')}
+            </p>
+          )}
         </div>
 
         <button
