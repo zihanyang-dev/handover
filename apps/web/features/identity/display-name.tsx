@@ -25,7 +25,10 @@ export function DisplayName() {
 
   const rename = useMutation({
     mutationFn: async (displayName: string) => {
-      await api.PATCH('/me', { body: { displayName } })
+      const { response } = await api.PATCH('/me', { body: { displayName } })
+      // Not renamed. Clearing the box and showing the old name would be this page telling somebody
+      // their change went through, and they would find out much later that it did not.
+      if (!response.ok) throw new Error('not-renamed')
     },
     onSuccess: async () => {
       setTyped(null)
@@ -68,6 +71,11 @@ export function DisplayName() {
             <span className="button-label">{rename.isPending ? 'Saving…' : 'Save'}</span>
           </button>
         </div>
+        {rename.isError && (
+          <p className="said said-bad" role="alert">
+            That name could not be saved. Try again.
+          </p>
+        )}
       </div>
     </form>
   )

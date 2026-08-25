@@ -39,8 +39,18 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
 
   if (conversation.isPending) return <p className="empty">Looking…</p>
 
+  // A read that failed is not a conversation that is gone. Folded together, somebody goes looking
+  // for something that is still exactly where they left it.
+  if (conversation.isError) {
+    return (
+      <section className="panel">
+        <p className="empty">Could not read this conversation. Try again.</p>
+      </section>
+    )
+  }
+
   // Not there and not yours are one answer, so this page cannot tell them apart either.
-  if (conversation.data === null || conversation.data === undefined) {
+  if (conversation.data === null) {
     return (
       <section className="panel">
         <h2>This conversation is not available</h2>

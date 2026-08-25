@@ -76,15 +76,26 @@ export function useConversation(slug: string, id: string) {
   return useQuery({
     queryKey: ['conversation', slug, id] as const,
     queryFn: async () => {
-      const { data } = await api.GET('/spaces/{slug}/conversations/{id}', {
+      const { data, response } = await api.GET('/spaces/{slug}/conversations/{id}', {
         params: { path: { slug, id } },
       })
-      return data ?? null
+      // Null is "there is no such conversation here", and only a 404 means that. Everything else —
+      // a session that ran out, a server that broke, a network that went — is this page failing to
+      // read, and telling somebody their conversation is gone is telling them something false.
+      if (response.status === 404) return null
+      if (data === undefined)
+        throw new Error(`could not read the conversation (${response.status})`)
+
+      return data
     },
     // Only while something is happening. A finished conversation is finished, and asking again
     // every second would be this page pretending it might not be.
+    //
+    // `unknown` keeps asking too: the machine that owes an answer is not here *yet*, and when it
+    // comes back it says how the turn went. Stopping there would leave the page on "nobody knows"
+    // until somebody reloaded it, long after the answer had arrived.
     refetchInterval: (query) =>
-      query.state.data?.working.state === 'working' ? WHILE_WORKING_MS : false,
+      query.state.data?.working.state === 'idle' ? false : WHILE_WORKING_MS,
   })
 }
 

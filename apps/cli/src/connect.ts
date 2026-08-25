@@ -11,9 +11,6 @@ import type { Api } from './api.ts'
 import type { components } from '../generated/api.ts'
 import type { Attachment } from './store.ts'
 
-/** How often to ask while waiting for a person. Short: somebody is watching a terminal. */
-const POLL_SECONDS = 2
-
 /**
  * The credential this machine will hold, minted here.
  *
@@ -38,6 +35,8 @@ export type Asked = {
   readonly verifyUrl: string
   readonly verifyUrlComplete: string
   readonly expiresAt: string
+  /** How often this deployment wants to be asked while somebody makes up their mind. */
+  readonly pollSeconds: number
 }
 
 export type Connected =
@@ -124,7 +123,9 @@ export async function askToConnect(api: Api, machineName: string): Promise<Asked
   const { data } = await api.POST('/enrolments', { body: { machineName } })
   if (data === undefined) return undefined
 
-  return { machineName, ...data }
+  // `pollSeconds` comes with it. A deployment that wants to be asked less often says so, and the
+  // number below is only what to do when it did not.
+  return { machineName, ...data, pollSeconds: data.pollSeconds }
 }
 
 /**
@@ -152,7 +153,7 @@ export async function waitToBeLetIn(
     if (came.data === undefined) {
       // Unreachable, or refused to parse. Nothing about the enrolment changed while the network
       // was down, so the only thing that would end the attempt here is impatience.
-      await waiting.sleep(POLL_SECONDS)
+      await waiting.sleep(asked.pollSeconds)
       continue
     }
 
@@ -166,6 +167,6 @@ export async function waitToBeLetIn(
     }
     if (data.kind !== 'waiting') return { kind: 'gave-up', why: data.kind }
 
-    await waiting.sleep(POLL_SECONDS)
+    await waiting.sleep(asked.pollSeconds)
   }
 }

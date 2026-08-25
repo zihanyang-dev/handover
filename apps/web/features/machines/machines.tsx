@@ -39,7 +39,11 @@ export function Machines({ slug }: { readonly slug: string }) {
 
   const detach = useMutation({
     mutationFn: async (id: string) => {
-      await api.DELETE('/spaces/{slug}/machines/{id}', { params: { path: { slug, id } } })
+      const { response } = await api.DELETE('/spaces/{slug}/machines/{id}', {
+        params: { path: { slug, id } },
+      })
+      // A row that stays put with no explanation is a button that did nothing.
+      if (!response.ok) throw new Error('still-here')
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: ['machines', slug] }),
   })
@@ -105,11 +109,14 @@ export function Machines({ slug }: { readonly slug: string }) {
             <button
               className="button button-quiet"
               type="button"
+              disabled={detach.isPending}
               onClick={() => {
                 detach.mutate(machine.id)
               }}
             >
-              <span className="button-label">Remove</span>
+              <span className="button-label">
+                {detach.isError ? 'Could not remove it' : 'Remove'}
+              </span>
             </button>
           </li>
         ))}

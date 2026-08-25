@@ -127,17 +127,20 @@ async function settle(
   const to = returnPath(taken.next, deps.webOrigin)
   const landing = (result?: string) => back(deps.webOrigin, to, result)
 
-  // The provider says the person said no. Nothing happened, and nothing should look like it did.
-  if (returned.searchParams.get('error') !== null) return { to: landing('cancelled') }
-
   const found = wayIn(deps, taken.provider)
   if (found === undefined) return { to: landing('expired') }
 
-  const identified = await found.client.identify({
-    url: returned,
-    state: taken.state,
-    pkceVerifier: taken.pkceVerifier,
-  })
+  // The provider says the person said no. Read before the exchange because there is nothing to
+  // exchange, and after the handoff was taken because the trip is over either way.
+  if (returned.searchParams.get('error') !== null) return { to: landing('cancelled') }
+
+  // Anything the provider does that this side did not plan for — an expired code, a token endpoint
+  // that broke, a signature that will not verify — ends at a page. The browser got here by being
+  // redirected: there is nobody to read a 500, and what it would show is the router's own error
+  // page on our domain, at the end of a sign-in.
+  const identified = await found.client
+    .identify({ url: returned, state: taken.state, pkceVerifier: taken.pkceVerifier })
+    .catch(() => ({ kind: 'no-verified-email' }) as const)
   if (identified.kind === 'no-verified-email') return { to: landing('no-verified-email') }
 
   if (taken.purpose === 'connect') {

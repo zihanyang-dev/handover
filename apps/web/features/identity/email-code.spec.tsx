@@ -197,4 +197,13 @@ describe('each way it can fail', () => {
 
     expect(await screen.findByText(/your spaces/i)).toBeDefined()
   })
+
+  it('sends a half-written address back to where codes come from', async () => {
+    // Somebody who typed or shared the URL wrong gets the screen that can put it right, not the
+    // router's own error page.
+    server.use(signedIn())
+    open('/sign-in/code?email=mina%40example.com')
+
+    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+  })
 })

@@ -24,6 +24,7 @@ const ASKED: Asked = {
   verifyUrl: `${ORIGIN}/connect`,
   verifyUrlComplete: `${ORIGIN}/connect/WDJB-MJHT`,
   expiresAt: new Date(Date.now() + 900_000).toISOString(),
+  pollSeconds: 2,
 }
 
 /** Never actually waits: what is under test is the loop, not the clock. */
@@ -114,6 +115,33 @@ describe('waiting to be let in', () => {
     const held = connected.kind === 'connected' ? connected.attachment.token : ''
     expect(held).toMatch(/^hm_/u)
     expect(held).not.toBe(ASKED.secret)
+  })
+
+  it('asks again at the rate the server asked for, not one compiled in here', async () => {
+    // How often machines may ask is the deployment's to set. A number in this file is the one that
+    // ignores it — and the only way anybody finds out is by watching the request log.
+    const waited: number[] = []
+    let asked = 0
+    server.use(
+      http.post(`${ORIGIN}/enrolments/collect`, () => {
+        asked += 1
+        return HttpResponse.json(asked < 3 ? { kind: 'waiting' } : { kind: 'refused' })
+      }),
+    )
+
+    await waitToBeLetIn(
+      apiFor(ORIGIN),
+      ORIGIN,
+      { ...ASKED, pollSeconds: 9 },
+      {
+        show: () => undefined,
+        sleep: async (seconds: number) => {
+          waited.push(seconds)
+        },
+      },
+    )
+
+    expect(waited).toEqual([9, 9])
   })
 
   it.each(['refused', 'expired', 'spent', 'no-enrolment'])('gives up on %s', async (kind) => {

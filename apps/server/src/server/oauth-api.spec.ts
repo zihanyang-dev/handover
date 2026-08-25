@@ -193,6 +193,38 @@ describe('coming back', () => {
     expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=merged`)
   })
 
+  it('lands on a page when the provider does something nobody planned for', async () => {
+    // The browser got here by being redirected. There is nobody to read a 500, and what it would
+    // show is an error page on our own domain at the end of a sign-in.
+    const breaking = {
+      begin: async () => ({
+        url: new URL('https://accounts.google.com/o'),
+        state: 'state-value',
+        pkceVerifier: 'v',
+      }),
+      identify: async (): Promise<Identified> => {
+        throw new Error('the token endpoint broke')
+      },
+    }
+    const app = oauthApi({
+      db,
+      secret: env.AUTH_SECRET,
+      origin: ORIGIN,
+      webOrigin: WEB,
+      clients: { google: breaking, github: breaking },
+    })
+    const left = await app.request('/auth/google/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+
+    const back = await comeBack(app, cookiesOf(left))
+
+    expect(back.status).toBe(303)
+    expect(back.headers.get('location')).toContain(`${WEB}/`)
+  })
+
   it('turns away an arrival that did not start here', async () => {
     const back = await comeBack(appWith(identified(MINA)), '')
 
