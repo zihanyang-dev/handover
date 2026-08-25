@@ -246,8 +246,12 @@ async function stayConnected(attachment: Attachment): Promise<void> {
   )
 
   if (stopped.kind === 'removed') {
+    // Zero, and that is the whole point: `KeepAlive` and `Restart=on-failure` both read a bad
+    // exit as "try again", and trying again can never work — the credential is gone. Exiting 1
+    // here is a service that comes back every five seconds forever to be told the same thing.
+    // A machine told to leave stays gone until somebody connects it again.
     say('this machine was taken out of its Space; connect it again to come back')
-    process.exit(1)
+    process.exit(0)
   }
 
   // Said on the way out so the Space shows it gone at once, rather than after the silence runs

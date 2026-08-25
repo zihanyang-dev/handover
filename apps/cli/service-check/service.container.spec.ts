@@ -125,6 +125,35 @@ describe('the unit we generate', () => {
   })
 })
 
+describe('the two ways of stopping, which the unit has to tell apart', () => {
+  async function startOne(name: string, executable: string): Promise<void> {
+    const unit = unitFor({ ...spec(true), executable })
+    await inside(`cat > /etc/systemd/system/${name}.service <<'UNIT'\n${unit}UNIT`)
+    await inside(`systemctl daemon-reload && systemctl start ${name} || true`)
+  }
+
+  it('leaves a service that finished alone, which is what being taken out of a Space is', async () => {
+    // The CLI exits zero when its machine was removed, and this is the half of that decision that
+    // lives in the unit. Read as a failure it would come back every RestartSec forever, to be
+    // told the same thing by a server that no longer has a credential for it.
+    await startOne('handover-left', '/usr/local/bin/handover-left')
+    await new Promise((wake) => setTimeout(wake, 8000))
+
+    expect(await inside('systemctl is-active handover-left || true')).toBe('inactive')
+    expect(await inside('systemctl show -p NRestarts --value handover-left')).toBe('0')
+  }, 60_000)
+
+  it('brings back one that failed, because that is what a bad exit is for', async () => {
+    // The check above is only worth having if the unit can tell the two apart. This is that.
+    await startOne('handover-broke', '/usr/local/bin/handover-broke')
+    await new Promise((wake) => setTimeout(wake, 8000))
+
+    expect(
+      Number(await inside('systemctl show -p NRestarts --value handover-broke')),
+    ).toBeGreaterThan(0)
+  }, 60_000)
+})
+
 describe('handing a system service over', () => {
   beforeAll(async () => {
     await install(true)
