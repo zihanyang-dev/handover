@@ -11,6 +11,7 @@ import { endTurn, startAnswering, type Answering, type Asking, type Machine } fr
 import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
+import { VERSION } from './env.ts'
 import { offering, type Offering } from './offering.ts'
 
 /** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
@@ -85,7 +86,10 @@ export async function reportOnce(
   const looked = await findAgents(lookFor, env)
   const found = also.offering === undefined ? looked : await also.offering(looked)
   const came = await api.POST('/machines/current/poll', {
-    body: { found: [...found], restarted: also.restarted ?? false },
+    // Its own version goes with every report, not once at connect: the binary can be replaced
+    // between two reports by a person re-running the installer, and the answer to "which build is
+    // that machine running" has to be about the process that is running now.
+    body: { found: [...found], restarted: also.restarted ?? false, version: VERSION },
   })
 
   if (came.response.status === 401) return { said: 'not-ours' }

@@ -191,22 +191,56 @@ const SONNET = [
 describe('what a machine reports', () => {
   it('is the whole truth, so an uninstalled agent stops being listed', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, [
-      { kind: 'claude-code', version: '2.1.4' },
-      { kind: 'codex', version: '0.9.0' },
-    ])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [
+        { kind: 'claude-code', version: '2.1.4' },
+        { kind: 'codex', version: '0.9.0' },
+      ],
+    })
 
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4' }],
+    })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.1.4', models: null }])
   })
 
+  it('records which build of the CLI is on that machine', async () => {
+    const machineId = await attached()
+
+    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
+
+    const [machine] = (await machinesIn(db, SPACE)).machines
+    expect(machine?.version).toBe('v0.4.0')
+  })
+
+  it('goes back to not knowing when a machine stops saying', async () => {
+    // Not a merge. A build that says nothing about its version is one that cannot, and holding on
+    // to what an older process said would name the wrong build in the one place somebody looks to
+    // find out which build is misbehaving.
+    const machineId = await attached()
+    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
+
+    await checkIn(db, machineId, { version: undefined, found: [] })
+
+    const [machine] = (await machinesIn(db, SPACE)).machines
+    expect(machine?.version).toBeUndefined()
+  })
+
   it('updates a version in place, so upgrading is not reconnecting', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4' }],
+    })
 
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.2.0' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.2.0' }],
+    })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.2.0', models: null }])
@@ -215,7 +249,10 @@ describe('what a machine reports', () => {
   it('keeps what an agent said it offers', async () => {
     const machineId = await attached()
 
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
+    })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents[0]?.models).toEqual(SONNET)
@@ -225,9 +262,15 @@ describe('what a machine reports', () => {
     // The ordinary report, and the whole reason the list is stored at all: asking an agent what
     // it offers costs starting it up, so a machine asks once per version and stays quiet after.
     const machineId = await attached()
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
+    })
 
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4' }],
+    })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents[0]?.models).toEqual(SONNET)
@@ -237,9 +280,15 @@ describe('what a machine reports', () => {
     // What the last version offered is not what this one offers, and showing yesterday's list
     // would be this side inventing an answer about a version nobody has asked.
     const machineId = await attached()
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
+    })
 
-    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.2.0' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'claude-code', version: '2.2.0' }],
+    })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents[0]?.models).toBeNull()
@@ -247,9 +296,12 @@ describe('what a machine reports', () => {
 
   it('is allowed to have found nothing, which is a machine with something to fix', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, [{ kind: 'codex', version: '0.9.0' }])
+    await checkIn(db, machineId, {
+      version: undefined,
+      found: [{ kind: 'codex', version: '0.9.0' }],
+    })
 
-    await checkIn(db, machineId, [])
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([])
@@ -259,7 +311,7 @@ describe('what a machine reports', () => {
 describe('whether it is here', () => {
   it('is here right after checking in', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, [])
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })
@@ -267,7 +319,7 @@ describe('whether it is here', () => {
 
   it('is gone the moment it says goodbye, without waiting out the silence', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, [])
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     await sayGoodbye(db, machineId)
 
@@ -279,7 +331,7 @@ describe('whether it is here', () => {
     const machineId = await attached()
     await sayGoodbye(db, machineId)
 
-    await checkIn(db, machineId, [])
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })

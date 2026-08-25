@@ -127,11 +127,18 @@ export async function machineHolding(db: Database, tokenHash: string): Promise<s
  * Replaces rather than merges: the report is the whole truth about that machine as of now, so an
  * agent that was uninstalled is one that is missing from the report. Merging would leave it listed
  * forever, and somebody would send it work that cannot run.
+ *
+ * Its own version is part of that truth. A build too old to report one leaves the column null,
+ * which is why nothing here fills it in.
  */
 export async function checkIn(
   db: Database,
   machineId: string,
-  found: readonly FoundAgent[],
+  reported: {
+    /** Which build of the CLI is reporting, or nothing when it is too old to say. */
+    readonly version: string | undefined
+    readonly found: readonly FoundAgent[]
+  },
 ): Promise<boolean> {
   return db.transaction().execute(async (tx) => {
     // Still ours, decided here rather than trusted from the check the middleware made before this
@@ -139,7 +146,13 @@ export async function checkIn(
     // effect on the next request is a machine that stays alive for one more of them.
     const still = await tx
       .updateTable('machines')
-      .set({ last_seen_at: sql<Date>`clock_timestamp()`, left_at: null })
+      .set({
+        last_seen_at: sql<Date>`clock_timestamp()`,
+        left_at: null,
+        // Written every time rather than only when it changes: a machine that stopped saying which
+        // build it is has stopped knowing, and the honest record of that is null.
+        version: reported.version ?? null,
+      })
       .where('id', '=', machineId)
       .where('removed_at', 'is', null)
       .returning('id')
@@ -147,7 +160,7 @@ export async function checkIn(
 
     if (still === undefined) return false
 
-    await replaceAgents(tx, machineId, found)
+    await replaceAgents(tx, machineId, reported.found)
     return true
   })
 }
@@ -215,6 +228,8 @@ export async function sayGoodbye(db: Database, machineId: string): Promise<void>
 export type Machine = {
   readonly id: string
   readonly name: string
+  /** Which build of the CLI it is running, or nothing when it has never said. */
+  readonly version: string | undefined
   readonly whereabouts: Whereabouts
   readonly agents: readonly Installed[]
 }
@@ -243,7 +258,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
 
   const rows = await tx
     .selectFrom('machines')
-    .select(['id', 'name', 'last_seen_at as lastSeenAt', 'left_at as leftAt'])
+    .select(['id', 'name', 'version', 'last_seen_at as lastSeenAt', 'left_at as leftAt'])
     .where('space_id', '=', spaceId)
     .where('removed_at', 'is', null)
     .orderBy('created_at')
@@ -271,6 +286,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
     machines: rows.map((row) => ({
       id: row.id,
       name: row.name,
+      version: row.version ?? undefined,
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: found
         .filter((agent) => agent.machineId === row.id)

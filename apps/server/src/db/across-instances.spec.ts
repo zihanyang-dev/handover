@@ -244,7 +244,10 @@ async function aQuestion(): Promise<{ machineId: string; conversationId: string 
     machineName: 'mina-mbp',
   })
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
-  await checkIn(one, collected.machineId, [{ kind: 'claude-code', version: '2.1.231' }])
+  await checkIn(one, collected.machineId, {
+    version: undefined,
+    found: [{ kind: 'claude-code', version: '2.1.231' }],
+  })
 
   const conversation = await openConversation(one, {
     spaceId: made.space.id,

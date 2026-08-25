@@ -138,7 +138,8 @@ CREATE TABLE public.machines (
     last_seen_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     left_at timestamp with time zone,
     removed_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    version text
 );
 
 

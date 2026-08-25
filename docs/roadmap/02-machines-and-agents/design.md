@@ -28,11 +28,13 @@ machines
   token_hash 唯一           ← 长期凭据,同样只存哈希
   enrolled_from → enrolments
   last_seen_at              ← 在线与否读的时候算,不存状态
+  left_at(可空)             ← 主动说的再见。和「静默超时」不是一回事
+  version(可空)             ← 它自己报的 build。空 = 它没说,不是缺值
   removed_at(可空)
   created_at
 
 agents
-  machine_id · kind · version · 唯一(machine_id, kind)
+  machine_id · kind · version · models(可空) · found_at · 唯一(machine_id, kind)
   一台机器上扫到的东西。没有状态列:机器离线,它上面的 agent 就都不可用
 ```
 
@@ -183,7 +185,7 @@ found     claude 2.1.231 · codex 0.148.0
 
 ```
 POST /machines/current/poll     挂住约 25 秒
-  带上   这台机器扫到的 agent 和版本
+  带上   这台机器扫到的 agent 和版本,以及它自己是哪一版
   返回   什么都没有  /  (下一片)一件活
 ```
 
@@ -251,16 +253,20 @@ apps/cli/install.sh         认出这台机器 → 下载 → 对校验和 → �
 
 **校验和不对就不装,也不留下。** 这个程序会去铸一份机器凭据,所以它是什么比它到没到更重要。
 
-**机器不报自己的版本,而这条是部署的前置条件,不是一条 TODO。**
+**④ 机器每次报到都说自己是哪一版**
 
-上一片报了它找到的 agent 的版本,却没报自己的。现在不修是因为它没有消费者:所有机器都跑
-`from source`,那个列的每一行都是同一句话。
+上一片报了它找到的 agent 的版本,现在它也报自己的。`machines.version` 为空是一个真状态 ——
+「它没说」,也就是这台机器上的 build 比这个字段还老 —— 不是缺值,所以不填默认值,页面上写
+`handover · unknown version` 而不是留白。留白会被读成「是最新的」。
 
-**但它加得越晚,越是那些最该被认出来的机器认不出来** —— 先装上、几个月后才加字段,那批最老的
-二进制永远不会报自己是谁,而它们正是出问题时最需要知道版本的那批。
+**每次报到都带,不是 connect 时说一次。** 一个人可以在两次报到之间重跑安装脚本换掉那个二进制,
+而「那台机器现在跑的是哪一版」问的是现在这个进程。
 
-所以:**第一台不属于我们的机器装上之前必须有。** 机器本来就在轮询,那时它和「往返回值里加东西」
-是同一个动作 —— 请求里多一句「我是哪一版」,返回值里多一句「有新版」。
+请求里带版本这件事本身是 optional 的,理由和「这个部署不认识的命令直接丢掉」一样:**旧 CLI 撞上
+新服务器,结果应该是少一条信息,不是连不上。**
+
+还欠「怎么知道有新版」。它要等有地方部署 —— 服务器得先知道最新版是哪一版,才谈得上在返回值里
+多说一句。
 
 ## 三态出现在哪
 
@@ -285,7 +291,7 @@ POST   /spaces/{slug}/enrolments/{userCode}/approve   放它进这个 Space
 POST   /enrolments/{userCode}/refuse     回绝。不带 Space:拒绝不是对某个 Space 做的事
 POST   /spaces/{slug}/machine-keys       生成一条已经批过的接入请求,明文只回一次
 
-POST   /machines/current/poll            机器报到,带上扫到的东西
+POST   /machines/current/poll            机器报到,带上扫到的东西和自己的版本
                                          → { pollSeconds, lookFor }
 DELETE /machines/current/session         说再见,立刻转离线
 GET    /spaces/{slug}/machines           Space 页面读这个

@@ -55,7 +55,10 @@ beforeEach(async () => {
   SPACE = made.space.id
 
   MACHINE = await attached()
-  await checkIn(db, MACHINE, [{ kind: 'claude-code', version: '2.1.231' }])
+  await checkIn(db, MACHINE, {
+    version: undefined,
+    found: [{ kind: 'claude-code', version: '2.1.231' }],
+  })
 })
 
 async function attached(): Promise<string> {

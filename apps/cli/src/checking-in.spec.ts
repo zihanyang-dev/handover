@@ -6,6 +6,7 @@ import { setupServer } from 'msw/node'
 import { afterAll, beforeAll, afterEach, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce } from './checking-in.ts'
+import { VERSION } from './env.ts'
 
 /**
  * A real command on a real PATH, so what the loop went looking for is visible in what it reports.
@@ -73,6 +74,22 @@ describe('staying connected', () => {
     await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
 
     expect(reports).toHaveLength(3)
+  })
+
+  it('says which build it is, in every report and not only the first', async () => {
+    // Every report, because the binary can be replaced between two of them — somebody re-running
+    // the installer on a machine that never stops running. A version said once at connect would
+    // name the build that is gone.
+    const reports: unknown[] = []
+    server.use(keepsAnswering(reports))
+    const { running, signal } = runningFor(2)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(reports).toEqual([
+      expect.objectContaining({ version: VERSION }),
+      expect.objectContaining({ version: VERSION }),
+    ])
   })
 
   it('follows the list the server tells it, without being restarted', async () => {

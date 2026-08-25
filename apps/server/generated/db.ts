@@ -95,6 +95,7 @@ export interface Machines {
   removed_at: Timestamp | null;
   space_id: string;
   token_hash: string;
+  version: string | null;
 }
 
 export interface Memberships {

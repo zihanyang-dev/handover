@@ -2002,6 +2002,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            version?: string;
             presence: {
                 /** @enum {string} */
                 state: "here";
@@ -2054,6 +2055,7 @@ export interface components {
                 models?: components["schemas"]["Model"][];
             }[];
             restarted?: boolean;
+            version?: string;
         };
         Conversations: {
             conversations: components["schemas"]["Conversation"][];

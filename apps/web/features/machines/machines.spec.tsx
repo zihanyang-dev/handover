@@ -81,6 +81,34 @@ describe('the machines in a Space', () => {
     expect(machines.getByText(/Claude Code 2\.1\.4/u)).toBeDefined()
   })
 
+  it('says which build of handover is on it, since nobody here can go and look', async () => {
+    server.use(
+      ...theSpace({
+        machines: [{ id: 'm-1', name: 'mina-mbp', version: 'v0.4.0', presence: HERE, agents: [] }],
+      }),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+
+    expect(await machines.findByText(/handover v0\.4\.0/u)).toBeDefined()
+  })
+
+  it('says it does not know, rather than leaving a gap that reads as up to date', async () => {
+    // A machine with no version is one running a build from before machines reported it — which is
+    // exactly the machine somebody is trying to work out what is wrong with.
+    server.use(
+      ...theSpace({
+        machines: [{ id: 'm-1', name: 'old-one', presence: HERE, agents: [] }],
+      }),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+
+    expect(await machines.findByText(/unknown version/u)).toBeDefined()
+  })
+
   it('says when one was last heard from, rather than dropping it', async () => {
     // Gone is not the same as never connected. Somebody looking for a machine they set up needs
     // to see it sitting there, offline.

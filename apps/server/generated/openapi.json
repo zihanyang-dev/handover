@@ -547,6 +547,9 @@
           "name": {
             "type": "string"
           },
+          "version": {
+            "type": "string"
+          },
           "presence": {
             "oneOf": [
               {
@@ -775,6 +778,11 @@
           },
           "restarted": {
             "type": "boolean"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           }
         },
         "required": [

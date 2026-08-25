@@ -87,6 +87,17 @@ export function Machines({ slug }: { readonly slug: string }) {
                 </span>
               )}
               {/*
+                Which build is on that machine — the one question about it that cannot be answered
+                from the machine itself, because the person asking is not sitting at it. Said as
+                unknown rather than left blank: a machine too old to report its version is exactly
+                the machine somebody is trying to work out what is wrong with.
+              */}
+              <span className="note">
+                {machine.version === undefined
+                  ? 'handover · unknown version'
+                  : `handover ${machine.version}`}
+              </span>
+              {/*
                 Said even when there are none. A connected machine with no agents is a machine
                 with something to install, and calling it "no machines" would send somebody to
                 connect one that is already connected.

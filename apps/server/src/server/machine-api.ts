@@ -86,6 +86,14 @@ const reporting = z
      * be had from here.
      */
     restarted: z.boolean().optional(),
+    /**
+     * Which build of the CLI this is.
+     *
+     * Optional so that a machine older than this field can still check in — the same reason a
+     * command this deployment does not know is dropped rather than refused. Absent is recorded as
+     * absent: a machine that cannot say which build it is has answered the question.
+     */
+    version: z.string().min(1).max(100).optional(),
   })
   .openapi('MachineReport')
 
@@ -144,6 +152,13 @@ const machineBody = z
   .object({
     id: z.uuid(),
     name: z.string(),
+    /**
+     * Which build of the CLI it is running.
+     *
+     * Absent when it has never said, which is a build older than the field itself. Shown as such
+     * rather than filled in — a version this deployment guessed would be read as one it was told.
+     */
+    version: z.string().optional(),
     presence: z.discriminatedUnion('state', [
       z.object({ state: z.literal('here') }),
       z.object({ state: z.literal('gone'), since: z.iso.datetime() }),
@@ -212,7 +227,10 @@ function polling(deps: MachineApi) {
       // Removed between the credential being read and this transaction opening: nothing to check
       // in, nothing to take, and the same answer a stranger gets. Waiting for the next request to
       // notice would be one more report, one more turn taken, from a machine somebody took out.
-      const still = await checkIn(deps.db, machineId, agentsFound(reported.found))
+      const still = await checkIn(deps.db, machineId, {
+        version: reported.version,
+        found: agentsFound(reported.found),
+      })
       if (!still) return c.json(body(NOT_OURS), NOT_OURS.status)
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
@@ -279,6 +297,7 @@ function listing(deps: MachineApi) {
       const machines = seen.machines.map((machine) => ({
         id: machine.id,
         name: machine.name,
+        ...(machine.version === undefined ? {} : { version: machine.version }),
         presence: onTheWire(presence(machine.whereabouts, seen.asOf)),
         agents: machine.agents.map(asOffered),
       }))
