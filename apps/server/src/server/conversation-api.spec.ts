@@ -30,6 +30,7 @@ let RUN = ''
 let SLUG = ''
 let COOKIE = ''
 let MACHINE = { token: '', id: '' }
+let USER = ''
 
 beforeEach(async () => {
   RUN = randomUUID()
@@ -40,6 +41,7 @@ beforeEach(async () => {
       arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
     )
 
+  USER = arrived.userId
   const token = newSessionToken()
   await openSession(db, { user: arrived.userId, tokenHash: token.hash })
   COOKIE = `${SESSION_COOKIE}=${token.token}`
@@ -112,6 +114,11 @@ async function asPerson(path: string, method = 'GET', json?: unknown) {
   })
 }
 
+/** A reading with the moment it was taken replaced, since that is never the same twice. */
+function exceptTheClock(reading: unknown) {
+  return { ...(reading as Record<string, unknown>), asOf: 'when it was read' }
+}
+
 async function opened(): Promise<string> {
   const response = await asPerson(`/spaces/${SLUG}/conversations`, 'POST', {
     machineId: MACHINE.id,
@@ -169,6 +176,40 @@ describe('saying something', () => {
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ recovery: 'wait' })
+  })
+})
+
+describe('coming back to it', () => {
+  it('reads the same on another device, because the record is not in the browser', async () => {
+    // The promise a person is actually making when they close a laptop: what was said and done is
+    // kept where it happened, not in the tab that watched it happen. A second session is what a
+    // second device is — nothing about the first one is carried over.
+    const conversation = await opened()
+    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
+      key: 'turn-1',
+      asked: { text: 'read notes.txt' },
+    })
+    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
+      key: 'turn-1/1',
+      message: { role: 'assistant', content: { text: 'it says hello' } },
+    })
+    await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
+      key: 'turn-1/done',
+      message: { role: 'activity', content: { activityType: 'done' } },
+    })
+
+    const elsewhere = newSessionToken()
+    await openSession(db, { user: USER, tokenHash: elsewhere.hash })
+    const here = await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
+    const there = await app.request(`/spaces/${SLUG}/conversations/${conversation}`, {
+      headers: { cookie: `${SESSION_COOKIE}=${elsewhere.token}` },
+    })
+
+    expect(there.status).toBe(200)
+    // Everything but the clock, which is when the reading was taken and is the one thing that is
+    // supposed to differ between two devices.
+    expect(exceptTheClock(await there.json())).toEqual(exceptTheClock(await here.json()))
   })
 })
 
