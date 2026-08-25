@@ -172,6 +172,17 @@ export async function forgetStranded(db: Database, machineId: string): Promise<n
     const stranded = await openTurnsOn(tx, machineId)
 
     for (const turn of stranded) {
+      // The conversation is held before anything is written into it, because that is the lock
+      // `append` counts on to decide what number the next message gets. Every other writer takes
+      // it; one that did not would be the one place two messages could be handed the same place
+      // in the same transcript.
+      await tx
+        .selectFrom('conversations')
+        .select('id')
+        .where('id', '=', turn.conversationId)
+        .forUpdate()
+        .executeTakeFirst()
+
       await append(tx, {
         conversationId: turn.conversationId,
         key: `${String(turn.askedSeq)}/end`,

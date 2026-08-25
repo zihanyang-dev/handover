@@ -14,7 +14,7 @@ import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/transcript.ts'
-import type { Database } from './connection.ts'
+import type { Database, Tx } from './connection.ts'
 import { append, alreadySaid, held, unfinished, type Saying, type Said } from './message.ts'
 
 export type { Saying, Said } from './message.ts'
@@ -307,12 +307,26 @@ type Spoken = {
   readonly at: Date
 }
 
-/** One conversation and everything said in it, in order. */
+/**
+ * One conversation and everything said in it, in order.
+ *
+ * All of it in one transaction, for the same reason the machines list is: three statements are
+ * three moments, and a turn that ends between the first and the third gives back a transcript
+ * with no ending in it beside a `working` that says it is over. Both halves would be true; the
+ * reading would not.
+ */
 export async function conversationWith(
   db: Database,
   reading: { readonly conversationId: string; readonly spaceId: string },
 ): Promise<Reading | undefined> {
-  const conversation = await db
+  return db.transaction().execute(async (tx) => oneReading(tx, reading))
+}
+
+async function oneReading(
+  tx: Tx,
+  reading: { readonly conversationId: string; readonly spaceId: string },
+): Promise<Reading | undefined> {
+  const conversation = await tx
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
     // Left, not inner: an agent that has been uninstalled since leaves the conversation readable,
@@ -337,7 +351,7 @@ export async function conversationWith(
 
   if (conversation === undefined) return undefined
 
-  const messages = await db
+  const messages = await tx
     .selectFrom('messages')
     .select(['seq', 'role', 'content', 'created_at as at'])
     .where('conversation_id', '=', conversation.id)
@@ -347,7 +361,7 @@ export async function conversationWith(
   return {
     ...conversation,
     working: working(
-      await unfinished(db, conversation.id),
+      await unfinished(tx, conversation.id),
       presence(conversation, conversation.asOf),
     ),
     messages,
