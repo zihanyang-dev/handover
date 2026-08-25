@@ -144,23 +144,27 @@ export type Attachment =
  */
 export async function addAddress(
   db: Database,
-  secret: string,
-  userId: string,
-  answer: { readonly codeId: string; readonly code: string },
+  // Named rather than ordered: the secret and the person are both unreadable strings, and swapping
+  // them reads as the code being refused rather than as the mistake it is.
+  asked: {
+    readonly secret: string
+    readonly user: string
+    readonly answer: { readonly codeId: string; readonly code: string }
+  },
 ): Promise<Attachment> {
   return db.transaction().execute(async (tx) => {
-    const spent = await spendCode(tx, secret, { purpose: 'attach', ...answer })
+    const spent = await spendCode(tx, asked.secret, { purpose: 'attach', ...asked.answer })
     if (spent.kind === 'rejected') return { kind: 'refused', rejection: spent.rejection }
 
     const credential: Credential = { kind: 'email', subject: spent.address }
     await holdTheAddress(tx, spent.address)
 
     const owner = await holderOf(tx, credential)
-    if (owner !== undefined && owner !== userId) {
+    if (owner !== undefined && owner !== asked.user) {
       return { kind: 'rejected', rejection: 'address-elsewhere' }
     }
 
-    await link(tx, userId, credential)
+    await link(tx, asked.user, credential)
     return { kind: 'attached' }
   })
 }

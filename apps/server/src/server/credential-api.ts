@@ -68,9 +68,10 @@ function answering(deps: CredentialApi) {
     }),
 
     handler: async (c) => {
-      const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
-        codeId: c.req.valid('param').id,
-        code: c.req.valid('json').code,
+      const added = await addAddress(deps.db, {
+        secret: deps.secret,
+        user: c.get('userId'),
+        answer: { codeId: c.req.valid('param').id, code: c.req.valid('json').code },
       })
 
       // Already this account's comes back attached: what was asked for is true either way.

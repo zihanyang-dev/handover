@@ -60,7 +60,7 @@ export async function signInWithCode(
       address: spent.address,
     })
 
-    await openSession(tx, arrived.userId, attempt.sessionTokenHash)
+    await openSession(tx, { user: arrived.userId, tokenHash: attempt.sessionTokenHash })
 
     return { kind: 'signed-in', userId: arrived.userId, merged: arrived.merged }
   })
@@ -86,7 +86,7 @@ export async function signInWithProvider(
       address: identity.verifiedEmail,
     })
 
-    await openSession(tx, arrived.userId, sessionTokenHash)
+    await openSession(tx, { user: arrived.userId, tokenHash: sessionTokenHash })
 
     return { userId: arrived.userId, merged: arrived.merged }
   })

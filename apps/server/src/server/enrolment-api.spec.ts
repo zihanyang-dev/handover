@@ -36,7 +36,7 @@ beforeEach(async () => {
     )
 
   const token = newSessionToken()
-  await openSession(db, arrived.userId, token.hash)
+  await openSession(db, { user: arrived.userId, tokenHash: token.hash })
   COOKIE = `${SESSION_COOKIE}=${token.token}`
 
   const name = `Acme ${RUN.slice(0, 8)}`

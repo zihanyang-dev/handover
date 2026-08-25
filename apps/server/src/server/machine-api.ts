@@ -307,7 +307,10 @@ function detaching(deps: MachineApi) {
     hook: insteadOfMalformed(UNAVAILABLE),
 
     handler: async (c) => {
-      const removed = await removeMachine(deps.db, c.req.valid('param').id, c.get('space').id)
+      const removed = await removeMachine(deps.db, {
+        machine: c.req.valid('param').id,
+        space: c.get('space').id,
+      })
 
       // An id from another Space removes nothing, and says the same thing a missing Space says.
       if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)

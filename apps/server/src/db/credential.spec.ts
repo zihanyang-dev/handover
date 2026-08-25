@@ -82,9 +82,10 @@ async function arriveByCode(email: string, requestKey: string): Promise<string> 
 }
 
 async function attach(userId: string, email: string, requestKey: string) {
-  return addAddress(db, env.AUTH_SECRET, userId, {
-    codeId: await sendCode(email, requestKey, 'attach'),
-    code: CODE,
+  return addAddress(db, {
+    secret: env.AUTH_SECRET,
+    user: userId,
+    answer: { codeId: await sendCode(email, requestKey, 'attach'), code: CODE },
   })
 }
 
@@ -275,9 +276,10 @@ describe('adding an address while signed in', () => {
     const userId = await arriveByCode(EMAIL, `${RUN}-k1`)
     const second = `zane-${RUN}@example.com`
 
-    const wrong = await addAddress(db, env.AUTH_SECRET, userId, {
-      codeId: await sendCode(second, `${RUN}-k2`, 'attach'),
-      code: '000000',
+    const wrong = await addAddress(db, {
+      secret: env.AUTH_SECRET,
+      user: userId,
+      answer: { codeId: await sendCode(second, `${RUN}-k2`, 'attach'), code: '000000' },
     })
 
     expect(wrong).toEqual({ kind: 'refused', rejection: 'code-mismatch' })
@@ -290,9 +292,10 @@ describe('adding an address while signed in', () => {
     const userId = await arriveByCode(EMAIL, `${RUN}-k1`)
     const second = `zane-${RUN}@example.com`
 
-    const crossed = await addAddress(db, env.AUTH_SECRET, userId, {
-      codeId: await sendCode(second, `${RUN}-k2`, 'sign-in'),
-      code: CODE,
+    const crossed = await addAddress(db, {
+      secret: env.AUTH_SECRET,
+      user: userId,
+      answer: { codeId: await sendCode(second, `${RUN}-k2`, 'sign-in'), code: CODE },
     })
 
     expect(crossed).toEqual({ kind: 'refused', rejection: 'no-code' })

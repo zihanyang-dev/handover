@@ -9,13 +9,21 @@ import { sql } from 'kysely'
 import { LIFETIME_DAYS } from '../identity/session.ts'
 import type { Database } from './connection.ts'
 
-/** Starts a session. Every way in ends here, so a session means the same thing whatever proved it. */
-export async function openSession(db: Database, userId: string, tokenHash: string): Promise<void> {
+/**
+ * Starts a session. Every way in ends here, so a session means the same thing whatever proved it.
+ *
+ * Named rather than ordered: two unreadable strings side by side, and whichever way round they go
+ * the types agree.
+ */
+export async function openSession(
+  db: Database,
+  who: { readonly user: string; readonly tokenHash: string },
+): Promise<void> {
   await db
     .insertInto('browser_sessions')
     .values({
-      user_id: userId,
-      token_hash: tokenHash,
+      user_id: who.user,
+      token_hash: who.tokenHash,
       expires_at: sql`now() + make_interval(days => ${LIFETIME_DAYS})`,
     })
     .execute()

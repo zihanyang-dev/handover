@@ -279,19 +279,23 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
   }
 }
 
-/** Takes a machine out of its Space. Its credential stops working on the next call it makes. */
+/**
+ * Takes a machine out of its Space. Its credential stops working on the next call it makes.
+ *
+ * The two ids are named rather than ordered: both are opaque, so a caller that swapped them would
+ * compile, remove nothing, and be told the machine does not exist.
+ */
 export async function removeMachine(
   db: Database,
-  machineId: string,
-  spaceId: string,
+  which: { readonly machine: string; readonly space: string },
 ): Promise<boolean> {
   const removed = await db
     .updateTable('machines')
     .set({ removed_at: sql<Date>`clock_timestamp()` })
-    .where('id', '=', machineId)
+    .where('id', '=', which.machine)
     // Named by the Space it is in, so an id from another Space removes nothing rather than
     // removing somebody else's machine.
-    .where('space_id', '=', spaceId)
+    .where('space_id', '=', which.space)
     .where('removed_at', 'is', null)
     .returning('id')
     .executeTakeFirst()

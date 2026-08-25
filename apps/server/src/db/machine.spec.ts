@@ -298,7 +298,7 @@ describe('taking one away', () => {
     if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
 
     expect(await machineHolding(db, hashSecret(token))).toBe(collected.machineId)
-    await removeMachine(db, collected.machineId, SPACE)
+    await removeMachine(db, { machine: collected.machineId, space: SPACE })
     expect(await machineHolding(db, hashSecret(token))).toBeUndefined()
   })
 
@@ -320,7 +320,7 @@ describe('taking one away', () => {
   it('takes it off the Space screen', async () => {
     const machineId = await attached()
 
-    await removeMachine(db, machineId, SPACE)
+    await removeMachine(db, { machine: machineId, space: SPACE })
 
     expect((await machinesIn(db, SPACE)).machines).toEqual([])
   })
@@ -330,15 +330,15 @@ describe('taking one away', () => {
     // a Space they have nothing to do with.
     const machineId = await attached()
 
-    expect(await removeMachine(db, machineId, randomUUID())).toBe(false)
+    expect(await removeMachine(db, { machine: machineId, space: randomUUID() })).toBe(false)
     expect((await machinesIn(db, SPACE)).machines).toHaveLength(1)
   })
 
   it('says so when it was already taken away', async () => {
     const machineId = await attached()
-    await removeMachine(db, machineId, SPACE)
+    await removeMachine(db, { machine: machineId, space: SPACE })
 
-    expect(await removeMachine(db, machineId, SPACE)).toBe(false)
+    expect(await removeMachine(db, { machine: machineId, space: SPACE })).toBe(false)
   })
 })
 

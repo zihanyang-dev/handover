@@ -106,7 +106,7 @@ async function signedInCookie(address: string): Promise<{ cookie: string; userId
       arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
     )
   const token = newSessionToken()
-  await openSession(db, arrived.userId, token.hash)
+  await openSession(db, { user: arrived.userId, tokenHash: token.hash })
   return { cookie: `${SESSION_COOKIE}=${token.token}`, userId: arrived.userId }
 }
 
