@@ -34,7 +34,6 @@ export type SignIn =
   | {
       readonly kind: 'signed-in'
       readonly userId: string
-      readonly sessionId: string
       readonly merged: boolean
     }
   | { readonly kind: 'rejected'; readonly rejection: Rejection }
@@ -61,18 +60,14 @@ export async function signInWithCode(
       address: spent.address,
     })
 
-    return {
-      kind: 'signed-in',
-      userId: arrived.userId,
-      sessionId: await openSession(tx, arrived.userId, attempt.sessionTokenHash),
-      merged: arrived.merged,
-    }
+    await openSession(tx, arrived.userId, attempt.sessionTokenHash)
+
+    return { kind: 'signed-in', userId: arrived.userId, merged: arrived.merged }
   })
 }
 
 export type ProviderSignIn = {
   readonly userId: string
-  readonly sessionId: string
   readonly merged: boolean
 }
 
@@ -91,10 +86,8 @@ export async function signInWithProvider(
       address: identity.verifiedEmail,
     })
 
-    return {
-      userId: arrived.userId,
-      sessionId: await openSession(tx, arrived.userId, sessionTokenHash),
-      merged: arrived.merged,
-    }
+    await openSession(tx, arrived.userId, sessionTokenHash)
+
+    return { userId: arrived.userId, merged: arrived.merged }
   })
 }

@@ -29,7 +29,9 @@ async function alwaysAnswers(asking: Request): Promise<Response> {
   try {
     return await fetch(asking)
   } catch {
-    return Response.json({ reason: 'unreachable', recovery: 'retry' }, { status: NO_ANSWER })
+    // The same two fields a real refusal carries, in the same words, so nothing downstream has to
+    // tell a made-up body from one the server sent.
+    return Response.json({ reason: 'unreachable', recovery: 'retry-later' }, { status: NO_ANSWER })
   }
 }
 

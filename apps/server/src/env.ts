@@ -29,10 +29,6 @@ const SHAPE = z.object({
   WEB_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:5173'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  /**
-   * A provider is offered only when both of its values are here. Half a pair is a configuration
-   * mistake, not a provider, and it fails the pair below rather than half-working at sign-in.
-   */
   /** Given, letters go out. Missing, they do not, and the process says so rather than pretending. */
   RESEND_API_KEY: z.string().min(1).optional(),
   /**
@@ -40,6 +36,10 @@ const SHAPE = z.object({
    * from its own sandbox one, which reaches the account holder and nobody else.
    */
   MAIL_FROM: z.email().default('onboarding@resend.dev'),
+  /**
+   * A provider is offered only when both of its values are here. Half a pair is a configuration
+   * mistake, not a provider, and it fails `withPairs` rather than half-working at sign-in.
+   */
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   GITHUB_CLIENT_ID: z.string().min(1).optional(),

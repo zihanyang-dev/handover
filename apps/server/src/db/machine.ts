@@ -168,8 +168,13 @@ export async function sayGoodbye(db: Database, machineId: string): Promise<void>
     .execute()
 }
 
-/** A machine as a Space screen shows it. Whether it is here is worked out from `whereabouts`. */
-export type Attached = {
+/**
+ * A machine as a Space screen shows it. Whether it is here is worked out from `whereabouts`.
+ *
+ * Not `Attached`: that word is the door a machine's credential opens, and one name for the holder
+ * of a credential and for a row on a screen is one of them being read as the other.
+ */
+export type Machine = {
   readonly id: string
   readonly name: string
   readonly whereabouts: Whereabouts
@@ -187,7 +192,7 @@ export type Attached = {
  */
 export type Seen = {
   readonly asOf: Date
-  readonly machines: readonly Attached[]
+  readonly machines: readonly Machine[]
 }
 
 export async function machinesIn(db: Database, spaceId: string): Promise<Seen> {

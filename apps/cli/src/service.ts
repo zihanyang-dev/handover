@@ -36,6 +36,25 @@ export type ServiceSpec = {
 }
 
 /**
+ * One word of a systemd command line.
+ *
+ * Quoted, always. A unit file is split on whitespace, and the two paths in here are somebody's
+ * home directory and wherever they installed this — `/Users/mina/My Tools/node` is an ordinary
+ * thing for either to be, and unquoted it is a service that starts a program called `/Users/mina/My`.
+ *
+ * `%` is doubled because systemd reads it as the start of a specifier, and a directory with one in
+ * it would be silently replaced by something else entirely.
+ */
+function quoted(word: string): string {
+  return `"${escaped(word)}"`
+}
+
+/** The three characters systemd reads rather than passes on. */
+function escaped(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%')
+}
+
+/**
  * `WantedBy` is what separates the two.
  *
  * `multi-user.target` is reached during boot, with nobody logged in. `default.target` in a user
@@ -43,7 +62,7 @@ export type ServiceSpec = {
  * at boot too, which is the one thing that would blur them, so it is not enabled here.
  */
 export function unitFor(spec: ServiceSpec): string {
-  const command = [spec.executable, ...spec.args].join(' ')
+  const command = [spec.executable, ...spec.args].map(quoted).join(' ')
 
   return `[Unit]
 Description=Handover machine agent
@@ -52,13 +71,23 @@ Wants=network-online.target
 
 [Service]
 ExecStart=${command}
-Environment="PATH=${spec.path}"
+Environment="PATH=${escaped(spec.path)}"
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=${spec.system ? 'multi-user.target' : 'default.target'}
 `
+}
+
+/**
+ * A value inside a plist, which is XML and reads three characters rather than passing them on.
+ *
+ * A path with an `&` in it is a plist launchd will not parse at all — and the whole file is
+ * refused, so the machine simply never comes back after a reboot with nothing to say why.
+ */
+function inXml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
 /**
@@ -69,7 +98,7 @@ WantedBy=${spec.system ? 'multi-user.target' : 'default.target'}
  */
 export function plistFor(spec: ServiceSpec): string {
   const args = [spec.executable, ...spec.args]
-    .map((one) => `      <string>${one}</string>`)
+    .map((one) => `      <string>${inXml(one)}</string>`)
     .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -77,7 +106,7 @@ export function plistFor(spec: ServiceSpec): string {
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>${spec.label}</string>
+    <string>${inXml(spec.label)}</string>
     <key>ProgramArguments</key>
     <array>
 ${args}
@@ -85,7 +114,7 @@ ${args}
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
-      <string>${spec.path}</string>
+      <string>${inXml(spec.path)}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

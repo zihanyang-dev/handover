@@ -4,12 +4,15 @@
  * A fixed list, not a plugin protocol and not something an agent registers itself as. Finding one
  * means looking for its command on the machine's PATH, so the whole of "discovery" is this table
  * plus a lookup — and adding an agent is a line here, a line in the migration, and nothing else.
+ *
+ * A command and nothing more. What an agent is called on a screen is the page's, next to how every
+ * other name is spelled to a person; a copy kept here would be one nothing ever read.
  */
 
 export const AGENT_KINDS = {
-  'claude-code': { command: 'claude', label: 'Claude Code' },
-  codex: { command: 'codex', label: 'Codex' },
-} as const satisfies Record<string, { readonly command: string; readonly label: string }>
+  'claude-code': { command: 'claude' },
+  codex: { command: 'codex' },
+} as const satisfies Record<string, { readonly command: string }>
 
 export type AgentKind = keyof typeof AGENT_KINDS
 

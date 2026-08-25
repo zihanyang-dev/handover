@@ -25,7 +25,7 @@ describe('the unit systemd is given', () => {
     // A typo in somebody's profile must not be able to stop a service from starting.
     const unit = unitFor(spec())
 
-    expect(unit).toContain('ExecStart=/usr/local/bin/node /usr/local/lib/handover/main.js')
+    expect(unit).toContain('ExecStart="/usr/local/bin/node" "/usr/local/lib/handover/main.js"')
     expect(unit).not.toMatch(/ExecStart=.*(sh|bash|zsh) -/u)
   })
 
@@ -50,6 +50,25 @@ describe('the plist launchd is given', () => {
 
     expect(plist).toContain('<string>/usr/local/bin/node</string>')
     expect(plist).toContain('<string>/path/with a space/main.js</string>')
+  })
+})
+
+describe('a path with something in it that a service file reads', () => {
+  // Both of these are somebody's home directory and wherever they installed this, so neither is
+  // ours to assume anything about. A file that will not parse is a machine that never comes back
+  // after a reboot, with nothing anywhere saying why.
+  it('keeps a space out of the argument splitting, in the unit', () => {
+    const unit = unitFor(spec({ executable: '/Users/mina/My Tools/node' }))
+
+    expect(unit).toContain('ExecStart="/Users/mina/My Tools/node"')
+  })
+
+  it('doubles a per-cent, which systemd would otherwise read as a specifier', () => {
+    expect(unitFor(spec({ path: '/opt/100%/bin' }))).toContain('Environment="PATH=/opt/100%%/bin"')
+  })
+
+  it('escapes an ampersand, which would leave launchd unable to parse the file at all', () => {
+    expect(plistFor(spec({ path: '/opt/r&d/bin' }))).toContain('<string>/opt/r&amp;d/bin</string>')
   })
 })
 

@@ -26,10 +26,4 @@ describe('the agents this deployment can find', () => {
 
     expect(new Set(commands).size).toBe(commands.length)
   })
-
-  it('gives every kind a label, because a screen cannot show an identifier', () => {
-    const unlabelled = AGENT_KIND_NAMES.filter((kind) => AGENT_KINDS[kind].label.trim() === '')
-
-    expect(unlabelled).toEqual([])
-  })
 })

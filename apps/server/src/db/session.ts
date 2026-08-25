@@ -10,21 +10,15 @@ import { LIFETIME_DAYS } from '../identity/session.ts'
 import type { Database } from './connection.ts'
 
 /** Starts a session. Every way in ends here, so a session means the same thing whatever proved it. */
-export async function openSession(
-  db: Database,
-  userId: string,
-  tokenHash: string,
-): Promise<string> {
-  const session = await db
+export async function openSession(db: Database, userId: string, tokenHash: string): Promise<void> {
+  await db
     .insertInto('browser_sessions')
     .values({
       user_id: userId,
       token_hash: tokenHash,
       expires_at: sql`now() + make_interval(days => ${LIFETIME_DAYS})`,
     })
-    .returning('id')
-    .executeTakeFirstOrThrow()
-  return session.id
+    .execute()
 }
 
 /** The person whose session this is, or nobody. A revoked or expired session is nobody. */

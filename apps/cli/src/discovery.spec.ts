@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { findAgents } from './discovery.ts'
 
 /** Real commands on a real PATH: the thing under test is finding them, so nothing is faked. */
@@ -14,6 +14,7 @@ async function pretendAgent(name: string, prints: string): Promise<void> {
   await chmod(path, 0o755)
 }
 
+// Nothing is torn down: the directory is in the system temp base and holds four shell scripts.
 beforeAll(async () => {
   BIN = await mkdtemp(join(tmpdir(), 'handover-agents-'))
   ENV = { PATH: BIN }
@@ -22,10 +23,6 @@ beforeAll(async () => {
   await pretendAgent('speaks-around-it', 'echo "codex-cli 0.9.0 (build 7)"')
   await pretendAgent('says-nothing-useful', 'echo hello')
   await pretendAgent('refuses', 'exit 1')
-})
-
-afterAll(() => {
-  // The directory is in the system temp base and holds four shell scripts. Nothing to undo.
 })
 
 describe('finding what is on this machine', () => {
@@ -41,10 +38,6 @@ describe('finding what is on this machine', () => {
     expect(await findAgents(['speaks-around-it'], ENV)).toEqual([
       { command: 'speaks-around-it', version: '0.9.0' },
     ])
-  })
-
-  it('does not find one that is not installed', async () => {
-    expect(await findAgents(['not-here-at-all'], ENV)).toEqual([])
   })
 
   it('does not find one that refuses to run', async () => {
@@ -65,7 +58,7 @@ describe('finding what is on this machine', () => {
 
   it('finds nothing on a machine with nothing, rather than failing', async () => {
     // A connected machine with no agents is a machine with something to fix, not a broken one.
-    expect(await findAgents(['not-here-at-all'], { PATH: BIN })).toEqual([])
+    expect(await findAgents(['not-here-at-all'], ENV)).toEqual([])
   })
 
   it('looks on the PATH it is given, not the one this process happens to have', async () => {

@@ -1,9 +1,9 @@
 -- The agents this deployment knows how to find and drive.
 --
--- Two, not three. Driving an agent means the Agent Client Protocol, and only Claude Code and
--- Codex have adapters maintained by the protocol's own organisation. Cursor Agent has none;
--- Pi's is third party and drops the tools we hand it, which would leave an agent that looks
--- busy and cannot say a word — the worst way for this to fail.
+-- Two, not three. Driving an agent means an adapter against the SDK its own makers publish, and
+-- both of these have one that runs the copy already installed on the machine — the copy holding
+-- that person's login. Cursor Agent publishes nothing of the kind, so an entry for it would be a
+-- kind of agent no machine could ever be asked to run.
 --
 -- The list is here and in `agent-kind.ts`, and a test says the two are the same list, so this
 -- constraint is the reason that test can fail.

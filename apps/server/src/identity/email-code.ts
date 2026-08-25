@@ -44,7 +44,6 @@ export type Verification =
 /** Six digits is a small space, so guessing has to be bounded by tries rather than by the space. */
 export const MAX_ATTEMPTS = 5
 
-/** Long enough to go find a mail app, short enough that a code seen over a shoulder goes stale. */
 /**
  * What a letter is for. Not how strong it is — both prove the same address to the same standard.
  * They stay apart so a code somebody was talked into forwarding cannot be spent on the other
@@ -54,6 +53,7 @@ const PURPOSES = ['sign-in', 'attach'] as const
 
 export type Purpose = (typeof PURPOSES)[number]
 
+/** Long enough to go find a mail app, short enough that a code seen over a shoulder goes stale. */
 export const LIFETIME_MINUTES = 5
 
 /**
