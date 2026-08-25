@@ -20,6 +20,7 @@ import {
 } from '../machine/agent-kind.ts'
 import { POLL_SECONDS, presence } from '../machine/presence.ts'
 import {
+  SHOWS,
   api,
   endpointsBehind,
   insteadOfMalformed,
@@ -186,8 +187,8 @@ function asAsking(taken: Taken) {
   }
 }
 
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
-const behindAMachine = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
+const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
 
 export function machineApi(deps: MachineApi) {
   return api<{ Variables: Signed & InSpace }>()

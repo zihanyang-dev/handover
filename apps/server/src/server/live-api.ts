@@ -11,7 +11,7 @@ import { streamSSE } from 'hono/streaming'
 import { Moment, type Live } from '../conversation/live.ts'
 import { conversationWith } from '../db/conversation.ts'
 import type { Database } from '../db/connection.ts'
-import { api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
+import { SHOWS, api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
 import {
   BEHIND_A_MACHINE,
   BEHIND_A_SESSION,
@@ -37,8 +37,8 @@ export type LiveApi = {
  */
 const HEARTBEAT_MS = 20_000
 
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
-const behindAMachine = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
+const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
 
 export function liveApi(deps: LiveApi) {
   return api<{ Variables: Signed & InSpace }>()

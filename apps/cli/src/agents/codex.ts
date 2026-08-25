@@ -34,7 +34,7 @@ function starting(item: ThreadItem): Said[] {
   return [{ said: 'doing', name: item.type, verb: 'ran', arg: shorten(item.command) }]
 }
 
-/** One thing it did. `excerpt` and `ok` default to nothing: most tools report neither. */
+/** One thing it did. `ok` is left off by callers that have no verdict to report — most tools. */
 function did(what: Omit<Extract<Said, { said: 'did' }>, 'said'>): Said {
   return { said: 'did', ...what }
 }
@@ -241,17 +241,47 @@ async function interrupt(binary: string): Promise<number> {
   return turns.length
 }
 
+/**
+ * One turn, picked up where the last one left off when there is one to pick up.
+ *
+ * A thread Codex no longer has is not a failure and not the end of the turn: it starts over from
+ * nothing and says so first, because an answer written by an agent that remembers nothing is not
+ * the answer somebody was expecting to a conversation they were in the middle of.
+ */
+async function* whatItSays(
+  codex: Codex,
+  turn: { readonly options: ReturnType<typeof howToRun>; readonly asked: Asked },
+  sofar: string | null,
+  stopping: Stopping,
+): AsyncGenerator<Told> {
+  const { options, asked } = turn
+
+  if (sofar !== null) {
+    const forgotten = yield* stream(codex.resumeThread(sofar, options), asked, stopping, true)
+    if (!forgotten) return
+
+    yield { told: 'forgot' }
+  }
+
+  yield* stream(codex.startThread(options), asked, stopping)
+}
+
 function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk {
   const aborting = new AbortController()
   let wasAsked = false
   const stopping: Stopping = { asked: () => wasAsked, signal: aborting.signal }
-  /** Known once the turn starts, and what `stop` needs to find the process to interrupt. */
+  /**
+   * The binary while a turn is running, and nothing once it is over.
+   *
+   * What `stop` needs to go and find the process — and, just as much, what tells it there is
+   * nothing to find. Cleared when the turn ends, because by then any Codex running is somebody
+   * else's turn and interrupting it would stop work nobody asked to stop.
+   */
   let running: string | undefined
 
   return {
     say: async function* (asked: Asked): AsyncIterable<Told> {
       const binary = await onPath(COMMAND, env)
-      running = binary
       if (binary === undefined) {
         yield { told: 'ended', why: { why: 'failed', said: 'Codex is no longer on this machine.' } }
         return
@@ -259,17 +289,13 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
 
       const codex = new Codex({ codexPathOverride: binary })
       const options = howToRun(where, asked)
+      running = binary
 
-      if (sofar !== null) {
-        const forgotten = yield* stream(codex.resumeThread(sofar, options), asked, stopping, true)
-        if (!forgotten) return
-
-        // Said before anything else in the turn: this answer was written by an agent with no
-        // memory of what came before it, and a page that did not say so would be pretending.
-        yield { told: 'forgot' }
+      try {
+        yield* whatItSays(codex, { options, asked }, sofar, stopping)
+      } finally {
+        running = undefined
       }
-
-      yield* stream(codex.startThread(options), asked, stopping)
     },
 
     /**

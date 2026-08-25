@@ -14,7 +14,7 @@ import { personById, renamePerson } from '../db/user.ts'
 import { shown } from '../identity/credential.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { hashSessionToken } from '../identity/session.ts'
-import { api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
+import { SHOWS, api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
 import { BEHIND_A_SESSION, MALFORMED_BODY } from './failure.ts'
 import { requireSession, SESSION_COOKIE, type Signed } from './session.ts'
 
@@ -61,7 +61,7 @@ export type MeApi = {
  * swallows every path in the whole app — including the sign-in routes, which escaped only by
  * being registered first. Nothing this important should rest on ordering.
  */
-const behindASession = endpointsBehind<{ Variables: Signed }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
 
 export function meApi(deps: MeApi) {
   return api<{ Variables: Signed }>().openapiRoutes([who(deps), renaming(deps), leaving(deps)])

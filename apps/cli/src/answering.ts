@@ -185,7 +185,7 @@ async function write(
   // one a page shows as still working for as long as this machine keeps reporting. The three
   // outcomes are the caller's to decide, and this is the caller.
   say(`${asking.conversationId} ended without saying how`)
-  await closing(writing, asking, { activityType: 'unknown' })
+  await closing(writing, asking, LOST)
 }
 
 /**

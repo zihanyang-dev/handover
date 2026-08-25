@@ -10,8 +10,9 @@ import { HTTPException } from 'hono/http-exception'
 import type { Provider } from '../identity/provider.ts'
 import type { Log } from '../log.ts'
 import { signInApi, type SignInApi } from './sign-in-api.ts'
-import { api } from './contract.ts'
+import { api, SHOWS } from './contract.ts'
 import { body, BROKEN, NOT_A_ROUTE } from './failure.ts'
+import { SESSION_COOKIE } from './session.ts'
 import { oauthApi, type OAuthApi } from './oauth-api.ts'
 import { requestLog, type Logged } from './request-log.ts'
 import { meApi } from './me-api.ts'
@@ -42,6 +43,20 @@ export function handoverApp(deps: App) {
   const providers = Object.keys(deps.clients) as Provider[]
   const app = api<{ Variables: Logged }>()
   app.use('*', requestLog(deps.log))
+
+  // The two credentials this system has, said once for the whole document. Each door names the
+  // one it asks for; this is where the contract learns what those names mean.
+  app.openAPIRegistry.registerComponent('securitySchemes', SHOWS.session, {
+    type: 'apiKey',
+    in: 'cookie',
+    name: SESSION_COOKIE,
+    description: 'The cookie a browser gets by signing in. Never read by anything but a browser.',
+  })
+  app.openAPIRegistry.registerComponent('securitySchemes', SHOWS.machine, {
+    type: 'http',
+    scheme: 'bearer',
+    description: 'The credential a machine mints for itself when it is let into a Space.',
+  })
 
   // Stated rather than chained: `notFound` and `onError` answer for the whole app, not for the
   // route before them, and chaining would also drop what the routes said about themselves.

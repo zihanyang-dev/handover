@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { HTTPException } from 'hono/http-exception'
 import { pino } from 'pino'
 import { LOG_OPTIONS } from '../log.ts'
 import { handoverApp } from './app.ts'
+import { SHOWS } from './contract.ts'
 import type { SendCode } from './sign-in-api.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
@@ -21,6 +24,9 @@ const db: Database = connect(env)
 afterAll(async () => {
   await db.destroy()
 })
+
+/** The contract as it is published: written by `pnpm generate`, committed, read by both clients. */
+const CONTRACT_FILE = join(import.meta.dirname, '..', '..', 'generated', 'openapi.json')
 
 /** What an error message really looks like when something upstream fails with a URL in hand. */
 const WHERE_IT_BROKE = 'smtp://user:hunter2@mail.example.com'
@@ -142,5 +148,68 @@ describe('a path that is not a route', () => {
 
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({ reason: 'no-such-route', recovery: 'start-over' })
+  })
+})
+
+describe('what the contract says about who may call what', () => {
+  /**
+   * Every operation in the published contract, with the credential it says a caller has to show.
+   *
+   * Read off the file rather than out of the app, because the file is what a client is generated
+   * from and what anybody reads. `pnpm check` rebuilds it before this runs and fails on any diff,
+   * so it cannot be stale here.
+   */
+  function everyEndpoint(): readonly { at: string; shows: readonly string[] }[] {
+    const document = JSON.parse(readFileSync(CONTRACT_FILE, 'utf8')) as {
+      paths: Record<string, Record<string, { security?: readonly Record<string, unknown>[] }>>
+    }
+
+    const endpoints = []
+    for (const [path, methods] of Object.entries(document.paths)) {
+      for (const [method, operation] of Object.entries(methods)) {
+        const shows = (operation.security ?? []).flatMap((one) => Object.keys(one))
+        endpoints.push({ at: `${method.toUpperCase()} ${path}`, shows })
+      }
+    }
+
+    return endpoints
+  }
+
+  it('names a machine credential on every path only a machine can use', async () => {
+    // The path says who it is for — `/machines/current/…` is a machine talking about itself — and
+    // the door has to agree. One mounted behind the wrong door would be a browser able to write
+    // an agent's half of a transcript, which no amount of care at the handler can undo.
+    const machines = everyEndpoint().filter((one) => one.at.includes(' /machines/current/'))
+
+    expect(machines.length).toBeGreaterThan(0)
+    for (const one of machines) expect([one.at, one.shows]).toEqual([one.at, [SHOWS.machine]])
+  })
+
+  it('names a session on every path that belongs to a person', async () => {
+    const people = everyEndpoint().filter(
+      (one) => one.at.includes(' /spaces') || one.at.includes(' /me'),
+    )
+
+    expect(people.length).toBeGreaterThan(0)
+    for (const one of people) expect([one.at, one.shows]).toEqual([one.at, [SHOWS.session]])
+  })
+
+  it('leaves open only the ways in, which are the ones nobody can have a credential for yet', async () => {
+    // Everything else has to be behind something. This is the list somebody has to change on
+    // purpose — and the reason to make it hard is that adding a route is easy.
+    const open = everyEndpoint()
+      .filter((one) => one.shows.length === 0)
+      .map((one) => one.at)
+      .sort()
+
+    expect(open).toEqual([
+      'GET /auth/credentials',
+      'GET /auth/{provider}/callback',
+      'POST /auth/email-codes',
+      'POST /auth/email-codes/{id}/answer',
+      'POST /auth/{provider}/start',
+      'POST /enrolments',
+      'POST /enrolments/collect',
+    ])
   })
 })

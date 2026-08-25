@@ -16,7 +16,7 @@ import type { Database } from '../db/connection.ts'
 import { DIGITS, hashCode, newCode, type Purpose, type Rejection } from '../identity/email-code.ts'
 import { normalizeEmail } from '../identity/email-address.ts'
 import { callerAddress, callerId } from './caller.ts'
-import { endpointsBehind, sends, takes } from './contract.ts'
+import { endpointsBehind, sends, takes, type Shows } from './contract.ts'
 import { failureBody, refusal, type Failure } from './failure.ts'
 
 const askedForCode = z
@@ -44,7 +44,7 @@ const issuedBody = z
   })
   .openapi('IssuedCode')
 
-export const waitBody = failureBody
+const waitBody = failureBody
   .extend({ retryAfterSeconds: z.number().int().positive() })
   .openapi('TooSoon')
 
@@ -221,11 +221,13 @@ export function sendsACode<P extends string, E extends Env = BlankEnv>(
     readonly purpose: Purpose
     /** What has to run first. The one behind a session says so here, not at the mounting point. */
     readonly middleware?: MiddlewareHandler<E>[] | undefined
+    /** Which door this one is mounted behind: one path is open, the other is behind a session. */
+    readonly shows?: Shows | undefined
     /** What else this path can answer. Only the one behind a session can say nobody is signed in. */
     readonly alsoRefuses?: Readonly<Record<number, ReturnType<typeof refusal>>>
   },
 ) {
-  return endpointsBehind<E>()({
+  return endpointsBehind<E>(spec.shows)({
     route: createRoute({
       method: 'post',
       path: spec.path,

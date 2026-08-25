@@ -90,6 +90,9 @@ export function api<E extends Env>(): OpenAPIHono<E> {
  * behindAMachine     a live machine credential                → BEHIND_A_MACHINE
  * ```
  *
+ * Each says what it asks a caller to show, and that is what reaches the contract — see
+ * {@link SHOWS}.
+ *
  * One app, one door. An app whose `Variables` cover two of them is an app whose `c` claims to hold
  * what only half its routes ever set — so a second door is a second app, mounted alongside.
  *
@@ -97,7 +100,24 @@ export function api<E extends Env>(): OpenAPIHono<E> {
  * and this repository's `exactOptionalPropertyTypes` will not have that where a `boolean` is
  * wanted. Saying `true` is also the truth — every endpoint here is one the router serves.
  */
-export function endpointsBehind<E extends Env>() {
+/**
+ * What a door asks a caller to show.
+ *
+ * Two credentials for four doors, and that is not a mistake: a membership door asks for the same
+ * cookie a session door does, and then answers a Space somebody is not in as one that is not
+ * there. That is a fact about what it answers, not about what it asks for.
+ *
+ * Named in the contract because the contract is read by people and by generators, and one that
+ * says nothing here presents thirty-two endpoints as though anybody could call them.
+ */
+export const SHOWS = {
+  session: 'browserSession',
+  machine: 'machineToken',
+} as const
+
+export type Shows = (typeof SHOWS)[keyof typeof SHOWS]
+
+export function endpointsBehind<E extends Env>(shows?: Shows) {
   return <R extends RouteConfig>(it: {
     route: R
     handler: RouteHandler<R, E>
@@ -109,5 +129,12 @@ export function endpointsBehind<E extends Env>() {
      * value is going into.
      */
     hook?: OpenAPIRoute<R, E, true>['hook']
-  }) => defineOpenAPIRoute<R, E, true>({ ...it, addRoute: true })
+  }) =>
+    defineOpenAPIRoute<R, E, true>({
+      ...it,
+      // Said once per door rather than once per endpoint, which is the only way it stays true:
+      // a route that had to remember to declare its own credential is a route that will forget.
+      ...(shows === undefined ? {} : { route: { ...it.route, security: [{ [shows]: [] }] } }),
+      addRoute: true,
+    })
 }

@@ -16,7 +16,7 @@ import { signInWithProvider } from '../db/sign-in.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { returnPath } from '@handover/universal'
-import { api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
+import { SHOWS, api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
 import { BEHIND_A_SESSION, MALFORMED_BODY, body, refusal, type Failure } from './failure.ts'
 import type { ProviderClient } from './oauth/provider-client.ts'
 
@@ -217,7 +217,7 @@ async function leave(
  * needs the account, and so needs the session that is holding it.
  */
 const openToAnyone = endpointsBehind<Env>()
-const behindASession = endpointsBehind<{ Variables: Signed }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
 
 export function oauthApi(deps: OAuthApi) {
   return api()

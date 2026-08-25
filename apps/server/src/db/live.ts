@@ -22,9 +22,10 @@ import type { Database } from './connection.ts'
 const CHANNEL = 'handover_live'
 
 /**
- * Postgres refuses a payload over 8000 bytes, and a refused notify would take down the write that
- * carried it. Long text is cut rather than dropped: what is watched is a turn in motion, and the
- * settled version of the same words is on its way to the transcript regardless.
+ * Postgres refuses a payload over 8000 bytes, and a refused one would answer a machine that was
+ * only saying what it is doing with a fault. Long text is cut rather than dropped: what is
+ * watched is a turn in motion, and the settled version of the same words is on its way to the
+ * transcript regardless.
  */
 const ROOM = 6000
 
@@ -44,7 +45,7 @@ function shortened(happening: Happening): Happening {
 }
 
 /** Says one moment to every instance, including this one. */
-export async function announce(db: Database, happening: Happening): Promise<void> {
+async function announce(db: Database, happening: Happening): Promise<void> {
   await sql`select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})`.execute(db)
 }
 

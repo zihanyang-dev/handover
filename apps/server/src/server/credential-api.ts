@@ -9,7 +9,15 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import { addAddress } from '../db/credential.ts'
 import type { Database } from '../db/connection.ts'
-import { api, endpointsBehind, insteadOfMalformed, rowId, saysNothing, takes } from './contract.ts'
+import {
+  SHOWS,
+  api,
+  endpointsBehind,
+  insteadOfMalformed,
+  rowId,
+  saysNothing,
+  takes,
+} from './contract.ts'
 import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
 import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
 import { requireSession, type Signed } from './session.ts'
@@ -31,7 +39,7 @@ export type CredentialApi = {
 const ELSEWHERE: Failure<409> = { reason: 'address-elsewhere', recovery: 'retype', status: 409 }
 
 /** Somebody already signed in, which is the whole difference from signing in. */
-const behindASession = endpointsBehind<{ Variables: Signed }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
 
 export function credentialApi(deps: CredentialApi) {
   return api<{ Variables: Signed }>().openapiRoutes([asking(deps), answering(deps)])
@@ -44,6 +52,7 @@ function asking(deps: CredentialApi) {
     summary: 'Ask for a code at an address, to add it to this account',
     purpose: 'attach',
     middleware: [requireSession(deps.db)],
+    shows: SHOWS.session,
     alsoRefuses: BEHIND_A_SESSION,
   })
 }

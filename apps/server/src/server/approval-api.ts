@@ -16,7 +16,7 @@ import {
 } from '../db/enrolment.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
 import { readUserCode } from '../machine/user-code.ts'
-import { api, endpointsBehind, saysNothing, sends } from './contract.ts'
+import { SHOWS, api, endpointsBehind, saysNothing, sends } from './contract.ts'
 import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
@@ -40,8 +40,8 @@ const keyBody = z.object({ key: z.string(), expiresAt: z.iso.datetime() }).opena
  * a Space until somebody picks one. Saying yes needs membership of the Space being joined, which
  * is the whole of somebody's standing to let a machine in.
  */
-const behindASession = endpointsBehind<{ Variables: Signed }>()
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
 
 export function approvalApi(deps: ApprovalApi) {
   return api<{ Variables: Signed }>()

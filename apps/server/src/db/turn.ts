@@ -110,7 +110,7 @@ export async function openTurn(tx: Tx, conversationId: string): Promise<number |
 }
 
 /** Every turn this machine left open, with the question each was answering. */
-export async function openTurnsOn(
+async function openTurnsOn(
   db: Database,
   machineId: string,
 ): Promise<readonly { conversationId: string; askedSeq: number }[]> {

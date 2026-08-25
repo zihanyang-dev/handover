@@ -5,6 +5,19 @@
     "version": "0"
   },
   "components": {
+    "securitySchemes": {
+      "browserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "handover_session",
+        "description": "The cookie a browser gets by signing in. Never read by anything but a browser."
+      },
+      "machineToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The credential a machine mints for itself when it is let into a Space."
+      }
+    },
     "schemas": {
       "OfferedCredentials": {
         "type": "object",
@@ -1550,6 +1563,11 @@
     "/me/credentials/{provider}/start": {
       "post": {
         "summary": "Leave to connect a provider to this account",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -1622,6 +1640,11 @@
     "/me": {
       "get": {
         "summary": "Who is signed in, and what they can reach",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "The person behind this session",
@@ -1647,6 +1670,11 @@
       },
       "patch": {
         "summary": "Change the name everything shows",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1687,6 +1715,11 @@
     "/browser/sessions/current": {
       "delete": {
         "summary": "Stop being signed in",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "The session is revoked and the cookie is cleared"
@@ -1707,6 +1740,11 @@
     "/spaces": {
       "post": {
         "summary": "Make a Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1774,6 +1812,11 @@
     "/spaces/{slug}": {
       "get": {
         "summary": "Enter a Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -1821,6 +1864,11 @@
     "/me/credentials/email-codes": {
       "post": {
         "summary": "Ask for a code at an address, to add it to this account",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1878,6 +1926,11 @@
     "/me/credentials/email-codes/{id}/answer": {
       "post": {
         "summary": "Answer the code, which adds the address to this account",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2033,6 +2086,11 @@
     "/enrolments/{userCode}": {
       "get": {
         "summary": "What is asking to come in under this code",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2080,6 +2138,11 @@
     "/enrolments/{userCode}/refuse": {
       "post": {
         "summary": "Turn that machine away",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2120,6 +2183,11 @@
     "/spaces/{slug}/enrolments/{userCode}/approve": {
       "post": {
         "summary": "Let that machine into this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2168,6 +2236,11 @@
     "/spaces/{slug}/machine-keys": {
       "post": {
         "summary": "Make a key a machine can come in with, without anybody approving it later",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2215,6 +2288,11 @@
     "/spaces/{slug}/machines": {
       "get": {
         "summary": "The machines in this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2262,6 +2340,11 @@
     "/spaces/{slug}/machines/{id}": {
       "delete": {
         "summary": "Take a machine out of this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2311,6 +2394,11 @@
     "/machines/current/poll": {
       "post": {
         "summary": "Report what this machine has, and ask whether there is anything for it",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2358,6 +2446,11 @@
     "/machines/current/session": {
       "delete": {
         "summary": "Say this machine is stopping on purpose",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Gone, without waiting out the silence"
@@ -2378,6 +2471,11 @@
     "/spaces/{slug}/conversations": {
       "get": {
         "summary": "The conversations in this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2423,6 +2521,11 @@
       },
       "post": {
         "summary": "Start a conversation with one agent on one machine",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2500,6 +2603,11 @@
     "/spaces/{slug}/conversations/{id}": {
       "get": {
         "summary": "Everything said in one conversation",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2556,6 +2664,11 @@
     "/spaces/{slug}/conversations/{id}/messages": {
       "post": {
         "summary": "Say something to the agent",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2635,6 +2748,11 @@
     "/spaces/{slug}/conversations/{id}/stop": {
       "post": {
         "summary": "Ask the agent to stop what it is doing",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2714,6 +2832,11 @@
     "/machines/current/conversations/{id}/messages": {
       "post": {
         "summary": "Add what the agent said or did",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2775,6 +2898,11 @@
     "/machines/current/conversations/{id}/session": {
       "put": {
         "summary": "Record what the agent calls this conversation",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2826,6 +2954,11 @@
     "/spaces/{slug}/conversations/{id}/live": {
       "get": {
         "summary": "Watch a turn while it runs",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -2882,6 +3015,11 @@
     "/machines/current/conversations/{id}/live": {
       "post": {
         "summary": "Say what is happening right now, which is kept nowhere",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
         "parameters": [
           {
             "schema": {

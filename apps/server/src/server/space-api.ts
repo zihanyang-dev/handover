@@ -9,7 +9,7 @@ import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { createSpace } from '../db/space.ts'
 import { normalizeSlug } from '@handover/universal'
-import { api, endpointsBehind, sends, takes } from './contract.ts'
+import { SHOWS, api, endpointsBehind, sends, takes } from './contract.ts'
 import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
@@ -47,8 +47,8 @@ const takenBody = z
  * what `c` holds. Making one is behind the weaker of the two: there is no Space to be a member of
  * yet, which is the whole of what the endpoint is for.
  */
-const behindASession = endpointsBehind<{ Variables: Signed }>()
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
 
 export function spaceApi(db: Database) {
   return api<{ Variables: Signed }>()

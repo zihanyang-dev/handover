@@ -12,7 +12,7 @@
 
 import { z } from '@hono/zod-openapi'
 
-export const modelBody = z
+const modelBody = z
   .object({
     id: z.string().min(1).max(200),
     name: z.string().max(200),

@@ -21,7 +21,7 @@ import {
   sayTo,
 } from '../db/conversation.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
-import { api, endpointsBehind, rowId, saysNothing, sends, takes } from './contract.ts'
+import { SHOWS, api, endpointsBehind, rowId, saysNothing, sends, takes } from './contract.ts'
 import {
   BEHIND_A_MACHINE,
   BEHIND_A_SESSION,
@@ -185,8 +185,8 @@ function asStanding(standing: Standing) {
  * own — which of them it is behind is the one thing that decides what `c` holds, and repeating it
  * at each endpoint would be the same fact with seven places to drift.
  */
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
-const behindAMachine = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
+const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
 
 export function conversationApi(deps: ConversationApi) {
   return api<{ Variables: Signed & InSpace }>()
