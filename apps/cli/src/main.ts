@@ -18,10 +18,9 @@ import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
-import { keepCheckingIn } from './checking-in.ts'
-import { askToConnect, connectWithKey, SAID, waitToBeLetIn } from './connect.ts'
+import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
+import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
-import { findAgents } from './discovery.ts'
 import { handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
@@ -62,12 +61,22 @@ function say(line: string): void {
   process.stderr.write(`${line}\n`)
 }
 
-const sleep = async (seconds: number): Promise<void> =>
-  new Promise((wake) => setTimeout(wake, seconds * 1000))
+/** Cut short when asked to stop, and the timer cleared with it so nothing is left holding on. */
+const sleep = async (seconds: number, until?: AbortSignal): Promise<void> =>
+  new Promise((wake) => {
+    const timer = setTimeout(wake, seconds * 1000)
+    until?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        wake()
+      },
+      { once: true },
+    )
+  })
 
 if (command === 'connect') {
-  const attachment = (await readAttachment(where)) ?? (await enrol())
-  await sayWhatIsHere(attachment)
+  await joined()
   await handOver()
 } else if (command === 'run') {
   const attachment = await readAttachment(where)
@@ -80,6 +89,26 @@ if (command === 'connect') {
   say(`no such command: ${command}`)
   say('try: handover connect   ·   handover run')
   process.exit(1)
+}
+
+/**
+ * The attachment to go on with, which is not the same as the one on disk.
+ *
+ * A file is not a connection. The credential in it can be taken away while nothing here is
+ * running, and the recovery somebody is told for exactly that is this very command — so believing
+ * the file would make `connect` say "running" to a machine that is in no Space at all, which is
+ * the one thing it must never say.
+ *
+ * Saying what is here is the same request as asking whether we are still in, so this costs
+ * nothing extra: the answer to the report is the answer to the question.
+ */
+async function joined(): Promise<Attachment> {
+  const held = await readAttachment(where)
+  if (held !== undefined && (await sayWhatIsHere(held)) !== 'not-ours') return held
+
+  const fresh = await enrol()
+  await sayWhatIsHere(fresh)
+  return fresh
 }
 
 async function enrol(): Promise<Attachment> {
@@ -99,8 +128,9 @@ async function enrol(): Promise<Attachment> {
 }
 
 /** The way in for a machine somebody is sitting at: show a code, wait for them to say yes. */
-async function askAndWait(origin: string) {
+async function askAndWait(origin: string): Promise<Connected> {
   const asked = await askToConnect(apiFor(origin), machineName)
+  if (asked === undefined) return { kind: 'gave-up', why: 'unreachable' }
 
   return waitToBeLetIn(apiFor(origin), origin, asked, {
     show: (shown) => {
@@ -124,21 +154,30 @@ async function useKey(origin: string, key: string) {
  * The same emptiness reaches the Space screen as "no agents found", but by then they are not at
  * this keyboard. Here they can install one and run this again in the same minute.
  */
-async function sayWhatIsHere(attachment: Attachment): Promise<void> {
-  const found = await findAgents(attachment.lookFor, machineEnvironment())
+async function sayWhatIsHere(attachment: Attachment): Promise<Reported['said']> {
+  const reported = await reportOnce(
+    apiFor(attachment.origin, attachment.token),
+    attachment.lookFor,
+    machineEnvironment(),
+  )
 
-  // Reported as it is said, not after. Checking in with an empty report first — just to be told
-  // what to look for — would land on the Space screen as a machine that has nothing.
-  await apiFor(attachment.origin, attachment.token).POST('/machines/current/poll', {
-    body: { found },
-  })
+  for (const line of aboutIt(reported, attachment.lookFor)) say(line)
+  return reported.said
+}
 
-  if (found.length === 0) {
-    say(`found     nothing — install one of ${attachment.lookFor.join(', ')} and run this again`)
-    return
-  }
+/** What to say about one report. Pure, so the words are one thing and the asking is another. */
+function aboutIt(reported: Reported, lookFor: readonly string[]): readonly string[] {
+  if (reported.said === 'not-ours') return ['this machine is not in that Space any more']
 
-  say(`found     ${found.map((one) => `${one.command} ${one.version}`).join(' · ')}`)
+  const here =
+    reported.found.length === 0
+      ? `nothing — install one of ${lookFor.join(', ')} and run this again`
+      : reported.found.map((one) => `${one.command} ${one.version}`).join(' · ')
+
+  // "found" on its own reads as "and the Space knows". When nothing was told, it does not.
+  return reported.said === 'unreachable'
+    ? [`found     ${here}`, '          could not tell the server; it will keep trying']
+    : [`found     ${here}`]
 }
 
 /**

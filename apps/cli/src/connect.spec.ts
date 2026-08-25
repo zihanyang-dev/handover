@@ -59,15 +59,24 @@ describe('asking to come in', () => {
     expect(asked).toMatchObject({ machineName: 'mina-mbp' })
   })
 
-  it('says why when the server would not even take the question', async () => {
-    // Nothing to loop over here: a machine that cannot ask has nothing to wait for.
+  it('comes back with nothing when the server would not take the question', async () => {
+    // Nothing to loop over here: a machine that cannot ask has nothing to wait for. Nothing back
+    // rather than a throw, because the caller has one sentence to say and a stack trace is not it.
     server.use(
       http.post(`${ORIGIN}/enrolments`, () =>
         HttpResponse.json({ reason: 'malformed-request', recovery: 'retype' }, { status: 400 }),
       ),
     )
 
-    await expect(askToConnect(apiFor(ORIGIN), 'mina-mbp')).rejects.toThrow('malformed-request')
+    expect(await askToConnect(apiFor(ORIGIN), 'mina-mbp')).toBeUndefined()
+  })
+
+  it('comes back with nothing when there is no network at all, rather than crashing', async () => {
+    // The third call written without remembering to catch a rejecting fetch. There is no longer
+    // a way to write one: the client is built on a fetch that answers instead of rejecting.
+    server.use(http.post(`${ORIGIN}/enrolments`, () => HttpResponse.error()))
+
+    expect(await askToConnect(apiFor(ORIGIN), 'mina-mbp')).toBeUndefined()
   })
 })
 

@@ -6,7 +6,7 @@
  * approving happens on whatever device the person has to hand.
  */
 
-import { answered, type Api } from './api.ts'
+import type { Api } from './api.ts'
 import type { components } from '../generated/api.ts'
 import type { Attachment } from './store.ts'
 
@@ -82,11 +82,9 @@ export async function connectWithKey(
 ): Promise<Connected> {
   // Unlike the waiting path there is nothing to sit through: a key that does not work now will
   // not start working, so a failure here ends the attempt rather than becoming a retry.
-  const came = await answered(
-    api.POST('/enrolments/collect', { body: { secret: key, machineName } }),
-  )
+  const came = await api.POST('/enrolments/collect', { body: { secret: key, machineName } })
 
-  if (came?.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
+  if (came.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
 
   if (came.data.kind !== 'granted') {
     const { kind } = came.data
@@ -108,9 +106,10 @@ export async function connectWithKey(
   }
 }
 
-export async function askToConnect(api: Api, machineName: string): Promise<Asked> {
-  const { data, error } = await api.POST('/enrolments', { body: { machineName } })
-  if (data === undefined) throw new Error(error.reason)
+/** Nothing back means nobody answered — the caller's business, not a reason to end the program. */
+export async function askToConnect(api: Api, machineName: string): Promise<Asked | undefined> {
+  const { data } = await api.POST('/enrolments', { body: { machineName } })
+  if (data === undefined) return undefined
 
   return { machineName, ...data }
 }
@@ -130,13 +129,11 @@ export async function waitToBeLetIn(
   waiting.show(asked)
 
   for (;;) {
-    const came = await answered(
-      api.POST('/enrolments/collect', {
-        body: { secret: asked.secret, machineName: asked.machineName },
-      }),
-    )
+    const came = await api.POST('/enrolments/collect', {
+      body: { secret: asked.secret, machineName: asked.machineName },
+    })
 
-    if (came?.data === undefined) {
+    if (came.data === undefined) {
       // Unreachable, or refused to parse. Nothing about the enrolment changed while the network
       // was down, so the only thing that would end the attempt here is impatience.
       await waiting.sleep(POLL_SECONDS)

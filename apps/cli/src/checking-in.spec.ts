@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
-import { keepCheckingIn } from './checking-in.ts'
+import { keepCheckingIn, reportOnce } from './checking-in.ts'
 
 const server = setupServer()
 const ORIGIN = 'http://handover.test'
@@ -110,6 +110,74 @@ describe('staying connected', () => {
 
     expect(await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)).toEqual({
       kind: 'asked-to-stop',
+    })
+  })
+})
+
+describe('being asked to stop', () => {
+  it('stops without waiting out the sleep it is in, or the goodbye comes too late', async () => {
+    // Stopping a service is a SIGTERM and then a kill a few seconds later. Noticing only when a
+    // twenty-five second sleep ends means being killed first, and the Space showing a machine
+    // that is gone as here for another minute.
+    server.use(keepsAnswering())
+    const stopping = new AbortController()
+    const running = {
+      env: {},
+      say: () => undefined,
+      sleep: async (seconds: number, until: AbortSignal) =>
+        new Promise<void>((wake) => {
+          const timer = setTimeout(wake, seconds * 1000)
+          until.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer)
+              wake()
+            },
+            { once: true },
+          )
+        }),
+    }
+
+    const stopped = keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, stopping.signal)
+    await new Promise((wake) => setTimeout(wake, 50))
+    stopping.abort()
+
+    expect(await stopped).toEqual({ kind: 'asked-to-stop' })
+  })
+})
+
+describe('one report, and what came of it', () => {
+  const env = { PATH: '/nonexistent' }
+
+  it('is here when the server took it', async () => {
+    server.use(keepsAnswering([], ['claude']))
+
+    expect(await reportOnce(apiFor(ORIGIN, 'hm_t'), [], env)).toMatchObject({
+      said: 'here',
+      lookFor: ['claude'],
+      pollSeconds: 25,
+    })
+  })
+
+  it('is not ours when the credential is not one the server knows', async () => {
+    // What being taken out of a Space looks like from here. It is also what `connect` asks when
+    // it finds an attachment on disk: a file is not a connection.
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, () =>
+        HttpResponse.json({ reason: 'no-machine', recovery: 'start-over' }, { status: 401 }),
+      ),
+    )
+
+    expect(await reportOnce(apiFor(ORIGIN, 'hm_t'), [], env)).toEqual({ said: 'not-ours' })
+  })
+
+  it('is unreachable when nothing answered, which is not the same as being turned away', async () => {
+    // Folding this into `not-ours` would throw away a working credential over a dropped Wi-Fi,
+    // and send somebody to enrol a machine that was never removed.
+    server.use(http.post(`${ORIGIN}/machines/current/poll`, () => HttpResponse.error()))
+
+    expect(await reportOnce(apiFor(ORIGIN, 'hm_t'), [], env)).toMatchObject({
+      said: 'unreachable',
     })
   })
 })
