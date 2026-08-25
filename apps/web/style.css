@@ -530,6 +530,13 @@ textarea.field {
   padding: 0 0.75rem; /* theirs is 12px */
 }
 
+/* A way-in's mark sits inside its label. */
+.auth .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 .auth .or {
   color: var(--basic);
 }
