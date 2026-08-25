@@ -1465,7 +1465,7 @@ export interface components {
         };
         MachineAgent: {
             /** @enum {string} */
-            kind: "claude-code" | "codex" | "cursor-agent";
+            kind: "claude-code" | "codex";
             version: string;
         };
     };

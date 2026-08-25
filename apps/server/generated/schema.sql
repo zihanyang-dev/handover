@@ -46,7 +46,7 @@ CREATE TABLE public.agents (
     kind text NOT NULL,
     version text NOT NULL,
     found_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT agents_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text, 'cursor-agent'::text])))
+    CONSTRAINT agents_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text])))
 );
 
 

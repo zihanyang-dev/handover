@@ -652,8 +652,7 @@
             "type": "string",
             "enum": [
               "claude-code",
-              "codex",
-              "cursor-agent"
+              "codex"
             ]
           },
           "version": {

@@ -9,7 +9,6 @@
 export const AGENT_KINDS = {
   'claude-code': { command: 'claude', label: 'Claude Code' },
   codex: { command: 'codex', label: 'Codex' },
-  'cursor-agent': { command: 'cursor-agent', label: 'Cursor Agent' },
 } as const satisfies Record<string, { readonly command: string; readonly label: string }>
 
 export type AgentKind = keyof typeof AGENT_KINDS
