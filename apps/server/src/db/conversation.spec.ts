@@ -207,6 +207,17 @@ describe('what a machine is waiting to answer', () => {
     })
   })
 
+  it('is still waiting when somebody asked to stop it before anybody picked it up', async () => {
+    // A request to stop is not an answer. Counted as one, it hides the question from the only
+    // machine that could ever end the turn — and the conversation reads as working forever,
+    // because the person asking to stop it is what buried it.
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'take your time')
+    await askToStop(db, { conversationId: conversation, spaceId: SPACE, key: 'stop-1' })
+
+    expect(await waitingOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
+  })
+
   it('is nothing once the turn is closed', async () => {
     const conversation = await opened()
     await asks(conversation, 'turn-1', 'hello')

@@ -357,7 +357,10 @@ export async function waitingOn(db: Database, machineId: string): Promise<Waitin
     ])
     .where('conversations.machine_id', '=', machineId)
     .where('messages.role', '=', 'user')
-    // Nothing said after it is what makes a question still a question.
+    // Nothing said after it is what makes a question still a question — except somebody asking it
+    // to stop, which is not an answer to it. Counting that would hide the question from the only
+    // machine that could ever end the turn, and leave the conversation working forever: the person
+    // asked to stop something nobody had started, and their asking is what buried it.
     .where((eb) =>
       eb.not(
         eb.exists(
@@ -365,7 +368,11 @@ export async function waitingOn(db: Database, machineId: string): Promise<Waitin
             .selectFrom('messages as later')
             .select('later.id')
             .whereRef('later.conversation_id', '=', 'messages.conversation_id')
-            .whereRef('later.seq', '>', 'messages.seq'),
+            .whereRef('later.seq', '>', 'messages.seq')
+            .where(
+              sql<boolean>`not (later.role = 'activity'
+                and later.content ->> 'activityType' = ${ACTIVITY.stopAsked})`,
+            ),
         ),
       ),
     )

@@ -226,6 +226,26 @@ function settings(where: string, claude: string, resume: string | null, asked: A
   }
 }
 
+/**
+ * Asks it to stop, and says whether it took the request.
+ *
+ * Interrupting leaves the conversation alive to be picked up again; killing the process would not.
+ * Somebody who stops an agent means to redirect it, not to lose it.
+ *
+ * Only an accepted interrupt counts, because accepting is what rewrites the ending as cancelled.
+ * Assumed rather than asked, an interrupt that was refused — an older CLI, a turn already over —
+ * would put "you stopped it" in the record for a turn that ran to the end. That is the one thing
+ * the transcript exists to make visible: asked to stop, and did not.
+ */
+async function accepted(running: ReturnType<typeof query> | undefined): Promise<boolean> {
+  if (running === undefined) return false
+
+  return running.interrupt().then(
+    () => true,
+    () => false,
+  )
+}
+
 /** What a turn somebody asked to stop ends as, however the CLI happened to report it. */
 const STOPPED = { told: 'ended', why: { why: 'cancelled' } } as const
 
@@ -278,12 +298,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
     },
 
     stop: async () => {
-      interrupted = true
-      // Interrupting leaves the conversation alive to be picked up again; killing the process
-      // would not. Somebody who stops an agent means to redirect it, not to lose it.
-      await running?.interrupt().catch(() => {
-        // It had already finished, or it is gone. Either way there is nothing left to stop.
-      })
+      interrupted = await accepted(running)
     },
   }
 }
