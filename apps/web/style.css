@@ -396,11 +396,11 @@ textarea.field {
   --primary-200: #34322d;
   --primary-500: #1a1a19;
   --grey-300: #b9b9b7; /* manus --text-disable, placeholder */
-  --grey-800: #0000000f; /* hairlines, manus --border-main */
+  --grey-800: #0000001f; /* hairlines */
   --grey-900: #f7f7f5;
   --grey-970: #ffffff;
   --grey-985: #ffffff;
-  --neutral-950: #0000000f; /* manus --border-main */
+  --neutral-950: #0000001f; /* 12% black: their 6% hairline reads as no button at all */
   --neutral-500: #00000024; /* manus --border-dark, the focus ring */
   --neutral-900: #0000000f;
   --danger: #b3381f;

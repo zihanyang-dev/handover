@@ -5,7 +5,7 @@ import routing from './tsr.config.json' with { type: 'json' }
 import contract from '../server/generated/openapi.json' with { type: 'json' }
 
 /** The API is same-origin in production; in development it is a separate process on its own port. */
-const SERVER = 'http://localhost:3000'
+const SERVER = process.env['HANDOVER_API_ORIGIN'] ?? 'http://localhost:3000'
 
 /**
  * Paths the API owns, read out of the contract rather than listed by hand.

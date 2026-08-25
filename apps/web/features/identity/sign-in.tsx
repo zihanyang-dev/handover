@@ -22,7 +22,7 @@ type Provider = 'google' | 'github'
 
 const LOOKS: Record<Provider, { readonly label: string; readonly icon: ReactElement }> = {
   google: { label: 'Google', icon: <GoogleMark /> },
-  github: { label: 'GitHub', icon: <Github aria-hidden /> },
+  github: { label: 'GitHub', icon: <Github size={18} aria-hidden /> },
 }
 
 function known(kind: string): kind is Provider {
@@ -41,7 +41,8 @@ async function offeredKinds(): Promise<readonly string[]> {
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
-function OtherWays({ next }: { readonly next: string | undefined }) {
+/* A way-in is offered at one size: both marks render at 18px, not each at its own default. */
+function OtherWays() {
   const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
   const providers = (offered.data ?? []).filter(isProvider)
 
