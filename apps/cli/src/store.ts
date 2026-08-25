@@ -5,7 +5,7 @@
  * under a service manager, and a keychain that prompts is a keychain that never answers.
  */
 
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -72,10 +72,37 @@ export async function readAttachment(path: string): Promise<Attachment | undefin
   return found as Attachment
 }
 
+/**
+ * Writes it whole or not at all, and never widens what somebody else can read.
+ *
+ * Written in place, two things go wrong. A crash part way through leaves a truncated file, which
+ * this version cannot use — a machine that was connected reads as one that never was. And an
+ * existing file keeps the mode it already had, so a token written into a file that was somehow
+ * 0644 is a token anybody on the machine can read until the `chmod` lands.
+ *
+ * A new file beside it, created 0600 from the first byte, then renamed over: rename is atomic
+ * within a directory, so a reader sees either the old attachment or the new one.
+ */
 export async function writeAttachment(path: string, attachment: Attachment): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, `${JSON.stringify(attachment, null, 2)}\n`, { mode: 0o600 })
-  // Set again: an existing file keeps the permissions it already had, and this one may be one we
-  // wrote before with a wider mode.
-  await chmod(path, 0o600)
+
+  const beside = `${path}.new`
+  const file = await open(beside, 'w', 0o600)
+  try {
+    await file.writeFile(`${JSON.stringify(attachment, null, 2)}\n`)
+    // Before the rename, so what the name ends up pointing at is on the disk and not only in the
+    // page cache: a machine that loses power here would otherwise find an empty file.
+    await file.sync()
+  } finally {
+    await file.close()
+  }
+
+  try {
+    await rename(beside, path)
+  } catch (trouble) {
+    await unlink(beside).catch(() => {
+      // Nothing to clean up, or nothing we can do about it. The old attachment still stands.
+    })
+    throw trouble
+  }
 }

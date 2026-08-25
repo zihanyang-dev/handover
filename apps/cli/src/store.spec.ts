@@ -1,4 +1,4 @@
-import { mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -84,6 +84,19 @@ describe('keeping it', () => {
     await writeAttachment(path, ATTACHMENT)
 
     expect((await stat(path)).mode & 0o077).toBe(0)
+  })
+
+  it('never leaves a half-written credential behind', async () => {
+    // A machine that was connected, reading as one that never was: what a truncated file looks
+    // like from `connect`. The new attachment is written beside the old one and renamed over it,
+    // so a reader sees one or the other and never half of either.
+    const path = join(HOME, 'machine.json')
+    await writeAttachment(path, ATTACHMENT)
+
+    await writeAttachment(path, { ...ATTACHMENT, token: 'hm_second' })
+
+    expect(await readAttachment(path)).toMatchObject({ token: 'hm_second' })
+    expect(await readdir(HOME)).toEqual(['machine.json'])
   })
 
   it('has nothing to read before anything was written', async () => {

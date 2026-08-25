@@ -129,16 +129,19 @@ export async function keepCheckingIn(
 
   while (!stopping.aborted) {
     const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
-    restarted = false
 
     if (reported.said === 'not-ours') return { kind: 'removed' }
 
     if (reported.said === 'unreachable') {
+      // Still unsaid. A report nobody received did not tell the server this machine restarted, and
+      // forgetting that here would leave whatever it left open working forever — the one thing
+      // only this process can say, lost to a dropped connection.
       running.say('cannot reach the server; still trying')
       await running.sleep(RETRY_SECONDS, stopping)
       continue
     }
 
+    restarted = false
     looking = reported.lookFor
 
     // Asked to stop what it is doing. Told on every report until the agent says it stopped, so a
@@ -157,12 +160,7 @@ export async function keepCheckingIn(
       })
     }
 
-    // Never slower than the deployment asked, and never slower than the floor while working.
-    const busy = answering !== undefined
-    await running.sleep(
-      busy ? Math.min(reported.pollSeconds, WHILE_WORKING_SECONDS) : reported.pollSeconds,
-      stopping,
-    )
+    await running.sleep(waitFor(reported.pollSeconds, answering !== undefined), stopping)
   }
 
   // Stopping on purpose stops the agent too, and waits for the last of what it said to be written
@@ -171,6 +169,11 @@ export async function keepCheckingIn(
   await settle(answering, running)
 
   return { kind: 'asked-to-stop' }
+}
+
+/** Never slower than the deployment asked, and never slower than the floor while working. */
+function waitFor(pollSeconds: number, busy: boolean): number {
+  return busy ? Math.min(pollSeconds, WHILE_WORKING_SECONDS) : pollSeconds
 }
 
 /**

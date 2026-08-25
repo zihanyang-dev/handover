@@ -119,6 +119,17 @@ function unheardOfEvent(_event: never): Told[] {
 }
 
 /**
+ * The one thing Codex refuses that is not a fault: it no longer has that thread.
+ *
+ * Its own words, measured against the real CLI — `thread/resume failed: no rollout found for
+ * thread id …`. Recognised here because only this adapter knows what its agent's refusal reads
+ * like, and calling it a failure would send somebody looking for a fault that is not there.
+ */
+function isForgotten(trouble: unknown): boolean {
+  return /no rollout found for thread/iu.test(plainly(trouble))
+}
+
+/**
  * What to show a person when a turn ends badly.
  *
  * Codex throws provider errors verbatim, so what arrives here is often a JSON body. A person
@@ -164,9 +175,21 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
           : { modelReasoningEffort: asked.effort as ModelReasoningEffort }),
       }
 
-      const thread =
-        sofar === null ? codex.startThread(options) : codex.resumeThread(sofar, options)
-      yield* stream(thread, asked, stopping.signal)
+      if (sofar !== null) {
+        const forgotten = yield* stream(
+          codex.resumeThread(sofar, options),
+          asked,
+          stopping.signal,
+          true,
+        )
+        if (!forgotten) return
+
+        // Said before anything else in the turn: this answer was written by an agent with no
+        // memory of what came before it, and a page that did not say so would be pretending.
+        yield { told: 'forgot' }
+      }
+
+      yield* stream(codex.startThread(options), asked, stopping.signal)
     },
 
     // Codex offers no gentler interruption than this, and it does not need one: the thread is
@@ -181,7 +204,9 @@ export async function* stream(
   thread: Pick<ReturnType<Codex['startThread']>, 'runStreamed'>,
   asked: Asked,
   until: AbortSignal,
-): AsyncIterable<Told> {
+  /** Whether a thread Codex no longer has is an answer rather than a fault. */
+  resuming = false,
+): AsyncGenerator<Told, boolean> {
   // A turn ends once. Codex reports a failed turn as an event and then throws on the way out, so
   // without this the same failure is announced twice — which today is invisible only because the
   // caller stops reading at the first ending. A contract that holds because nobody looked is not
@@ -196,13 +221,16 @@ export async function* stream(
       yield* told
     }
   } catch (trouble) {
-    if (ended) return
+    if (ended) return false
 
     // Never `instanceof`: what is thrown here is minified, and its `name` is not always
     // `AbortError`. We are the ones who asked it to stop, so we are the ones who know.
     if (until.aborted) yield { told: 'ended', why: { why: 'cancelled' } }
+    else if (resuming && isForgotten(trouble)) return true
     else yield { told: 'ended', why: { why: 'failed', said: plainly(trouble) } }
   }
+
+  return false
 }
 
 /**

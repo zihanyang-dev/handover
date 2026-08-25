@@ -8,6 +8,7 @@ function spec(overrides: Partial<ServiceSpec> = {}): ServiceSpec {
     system: false,
     label: 'dev.handover.machine',
     path: '/opt/homebrew/bin:/usr/bin:/bin',
+    where: '/Users/mina/work/payments',
     ...overrides,
   }
 }
@@ -69,6 +70,21 @@ describe('a path with something in it that a service file reads', () => {
 
   it('escapes an ampersand, which would leave launchd unable to parse the file at all', () => {
     expect(plistFor(spec({ path: '/opt/r&d/bin' }))).toContain('<string>/opt/r&amp;d/bin</string>')
+  })
+})
+
+describe('the directory it works in', () => {
+  // Nobody chooses it and nothing asks: it is where `handover connect` was run, which is what the
+  // person was told. A service inherits none of it — launchd starts in `/`.
+  it('is in the unit', () => {
+    // Unquoted: systemd takes the rest of the line as the value here, and rejects a quoted one.
+    expect(unitFor(spec())).toContain('WorkingDirectory=/Users/mina/work/payments\n')
+  })
+
+  it('is in the plist', () => {
+    expect(plistFor(spec())).toContain(
+      '<key>WorkingDirectory</key>\n    <string>/Users/mina/work/payments</string>',
+    )
   })
 })
 

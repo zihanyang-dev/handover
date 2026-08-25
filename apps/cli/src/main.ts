@@ -104,7 +104,12 @@ if (command === 'connect') {
  * the answer to the report is the answer to the question.
  */
 async function checkIn(): Promise<void> {
-  const held = await readAttachment(where)
+  // A key handed in on the command line is somebody saying which Space this machine belongs to
+  // now. Believing the file instead would leave the machine where it was and say "connected" —
+  // the exact command for moving a machine, doing nothing, quietly.
+  const moving = values.key !== undefined
+  const held = moving ? undefined : await readAttachment(where)
+
   if (held !== undefined && (await sayWhatIsHere(held)) !== 'not-ours') return
 
   await sayWhatIsHere(await enrol())
@@ -203,12 +208,16 @@ async function handOver(): Promise<void> {
       // Taken from this terminal, where it is already right. A service inherits four directories
       // and none of them hold an agent.
       path: machineEnvironment()['PATH'] ?? '',
+      // The directory this command was run in, which is the one somebody was told the agent works
+      // in. A service starts in `/` unless it is told otherwise.
+      where: process.cwd(),
     },
     process.platform,
     homedir(),
   )
 
   say(`service  ${handover.path}`)
+  say(`working  ${process.cwd()}`)
 
   await mkdir(dirname(handover.path), { recursive: true })
   await writeFile(handover.path, handover.contents)

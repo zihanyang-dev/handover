@@ -39,3 +39,16 @@ describe('asking an agent what it offers', () => {
     expect((await asks(unknown))[0]).not.toHaveProperty('models')
   })
 })
+
+describe('an agent that cannot answer', () => {
+  it('does not take the whole report down with it', async () => {
+    // A model list is optional; being reported at all is not. An agent installed but not signed
+    // in would otherwise hold a perfectly usable machine out of its Space.
+    const asks = offering(NOWHERE, '/nowhere')
+
+    const reported = await asks([...found('2.1.4'), { command: 'codex', version: '0.9.0' }])
+
+    expect(reported.map((one) => one.command)).toEqual(['claude', 'codex'])
+    expect(reported.every((one) => 'models' in one)).toBe(true)
+  })
+})

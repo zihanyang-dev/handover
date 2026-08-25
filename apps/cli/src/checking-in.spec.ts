@@ -115,6 +115,26 @@ describe('staying connected', () => {
     expect(reports.map((one) => one.restarted)).toEqual([true, false, false])
   })
 
+  it('keeps saying it restarted until a report actually arrives', async () => {
+    // Only this machine can say it restarted, and a report nobody received said nothing. Dropping
+    // it there would leave whatever it left open working forever.
+    const reports: { restarted?: boolean }[] = []
+    let asked = 0
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
+        asked += 1
+        if (asked < 3) return HttpResponse.error()
+        reports.push((await request.json()) as { restarted?: boolean })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: [] })
+      }),
+    )
+    const { running, signal } = runningFor(4)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(reports[0]?.restarted).toBe(true)
+  })
+
   it('stops for good once the machine has been taken away', async () => {
     server.use(
       http.post(`${ORIGIN}/machines/current/poll`, () =>

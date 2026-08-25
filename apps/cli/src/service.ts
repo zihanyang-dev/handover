@@ -33,6 +33,14 @@ export type ServiceSpec = {
    * actually do, unlike rearranging the files their shell reads.
    */
   readonly path: string
+  /**
+   * Where the agent works: the directory `handover connect` was run in.
+   *
+   * A service inherits none of it — launchd starts in `/`, systemd in the unit's own default — so
+   * without this the agent reads and writes somewhere nobody chose, under whatever account the
+   * service runs as. The whole of "it works in your project" is this one line.
+   */
+  readonly where: string
 }
 
 /**
@@ -55,6 +63,17 @@ function escaped(value: string): string {
 }
 
 /**
+ * A path in a setting that takes one, rather than a command line.
+ *
+ * Unquoted, because systemd reads the rest of the line as the value here and rejects the unit if
+ * it is quoted — measured against a real systemd, which is also why this is not the same helper
+ * the command line uses. Only `%` has to go, since it would start a specifier.
+ */
+function asPath(value: string): string {
+  return value.replaceAll('%', '%%')
+}
+
+/**
  * `WantedBy` is what separates the two.
  *
  * `multi-user.target` is reached during boot, with nobody logged in. `default.target` in a user
@@ -70,6 +89,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+WorkingDirectory=${asPath(spec.where)}
 ExecStart=${command}
 Environment="PATH=${escaped(spec.path)}"
 Restart=on-failure
@@ -111,6 +131,8 @@ export function plistFor(spec: ServiceSpec): string {
     <array>
 ${args}
     </array>
+    <key>WorkingDirectory</key>
+    <string>${inXml(spec.where)}</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>

@@ -7,7 +7,7 @@
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
 import { plain, shorten } from './agent.ts'
 import { onPath } from './on-path.ts'
@@ -170,11 +170,13 @@ async function offers(where: string, env: NodeJS.ProcessEnv): Promise<readonly M
 /**
  * The one thing Claude Code refuses in a way that is not a fault: it no longer has that session.
  *
- * Recognised here because only this adapter knows what its own agent's refusal reads like, and
- * calling it a failure would send somebody looking for a fault that is not there.
+ * Takes what was said rather than what was thrown, because it arrives both ways: sometimes as an
+ * error result on the stream, sometimes as a throw on the way out. Read only in the throw, the
+ * result reached the transcript first — and a turn that merely started over was written down as
+ * failed, which is the one thing the page promises never to call it.
  */
-function isForgotten(trouble: unknown): boolean {
-  return String((trouble as Error | undefined)?.message ?? '').includes('No conversation found')
+function looksForgotten(said: string): boolean {
+  return said.includes('No conversation found')
 }
 
 /** What to show a person when a turn ends badly. Never the raw throw, which is for us. */
@@ -183,25 +185,44 @@ function plainly(trouble: unknown): string {
   return said === '' ? 'Claude Code stopped without saying why.' : said
 }
 
-type SdkMessage = {
-  type: string
-  subtype?: string
-  session_id?: string
-  message?: unknown
-} & Record<string, unknown>
+/**
+ * Why a turn ended badly, in the CLI's own words.
+ *
+ * Taken from the result it sent rather than composed here: an error result carries `errors`, and a
+ * success-shaped result that is nonetheless an error carries the text in `result`. Reaching for
+ * `message` — which a result does not have — was this file inventing a sentence while throwing
+ * away the one the CLI had already written.
+ */
+function whyItFailed(message: SDKResultMessage): string {
+  const said = message.subtype === 'success' ? message.result : message.errors.join('; ')
+  const trimmed = said.trim()
 
-function toldFrom(message: SdkMessage, translate: (message: unknown) => readonly Said[]): Told[] {
+  return trimmed === '' ? 'Claude Code stopped without saying why.' : trimmed
+}
+
+/**
+ * One of the CLI's messages, in ours.
+ *
+ * Typed against the SDK's own union rather than a shape written out here. Only four kinds matter
+ * and the rest are ignored, which is what keeps a newer CLI from breaking this — but the four are
+ * read through the SDK's fields, not through guesses about them.
+ */
+function toldFrom(message: SDKMessage, translate: (message: unknown) => readonly Said[]): Told[] {
   if (message.type === 'system' && message.subtype === 'init') {
-    return [{ told: 'session', id: message.session_id ?? '' }]
+    return [{ told: 'session', id: message.session_id }]
   }
   if (message.type === 'assistant' || message.type === 'user') {
     return translate(message.message).map((said) => ({ told: 'said', said }) as const)
   }
   if (message.type === 'result') {
+    // `is_error` on a success-shaped result is the CLI saying the turn failed anyway. Reading only
+    // the subtype recorded those as done — a turn that went wrong, written down as finished.
+    const done = message.subtype === 'success' && !message.is_error
+
     return [
-      message.subtype === 'success'
+      done
         ? { told: 'ended', why: { why: 'done' } }
-        : { told: 'ended', why: { why: 'failed', said: plainly(message) } },
+        : { told: 'ended', why: { why: 'failed', said: whyItFailed(message) } },
     ]
   }
 
@@ -246,10 +267,42 @@ async function accepted(running: ReturnType<typeof query> | undefined): Promise<
   )
 }
 
+/** A turn that ended only because the session it was told to pick up is gone. */
+function forgotten(told: Told): boolean {
+  return told.told === 'ended' && told.why.why === 'failed' && looksForgotten(told.why.said)
+}
+
 /** What a turn somebody asked to stop ends as, however the CLI happened to report it. */
 const STOPPED = { told: 'ended', why: { why: 'cancelled' } } as const
 
 const asStopped = (told: Told): Told => (told.told === 'ended' ? STOPPED : told)
+
+/**
+ * Everything one query said, until it says the session it was told to pick up is gone.
+ *
+ * An interrupt does not always arrive as a throw: asked to stop part way through, the CLI
+ * finishes the turn normally and reports an error result. Both paths mean the same thing, and
+ * only we know which it was — we are the ones who asked.
+ */
+async function* everythingItSaid(
+  asking: ReturnType<typeof query>,
+  resume: string | null,
+  /** Read each time, not once: somebody can ask it to stop while this is still running. */
+  interrupted: () => boolean,
+): AsyncGenerator<Told, boolean> {
+  const translate = fold()
+
+  for await (const message of asking) {
+    const told = toldFrom(message, translate)
+    // A session it no longer has is an answer, not an ending. Yielded, it would reach the
+    // transcript as a failed turn before the fresh start that follows could correct it.
+    if (resume !== null && told.some(forgotten)) return true
+
+    yield* interrupted() ? told.map(asStopped) : told
+  }
+
+  return false
+}
 
 function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk {
   let running: ReturnType<typeof query> | undefined
@@ -264,20 +317,13 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
       return false
     }
 
-    const translate = fold()
     running = query({ prompt: asked.text, options: settings(where, claude, resume, asked) })
 
     try {
-      // An interrupt does not always arrive as a throw: asked to stop part way through, the CLI
-      // finishes the turn normally and reports an error result. Both paths mean the same thing,
-      // and only we know which it was — we are the ones who asked.
-      for await (const message of running) {
-        const told = toldFrom(message, translate)
-        yield* interrupted ? told.map(asStopped) : told
-      }
+      return yield* everythingItSaid(running, resume, () => interrupted)
     } catch (trouble) {
       if (interrupted) yield STOPPED
-      else if (isForgotten(trouble) && resume !== null) return true
+      else if (resume !== null && looksForgotten(plainly(trouble))) return true
       else yield { told: 'ended', why: { why: 'failed', said: plainly(trouble) } }
     } finally {
       running.close()

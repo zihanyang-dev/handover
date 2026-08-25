@@ -19,6 +19,9 @@ import { handoverFor, unitFor, type ServiceSpec } from '../src/service.ts'
 const run = promisify(execFile)
 
 const IMAGE = 'handover-service-check'
+/** A directory the container really has, so what the service starts in can be read back. */
+const WHERE = '/home/mina/work'
+
 const CONTAINER = `handover-service-check-${randomUUID().slice(0, 8)}`
 
 const STUB = '/usr/local/bin/handover-stub'
@@ -56,6 +59,9 @@ beforeAll(async () => {
     IMAGE,
   ])
   await waitForInit()
+  // The directory `connect` was run in. Made once, up front, because every unit in this file now
+  // names it — a service whose working directory is missing does not start at all.
+  await inside(`mkdir -p ${WHERE}`)
 }, 600_000)
 
 afterAll(async () => {
@@ -63,7 +69,14 @@ afterAll(async () => {
 })
 
 function spec(system: boolean): ServiceSpec {
-  return { executable: STUB, args: [], system, label: 'dev.handover.machine', path: PATH }
+  return {
+    executable: STUB,
+    args: [],
+    system,
+    label: 'dev.handover.machine',
+    path: PATH,
+    where: WHERE,
+  }
 }
 
 /** The file the CLI would write, in the place it would write it, with the steps it would run. */
@@ -94,13 +107,7 @@ describe('the unit we generate', () => {
   it('is one systemd itself accepts, including the command it points at', async () => {
     // Catches the mistake with the worst symptoms: an ExecStart that does not exist, which would
     // otherwise show up as a machine that silently never comes online.
-    const unit = unitFor({
-      executable: STUB,
-      args: [],
-      system: true,
-      label: 'dev.handover.machine',
-      path: PATH,
-    })
+    const unit = unitFor(spec(true))
     await inside(`mkdir -p /check && cat > /check/handover.service <<'UNIT'\n${unit}UNIT`)
 
     const complaints = await inside('systemd-analyze verify /check/handover.service 2>&1 || true')
@@ -110,13 +117,7 @@ describe('the unit we generate', () => {
 
   it('is refused when the command it points at is not there', async () => {
     // The check above is only worth having if it can fail. This is that.
-    const unit = unitFor({
-      executable: '/usr/local/bin/not-installed',
-      args: [],
-      system: true,
-      label: 'dev.handover.machine',
-      path: PATH,
-    })
+    const unit = unitFor({ ...spec(true), executable: '/usr/local/bin/not-installed' })
     await inside(`cat > /check/missing.service <<'UNIT'\n${unit}UNIT`)
 
     const complaints = await inside('systemd-analyze verify /check/missing.service 2>&1 || true')
@@ -174,6 +175,24 @@ describe('handing a system service over', () => {
 
     expect(await inside('systemctl is-active handover')).toBe('active')
     expect(Number(await inside('systemctl show -p NRestarts --value handover'))).toBeGreaterThan(0)
+  }, 60_000)
+
+  it('runs in the directory connect was run in, which is where the agent works', async () => {
+    // The whole of "it works in your project". A service inherits none of it: without the unit
+    // saying so, systemd starts it in `/` and the agent reads and writes there instead.
+    const pid = await inside('systemctl show -p MainPID --value handover')
+
+    expect(await inside(`readlink /proc/${pid}/cwd`)).toBe(WHERE)
+  })
+
+  it('does not start at all when that directory is gone, rather than running somewhere else', async () => {
+    // Failing loudly is the point: a service quietly running in `/` would read and write files
+    // nobody chose, under whatever account it runs as.
+    const unit = unitFor({ ...spec(true), where: '/home/mina/no-such-project' })
+    await inside(`cat > /etc/systemd/system/handover-nowhere.service <<'UNIT'\n${unit}UNIT`)
+    await inside('systemctl daemon-reload && systemctl start handover-nowhere || true')
+
+    expect(await inside('systemctl is-active handover-nowhere || true')).not.toBe('active')
   }, 60_000)
 
   it('puts its output where the system keeps output, not in a directory of our own', async () => {

@@ -24,9 +24,32 @@ export type Offered = Found & { readonly models?: Model[] }
 export type Offering = (found: readonly Found[]) => Promise<readonly Offered[]>
 
 /**
- * Remembers per command rather than per kind, because that is what was actually run: two commands
- * are two binaries, whatever the server calls them.
+ * Long enough for a cold binary that has to start, short enough that a machine which would
+ * otherwise be perfectly usable is not held out of its Space waiting to learn something optional.
  */
+const ANSWER_WITHIN_MS = 15_000
+
+/**
+ * What one agent offers, or nothing at all.
+ *
+ * Never throws and never hangs. A model list is an optional convenience; being reported at all is
+ * not. An agent installed but not signed in, an SDK that fails, a CLI that never answers — each of
+ * those would otherwise take down the whole report, and the Space would show a machine that is
+ * running as gone.
+ */
+async function offeredBy(command: string, env: NodeJS.ProcessEnv, where: string) {
+  const agent = agentForCommand(command, env)
+  if (agent === undefined) return []
+
+  const giveUp = new Promise<readonly Model[]>((settle) => {
+    setTimeout(() => {
+      settle([])
+    }, ANSWER_WITHIN_MS).unref()
+  })
+
+  return Promise.race([agent.offers(where), giveUp]).catch(() => [])
+}
+
 export function offering(env: NodeJS.ProcessEnv, where: string): Offering {
   const asked = new Map<string, string>()
 
@@ -35,10 +58,9 @@ export function offering(env: NodeJS.ProcessEnv, where: string): Offering {
       found.map(async (one) => {
         if (asked.get(one.command) === one.version) return one
 
-        const agent = agentForCommand(one.command, env)
-        // Nothing to ask, and nothing to keep asking: a command this machine has no adapter for
-        // is one it will never drive, so it is remembered as answered rather than retried forever.
-        const models = agent === undefined ? [] : [...(await agent.offers(where))]
+        const models = [...(await offeredBy(one.command, env, where))]
+        // Remembered whatever came back, including nothing: an agent that cannot answer is not
+        // one to ask again every twenty-five seconds. The next version is the next time to ask.
         asked.set(one.command, one.version)
 
         return { ...one, models }
