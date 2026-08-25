@@ -9,3 +9,7 @@ coverage
 apps/web/routeTree.gen.ts
 apps/web/dist
 .tanstack
+
+# The binaries a release is made of. Built from this source in one job, published to the release,
+# and never worth keeping a copy of here.
+apps/cli/dist

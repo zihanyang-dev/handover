@@ -1,11 +1,32 @@
 /**
- * The one file that reads the environment, and the two different things it reads it for.
+ * The one file that reads the environment, and the three different things it reads it for.
  *
  * Configuration is parsed once and passed down as values. The environment a discovered agent is
- * run in is not configuration — it is what this machine looks like, and it is handed on whole.
+ * run in is not configuration — it is what this machine looks like, and it is handed on whole. And
+ * the version is not read at all at run time: the build writes it in here.
  */
 
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      /** Replaced with the released tag while building; genuinely absent when run from source. */
+      HANDOVER_VERSION?: string
+    }
+  }
+}
+
 const DEFAULT_ORIGIN = 'http://localhost:3000'
+
+/**
+ * Which build of this program is running.
+ *
+ * Reporting a problem with a machine that will not connect starts with this string, so a binary
+ * somebody downloaded months ago has to be able to say what it is — with no package.json beside it
+ * to read a version out of. The build replaces this one read with the tag, which is also why it is
+ * spelled with a dot while everything below uses brackets. Run from source there is no tag to
+ * write in, and it says so rather than making up a number.
+ */
+export const VERSION = process.env.HANDOVER_VERSION ?? 'from source'
 
 export type Env = {
   /** Where this machine's Space lives. */

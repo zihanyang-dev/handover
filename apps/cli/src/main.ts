@@ -20,7 +20,7 @@ import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
-import { machineEnvironment, readEnv } from './env.ts'
+import { VERSION, machineEnvironment, readEnv } from './env.ts'
 import { offering } from './offering.ts'
 import { forEveryone, handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
@@ -34,6 +34,7 @@ const { values, positionals } = parseArgs({
     system: { type: 'boolean' },
     user: { type: 'boolean' },
     key: { type: 'string' },
+    version: { type: 'boolean' },
   },
   allowPositionals: true,
 })
@@ -79,6 +80,13 @@ const sleep = async (seconds: number, until?: AbortSignal): Promise<void> =>
     )
   })
 
+if (values.version === true || command === 'version') {
+  // The one thing this program says on stdout: asking for the version is asking for a value, and
+  // whoever asked is usually a script putting it in a bug report.
+  process.stdout.write(`${VERSION}\n`)
+  process.exit(0)
+}
+
 if (command === 'connect') {
   await checkIn()
   await handOver()
@@ -91,7 +99,7 @@ if (command === 'connect') {
   await stayConnected(attachment)
 } else {
   say(`no such command: ${command}`)
-  say('try: handover connect   ·   handover run')
+  say('try: handover connect   ·   handover run   ·   handover version')
   process.exit(1)
 }
 

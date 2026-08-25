@@ -1,0 +1,40 @@
+# Turns a tag into the four files somebody can download.
+#
+# One job on one machine: Bun cross-compiles, so every platform's binary comes from the same source
+# at the same moment, and a release cannot be half of one version and half of another.
+
+name: release
+
+on:
+  push: { tags: ['v*'] }
+
+# The release is created by this job, which is the whole reason it needs more than the default read.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The tag is the version, so a binary can always be traced back to the commit it came from.
+      - run: pnpm --filter @handover/cli build
+        env:
+          HANDOVER_VERSION: ${{ github.ref_name }}
+
+      # What the installer checks before it puts anything in your PATH. Names are relative so the
+      # file reads the same next to the downloads as it did here.
+      - run: sha256sum handover-* > SHA256SUMS
+        working-directory: apps/cli/dist
+
+      - run: gh release create "$TAG" --title "$TAG" --generate-notes apps/cli/dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}

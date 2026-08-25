@@ -15,6 +15,8 @@ apps/server/        API
 apps/web/           浏览器应用
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
+  scripts/build.ts  四个平台的单文件,bun 交叉编译
+  install.sh        curl | sh 那一行下载的就是它
   service-check/    交给 systemd 这件事的测试,连同它需要的那台机器
   generated/        生成物,永不手改
 packages/universal/ 两边必须算出同一个答案的东西
@@ -86,6 +88,7 @@ pnpm test:db      把测试库迁到最新
 pnpm dev          API
 pnpm web          浏览器应用
 pnpm build        打包浏览器应用
+pnpm --filter @handover/cli build   四个平台的可执行文件,进 apps/cli/dist
 
 pnpm generate     迁移测试库 → schema.sql → db.ts → openapi.json → 浏览器的类型 → 路由树
 pnpm typecheck    三个包各自的类型世界
@@ -127,8 +130,13 @@ pnpm check        以上全部 + generate 无 diff
 main       全量 pnpm check
 PR         同上
 nightly    真实凭据的 canary(缺凭据时明确记录阻塞,不冒充通过)
-release    构建产物 + checksum + 来源
+release    tag v* → 四个平台的可执行文件 + SHA256SUMS → GitHub Release
 ```
+
+**release 是一个 job,不是每个平台一个。** bun 交叉编译,所以一次发布里的四个文件出自同一份源码的
+同一时刻;分成四个 job 就有了「一半是这版一半是上版」这种状态。
+
+**tag 就是版本号**,由 `HANDOVER_VERSION` 写进二进制 —— 手里的文件能自己说出它来自哪个 commit。
 
 浏览器失败时保留 trace 和截图。
 

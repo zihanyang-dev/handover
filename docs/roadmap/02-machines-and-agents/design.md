@@ -205,17 +205,15 @@ POST /machines/current/poll     挂住约 25 秒
 
 不是偏好,是 NAT 和防火墙决定的:机器在别人家的网络里,连不进去。所以只能机器往外连着 —— **长期外连的进程这个形状是被逼出来的,不是选出来的。**
 
-## 待补:这条命令是怎么到那台机器上的
+## 这条命令是怎么到那台机器上的
 
-**这一片有一个洞。** 整条旅程从「在那台机器上跑 `handover connect`」开始,而这条命令怎么到那台
-机器上的,从来没写过 —— 完成标准里的「一个人真的接入一台机器」,今天只有我们自己走得通。
-
-补的时候一起做,不分两次:
+整条旅程从「在那台机器上跑 `handover connect`」开始,所以这条命令怎么过去,和它做了什么一样重要。
 
 **① 主路径是一行装好的脚本,不是 npm**
 
 ```
-curl -fsSL https://handover.dev/install.sh | sh && handover connect
+curl -fsSL https://raw.githubusercontent.com/zihanyang-dev/handover/main/apps/cli/install.sh | sh
+handover connect
 ```
 
 理由是 `prd.md` 里那台 `build-server-1`:**服务器上不一定有 node**,而「先装 node」会把一行命令
@@ -223,26 +221,39 @@ curl -fsSL https://handover.dev/install.sh | sh && handover connect
 便利,不是主路径。Homebrew 放到以后 —— cask 要签名和公证,而 curl 下来的文件不带 quarantine
 标记,不签名也能跑,这个顺序让我们先跑起来。
 
+**装到 `/usr/local/bin`,需要 root 才开口要。** `~/.local/bin` 不要 sudo,但它可能不在 PATH 上——
+省下一次密码,换来的是装完了 `handover connect` 找不到,而那正是这一行命令要保证的下一步。
+
 **② 发的是一个自带运行时的可执行文件**
 
-实测过:`bun build --compile` 出 62 MB 的 mac 单文件、80 MB 的 linux 单文件(交叉编译一条命令),
-运行起来什么都不需要。同一份代码用 esbuild 打包只有 1.5 MB,**但那 1.5 MB 要求机器上先有 node** ——
-省下的体积正是它要求别人先装的东西。
+`bun build --compile` 出的单文件,运行起来什么都不需要:mac 62 MB、linux 80 MB。同一份代码用
+esbuild 打包只有 1.5 MB,**但那 1.5 MB 要求机器上先有 node** —— 省下的体积正是它要求别人先装的
+东西。这也是两个 agent 自己的做法:`claude` 281 MB 单文件,`codex` 205 MB 单文件,用户机器上已经
+躺着两个了。
 
-这也是两个 agent 自己的做法:`claude` 是 281 MB 的单文件,`codex` 是 205 MB 的单文件。用户机器上
-已经躺着两个了。
+**四个平台在同一台机器上编译**(`darwin-arm64`/`darwin-x64`/`linux-x64`/`linux-arm64`)。bun 能交叉
+编译,所以一次 release 是一个 job —— 不会出现一半是这个版本、另一半是上个版本。
 
 **注意这只是 CLI 的分发方式,不是这个仓库的运行时。** 日常开发、测试、检查全部留在 node —— 换掉
 它们买到的只有「更快」,而那句话写不出一条失败陈述。
 
-**③ 选了单文件,就欠这三件事,而且两件是这一片自己的洞**
+**③ 打了 tag 之后发生什么**
 
 ```
-机器不报自己的版本   上一片报了它找到的 agent 的版本,却没报自己的。协议会变,这是同一个洞
-怎么知道有新版       机器本来就在轮询 —— 返回值里多一句「有新版」,还是那个「往返回值里加东西」
-装到哪               /usr/local/bin 要 sudo;~/.local/bin 不要,但可能不在 PATH 上
-                     这条直接决定「跑完安装脚本能不能立刻 handover connect」
+apps/cli/scripts/build.ts   四个平台各一个文件,版本号由 HANDOVER_VERSION 写进代码里
+.github/workflows/release.yml  tag v* 触发:build → SHA256SUMS → 创建 release
+apps/cli/install.sh         认出这台机器 → 下载 → 对校验和 → 装上 → 打印装了哪个版本
 ```
+
+**版本号是写进二进制的,不是运行时读出来的。** 一个人几个月前下载的文件旁边没有 package.json 可读,
+而报告「机器连不上」的第一句话就是它是哪个版本。从源码跑的时候没有 tag 可写,它就说 `from source`,
+不编一个号出来。
+
+**校验和不对就不装,也不留下。** 这个程序会去铸一份机器凭据,所以它是什么比它到没到更重要。
+
+**还欠一件事:机器不报自己的版本。** 上一片报了它找到的 agent 的版本,却没报自己的;协议会变,
+到那天服务器需要认得出对面是哪一版。机器本来就在轮询,所以这和「往返回值里加东西」是同一个动作 ——
+返回值里多一句「有新版」,请求里多一句「我是哪一版」。
 
 ## 三态出现在哪
 

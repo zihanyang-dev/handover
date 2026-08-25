@@ -10,3 +10,8 @@ ignoredOptionalDependencies:
   - '@openai/codex-darwin-*'
   - '@openai/codex-linux-*'
   - '@openai/codex-win32-*'
+
+# pnpm does not run install scripts unless a package is named here. Bun's is how its binary gets
+# unpacked, so without this the build tool is present and unusable.
+onlyBuiltDependencies:
+  - bun
