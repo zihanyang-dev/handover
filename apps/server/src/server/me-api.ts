@@ -14,8 +14,8 @@ import { personById, renamePerson } from '../db/user.ts'
 import { shown } from '../identity/credential.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { hashSessionToken } from '../identity/session.ts'
-import { api, saysNothing, sends, takes } from './contract.ts'
-import { refusal } from './failure.ts'
+import { api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
+import { BEHIND_A_SESSION, MALFORMED_BODY } from './failure.ts'
 import { requireSession, SESSION_COOKIE, type Signed } from './session.ts'
 
 const spaceBody = z
@@ -48,38 +48,6 @@ const meBody = z
 
 const newName = z.object({ displayName: z.string().min(1).max(200) }).openapi('NewDisplayName')
 
-const whoAmI = createRoute({
-  method: 'get',
-  path: '/me',
-  summary: 'Who is signed in, and what they can reach',
-  responses: {
-    200: sends(meBody, 'The person behind this session'),
-    401: refusal('Nobody is signed in here'),
-  },
-})
-
-const rename = createRoute({
-  method: 'patch',
-  path: '/me',
-  summary: 'Change the name everything shows',
-  request: { body: takes(newName) },
-  responses: {
-    204: saysNothing('Renamed'),
-    400: refusal('The body was not the shape it claims'),
-    401: refusal('Nobody is signed in here'),
-  },
-})
-
-const leave = createRoute({
-  method: 'delete',
-  path: '/browser/sessions/current',
-  summary: 'Stop being signed in',
-  responses: {
-    204: saysNothing('The session is revoked and the cookie is cleared'),
-    401: refusal('Nobody is signed in here'),
-  },
-})
-
 export type MeApi = {
   readonly db: Database
   /** The providers this deployment actually has keys for. */
@@ -87,15 +55,30 @@ export type MeApi = {
 }
 
 /**
- * Each route names the session it needs instead of one `use('*')` covering them all. A wildcard
- * mounted at the root swallows every path in the whole app — including the sign-in routes, which
- * escaped only by being registered first. Nothing that important should rest on ordering.
+ * Somebody signed in, which is the only door in this file.
+ *
+ * Said here rather than as one `use('*')` covering everything: a wildcard mounted at the root
+ * swallows every path in the whole app — including the sign-in routes, which escaped only by
+ * being registered first. Nothing this important should rest on ordering.
  */
-export function meApi({ db, providers }: MeApi) {
-  const signedIn = requireSession(db)
+const theirs = endpointsBehind<{ Variables: Signed }>()
 
-  return api<{ Variables: Signed }>()
-    .openapi({ ...whoAmI, middleware: [signedIn] }, async (c) => {
+export function meApi(deps: MeApi) {
+  return api<{ Variables: Signed }>().openapiRoutes([who(deps), renaming(deps), leaving(deps)])
+}
+
+/** Who is signed in, and everything they can reach from here. */
+function who({ db, providers }: MeApi) {
+  return theirs({
+    route: createRoute({
+      method: 'get',
+      path: '/me',
+      summary: 'Who is signed in, and what they can reach',
+      middleware: [requireSession(db)],
+      responses: { ...BEHIND_A_SESSION, 200: sends(meBody, 'The person behind this session') },
+    }),
+
+    handler: async (c) => {
       const person = await personById(db, c.get('userId'))
 
       return c.json(
@@ -106,17 +89,50 @@ export function meApi({ db, providers }: MeApi) {
         },
         200,
       )
-    })
+    },
+  })
+}
 
-    .openapi({ ...rename, middleware: [signedIn] }, async (c) => {
+/** Changing the name everything shows. One name, so changing it changes every Space at once. */
+function renaming({ db }: MeApi) {
+  return theirs({
+    route: createRoute({
+      method: 'patch',
+      path: '/me',
+      summary: 'Change the name everything shows',
+      middleware: [requireSession(db)],
+      request: { body: takes(newName) },
+      responses: { ...BEHIND_A_SESSION, ...MALFORMED_BODY, 204: saysNothing('Renamed') },
+    }),
+
+    handler: async (c) => {
       await renamePerson(db, c.get('userId'), c.req.valid('json').displayName.trim())
-      return c.body(null, 204)
-    })
 
-    .openapi({ ...leave, middleware: [signedIn] }, async (c) => {
+      return c.body(null, 204)
+    },
+  })
+}
+
+/** Leaving. The session is revoked on this side as well as forgotten on the browser's. */
+function leaving({ db }: MeApi) {
+  return theirs({
+    route: createRoute({
+      method: 'delete',
+      path: '/browser/sessions/current',
+      summary: 'Stop being signed in',
+      middleware: [requireSession(db)],
+      responses: {
+        ...BEHIND_A_SESSION,
+        204: saysNothing('The session is revoked and the cookie is cleared'),
+      },
+    }),
+
+    handler: async (c) => {
       const token = getCookie(c, SESSION_COOKIE)
       if (token !== undefined) await revokeSession(db, hashSessionToken(token))
       deleteCookie(c, SESSION_COOKIE, { path: '/' })
+
       return c.body(null, 204)
-    })
+    },
+  })
 }

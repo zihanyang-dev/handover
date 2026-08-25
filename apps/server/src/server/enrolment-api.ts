@@ -7,6 +7,7 @@
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
+import type { Env } from 'hono'
 import type { Database } from '../db/connection.ts'
 import { openEnrolment } from '../db/enrolment.ts'
 import { collectEnrolment } from '../db/machine.ts'
@@ -14,8 +15,8 @@ import { AGENT_COMMANDS } from '../machine/agent-kind.ts'
 import { POLL_SECONDS } from '../machine/presence.ts'
 import { hashSecret, newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
-import { api, sends, takes } from './contract.ts'
-import { refusal } from './failure.ts'
+import { api, endpointsBehind, sends, takes } from './contract.ts'
+import { MALFORMED_BODY } from './failure.ts'
 
 export type EnrolmentApi = {
   readonly db: Database
@@ -69,31 +70,30 @@ const collectedBody = z
   ])
   .openapi('Collected')
 
-const askToConnect = createRoute({
-  method: 'post',
-  path: '/enrolments',
-  summary: 'Ask to bring this machine in, and get a code for somebody to approve',
-  request: { body: takes(asking) },
-  responses: {
-    201: sends(askedBody, 'Show the code and start asking'),
-    400: refusal('The body was not the shape it claims'),
-  },
-})
-
-const collect = createRoute({
-  method: 'post',
-  path: '/enrolments/collect',
-  summary: 'Collect the credential this enrolment was approved for',
-  request: { body: takes(collecting) },
-  responses: {
-    200: sends(collectedBody, 'What became of it, including still waiting'),
-    400: refusal('The body was not the shape it claims'),
-  },
-})
+/**
+ * Nobody, and that is the whole design of this file.
+ *
+ * A machine nobody has approved has no identity to prove, and the secret handed back at the
+ * asking is the only proof collecting needs. Nothing either does matters until a person says yes.
+ */
+const anyone = endpointsBehind<Env>()
 
 export function enrolmentApi(deps: EnrolmentApi) {
-  return api()
-    .openapi(askToConnect, async (c) => {
+  return api().openapiRoutes([askingToConnect(deps), collecting_(deps)])
+}
+
+/** Asking to come in, which produces a code somebody has to say yes to. */
+function askingToConnect(deps: EnrolmentApi) {
+  return anyone({
+    route: createRoute({
+      method: 'post',
+      path: '/enrolments',
+      summary: 'Ask to bring this machine in, and get a code for somebody to approve',
+      request: { body: takes(asking) },
+      responses: { ...MALFORMED_BODY, 201: sends(askedBody, 'Show the code and start asking') },
+    }),
+
+    handler: async (c) => {
       const secret = newEnrolmentSecret()
       const userCode = newUserCode()
 
@@ -116,9 +116,25 @@ export function enrolmentApi(deps: EnrolmentApi) {
         },
         201,
       )
-    })
+    },
+  })
+}
 
-    .openapi(collect, async (c) => {
+/** Collecting the credential, which is also how a machine asks whether it has been approved yet. */
+function collecting_(deps: EnrolmentApi) {
+  return anyone({
+    route: createRoute({
+      method: 'post',
+      path: '/enrolments/collect',
+      summary: 'Collect the credential this enrolment was approved for',
+      request: { body: takes(collecting) },
+      responses: {
+        ...MALFORMED_BODY,
+        200: sends(collectedBody, 'What became of it, including still waiting'),
+      },
+    }),
+
+    handler: async (c) => {
       const token = newMachineToken()
       const asked = c.req.valid('json')
       const collected = await collectEnrolment(deps.db, {
@@ -142,5 +158,6 @@ export function enrolmentApi(deps: EnrolmentApi) {
       // Still waiting is one of these, and the most common. It is not a failure, so it is not a
       // failure status — the machine reads the kind and decides whether to ask again.
       return c.json({ kind: collected.kind }, 200)
-    })
+    },
+  })
 }

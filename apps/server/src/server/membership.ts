@@ -3,16 +3,10 @@
 import { createMiddleware } from 'hono/factory'
 import type { Database } from '../db/connection.ts'
 import { spaceForMember, type Space } from '../db/space.ts'
-import { body, type Failure } from './failure.ts'
+import { body, UNAVAILABLE } from './failure.ts'
 import type { Signed } from './session.ts'
 
 export type InSpace = { space: Space }
-
-/**
- * A Space that is not there and a Space you are not in get the same answer, on purpose: otherwise
- * the address bar becomes a way to find out what exists.
- */
-const UNAVAILABLE: Failure<404> = { reason: 'unavailable', recovery: 'start-over', status: 404 }
 
 /**
  * Refuses anything about a Space this person is not in.

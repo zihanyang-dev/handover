@@ -6,7 +6,8 @@
  * this API speaks JSON and only JSON, which is worth stating once rather than at every response.
  */
 
-import { OpenAPIHono, z } from '@hono/zod-openapi'
+import { defineOpenAPIRoute, OpenAPIHono, z } from '@hono/zod-openapi'
+import type { OpenAPIRoute, RouteConfig, RouteHandler } from '@hono/zod-openapi'
 import type { Context, Env } from 'hono'
 import { body, MALFORMED, type Failure } from './failure.ts'
 
@@ -63,4 +64,30 @@ export function api<E extends Env>(): OpenAPIHono<E> {
       return undefined
     },
   })
+}
+
+/**
+ * Endpoints behind one door.
+ *
+ * A door is named once per file, and every endpoint behind it says only its two halves: the
+ * contract it answers by, and what it does. Named rather than told apart by which came first —
+ * `}, async (c) => {` reads as one thing, and they are two.
+ *
+ * `addRoute` is said out loud because it has to be: left off, its type is `boolean | undefined`,
+ * and this repository's `exactOptionalPropertyTypes` will not have that where a `boolean` is
+ * wanted. Saying `true` is also the truth — every endpoint here is one the router serves.
+ */
+export function endpointsBehind<E extends Env>() {
+  return <R extends RouteConfig>(it: {
+    route: R
+    handler: RouteHandler<R, E>
+    /**
+     * What to answer instead when this route's own request will not parse.
+     *
+     * Taken from the shape this is passed to rather than from the exported `RouteHook`: the two
+     * disagree about whether a hook may return nothing, and the one that matters is the one the
+     * value is going into.
+     */
+    hook?: OpenAPIRoute<R, E, true>['hook']
+  }) => defineOpenAPIRoute<R, E, true>({ ...it, addRoute: true })
 }

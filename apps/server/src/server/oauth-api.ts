@@ -15,8 +15,8 @@ import { connectProvider } from '../db/credential.ts'
 import { signInWithProvider } from '../db/sign-in.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
-import { api, saysNothing, sends, takes } from './contract.ts'
-import { body, refusal, type Failure } from './failure.ts'
+import { api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
+import { BEHIND_A_SESSION, MALFORMED_BODY, body, refusal, type Failure } from './failure.ts'
 import type { ProviderClient } from './oauth/provider-client.ts'
 import { returnPath } from './return-path.ts'
 import { currentUser, requireSession, startSession, type Signed } from './session.ts'
@@ -61,42 +61,6 @@ const named = z.object({ provider: z.string() })
  * request itself to the provider instead of the person. Navigating is the browser's job.
  */
 const handoffBody = z.object({ url: z.url() }).openapi('Handoff')
-
-const startSignIn = createRoute({
-  method: 'post',
-  path: '/auth/{provider}/start',
-  summary: 'Leave to sign in with a provider',
-  request: { params: named, body: takes(asked) },
-  responses: {
-    200: sends(handoffBody, 'Send the browser here'),
-    400: refusal('The body was not the shape it claims'),
-    404: refusal('No way in by that name'),
-  },
-})
-
-const startConnect = createRoute({
-  method: 'post',
-  path: '/me/credentials/{provider}/start',
-  summary: 'Leave to connect a provider to this account',
-  request: { params: named, body: takes(asked) },
-  responses: {
-    200: sends(handoffBody, 'Send the browser here'),
-    400: refusal('The body was not the shape it claims'),
-    401: refusal('Nobody is signed in here'),
-    404: refusal('No way in by that name'),
-  },
-})
-
-const comeBack = createRoute({
-  method: 'get',
-  path: '/auth/{provider}/callback',
-  summary: 'Where the provider sends the browser back to',
-  request: { params: named },
-  responses: {
-    303: saysNothing('Follow the Location; any `handover_result` says what became of the trip'),
-    404: refusal('No way in by that name'),
-  },
-})
 
 export type OAuthApi = {
   readonly db: Database
@@ -218,11 +182,36 @@ async function leave(
   return { url: begun.url.href }
 }
 
-export function oauthApi(deps: OAuthApi) {
-  const signedIn = requireSession(deps.db)
+/**
+ * Every leg of the round trip, whether or not a session is involved: coming back has to work for
+ * a browser that is not signed in yet, which is the whole point of going.
+ */
+const trip = endpointsBehind<{ Variables: Signed }>()
 
-  return api<{ Variables: Signed }>()
-    .openapi(startSignIn, async (c) => {
+export function oauthApi(deps: OAuthApi) {
+  return api<{ Variables: Signed }>().openapiRoutes([
+    leavingToSignIn(deps),
+    leavingToConnect(deps),
+    comingBack(deps),
+  ])
+}
+
+/** Leaving with nobody signed in, which is how somebody becomes signed in. */
+function leavingToSignIn(deps: OAuthApi) {
+  return trip({
+    route: createRoute({
+      method: 'post',
+      path: '/auth/{provider}/start',
+      summary: 'Leave to sign in with a provider',
+      request: { params: named, body: takes(asked) },
+      responses: {
+        ...MALFORMED_BODY,
+        200: sends(handoffBody, 'Send the browser here'),
+        404: refusal('No way in by that name'),
+      },
+    }),
+
+    handler: async (c) => {
       const sent = await leave(c, deps, {
         name: c.req.valid('param').provider,
         purpose: 'sign-in',
@@ -230,9 +219,28 @@ export function oauthApi(deps: OAuthApi) {
       })
       if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
       return c.json(sent, 200)
-    })
+    },
+  })
+}
 
-    .openapi({ ...startConnect, middleware: [signedIn] }, async (c) => {
+/** Leaving as somebody, to come back with one more way of proving it is them. */
+function leavingToConnect(deps: OAuthApi) {
+  return trip({
+    route: createRoute({
+      method: 'post',
+      path: '/me/credentials/{provider}/start',
+      summary: 'Leave to connect a provider to this account',
+      middleware: [requireSession(deps.db)],
+      request: { params: named, body: takes(asked) },
+      responses: {
+        ...BEHIND_A_SESSION,
+        ...MALFORMED_BODY,
+        200: sends(handoffBody, 'Send the browser here'),
+        404: refusal('No way in by that name'),
+      },
+    }),
+
+    handler: async (c) => {
       const sent = await leave(c, deps, {
         name: c.req.valid('param').provider,
         purpose: 'connect',
@@ -240,9 +248,25 @@ export function oauthApi(deps: OAuthApi) {
       })
       if (sent === undefined) return c.json(body(NO_SUCH_PROVIDER), NO_SUCH_PROVIDER.status)
       return c.json(sent, 200)
-    })
+    },
+  })
+}
 
-    .openapi(comeBack, async (c) => {
+/** Coming back, which always ends at a page: the browser was redirected, so nobody reads a body. */
+function comingBack(deps: OAuthApi) {
+  return trip({
+    route: createRoute({
+      method: 'get',
+      path: '/auth/{provider}/callback',
+      summary: 'Where the provider sends the browser back to',
+      request: { params: named },
+      responses: {
+        303: saysNothing('Follow the Location; any `handover_result` says what became of the trip'),
+        404: refusal('No way in by that name'),
+      },
+    }),
+
+    handler: async (c) => {
       const taken = await takeHandoff(c, deps.secret)
       // No handoff, or one belonging to a different provider: this arrival did not start here.
       if (taken === undefined || taken.provider !== c.req.valid('param').provider) {
@@ -255,5 +279,6 @@ export function oauthApi(deps: OAuthApi) {
         startSession(c, outcome.sessionToken)
       }
       return c.redirect(outcome.to, 303)
-    })
+    },
+  })
 }

@@ -8,14 +8,14 @@
  * something the other did not.
  */
 
-import { createRoute, z, type RouteHandler } from '@hono/zod-openapi'
+import { createRoute, z } from '@hono/zod-openapi'
 import type { BlankEnv } from 'hono/types'
 import type { Env, MiddlewareHandler } from 'hono'
 import { issueCode } from '../db/email-code.ts'
 import type { Database } from '../db/connection.ts'
 import { DIGITS, hashCode, newCode, type Purpose, type Rejection } from '../identity/email-code.ts'
 import { normalizeEmail } from '../identity/email-address.ts'
-import { sends, takes } from './contract.ts'
+import { endpointsBehind, sends, takes } from './contract.ts'
 import { failureBody, refusal, type Failure } from './failure.ts'
 
 const askedForCode = z
@@ -152,8 +152,9 @@ export async function askForCode(
 }
 
 /**
- * The route that sends a code. Both screens that send one build theirs from this, so they cannot
- * end up disagreeing about what a wait, a dead address, or a live code looks like on the wire.
+ * The route that sends a code, in the same shape as any other endpoint, so both screens mount it
+ * the way they mount their own and cannot end up disagreeing about what a wait, a dead address,
+ * or a live code looks like on the wire.
  *
  * The literal path flows through the generic, so each caller still gets its own path typed into
  * the generated contract.
@@ -164,32 +165,37 @@ export type Sender = {
   readonly sendCode: SendCode
 }
 
-export function sendsACode<P extends string, E extends Env = BlankEnv>(spec: {
-  readonly path: P
-  readonly summary: string
-  readonly purpose: Purpose
-  /** What has to run first. The one behind a session says so here, not at the mounting point. */
-  readonly middleware?: MiddlewareHandler<E>[] | undefined
-  /** What else this path can answer. Only the one behind a session can say nobody is signed in. */
-  readonly alsoRefuses?: Readonly<Record<number, ReturnType<typeof refusal>>>
-}) {
-  const route = createRoute({
-    method: 'post',
-    path: spec.path,
-    summary: spec.summary,
-    ...(spec.middleware === undefined ? {} : { middleware: spec.middleware }),
-    request: { body: takes(askedForCode) },
-    responses: {
-      201: sends(issuedBody, 'A code is on its way, or was already sent for this request key'),
-      400: refusal('The body was not the shape it claims, or no letter can reach that address'),
-      429: sends(waitBody, 'A code went out moments ago; another would break the one in the inbox'),
-      ...spec.alsoRefuses,
-    },
-  })
+export function sendsACode<P extends string, E extends Env = BlankEnv>(
+  deps: Sender,
+  spec: {
+    readonly path: P
+    readonly summary: string
+    readonly purpose: Purpose
+    /** What has to run first. The one behind a session says so here, not at the mounting point. */
+    readonly middleware?: MiddlewareHandler<E>[] | undefined
+    /** What else this path can answer. Only the one behind a session can say nobody is signed in. */
+    readonly alsoRefuses?: Readonly<Record<number, ReturnType<typeof refusal>>>
+  },
+) {
+  return endpointsBehind<E>()({
+    route: createRoute({
+      method: 'post',
+      path: spec.path,
+      summary: spec.summary,
+      ...(spec.middleware === undefined ? {} : { middleware: spec.middleware }),
+      request: { body: takes(askedForCode) },
+      responses: {
+        201: sends(issuedBody, 'A code is on its way, or was already sent for this request key'),
+        400: refusal('The body was not the shape it claims, or no letter can reach that address'),
+        429: sends(
+          waitBody,
+          'A code went out moments ago; another would break the one in the inbox',
+        ),
+        ...spec.alsoRefuses,
+      },
+    }),
 
-  const handler =
-    (deps: Sender): RouteHandler<typeof route, E> =>
-    async (c) => {
+    handler: async (c) => {
       const answered = await askForCode(deps.db, deps.secret, deps.sendCode, {
         ...c.req.valid('json'),
         purpose: spec.purpose,
@@ -200,7 +206,6 @@ export function sendsACode<P extends string, E extends Env = BlankEnv>(spec: {
 
       c.header('Retry-After', String(answered.retryAfterSeconds))
       return c.json(answered.body, 429)
-    }
-
-  return { route, handler }
+    },
+  })
 }

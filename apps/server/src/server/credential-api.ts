@@ -9,9 +9,9 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import { addAddress } from '../db/credential.ts'
 import type { Database } from '../db/connection.ts'
-import { api, insteadOfMalformed, rowId, saysNothing, takes } from './contract.ts'
+import { api, endpointsBehind, insteadOfMalformed, rowId, saysNothing, takes } from './contract.ts'
 import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
-import { body, refusal, type Failure } from './failure.ts'
+import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
 import { requireSession, type Signed } from './session.ts'
 
 export type CredentialApi = {
@@ -27,51 +27,59 @@ export type CredentialApi = {
  */
 const ELSEWHERE: Failure<409> = { reason: 'address-elsewhere', recovery: 'retype', status: 409 }
 
-const answerCode = createRoute({
-  method: 'post',
-  path: '/me/credentials/email-codes/{id}/answer',
-  summary: 'Answer the code, which adds the address to this account',
-  request: { params: z.object({ id: rowId }), body: takes(submittedCode) },
-  responses: {
-    204: saysNothing('The address now opens this account, or already did'),
-    400: refusal('Wrong digits, or a body that was not the shape it claims'),
-    401: refusal('Nobody is signed in here'),
-    404: refusal('There is no such code'),
-    409: refusal('This code is finished, or the address opens a different account'),
-    429: refusal('This code has no tries left'),
-  },
-})
+/** Somebody already signed in, which is the whole difference from signing in. */
+const theirs = endpointsBehind<{ Variables: Signed }>()
 
 export function credentialApi(deps: CredentialApi) {
-  const signedIn = requireSession(deps.db)
-  const asking = sendsACode<'/me/credentials/email-codes', { Variables: Signed }>({
+  return api<{ Variables: Signed }>().openapiRoutes([asking(deps), answering(deps)])
+}
+
+/** Asking for a code at an address, which is the same route signing in asks with. */
+function asking(deps: CredentialApi) {
+  return sendsACode<'/me/credentials/email-codes', { Variables: Signed }>(deps, {
     path: '/me/credentials/email-codes',
     summary: 'Ask for a code at an address, to add it to this account',
     purpose: 'attach',
-    middleware: [signedIn],
-    alsoRefuses: { 401: refusal('Nobody is signed in here') },
+    middleware: [requireSession(deps.db)],
+    alsoRefuses: BEHIND_A_SESSION,
   })
+}
 
-  return api<{ Variables: Signed }>()
-    .openapi(asking.route, asking.handler(deps))
-
-    .openapi(
-      { ...answerCode, middleware: [signedIn] },
-      async (c) => {
-        const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
-          codeId: c.req.valid('param').id,
-          code: c.req.valid('json').code,
-        })
-
-        // Already this account's comes back attached: what was asked for is true either way.
-        if (added.kind === 'attached') return c.body(null, 204)
-        if (added.kind === 'rejected') return c.json(body(ELSEWHERE), ELSEWHERE.status)
-
-        const refused = explainRejection(added.rejection)
-        return c.json(body(refused), refused.status)
+/** Answering it, which is the step that actually adds the address. */
+function answering(deps: CredentialApi) {
+  return theirs({
+    route: createRoute({
+      method: 'post',
+      path: '/me/credentials/email-codes/{id}/answer',
+      summary: 'Answer the code, which adds the address to this account',
+      middleware: [requireSession(deps.db)],
+      request: { params: z.object({ id: rowId }), body: takes(submittedCode) },
+      responses: {
+        ...BEHIND_A_SESSION,
+        204: saysNothing('The address now opens this account, or already did'),
+        400: refusal('Wrong digits, or a body that was not the shape it claims'),
+        404: refusal('There is no such code'),
+        409: refusal('This code is finished, or the address opens a different account'),
+        429: refusal('This code has no tries left'),
       },
-      // An id that is not an id names no code, which is the situation a gone one is in, and gets
-      // the answer that situation gets.
-      insteadOfMalformed(explainRejection('no-code')),
-    )
+    }),
+
+    handler: async (c) => {
+      const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
+        codeId: c.req.valid('param').id,
+        code: c.req.valid('json').code,
+      })
+
+      // Already this account's comes back attached: what was asked for is true either way.
+      if (added.kind === 'attached') return c.body(null, 204)
+      if (added.kind === 'rejected') return c.json(body(ELSEWHERE), ELSEWHERE.status)
+
+      const refused = explainRejection(added.rejection)
+      return c.json(body(refused), refused.status)
+    },
+
+    // An id that is not an id names no code, which is the situation a gone one is in, and gets
+    // the answer that situation gets.
+    hook: insteadOfMalformed(explainRejection('no-code')),
+  })
 }
