@@ -12,6 +12,9 @@ import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
 import { plain, shorten } from './agent.ts'
 import { onPath } from './on-path.ts'
 
+/** The binary this drives. Found on the PATH captured when the machine was connected. */
+const COMMAND = 'claude'
+
 /** Tools this adapter recognises well enough to say what they did in a word. */
 const VERBS: Record<string, { readonly verb: string; readonly arg: (input: Input) => string }> = {
   Read: { verb: 'read', arg: (i) => file(i['file_path']) },
@@ -134,7 +137,7 @@ const SILENCE: AsyncIterable<never> = {
  * a single model call.
  */
 async function offers(where: string, env: NodeJS.ProcessEnv): Promise<readonly Model[]> {
-  const claude = await onPath('claude', env)
+  const claude = await onPath(COMMAND, env)
   if (claude === undefined) return []
 
   const stopping = new AbortController()
@@ -234,7 +237,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
 
   /** Returns true when the agent could not pick up the session it was given. */
   async function* run(resume: string | null, asked: Asked): AsyncGenerator<Told, boolean> {
-    const claude = await onPath('claude', env)
+    const claude = await onPath(COMMAND, env)
     if (claude === undefined) {
       const said = 'Claude Code is no longer on this machine.'
       yield { told: 'ended', why: { why: 'failed', said } }
@@ -287,6 +290,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
 
 export function claudeCode(env: NodeJS.ProcessEnv): Agent {
   return {
+    command: COMMAND,
     offers: async (where) => offers(where, env),
     talk: (where, sofar) => talk(where, sofar, env),
   }

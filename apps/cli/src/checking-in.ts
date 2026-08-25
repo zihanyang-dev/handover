@@ -11,6 +11,7 @@ import { endTurn, startAnswering, type Answering, type Asking } from './answerin
 import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
+import { offering, type Offering } from './offering.ts'
 
 /** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
 const RETRY_SECONDS = 5
@@ -74,10 +75,18 @@ export async function reportOnce(
   api: Api,
   lookFor: readonly string[],
   env: NodeJS.ProcessEnv,
-  restarted = false,
+  also: {
+    /** Said once, on the first report a process makes. Only this machine can know it. */
+    readonly restarted?: boolean
+    /** Adds what each agent offers, the first time this process sees each version. */
+    readonly offering?: Offering
+  } = {},
 ): Promise<Reported> {
-  const found = await findAgents(lookFor, env)
-  const came = await api.POST('/machines/current/poll', { body: { found, restarted } })
+  const looked = await findAgents(lookFor, env)
+  const found = also.offering === undefined ? looked : await also.offering(looked)
+  const came = await api.POST('/machines/current/poll', {
+    body: { found: [...found], restarted: also.restarted ?? false },
+  })
 
   if (came.response.status === 401) return { said: 'not-ours' }
   if (came.data === undefined) return { said: 'unreachable', found }
@@ -111,13 +120,15 @@ export async function keepCheckingIn(
   stopping: AbortSignal,
 ): Promise<Stopped> {
   let looking = lookFor
+  // One per loop, because what it remembers is what this process has already asked.
+  const asks = offering(running.env, running.where)
   let answering: Answering | undefined
   // Said once, on the first report. Anything still open on this machine then was left by whatever
   // ran before this process, and went on without anybody watching it.
   let restarted = true
 
   while (!stopping.aborted) {
-    const reported = await reportOnce(api, looking, running.env, restarted)
+    const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
     restarted = false
 
     if (reported.said === 'not-ours') return { kind: 'removed' }

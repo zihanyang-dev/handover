@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
 import { signedIn } from '../../signed-in.ts'
+import type { components } from '../../generated/api.ts'
 
 const server = setupServer()
 
@@ -34,20 +35,24 @@ function open(at: string) {
 
 type Message = { seq: number; role: string; content: unknown; at: string }
 
-function transcript(messages: Message[], state = 'idle') {
+function transcript(messages: Message[], state = 'idle', offers: Offers = []) {
   return [
     signedIn(),
     http.get('*/spaces/acme/conversations/c-1', () =>
-      HttpResponse.json({
+      HttpResponse.json<Transcript>({
         id: 'c-1',
         agentKind: 'claude-code',
         machineName: 'mina-mbp',
-        working: { state },
-        messages,
+        working: { state } as Transcript['working'],
+        offers,
+        messages: messages as Transcript['messages'],
       }),
     ),
   ]
 }
+
+type Transcript = components['schemas']['Transcript']
+type Offers = Transcript['offers']
 
 const AT = '2026-08-26T10:00:00.000Z'
 const say = (seq: number, role: string, content: unknown): Message => ({
@@ -235,6 +240,116 @@ describe('while it is working', () => {
 
     expect(names).toHaveLength(2)
     expect(names[0]).toBe(names[1])
+  })
+})
+
+const OFFERS: Offers = [
+  {
+    id: 'default',
+    name: 'Default',
+    about: 'Whatever it would pick',
+    efforts: [],
+    isDefault: true,
+  },
+  {
+    id: 'opus-5',
+    name: 'Opus 5',
+    about: 'The slow careful one',
+    efforts: ['low', 'high'],
+    isDefault: false,
+  },
+]
+
+describe('choosing what to ask with', () => {
+  it('has no control at all when the agent offers no choice', async () => {
+    // Picking an agent is picking what it can do. An empty select would be a question with no
+    // answers, and this also covers an agent nobody has asked yet.
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })]))
+
+    open('/s/acme/c/c-1')
+    await screen.findByLabelText('Say something')
+
+    expect(screen.queryByLabelText('Model')).toBeNull()
+  })
+
+  it('names the agent-s own default rather than listing it twice', async () => {
+    // Claude Code publishes its default as a row of its own. An "its default" option beside a row
+    // called "Default" is two ways to say one thing, and one of them would look like the pinned
+    // choice it is not.
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS))
+
+    open('/s/acme/c/c-1')
+    const models = (await screen.findByLabelText('Model')) as HTMLSelectElement
+
+    expect([...models.options].map((one) => one.text)).toEqual(['Default', 'Opus 5'])
+    // Choosing it sends nothing at all, so the agent is never pinned to today's default.
+    expect(models.options[0]?.value).toBe('')
+  })
+
+  it('sends nothing when nothing was chosen, so the agent stays on its own default', async () => {
+    // We never pick one on its behalf. A default we invented would be a choice nobody made,
+    // attributed to the agent.
+    let asked: unknown
+    server.use(
+      ...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS),
+      http.post('*/spaces/acme/conversations/c-1/messages', async ({ request }) => {
+        asked = ((await request.json()) as { asked: unknown }).asked
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    open('/s/acme/c/c-1')
+    await userEvent.type(await screen.findByLabelText('Say something'), 'hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(asked).toEqual({ text: 'hello' })
+    })
+  })
+
+  it('sends the model and the effort that were chosen', async () => {
+    let asked: unknown
+    server.use(
+      ...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS),
+      http.post('*/spaces/acme/conversations/c-1/messages', async ({ request }) => {
+        asked = ((await request.json()) as { asked: unknown }).asked
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    open('/s/acme/c/c-1')
+    await userEvent.selectOptions(await screen.findByLabelText('Model'), 'opus-5')
+    await userEvent.selectOptions(screen.getByLabelText('Thinking'), 'high')
+    await userEvent.type(screen.getByLabelText('Say something'), 'think hard')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(asked).toEqual({ text: 'think hard', model: 'opus-5', effort: 'high' })
+    })
+  })
+
+  it('has no thinking control for a model that has no such setting', async () => {
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS))
+
+    open('/s/acme/c/c-1')
+    await screen.findByLabelText('Model')
+
+    // The default-marked one has none, and it is what the levels belong to until somebody chooses.
+    expect(screen.queryByLabelText('Thinking')).toBeNull()
+  })
+
+  it('drops an effort the newly chosen model does not have', async () => {
+    // Not a choice any more, just a leftover — and one the agent would be asked to honour.
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })], 'idle', OFFERS))
+
+    open('/s/acme/c/c-1')
+    await userEvent.selectOptions(await screen.findByLabelText('Model'), 'opus-5')
+    await userEvent.selectOptions(screen.getByLabelText('Thinking'), 'high')
+
+    // Back to the default, whose value is empty because choosing it sends nothing.
+    await userEvent.selectOptions(screen.getByLabelText('Model'), '')
+
+    expect(screen.queryByLabelText('Thinking')).toBeNull()
   })
 })
 

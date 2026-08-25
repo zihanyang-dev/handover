@@ -186,6 +186,11 @@ describe('collecting an approved enrolment', () => {
   })
 })
 
+/** One model, in the shape an adapter reports it. Enough to tell a stored list from a lost one. */
+const SONNET = [
+  { id: 'sonnet-5', name: 'Sonnet 5', about: 'Fast', efforts: ['low', 'high'], isDefault: true },
+]
+
 describe('what a machine reports', () => {
   it('is the whole truth, so an uninstalled agent stops being listed', async () => {
     const machineId = await attached()
@@ -197,7 +202,7 @@ describe('what a machine reports', () => {
     await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
 
     const [machine] = (await machinesIn(db, SPACE)).machines
-    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.1.4' }])
+    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.1.4', models: null }])
   })
 
   it('updates a version in place, so upgrading is not reconnecting', async () => {
@@ -207,7 +212,40 @@ describe('what a machine reports', () => {
     await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.2.0' }])
 
     const [machine] = (await machinesIn(db, SPACE)).machines
-    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.2.0' }])
+    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.2.0', models: null }])
+  })
+
+  it('keeps what an agent said it offers', async () => {
+    const machineId = await attached()
+
+    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+
+    const [machine] = (await machinesIn(db, SPACE)).machines
+    expect(machine?.agents[0]?.models).toEqual(SONNET)
+  })
+
+  it('leaves the list alone on every report that says nothing about it', async () => {
+    // The ordinary report, and the whole reason the list is stored at all: asking an agent what
+    // it offers costs starting it up, so a machine asks once per version and stays quiet after.
+    const machineId = await attached()
+    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+
+    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
+
+    const [machine] = (await machinesIn(db, SPACE)).machines
+    expect(machine?.agents[0]?.models).toEqual(SONNET)
+  })
+
+  it('forgets the list when the version moved and nobody said what the new one offers', async () => {
+    // What the last version offered is not what this one offers, and showing yesterday's list
+    // would be this side inventing an answer about a version nobody has asked.
+    const machineId = await attached()
+    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4', models: SONNET }])
+
+    await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.2.0' }])
+
+    const [machine] = (await machinesIn(db, SPACE)).machines
+    expect(machine?.agents[0]?.models).toBeNull()
   })
 
   it('is allowed to have found nothing, which is a machine with something to fix', async () => {

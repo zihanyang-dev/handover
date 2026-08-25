@@ -134,7 +134,7 @@ describe('what a machine reports', () => {
     expect((await seenInSpace()).machines[0]).toMatchObject({
       name: 'mina-mbp',
       presence: { state: 'here' },
-      agents: [{ kind: 'claude-code', version: '2.1.4' }],
+      agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
     })
   })
 
@@ -150,7 +150,7 @@ describe('what a machine reports', () => {
 
     expect(answered.status).toBe(200)
     expect((await seenInSpace()).machines[0]?.agents).toEqual([
-      { kind: 'claude-code', version: '2.1.4' },
+      { kind: 'claude-code', version: '2.1.4', models: [] },
     ])
   })
 

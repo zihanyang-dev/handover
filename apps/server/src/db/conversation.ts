@@ -485,6 +485,14 @@ export type Reading = {
   readonly agentKind: string
   readonly machineName: string
   readonly working: Working
+  /**
+   * What this agent lets a person choose, as its machine last reported it.
+   *
+   * Read here rather than from the machines list, because this is the one question the page has:
+   * not "what is on that machine" but "what can I choose for the thing I am about to say". Left
+   * unread, like a message's content — the layer that puts it on the wire answers for its shape.
+   */
+  readonly offers: unknown
   readonly messages: readonly Spoken[]
 }
 
@@ -503,12 +511,20 @@ export async function conversationWith(
   const conversation = await db
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+    // Left, not inner: an agent that has been uninstalled since leaves the conversation readable,
+    // with nothing to choose. Its transcript is still what happened.
+    .leftJoin('agents', (join) =>
+      join
+        .onRef('agents.machine_id', '=', 'conversations.machine_id')
+        .onRef('agents.kind', '=', 'conversations.agent_kind'),
+    )
     .select([
       'conversations.id',
       'conversations.agent_kind as agentKind',
       'machines.name as machineName',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
+      'agents.models as offers',
       sql<Date>`now()`.as('asOf'),
     ])
     .where('conversations.id', '=', reading.conversationId)

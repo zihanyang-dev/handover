@@ -93,7 +93,9 @@ describe('staying connected', () => {
     // It started knowing nothing, and by the second report it was looking for a command nobody
     // compiled into it — which is the whole of what the list being the server's means.
     expect(reports[0]?.found).toEqual([])
-    expect(reports[1]?.found).toEqual([{ command: 'some-new-agent', version: '1.2.3' }])
+    // `models: []` because this machine has no adapter for that command — it went looking, and
+    // there was nothing to ask.
+    expect(reports[1]?.found).toEqual([{ command: 'some-new-agent', version: '1.2.3', models: [] }])
   })
 
   it('says it has just started, once, so what it left open can be closed', async () => {

@@ -1911,6 +1911,15 @@ export interface components {
             /** @enum {string} */
             kind: "claude-code" | "codex";
             version: string;
+            models: components["schemas"]["Model"][];
+        };
+        Model: {
+            id: string;
+            name: string;
+            about: string;
+            efforts: string[];
+            defaultEffort?: string;
+            isDefault: boolean;
         };
         CheckedIn: {
             pollSeconds: number;
@@ -1936,6 +1945,7 @@ export interface components {
             found: {
                 command: string;
                 version: string;
+                models?: components["schemas"]["Model"][];
             }[];
             restarted?: boolean;
         };
@@ -1970,6 +1980,7 @@ export interface components {
             agentKind: string;
             machineName: string;
             working: components["schemas"]["Working"];
+            offers: components["schemas"]["Model"][];
             messages: components["schemas"]["Message"][];
         };
         Message: {

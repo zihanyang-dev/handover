@@ -67,7 +67,7 @@ describe('the machines in a Space', () => {
             id: 'm-1',
             name: 'mina-mbp',
             presence: HERE,
-            agents: [{ kind: 'claude-code', version: '2.1.4' }],
+            agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
           },
         ],
       }),
@@ -141,7 +141,9 @@ describe('the machines in a Space', () => {
             // The one place the double is allowed to answer outside the contract, and the whole
             // point of the test: this is what a newer server sends, and this build cannot have a
             // type for a name it has never heard.
-            agents: [{ kind: 'some-agent-from-next-year' as 'codex', version: '1.0.0' }],
+            agents: [
+              { kind: 'some-agent-from-next-year' as 'codex', version: '1.0.0', models: [] },
+            ],
           },
         ],
       }),

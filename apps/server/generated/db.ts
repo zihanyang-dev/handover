@@ -27,6 +27,7 @@ export interface Agents {
   found_at: Generated<Timestamp>;
   kind: string;
   machine_id: string;
+  models: Json | null;
   version: string;
 }
 

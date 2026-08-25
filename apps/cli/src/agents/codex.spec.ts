@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { reader } from './codex.ts'
+import type { ThreadEvent } from '@openai/codex-sdk'
+import { reader, stream } from './codex.ts'
 
 /** What `codex app-server` answers `model/list` with, cut down to what is read out of it. */
 const REPLY = JSON.stringify({
@@ -33,5 +34,62 @@ describe('reading what codex says over its own protocol', () => {
     const read = reader()
 
     expect(read(REPLY)).toEqual([])
+  })
+})
+
+/** A thread whose events are these, and which then throws on the way out — as Codex really does. */
+function threadThat(events: ThreadEvent[], throws?: unknown) {
+  return {
+    runStreamed: async () => ({
+      events: (async function* () {
+        yield* events
+        if (throws !== undefined) throw throws
+      })(),
+    }),
+  } as never
+}
+
+const ASKED = { text: 'hello' }
+
+describe('how a turn ends', () => {
+  it('ends once, even though Codex says a failure twice', async () => {
+    // It reports the failed turn as an event and then throws on the way out. Announcing both
+    // would close one turn twice, which today is invisible only because the caller stops reading
+    // at the first ending.
+    const failed = { type: 'turn.failed', error: { message: 'no' } } as ThreadEvent
+    const told = []
+    for await (const one of stream(
+      threadThat([failed], new Error('exited 1')),
+      ASKED,
+      new AbortController().signal,
+    )) {
+      told.push(one)
+    }
+
+    expect(told.filter((one) => one.told === 'ended')).toHaveLength(1)
+  })
+
+  it('still says how it went when it throws without having said', async () => {
+    const told = []
+    for await (const one of stream(
+      threadThat([], new Error('boom')),
+      ASKED,
+      new AbortController().signal,
+    )) {
+      told.push(one)
+    }
+
+    expect(told).toEqual([{ told: 'ended', why: { why: 'failed', said: 'boom' } }])
+  })
+
+  it('calls a turn somebody stopped cancelled, not failed', async () => {
+    const stopping = new AbortController()
+    stopping.abort()
+    const told = []
+    for await (const one of stream(threadThat([], new Error('aborted')), ASKED, stopping.signal)) {
+      told.push(one)
+    }
+
+    expect(told).toEqual([{ told: 'ended', why: { why: 'cancelled' } }])
   })
 })

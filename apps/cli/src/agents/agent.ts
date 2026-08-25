@@ -1,3 +1,5 @@
+import type { components } from '../../generated/api.ts'
+
 /**
  * What it takes to drive one agent.
  *
@@ -10,6 +12,15 @@
  */
 
 export type Agent = {
+  /**
+   * The command this drives, as it is found on the PATH.
+   *
+   * Said by the adapter because the adapter is what has to run it. Discovery reports by command
+   * and the server hands out work by kind, so something has to pair them; the one place that
+   * cannot get it wrong is the file that spawns the thing.
+   */
+  readonly command: string
+
   /**
    * What this agent lets a person choose, as it reports it right now.
    *
@@ -27,17 +38,14 @@ export type Agent = {
   readonly talk: (where: string, sofar: string | null) => Talk
 }
 
-export type Model = {
-  readonly id: string
-  readonly name: string
-  readonly about: string
-  /** How hard this particular model may be asked to think. Empty when it has no such setting. */
-  readonly efforts: readonly string[]
-  /** What it uses when nobody says. Absent when the agent does not name one. */
-  readonly defaultEffort?: string
-  /** The one a person gets by saying nothing. Exactly one model in a list carries this. */
-  readonly isDefault: boolean
-}
+/**
+ * One thing this agent lets a person choose for a single question.
+ *
+ * The wire's shape, not a second one beside it. What an adapter reports here is reported to the
+ * server verbatim, so a copy written out here would be a copy that could disagree with the thing
+ * it is sent as — and the compiler would have no way to say which of the two was right.
+ */
+export type Model = components['schemas']['Model']
 
 export type Talk = {
   /**

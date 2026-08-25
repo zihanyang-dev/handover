@@ -40,7 +40,7 @@ const MINA: components['schemas']['Machine'] = {
   id: 'm-1',
   name: 'mina-mbp',
   presence: HERE,
-  agents: [{ kind: 'claude-code', version: '2.1.4' }],
+  agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
 }
 
 describe('the conversations in a Space', () => {
@@ -109,11 +109,12 @@ describe('starting one', () => {
         return HttpResponse.json({ id: 'c-9' }, { status: 201 })
       }),
       http.get('*/spaces/acme/conversations/c-9', () =>
-        HttpResponse.json({
+        HttpResponse.json<components['schemas']['Transcript']>({
           id: 'c-9',
           agentKind: 'claude-code',
           machineName: 'mina-mbp',
           working: { state: 'idle' },
+          offers: [],
           messages: [],
         }),
       ),

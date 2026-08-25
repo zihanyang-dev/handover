@@ -15,6 +15,9 @@ import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
 import { plain, shorten } from './agent.ts'
 import { onPath } from './on-path.ts'
 
+/** The binary this drives. Found on the PATH captured when the machine was connected. */
+const COMMAND = 'codex'
+
 /**
  * An item that has only just started.
  *
@@ -139,7 +142,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
 
   return {
     say: async function* (asked: Asked): AsyncIterable<Told> {
-      const binary = await onPath('codex', env)
+      const binary = await onPath(COMMAND, env)
       if (binary === undefined) {
         yield { told: 'ended', why: { why: 'failed', said: 'Codex is no longer on this machine.' } }
         return
@@ -174,15 +177,27 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
   }
 }
 
-async function* stream(
-  thread: ReturnType<Codex['startThread']>,
+export async function* stream(
+  thread: Pick<ReturnType<Codex['startThread']>, 'runStreamed'>,
   asked: Asked,
   until: AbortSignal,
 ): AsyncIterable<Told> {
+  // A turn ends once. Codex reports a failed turn as an event and then throws on the way out, so
+  // without this the same failure is announced twice — which today is invisible only because the
+  // caller stops reading at the first ending. A contract that holds because nobody looked is not
+  // one this file is keeping.
+  let ended = false
+
   try {
     const turn = await thread.runStreamed(asked.text, { signal: until })
-    for await (const event of turn.events) yield* fromEvent(event)
+    for await (const event of turn.events) {
+      const told = fromEvent(event)
+      ended ||= told.some((one) => one.told === 'ended')
+      yield* told
+    }
   } catch (trouble) {
+    if (ended) return
+
     // Never `instanceof`: what is thrown here is minified, and its `name` is not always
     // `AbortError`. We are the ones who asked it to stop, so we are the ones who know.
     if (until.aborted) yield { told: 'ended', why: { why: 'cancelled' } }
@@ -198,7 +213,7 @@ async function* stream(
  * shut down again, without ever starting a thread.
  */
 async function offers(env: NodeJS.ProcessEnv): Promise<readonly Model[]> {
-  const binary = await onPath('codex', env)
+  const binary = await onPath(COMMAND, env)
   if (binary === undefined) return []
 
   const listed = await listModels(binary, env)
@@ -304,6 +319,7 @@ function parsedReply(line: string): readonly Listed[] | undefined {
 
 export function codex(env: NodeJS.ProcessEnv): Agent {
   return {
+    command: COMMAND,
     offers: async () => offers(env),
     talk: (where, sofar) => talk(where, sofar, env),
   }

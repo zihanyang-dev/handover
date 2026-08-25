@@ -21,6 +21,7 @@ import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
+import { offering } from './offering.ts'
 import { handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
@@ -153,10 +154,16 @@ async function useKey(origin: string, key: string): Promise<Connected> {
  * this keyboard. Here they can install one and run this again in the same minute.
  */
 async function sayWhatIsHere(attachment: Attachment): Promise<Reported['said']> {
+  const env = machineEnvironment()
   const reported = await reportOnce(
     apiFor(attachment.origin, attachment.token),
     attachment.lookFor,
-    machineEnvironment(),
+    env,
+    {
+      // Asked here too, so a machine somebody just connected arrives with its model lists already
+      // known — rather than the first person to open a conversation on it finding no choice.
+      offering: offering(env, process.cwd()),
+    },
   )
 
   for (const line of wordsFor(reported, attachment.lookFor)) say(line)

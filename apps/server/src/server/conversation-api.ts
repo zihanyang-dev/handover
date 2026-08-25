@@ -32,6 +32,7 @@ import {
   UNAVAILABLE,
 } from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
+import { modelsBody } from './offers.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
@@ -121,6 +122,14 @@ const readingBody = z
     agentKind: z.string(),
     machineName: z.string(),
     working: workingBody,
+    /**
+     * What this agent lets a person choose, one question at a time.
+     *
+     * Empty means there is nothing to choose and the page shows no control — which covers both an
+     * agent that does not offer a choice and one nobody has asked yet. Saying nothing is always
+     * allowed, and means the agent's own default.
+     */
+    offers: modelsBody,
     messages: z.array(spokenBody).readonly(),
   })
   .openapi('Transcript')
@@ -149,8 +158,14 @@ const namingBody = z.object({ session: z.string().min(1).max(200) }).openapi('Ag
  * guarantee than re-reading would give. `content` is left alone on purpose — see `spokenBody`.
  */
 function asTranscript(reading: Reading) {
+  // Parsed on the way out, not trusted: it went in as JSON, and a list written by another build is
+  // exactly where a shape can be wrong. One that will not read comes back as nothing to choose —
+  // a page with no control still works, and a transcript that will not open does not.
+  const offers = modelsBody.safeParse(reading.offers)
+
   return {
     ...reading,
+    offers: offers.success ? offers.data : [],
     messages: reading.messages.map((one) => ({
       ...one,
       role: one.role as Role,

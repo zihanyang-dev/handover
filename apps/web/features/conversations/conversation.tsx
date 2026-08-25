@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckCircle, ExclamationCircle, Terminal } from 'react-bootstrap-icons'
 import { agentName } from '../agents.ts'
-import { useConversation, useSay, useStop } from './talking.ts'
+import { useConversation, useSay, useStop, type Model } from './talking.ts'
 
 type Message = { readonly seq: number; readonly role: string; readonly content?: unknown }
 
@@ -46,7 +46,7 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
     )
   }
 
-  const { agentKind, machineName, working, messages } = conversation.data
+  const { agentKind, machineName, working, offers, messages } = conversation.data
 
   return (
     <section className="panel">
@@ -62,7 +62,7 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
       </ul>
 
       <Doing state={working.state} slug={slug} id={id} turn={turnOf(messages)} />
-      <Ask slug={slug} id={id} busy={working.state === 'working'} />
+      <Ask slug={slug} id={id} busy={working.state === 'working'} offers={offers} />
     </section>
   )
 }
@@ -179,16 +179,103 @@ function Doing({
   )
 }
 
+/**
+ * The model a question is asked with, and how hard to think about it.
+ *
+ * Per question, not per conversation: the cheap one and the hard one turn up in the same
+ * conversation, and being made to choose once at the start would be choosing for both.
+ *
+ * Nothing chosen sends nothing, which leaves the agent on its own default. We never pick one on
+ * its behalf — a default we invented would be a choice nobody made, attributed to the agent.
+ */
+function Choices({
+  offers,
+  model,
+  effort,
+  onModel,
+  onEffort,
+  disabled,
+}: {
+  readonly offers: readonly Model[]
+  readonly model: string
+  readonly effort: string
+  readonly onModel: (id: string) => void
+  readonly onEffort: (level: string) => void
+  readonly disabled: boolean
+}) {
+  // An agent that offers nothing gets no control at all. Picking an agent is picking what it can
+  // do, and an empty select would be a question with no answers.
+  if (offers.length === 0) return null
+
+  // The one the agent uses when nobody says, which is what choosing nothing means. It is not
+  // listed a second time: Claude Code publishes its default as a row of its own, and an "its
+  // default" option beside a row called "Default" is two ways to say one thing.
+  const itsOwn = offers.find((one) => one.isDefault)
+  const rest = offers.filter((one) => !one.isDefault)
+
+  // What the effort levels belong to: the model chosen, or the one it would use anyway.
+  const chosen = offers.find((one) => one.id === model) ?? itsOwn
+  const efforts = chosen?.efforts ?? []
+
+  return (
+    <div className="beside">
+      <select
+        className="field"
+        aria-label="Model"
+        value={model}
+        disabled={disabled}
+        onChange={(event) => {
+          onModel(event.target.value)
+        }}
+      >
+        {/* Empty, because choosing it sends nothing at all — the agent is left on its own
+            default rather than pinned to whatever that happens to be named today. */}
+        <option value="" title={itsOwn?.about}>
+          {itsOwn?.name ?? 'Its default'}
+        </option>
+        {rest.map((one) => (
+          <option key={one.id} value={one.id} title={one.about}>
+            {one.name}
+          </option>
+        ))}
+      </select>
+
+      {efforts.length > 0 && (
+        <select
+          className="field"
+          aria-label="Thinking"
+          value={effort}
+          disabled={disabled}
+          onChange={(event) => {
+            onEffort(event.target.value)
+          }}
+        >
+          <option value="">Its default</option>
+          {efforts.map((level) => (
+            <option key={level} value={level}>
+              {level}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  )
+}
+
 function Ask({
   slug,
   id,
   busy,
+  offers,
 }: {
   readonly slug: string
   readonly id: string
   readonly busy: boolean
+  readonly offers: readonly Model[]
 }) {
   const [text, setText] = useState('')
+  const [model, setModel] = useState('')
+  const [effort, setEffort] = useState('')
   const say = useSay(slug, id)
 
   return (
@@ -197,11 +284,22 @@ function Ask({
       onSubmit={(event) => {
         event.preventDefault()
         if (text.trim() === '') return
-        say.mutate(text, {
-          onSuccess: () => {
-            setText('')
+        say.mutate(
+          {
+            text,
+            // Absent, not empty: an empty string is a choice of nothing, and what is meant here
+            // is that no choice was made.
+            ...(model === '' ? {} : { model }),
+            ...(effort === '' ? {} : { effort }),
           },
-        })
+          {
+            onSuccess: () => {
+              // The words go, the choices stay. Somebody who moved to the hard model is usually
+              // still on the hard problem.
+              setText('')
+            },
+          },
+        )
       }}
     >
       <label className="label" htmlFor={`say-${id}`}>
@@ -217,6 +315,20 @@ function Ask({
           setText(event.target.value)
         }}
       />
+
+      <Choices
+        offers={offers}
+        model={model}
+        effort={effort}
+        disabled={busy}
+        onModel={(id_) => {
+          setModel(id_)
+          // An effort the new model does not have is not a choice, it is a leftover.
+          setEffort('')
+        }}
+        onEffort={setEffort}
+      />
+
       <button className="button button-primary" type="submit" disabled={busy || say.isPending}>
         <span className="button-label">Send</span>
       </button>

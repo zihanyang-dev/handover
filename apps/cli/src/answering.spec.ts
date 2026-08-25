@@ -49,6 +49,7 @@ beforeEach(() => {
 /** An agent that says exactly what a test tells it to and then stops. */
 function saying(...told: readonly Told[]): Agent {
   return {
+    command: 'pretend',
     offers: async () => [],
     talk: () => ({
       say: async function* () {

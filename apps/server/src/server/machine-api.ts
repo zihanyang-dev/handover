@@ -16,6 +16,7 @@ import {
   AGENT_COMMANDS,
   AGENT_KIND_NAMES,
   type AgentKind,
+  type Installed,
 } from '../machine/agent-kind.ts'
 import { POLL_SECONDS, presence } from '../machine/presence.ts'
 import {
@@ -36,6 +37,7 @@ import {
   UNAVAILABLE,
 } from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
+import { modelsBody } from './offers.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
@@ -51,7 +53,20 @@ export type MachineApi = { readonly db: Database }
 const reporting = z
   .object({
     found: z
-      .array(z.object({ command: z.string().min(1).max(100), version: z.string().min(1).max(100) }))
+      .array(
+        z.object({
+          command: z.string().min(1).max(100),
+          version: z.string().min(1).max(100),
+          /**
+           * What this version lets a person choose.
+           *
+           * Absent on nearly every report, and that is the design: asking an agent costs starting
+           * it up, so a machine asks only when the version it found is new. Absent means "nothing
+           * said about it", which leaves whatever was stored — not "it offers nothing".
+           */
+          models: modelsBody.optional(),
+        }),
+      )
       .max(50)
       .readonly(),
     /**
@@ -108,7 +123,12 @@ const checkedInBody = z
   .openapi('CheckedIn')
 
 const agentBody = z
-  .object({ kind: z.enum(AGENT_KIND_NAMES), version: z.string() })
+  .object({
+    kind: z.enum(AGENT_KIND_NAMES),
+    version: z.string(),
+    /** Empty when this agent does not let you choose, and when nobody has asked it yet. */
+    models: modelsBody,
+  })
   .openapi('MachineAgent')
 
 const machineBody = z
@@ -247,7 +267,7 @@ function listing(deps: MachineApi) {
         id: machine.id,
         name: machine.name,
         presence: onTheWire(presence(machine.whereabouts, seen.asOf)),
-        agents: machine.agents,
+        agents: machine.agents.map(asOffered),
       }))
 
       return c.json({ machines }, 200)
@@ -282,6 +302,24 @@ function detaching(deps: MachineApi) {
       return c.body(null, 204)
     },
   })
+}
+
+/**
+ * An agent as a page reads it.
+ *
+ * The stored list is parsed on the way out rather than trusted: it went in as JSON, and a row
+ * written by another build is exactly the case where a shape can be wrong. One that will not parse
+ * comes back as no models at all — a page with no control is a page somebody can still use, and a
+ * Space screen that will not load because of a model list would not be.
+ */
+function asOffered(agent: Installed): z.infer<typeof agentBody> {
+  const read = modelsBody.safeParse(agent.models)
+
+  return {
+    kind: agent.kind,
+    version: agent.version,
+    models: read.success ? read.data : [],
+  }
 }
 
 /** A `Date` is not a wire value. Converting here keeps the owner's shape free of transport. */

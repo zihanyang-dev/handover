@@ -608,11 +608,59 @@
           },
           "version": {
             "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "maxItems": 100
           }
         },
         "required": [
           "kind",
-          "version"
+          "version",
+          "models"
+        ]
+      },
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "about": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "efforts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "maxItems": 20
+          },
+          "defaultEffort": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "about",
+          "efforts",
+          "isDefault"
         ]
       },
       "CheckedIn": {
@@ -707,6 +755,13 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 100
+                },
+                "models": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Model"
+                  },
+                  "maxItems": 100
                 }
               },
               "required": [
@@ -839,6 +894,13 @@
           "working": {
             "$ref": "#/components/schemas/Working"
           },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "maxItems": 100
+          },
           "messages": {
             "type": "array",
             "items": {
@@ -851,6 +913,7 @@
           "agentKind",
           "machineName",
           "working",
+          "offers",
           "messages"
         ]
       },

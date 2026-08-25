@@ -53,6 +53,12 @@ export function useConversation(slug: string, id: string) {
 /** Taken from the contract, so a kind the server does not offer cannot be asked for. */
 type Opening = components['schemas']['OpenConversation']
 
+/** What a person may choose for one question. Empty means there is nothing to choose. */
+export type Model = components['schemas']['Model']
+
+/** What was said, and what it was said with. Absent means the agent's own default, always. */
+export type Saying = components['schemas']['SayThis']['asked']
+
 export function useOpenConversation(slug: string) {
   const client = useQueryClient()
 
@@ -80,11 +86,11 @@ export function useSay(slug: string, id: string) {
   const client = useQueryClient()
 
   return useMutation({
-    mutationFn: async (text: string) => {
-      const intention = `say:${id}:${text}`
+    mutationFn: async (asked: Saying) => {
+      const intention = `say:${id}:${asked.text}`
       const { error } = await api.POST('/spaces/{slug}/conversations/{id}/messages', {
         params: { path: { slug, id } },
-        body: { key: retryKey(intention), asked: { text } },
+        body: { key: retryKey(intention), asked },
       })
       if (error !== undefined) throw new Error(error.reason)
       retryKeyDone(intention)

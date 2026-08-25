@@ -27,16 +27,55 @@ export const AGENT_KIND_NAMES = Object.keys(AGENT_KINDS) as readonly AgentKind[]
  */
 export const AGENT_COMMANDS = AGENT_KIND_NAMES.map((kind) => AGENT_KINDS[kind].command)
 
-/** What a machine found: which kind, and which version of it answered. */
+/**
+ * One thing an agent lets a person choose for a single question.
+ *
+ * Ours, not the agent's: each adapter turns whatever its own SDK says into this, so a page has one
+ * shape to render whichever agent it is looking at. Carried through and stored as it arrives.
+ */
+export type Model = {
+  readonly id: string
+  readonly name: string
+  readonly about: string
+  /** How hard this particular model may be asked to think. Empty when it has no such setting. */
+  readonly efforts: readonly string[]
+  /** What it uses when nobody says. Absent when the agent does not name one. */
+  readonly defaultEffort?: string | undefined
+  /** The one a person gets by saying nothing. Exactly one model in a list carries this. */
+  readonly isDefault: boolean
+}
+
+/** What a machine found: which kind, which version answered, and what that version offers. */
 export type FoundAgent = {
   readonly kind: AgentKind
   readonly version: string
+  /**
+   * Absent when this report says nothing about it, which is not the same as an empty list.
+   *
+   * A machine asks its agent only when the version it found is new, because asking costs starting
+   * the agent up. Every other report simply does not mention models, and what was stored stands.
+   */
+  readonly models?: readonly Model[]
+}
+
+/**
+ * An agent on a machine, as the database has it.
+ *
+ * `models` comes back as whatever is in the column. It is left unread here on purpose: a list
+ * written by a different build of this program is exactly the case where a shape can be wrong, and
+ * the layer that has to answer for it is the one putting it on the wire.
+ */
+export type Installed = {
+  readonly kind: AgentKind
+  readonly version: string
+  readonly models: unknown
 }
 
 /** What a machine says it found, in its own terms: the command it looked for, and what answered. */
 export type Reported = {
   readonly command: string
   readonly version: string
+  readonly models?: readonly Model[] | undefined
 }
 
 /**
@@ -49,6 +88,10 @@ export type Reported = {
 export function agentsFound(reported: readonly Reported[]): readonly FoundAgent[] {
   return reported.flatMap((one) => {
     const kind = AGENT_KIND_NAMES.find((known) => AGENT_KINDS[known].command === one.command)
-    return kind === undefined ? [] : [{ kind, version: one.version }]
+    if (kind === undefined) return []
+
+    return [
+      { kind, version: one.version, ...(one.models === undefined ? {} : { models: one.models }) },
+    ]
   })
 }

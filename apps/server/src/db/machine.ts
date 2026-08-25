@@ -8,7 +8,7 @@
  */
 
 import { sql } from 'kysely'
-import type { AgentKind, FoundAgent } from '../machine/agent-kind.ts'
+import type { AgentKind, FoundAgent, Installed } from '../machine/agent-kind.ts'
 import type { Enrolment } from '../machine/enrolment.ts'
 import type { Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
@@ -143,12 +143,26 @@ async function replaceAgents(
   await tx
     .insertInto('agents')
     .values(
-      found.map((agent) => ({ machine_id: machineId, kind: agent.kind, version: agent.version })),
+      found.map((agent) => ({
+        machine_id: machineId,
+        kind: agent.kind,
+        version: agent.version,
+        models: agent.models === undefined ? null : JSON.stringify(agent.models),
+      })),
     )
     .onConflict((clash) =>
       clash.columns(['machine_id', 'kind']).doUpdateSet({
         version: (eb) => eb.ref('excluded.version'),
         found_at: sql<Date>`clock_timestamp()`,
+        // Three cases, decided here rather than by whoever wrote the report: what was reported
+        // wins; a report that says nothing about a version we already knew leaves what we have;
+        // and a version we have not seen before with nothing said about it clears the list, because
+        // what the last version offered is not what this one offers.
+        models: sql`case
+          when excluded.models is not null then excluded.models
+          when agents.version = excluded.version then agents.models
+          else null
+        end`,
       }),
     )
     .execute()
@@ -178,7 +192,7 @@ export type Machine = {
   readonly id: string
   readonly name: string
   readonly whereabouts: Whereabouts
-  readonly agents: readonly FoundAgent[]
+  readonly agents: readonly Installed[]
 }
 
 /**
@@ -215,7 +229,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
 
   const found = await tx
     .selectFrom('agents')
-    .select(['machine_id as machineId', 'kind', 'version'])
+    .select(['machine_id as machineId', 'kind', 'version', 'models'])
     // `agents_kind_is_one_we_know` is the list this type is made of, and there is a test that says
     // the two are the same list. Stated here rather than cast below, like every other invariant
     // in this file that the schema already guarantees.
@@ -236,7 +250,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: found
         .filter((agent) => agent.machineId === row.id)
-        .map((agent) => ({ kind: agent.kind, version: agent.version })),
+        .map((agent) => ({ kind: agent.kind, version: agent.version, models: agent.models })),
     })),
   }
 }

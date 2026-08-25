@@ -23,6 +23,18 @@ const BUILD: Record<string, (env: NodeJS.ProcessEnv) => Agent> = {
 }
 
 /**
+ * The adapter for a command, or nothing.
+ *
+ * Discovery finds agents by command, because that is what is on the PATH; the server hands out
+ * work by kind. Both arrive here, and the pairing is stated once — in the adapter, which is the
+ * one thing that already has to know which binary it drives.
+ */
+export function agentForCommand(command: string, env: NodeJS.ProcessEnv): Agent | undefined {
+  const built = Object.values(BUILD).map((build) => build(env))
+  return built.find((agent) => agent.command === command)
+}
+
+/**
  * The adapter for a kind, or nothing.
  *
  * A server that knows about an agent this machine has no adapter for is the ordinary way an older
