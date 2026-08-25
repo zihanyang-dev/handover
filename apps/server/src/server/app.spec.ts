@@ -22,10 +22,11 @@ afterAll(async () => {
   await db.destroy()
 })
 
-const SECRET_IN_THE_MESSAGE = 'smtp://user:hunter2@mail.example.com'
+/** What an error message really looks like when something upstream fails with a URL in hand. */
+const WHERE_IT_BROKE = 'smtp://user:hunter2@mail.example.com'
 
 const throwing: SendCode = () => {
-  throw new Error(`could not reach ${SECRET_IN_THE_MESSAGE}`)
+  throw new Error(`could not reach ${WHERE_IT_BROKE}`)
 }
 const written: string[] = []
 const log = pino(LOG_OPTIONS, { write: (line: string) => written.push(line) })
@@ -70,7 +71,10 @@ describe('when something breaks that no route planned for', () => {
       body: JSON.stringify({ email: `mina-${RUN}@example.com`, requestKey: `${RUN}-k3` }),
     })
 
-    expect(written.join('')).toContain(SECRET_IN_THE_MESSAGE)
+    // What broke and where, without the part that opens it. Field-name redaction cannot reach
+    // inside a message, and a log outlives the request that made it by months.
+    expect(written.join('')).toContain('mail.example.com')
+    expect(written.join('')).not.toContain('hunter2')
   })
 
   it('tells the caller nothing about what broke', async () => {
@@ -81,7 +85,7 @@ describe('when something breaks that no route planned for', () => {
     })
 
     // An error message carries whatever the thrower put in it, and that is never the caller's.
-    expect(await response.text()).not.toContain(SECRET_IN_THE_MESSAGE)
+    expect(await response.text()).not.toContain('mail.example.com')
   })
 })
 

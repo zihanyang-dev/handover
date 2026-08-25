@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Moment } from '../conversation/live.ts'
 import { loadEnv } from '../env.ts'
 import { createLog } from '../log.ts'
@@ -26,6 +26,12 @@ const listening = listenForMoments(env, log, (happening) => {
   handTo(watching, happening)
 })
 const live = liveThrough(browserSide, watching)
+
+beforeAll(async () => {
+  // Nothing arrives before the connection is up, and a test that raced it would fail for a reason
+  // that has nothing to do with what it is about.
+  await listening.listening
+})
 
 afterAll(async () => {
   await listening.stop()

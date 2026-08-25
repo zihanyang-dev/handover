@@ -28,7 +28,15 @@ const SHAPE = z.object({
    */
   WEB_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:5173'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * What this process is. No default, on purpose.
+   *
+   * Defaulted to development, a production deployment that never set it gets every development
+   * convenience — including the sign-in code going to the log rather than to an inbox. A process
+   * that has not been told what it is refuses to start, which is one line in a deployment and the
+   * difference between failing closed and failing open.
+   */
+  NODE_ENV: z.enum(['development', 'test', 'production']),
   /** Given, letters go out. Missing, they do not, and the process says so rather than pretending. */
   RESEND_API_KEY: z.string().min(1).optional(),
   /**

@@ -7,7 +7,7 @@
  * in the answer to a report it was already making.
  */
 
-import { endTurn, startAnswering, type Answering, type Asking } from './answering.ts'
+import { endTurn, startAnswering, type Answering, type Asking, type Machine } from './answering.ts'
 import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
@@ -155,7 +155,7 @@ export async function keepCheckingIn(
     // One at a time. Reporting carries on either way: a turn can take ten minutes, and a machine
     // that goes quiet for ten minutes is one its Space shows as gone.
     if (answering === undefined && reported.asking !== undefined) {
-      answering = answer(api, reported.asking, running, () => {
+      answering = answer(api, reported.asking, { ...running, until: stopping }, () => {
         answering = undefined
       })
     }
@@ -183,23 +183,23 @@ function waitFor(pollSeconds: number, busy: boolean): number {
  * machine meets a newer deployment. It has to come back as a turn that ended saying so, not as a
  * question that sits unanswered forever with nobody able to explain why.
  */
-function answer(api: Api, asking: Asking, running: CheckingIn, over: () => void): Answering {
-  const agent = agentFor(asking.agentKind, running.env)
-  running.say(
+function answer(api: Api, asking: Asking, machine: Machine, over: () => void): Answering {
+  const agent = agentFor(asking.agentKind, machine.env)
+  machine.say(
     agent === undefined
       ? `cannot run ${asking.agentKind} on this machine`
       : `answering in ${asking.conversationId}`,
   )
 
   const started =
-    agent === undefined ? cannot(api, asking, running) : startAnswering(api, asking, agent, running)
+    agent === undefined ? cannot(api, asking, machine) : startAnswering(api, asking, agent, machine)
 
   void started.done.then(over, over)
 
   return started
 }
 
-function cannot(api: Api, asking: Asking, running: CheckingIn): Answering {
+function cannot(api: Api, asking: Asking, machine: Machine): Answering {
   const text = `This machine cannot run ${asking.agentKind}.`
 
   return {
@@ -207,7 +207,7 @@ function cannot(api: Api, asking: Asking, running: CheckingIn): Answering {
     stop: async () => {
       // Nothing was ever started, so there is nothing to stop. Saying so is the whole answer.
     },
-    done: endTurn(api, asking, running.say, { activityType: 'failed', text }),
+    done: endTurn(api, asking, machine, { activityType: 'failed', text }),
   }
 }
 

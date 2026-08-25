@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream'
 import { pino } from 'pino'
 import { describe, expect, it } from 'vitest'
-import { LOG_OPTIONS } from './log.ts'
+import { withoutSecrets, LOG_OPTIONS } from './log.ts'
 
 /** A logger that writes where a test can read it, configured exactly as the real one is. */
 function recording() {
@@ -67,5 +67,32 @@ describe('the log', () => {
     expect(line).not.toContain('deadbeef')
     // Everything that is not a secret still comes through, or the line would be useless.
     expect(line).toContain('abc')
+  })
+})
+
+describe('a secret that is inside a sentence', () => {
+  it('takes the password out of a connection string, and keeps the rest', () => {
+    // Redacting by field name cannot reach this: it is one string, and the password inside it is
+    // not a field anybody can name. What broke is worth keeping; what opens it is not.
+    const said = withoutSecrets('could not reach postgres://user:hunter2@mail.example.com/db')
+
+    expect(said).not.toContain('hunter2')
+    expect(said).toContain('mail.example.com')
+  })
+
+  it('takes the value out of a signed URL, and leaves the name readable', () => {
+    const said = withoutSecrets('GET https://api.example.com/x?access_token=abc123&page=2 failed')
+
+    expect(said).not.toContain('abc123')
+    expect(said).toContain('access_token=[redacted]')
+    expect(said).toContain('page=2')
+  })
+
+  it('takes a bearer token out of wherever it was quoted', () => {
+    expect(withoutSecrets('sent Bearer hm_9xKq.Ab-3')).toBe('sent Bearer [redacted]')
+  })
+
+  it('leaves a sentence with nothing in it exactly as it was', () => {
+    expect(withoutSecrets('the database went away')).toBe('the database went away')
   })
 })

@@ -17,6 +17,7 @@ afterAll(() => {
 })
 
 const env = parseEnv({
+  NODE_ENV: 'test',
   DATABASE_URL: 'postgres://a:b@localhost:5432/c',
   AUTH_SECRET: 's'.repeat(32),
   RESEND_API_KEY: 're_test_key',

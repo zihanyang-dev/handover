@@ -28,8 +28,9 @@ const env = loadEnv()
 const log = createLog(env)
 
 // Without a key the code goes to the log, which is fine while the only reader is whoever is
-// running it, and never fine anywhere else.
-if (env.RESEND_API_KEY === undefined && env.NODE_ENV === 'production') {
+// running it, and never fine anywhere else. Allowed only where the environment says development
+// out loud — `NODE_ENV` has no default, so nothing gets here by having said nothing.
+if (env.RESEND_API_KEY === undefined && env.NODE_ENV !== 'development') {
   log.fatal('no mail provider is configured; refusing to start')
   process.exit(1)
 }

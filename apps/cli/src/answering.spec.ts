@@ -67,7 +67,12 @@ function saying(...told: readonly Told[]): Agent {
 }
 
 async function answered(agent: Agent): Promise<readonly Written[]> {
-  const machine = { where: '/nowhere', env: {}, say: () => undefined }
+  const machine = {
+    where: '/nowhere',
+    env: {},
+    say: () => undefined,
+    until: new AbortController().signal,
+  }
   await startAnswering(apiFor(ORIGIN, 'hm_t'), ASKING, agent, machine).done
 
   return written
@@ -213,4 +218,51 @@ describe('what a turn leaves behind', () => {
     expect(watched.map((one) => one.said)).toEqual(['thinking', 'doing', 'text'])
     expect(JSON.stringify(written)).not.toContain('let me look at the file')
   })
+
+  it('will not call a turn finished when part of it never got in', async () => {
+    // The agent said it was done and it may well have been — that is exactly why this is not
+    // `failed`, which invites somebody to ask for it all over again. But the transcript is missing
+    // lines, and a turn shown as finished beside a record with holes in it says what nobody knows.
+    server.use(
+      http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, async ({ request }) => {
+        const body = (await request.json()) as Written
+        if (body.message.role === 'assistant') {
+          return HttpResponse.json(
+            { reason: 'malformed-request', recovery: 'retype' },
+            { status: 400 },
+          )
+        }
+        written.push(body)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const kept = await answered(
+      saying(said({ said: 'text', text: 'half an answer' }), {
+        told: 'ended',
+        why: { why: 'done' },
+      }),
+    )
+
+    expect(kept.at(-1)?.message.content).toEqual({ activityType: 'unknown' })
+  })
+
+  it('keeps trying a write nobody answered, under the same name', async () => {
+    // The name is what makes trying again safe. A network comes back, and a line of the record is
+    // worth more than the second or two of waiting.
+    let asked = 0
+    server.use(
+      http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, async ({ request }) => {
+        asked += 1
+        if (asked < 3) return HttpResponse.error()
+        written.push((await request.json()) as Written)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const kept = await answered(saying({ told: 'ended', why: { why: 'done' } }))
+
+    expect(asked).toBe(3)
+    expect(kept.at(-1)?.message.content).toEqual({ activityType: 'done' })
+  }, 20_000)
 })

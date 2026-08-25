@@ -58,7 +58,7 @@ export function listenForMoments(
   env: Env,
   log: Log,
   heard: (happening: Happening) => void,
-): { readonly stop: () => Promise<void> } {
+): { readonly listening: Promise<void>; readonly stop: () => Promise<void> } {
   const client = new Client({ connectionString: env.DATABASE_URL })
 
   client.on('notification', (notice) => {
@@ -84,6 +84,11 @@ export function listenForMoments(
     })
 
   return {
+    // Settles once this connection is listening. Nothing in the server waits for it — a moment
+    // sent in the first millisecond is a moment nobody was watching for yet either way — but a
+    // test that says "one instance says, another hears" has to know when the other one is there.
+    listening: connected,
+
     stop: async () => {
       await connected
       await client.end()

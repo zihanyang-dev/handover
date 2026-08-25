@@ -14,6 +14,17 @@ import type { Api } from './api.ts'
 /** What a call that reached nobody comes back as. Not a refusal, and not worth saying twice. */
 const NO_ANSWER = 503
 
+/**
+ * How long one write keeps trying before its turn is called `unknown`.
+ *
+ * Long enough to sit out the network coming back, and bounded because a turn has to end: a turn
+ * that never ends is one a page shows as still working forever. Every attempt carries the same
+ * name, so landing twice is landing once.
+ */
+const KEEP_TRYING_MS = 120_000
+
+const BETWEEN_TRIES_MS = 2000
+
 /** What the server handed over: one question, and what is needed to answer it. */
 export type Asking = components['schemas']['SomethingToAnswer']
 
@@ -30,7 +41,8 @@ type Happened = Extract<Written, { role: 'activity' }>['content']
  * all settled once, here, rather than carried through every call that writes a line.
  */
 type Writing = {
-  readonly message: (key: string, message: Written) => Promise<void>
+  /** Whether it is in there. False is a line of the transcript that is gone for good. */
+  readonly message: (key: string, message: Written) => Promise<boolean>
   /** What the agent calls this conversation, so a later turn can ask it to remember. */
   readonly session: (id: string) => Promise<void>
   /**
@@ -61,6 +73,14 @@ export type Machine = {
   readonly where: string
   readonly env: NodeJS.ProcessEnv
   readonly say: (line: string) => void
+  /**
+   * Raised when this machine is stopping.
+   *
+   * Part of what the machine is, rather than something handed to each thing it does: a write that
+   * keeps trying is a write that would hold the whole process open, and whether it should is a
+   * fact about the machine and not about that write.
+   */
+  readonly until: AbortSignal
 }
 
 /**
@@ -78,7 +98,7 @@ export function startAnswering(
   agent: Agent,
   machine: Machine,
 ): Answering {
-  const writing = writingInto(api, asking, machine.say)
+  const writing = writingInto(api, asking, machine)
   const talk = agent.talk(machine.where, asking.agentSession)
 
   return {
@@ -92,14 +112,24 @@ async function closing(writing: Writing, asking: Asking, content: Happened): Pro
   await writing.message(`${asking.askedSeq}/end`, { role: 'activity', content })
 }
 
+/**
+ * How a turn ended, given that part of it never made it into the record.
+ *
+ * `unknown`, whatever the agent said. It may well have done everything it was asked — that is
+ * exactly why this is not `failed`, which invites somebody to ask for it all over again — but the
+ * transcript is missing lines, and a turn shown as finished beside a record with holes in it is
+ * the page saying something it cannot know.
+ */
+const LOST = { activityType: 'unknown' } as const
+
 /** Closes a turn that never started. The only way in from outside, for exactly that case. */
 export async function endTurn(
   api: Api,
   asking: Asking,
-  say: Speaks,
+  machine: Machine,
   content: Happened,
 ): Promise<void> {
-  await closing(writingInto(api, asking, say), asking, content)
+  await closing(writingInto(api, asking, machine), asking, content)
 }
 
 /** Said before anything else in a turn the agent could not pick up where it left off. */
@@ -113,8 +143,14 @@ const FORGOT = { role: 'activity', content: { activityType: 'forgot' } } as cons
  * turn: a turn that is being answered a second time is a turn nobody saw the end of, and that is
  * recovered by reading the agent's own record rather than by guessing where it got to.
  */
-async function write(writing: Writing, asking: Asking, told: AsyncIterable<Told>, say: Speaks) {
+async function write(
+  writing: Writing,
+  asking: Asking,
+  told: AsyncIterable<Told>,
+  say: (line: string) => void,
+) {
   let wrote = 0
+  let whole = true
 
   for await (const one of told) {
     if (one.told === 'session') {
@@ -123,8 +159,12 @@ async function write(writing: Writing, asking: Asking, told: AsyncIterable<Told>
     }
 
     if (one.told === 'ended') {
-      say(`answered ${asking.conversationId}: ${one.why.why}`)
-      await closing(writing, asking, ending(one.why))
+      // What the agent said it was, unless the record is missing lines — then nobody can say.
+      const how = whole ? ending(one.why) : LOST
+      say(
+        `answered ${asking.conversationId}: ${whole ? one.why.why : 'unknown, part of it was lost'}`,
+      )
+      await closing(writing, asking, how)
       return
     }
 
@@ -136,7 +176,9 @@ async function write(writing: Writing, asking: Asking, told: AsyncIterable<Told>
     if (message === undefined) continue
 
     wrote += 1
-    await writing.message(`${asking.askedSeq}/${wrote}`, message)
+    // Never short-circuited: a turn goes on being written down after one line is lost, because
+    // what did land is still worth having. What it changes is only how the turn is allowed to end.
+    whole = (await writing.message(`${asking.askedSeq}/${wrote}`, message)) && whole
   }
 
   // It stopped talking without saying how it went. Nobody can say either, and a turn left open is
@@ -192,27 +234,50 @@ function keep(said: Said): Written | undefined {
  * message is, and every line of every turn will vanish the same way. Silence there would be a
  * machine that looks like it is working and writes nothing down.
  */
-function writingInto(api: Api, asking: Asking, say: Speaks): Writing {
+function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
   const path = { params: { path: { id: asking.conversationId } } }
+  const { say, until } = machine
+
+  /**
+   * Sends one thing until it is in, or until it is certain it never will be.
+   *
+   * The three answers are different in kind. Accepted is done. Refused — anything but a 503 — means
+   * this build and that server disagree about what a message is, and every attempt after it would
+   * be refused the same way. Nobody answering is a network, and a network comes back; the name on
+   * the message is what makes trying again safe, so trying again is what happens.
+   */
+  async function sent(send: () => Promise<{ response: Response }>): Promise<boolean> {
+    const giveUpAt = Date.now() + KEEP_TRYING_MS
+
+    for (;;) {
+      const answered = await send()
+      if (answered.response.ok) return true
+
+      if (answered.response.status !== NO_ANSWER) {
+        say(`the server refused a message (${answered.response.status}); it is not being kept`)
+        return false
+      }
+
+      if (until.aborted || Date.now() > giveUpAt) return false
+      await new Promise((wake) => setTimeout(wake, BETWEEN_TRIES_MS))
+    }
+  }
 
   return {
-    message: async (key, message) => {
-      const sent = await api.POST('/machines/current/conversations/{id}/messages', {
-        ...path,
-        body: { key, message },
-      })
-
-      const refused = sent.response.status >= 400 && sent.response.status !== NO_ANSWER
-      if (refused) {
-        say(`the server refused a message (${sent.response.status}); it is not being kept`)
-      }
-    },
+    message: async (key, message) =>
+      sent(async () =>
+        api.POST('/machines/current/conversations/{id}/messages', {
+          ...path,
+          body: { key, message },
+        }),
+      ),
 
     session: async (id) => {
-      await api.PUT('/machines/current/conversations/{id}/session', {
-        ...path,
-        body: { session: id },
-      })
+      // Same treatment: losing it means the next turn starts over and says so, which is honest but
+      // worse than the turn it could have continued.
+      await sent(async () =>
+        api.PUT('/machines/current/conversations/{id}/session', { ...path, body: { session: id } }),
+      )
     },
 
     moment: (said) => {
@@ -220,5 +285,3 @@ function writingInto(api: Api, asking: Asking, say: Speaks): Writing {
     },
   }
 }
-
-type Speaks = (line: string) => void

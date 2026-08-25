@@ -7,7 +7,7 @@
  * stops there.
  */
 
-import { pino, type Logger, type LoggerOptions } from 'pino'
+import { pino, stdSerializers, type Logger, type LoggerOptions } from 'pino'
 import type { Env } from './env.ts'
 
 /**
@@ -38,6 +38,47 @@ export const LOG_OPTIONS: LoggerOptions = {
     // The word, not the number. Nobody grepping a log knows that 30 means info.
     level: (label) => ({ level: label }),
   },
+  // Errors are the one value that arrives as prose. Serialized whole, a connection string or a
+  // signed URL that somebody quoted into a message goes to the log with it — and a log outlives
+  // the request by months.
+  serializers: {
+    err: (error: unknown) => {
+      const written = stdSerializers.err(error as Error)
+      // Both are optional on the way out: what arrives here is whatever was thrown, and not
+      // everything thrown is an Error.
+      return {
+        ...written,
+        ...(typeof written.message === 'string'
+          ? { message: withoutSecrets(written.message) }
+          : {}),
+        ...(typeof written.stack === 'string' ? { stack: withoutSecrets(written.stack) } : {}),
+      }
+    },
+  },
+}
+
+/**
+ * The shapes a secret takes when it is inside a sentence rather than in a field of its own.
+ *
+ * Redacting by field name cannot reach these: what is logged is one string — an error's message,
+ * or its stack — and a connection string or a signed URL sitting inside it is not a field anybody
+ * can name. What is kept is the part that says what broke; what goes is the part that opens it.
+ */
+const IN_A_SENTENCE: readonly (readonly [RegExp, string])[] = [
+  // `postgres://user:hunter2@host` — the password, and nothing else about it.
+  [/(:\/\/[^\s:/@]+:)[^\s@]+(@)/gu, '$1[redacted]$2'],
+  // `?token=…`, `&access_token=…`, `&api_key=…` — the value, with the name left readable.
+  [/([?&](?:[\w-]*(?:token|secret|key|password)[\w-]*)=)[^&\s]+/giu, '$1[redacted]'],
+  // A bearer token wherever it was quoted into a message.
+  [/(bearer\s+)[\w.\-~+/]+=*/giu, '$1[redacted]'],
+]
+
+/** One sentence, with anything that opens something taken out of it. */
+export function withoutSecrets(said: string): string {
+  let left = said
+  for (const [looks, instead] of IN_A_SENTENCE) left = left.replace(looks, instead)
+
+  return left
 }
 
 export type Log = Logger
