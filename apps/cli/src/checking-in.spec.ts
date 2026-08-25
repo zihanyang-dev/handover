@@ -1,8 +1,27 @@
+import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, afterEach, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce } from './checking-in.ts'
+
+/**
+ * A real command on a real PATH, so what the loop went looking for is visible in what it reports.
+ *
+ * Without one, every report comes back empty whatever the server asked for, and a test about
+ * following the server's list can only count the reports — which is a test that passes with the
+ * following taken out.
+ */
+let BIN = ''
+
+beforeAll(async () => {
+  BIN = await mkdtemp(join(tmpdir(), 'handover-checking-in-'))
+  const path = join(BIN, 'some-new-agent')
+  await writeFile(path, '#!/bin/sh\necho 1.2.3\n')
+  await chmod(path, 0o755)
+})
 
 const server = setupServer()
 const ORIGIN = 'http://handover.test'
@@ -27,7 +46,8 @@ function runningFor(rounds: number) {
     said,
     signal: stopping.signal,
     running: {
-      env: { PATH: '/nonexistent' },
+      env: { PATH: '/nonexistent' } as NodeJS.ProcessEnv,
+      where: '/nowhere',
       say: (line: string) => said.push(line),
       sleep: async () => {
         left -= 1
@@ -66,12 +86,31 @@ describe('staying connected', () => {
       }),
     )
     const { running, signal } = runningFor(2)
+    running.env = { PATH: BIN }
 
     await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
 
-    // Nothing found either time — the point is that it went looking for a command nobody
-    // compiled into it.
-    expect(reports).toHaveLength(2)
+    // It started knowing nothing, and by the second report it was looking for a command nobody
+    // compiled into it — which is the whole of what the list being the server's means.
+    expect(reports[0]?.found).toEqual([])
+    expect(reports[1]?.found).toEqual([{ command: 'some-new-agent', version: '1.2.3' }])
+  })
+
+  it('says it has just started, once, so what it left open can be closed', async () => {
+    // Only this machine can say it restarted, and it is worth saying: a turn left open on a
+    // machine that has just started is one whose agent went on working with nobody watching.
+    const reports: { restarted?: boolean }[] = []
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
+        reports.push((await request.json()) as { restarted?: boolean })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: [] })
+      }),
+    )
+    const { running, signal } = runningFor(3)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(reports.map((one) => one.restarted)).toEqual([true, false, false])
   })
 
   it('stops for good once the machine has been taken away', async () => {
@@ -123,6 +162,7 @@ describe('being asked to stop', () => {
     const stopping = new AbortController()
     const running = {
       env: {},
+      where: '/nowhere',
       say: () => undefined,
       sleep: async (seconds: number, until: AbortSignal) =>
         new Promise<void>((wake) => {

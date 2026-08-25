@@ -1,0 +1,193 @@
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import type { Agent, Said, Told } from './agents/agent.ts'
+import { apiFor } from './api.ts'
+import { startAnswering, type Asking } from './answering.ts'
+
+const server = setupServer()
+const ORIGIN = 'http://handover.test'
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' })
+})
+afterEach(() => {
+  server.resetHandlers()
+})
+afterAll(() => {
+  server.close()
+})
+
+const ASKING: Asking = {
+  conversationId: 'c-1',
+  agentKind: 'claude-code',
+  agentSession: null,
+  askedSeq: 4,
+  asked: { text: 'read notes.txt' },
+}
+
+type Written = { readonly key: string; readonly message: { role: string; content: unknown } }
+
+let written: Written[] = []
+let named: string[] = []
+
+beforeEach(() => {
+  written = []
+  named = []
+  server.use(
+    http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, async ({ request }) => {
+      written.push((await request.json()) as Written)
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.put(`${ORIGIN}/machines/current/conversations/:id/session`, async ({ request }) => {
+      named.push(((await request.json()) as { session: string }).session)
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+})
+
+/** An agent that says exactly what a test tells it to and then stops. */
+function saying(...told: readonly Told[]): Agent {
+  return {
+    offers: async () => [],
+    talk: () => ({
+      say: async function* () {
+        yield* told
+      },
+      stop: async () => {},
+    }),
+  }
+}
+
+async function answered(agent: Agent): Promise<readonly Written[]> {
+  const machine = { where: '/nowhere', env: {}, say: () => undefined }
+  await startAnswering(apiFor(ORIGIN, 'hm_t'), ASKING, agent, machine).done
+
+  return written
+}
+
+const said = (said: Said): Told => ({ told: 'said', said })
+
+describe('what a turn leaves behind', () => {
+  it('writes what it said and how it went', async () => {
+    const kept = await answered(
+      saying(said({ said: 'text', text: 'the timeout is 30 seconds' }), {
+        told: 'ended',
+        why: { why: 'done' },
+      }),
+    )
+
+    expect(kept.map((one) => one.message)).toEqual([
+      { role: 'assistant', content: { text: 'the timeout is 30 seconds' } },
+      { role: 'activity', content: { activityType: 'done' } },
+    ])
+  })
+
+  it('never writes down what it was thinking', async () => {
+    // Worth watching while it happens and worth nothing afterwards. Claude Code agrees with
+    // itself: the thinking in its own session file carries a signature and no readable text.
+    const kept = await answered(
+      saying(
+        said({ said: 'thinking', text: 'let me look at the file' }),
+        said({ said: 'text', text: 'done' }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
+    )
+
+    expect(JSON.stringify(kept)).not.toContain('let me look at the file')
+  })
+
+  it('never writes down that it had started something, only that it did it', async () => {
+    const kept = await answered(
+      saying(
+        said({ said: 'doing', name: 'Bash', verb: 'ran', arg: 'ls' }),
+        said({ said: 'did', name: 'Bash', verb: 'ran', arg: 'ls', ok: true, excerpt: 'a b' }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
+    )
+
+    expect(kept.map((one) => one.message.role)).toEqual(['tool', 'activity'])
+  })
+
+  it('keeps a tool that never said how it went as one that never said', async () => {
+    const kept = await answered(
+      saying(said({ said: 'did', name: 'web_search', verb: '', arg: 'x', excerpt: '' }), {
+        told: 'ended',
+        why: { why: 'done' },
+      }),
+    )
+
+    expect(kept[0]?.message.content).not.toHaveProperty('ok')
+  })
+
+  it('says out loud that it did not remember, before anything else in the turn', async () => {
+    // Not a failure and not silence: the page has to be able to tell somebody that this answer
+    // was written by an agent with no memory of what came before it.
+    const kept = await answered(
+      saying({ told: 'forgot' }, said({ said: 'text', text: 'hello' }), {
+        told: 'ended',
+        why: { why: 'done' },
+      }),
+    )
+
+    expect(kept.map((one) => one.message.content)).toEqual([
+      { activityType: 'forgot' },
+      { text: 'hello' },
+      { activityType: 'done' },
+    ])
+  })
+
+  it('records what the agent calls the conversation, without writing it as a message', async () => {
+    const kept = await answered(
+      saying({ told: 'session', id: 'sess-9' }, { told: 'ended', why: { why: 'done' } }),
+    )
+
+    expect(named).toEqual(['sess-9'])
+    expect(kept).toHaveLength(1)
+  })
+
+  it('ends a stopped turn as stopped, not as a failure', async () => {
+    const kept = await answered(saying({ told: 'ended', why: { why: 'cancelled' } }))
+
+    expect(kept.at(-1)?.message.content).toEqual({ activityType: 'cancelled' })
+  })
+
+  it('carries a failure in words a person can read', async () => {
+    const kept = await answered(
+      saying({ told: 'ended', why: { why: 'failed', said: 'Claude Code is not signed in.' } }),
+    )
+
+    expect(kept.at(-1)?.message.content).toEqual({
+      activityType: 'failed',
+      text: 'Claude Code is not signed in.',
+    })
+  })
+
+  it('bounds a failure, because what arrives there is somebody else s error', async () => {
+    const kept = await answered(
+      saying({ told: 'ended', why: { why: 'failed', said: 'x'.repeat(5000) } }),
+    )
+
+    const content = kept.at(-1)?.message.content as { text: string }
+    expect(content.text.length).toBeLessThan(500)
+  })
+
+  it('closes a turn whose agent stopped talking without saying how it went', async () => {
+    // Nobody can say what happened, and a turn left open is one a page shows as still working
+    // for as long as this machine keeps reporting.
+    const kept = await answered(saying(said({ said: 'text', text: 'half an answer' })))
+
+    expect(kept.at(-1)?.message.content).toEqual({ activityType: 'unknown' })
+  })
+
+  it('names every message after the question it answers, so a lost reply can be sent again', async () => {
+    const kept = await answered(
+      saying(said({ said: 'text', text: 'one' }), said({ said: 'text', text: 'two' }), {
+        told: 'ended',
+        why: { why: 'done' },
+      }),
+    )
+
+    expect(kept.map((one) => one.key)).toEqual(['4/1', '4/2', '4/end'])
+  })
+})

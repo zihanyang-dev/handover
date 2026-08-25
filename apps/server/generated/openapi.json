@@ -68,6 +68,8 @@
               "start-over",
               "sign-in",
               "choose-another-name",
+              "choose-another-agent",
+              "choose-another-machine",
               "wait",
               "retry-later"
             ]
@@ -519,57 +521,6 @@
           "expiresAt"
         ]
       },
-      "NothingForThisMachine": {
-        "type": "object",
-        "properties": {
-          "pollSeconds": {
-            "type": "integer",
-            "minimum": 0,
-            "exclusiveMinimum": true
-          },
-          "lookFor": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "pollSeconds",
-          "lookFor"
-        ]
-      },
-      "MachineReport": {
-        "type": "object",
-        "properties": {
-          "found": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "command": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 100
-                },
-                "version": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 100
-                }
-              },
-              "required": [
-                "command",
-                "version"
-              ]
-            },
-            "maxItems": 50
-          }
-        },
-        "required": [
-          "found"
-        ]
-      },
       "Machines": {
         "type": "object",
         "properties": {
@@ -662,6 +613,511 @@
         "required": [
           "kind",
           "version"
+        ]
+      },
+      "CheckedIn": {
+        "type": "object",
+        "properties": {
+          "pollSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "lookFor": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "asking": {
+            "$ref": "#/components/schemas/SomethingToAnswer"
+          },
+          "stopping": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "pollSeconds",
+          "lookFor"
+        ]
+      },
+      "SomethingToAnswer": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agentKind": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "agentSession": {
+            "type": "string",
+            "nullable": true
+          },
+          "askedSeq": {
+            "type": "integer"
+          },
+          "asked": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string"
+              },
+              "effort": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        "required": [
+          "conversationId",
+          "agentKind",
+          "agentSession",
+          "askedSeq",
+          "asked"
+        ]
+      },
+      "MachineReport": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "command",
+                "version"
+              ]
+            },
+            "maxItems": 50
+          },
+          "restarted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "found"
+        ]
+      },
+      "Conversations": {
+        "type": "object",
+        "properties": {
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            }
+          }
+        },
+        "required": [
+          "conversations"
+        ]
+      },
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agentKind": {
+            "type": "string"
+          },
+          "machineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "machineName": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "opening": {
+            "type": "string",
+            "nullable": true
+          },
+          "working": {
+            "$ref": "#/components/schemas/Working"
+          }
+        },
+        "required": [
+          "id",
+          "agentKind",
+          "machineId",
+          "machineName",
+          "startedAt",
+          "opening",
+          "working"
+        ]
+      },
+      "Working": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "working"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        ]
+      },
+      "Transcript": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agentKind": {
+            "type": "string"
+          },
+          "machineName": {
+            "type": "string"
+          },
+          "working": {
+            "$ref": "#/components/schemas/Working"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "agentKind",
+          "machineName",
+          "working",
+          "messages"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "tool",
+              "activity"
+            ]
+          },
+          "content": {
+            "nullable": true
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "seq",
+          "role",
+          "at"
+        ]
+      },
+      "OpenedConversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "OpenConversation": {
+        "type": "object",
+        "properties": {
+          "machineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agentKind": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          }
+        },
+        "required": [
+          "machineId",
+          "agentKind"
+        ]
+      },
+      "SayThis": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "asked": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string"
+              },
+              "effort": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "asked"
+        ]
+      },
+      "StopThis": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "MachineMessage": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "user"
+                    ]
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "effort": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "tool"
+                    ]
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "verb": {
+                        "type": "string"
+                      },
+                      "arg": {
+                        "type": "string"
+                      },
+                      "ok": {
+                        "type": "boolean"
+                      },
+                      "excerpt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "verb",
+                      "arg",
+                      "excerpt"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "activity"
+                    ]
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "activityType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "activityType"
+                    ],
+                    "additionalProperties": {
+                      "nullable": true
+                    }
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "message"
+        ]
+      },
+      "AgentSession": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "session"
         ]
       }
     },
@@ -1566,73 +2022,6 @@
         }
       }
     },
-    "/machines/current/poll": {
-      "post": {
-        "summary": "Report what this machine has, and ask whether there is anything for it",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MachineReport"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Nothing for it yet; ask again",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NothingForThisMachine"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The body was not the shape it claims",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "That is not a live machine credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/machines/current/session": {
-      "delete": {
-        "summary": "Say this machine is stopping on purpose",
-        "responses": {
-          "204": {
-            "description": "Gone, without waiting out the silence"
-          },
-          "401": {
-            "description": "That is not a live machine credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/spaces/{slug}/machines": {
       "get": {
         "summary": "The machines in this Space",
@@ -1718,6 +2107,521 @@
           },
           "404": {
             "description": "No such Space, or no such machine in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/poll": {
+      "post": {
+        "summary": "Report what this machine has, and ask whether there is anything for it",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MachineReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What to look for, and anything waiting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckedIn"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/session": {
+      "delete": {
+        "summary": "Say this machine is stopping on purpose",
+        "responses": {
+          "204": {
+            "description": "Gone, without waiting out the silence"
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations": {
+      "get": {
+        "summary": "The conversations in this Space",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, each with whether it is being worked on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversations"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Start a conversation with one agent on one machine",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenConversation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Open, and pinned to that agent for good",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenedConversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such machine in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That machine does not have that agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}": {
+      "get": {
+        "summary": "Everything said in one conversation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "In order, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcript"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/messages": {
+      "post": {
+        "summary": "Say something to the agent",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SayThis"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Said, or said already — either way it is in there once"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "It is still answering, or its machine is not here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/stop": {
+      "post": {
+        "summary": "Ask the agent to stop what it is doing",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopThis"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Asked, or asked already"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing is running in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/messages": {
+      "post": {
+        "summary": "Add what the agent said or did",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MachineMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Written, or already written"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "That conversation was not given to this machine",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/session": {
+      "put": {
+        "summary": "Record what the agent calls this conversation",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSession"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Kept, unless it already had one"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
             "content": {
               "application/json": {
                 "schema": {

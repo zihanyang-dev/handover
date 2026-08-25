@@ -1,15 +1,29 @@
 /**
- * Staying connected: report what is here, wait, report again.
+ * Being a machine that is online: report what is here, hear what is wanted, do it, report again.
  *
- * The loop is the whole of being online. There is no separate heartbeat — a machine that has
- * nothing to say still says it, and that is what the server counts as being here.
+ * The loop is the whole of it. There is no separate heartbeat — a machine that has nothing to say
+ * still says it, and that is what the server counts as being here — and no separate channel for
+ * work: a machine is reached by nothing but its own asking, so everything it is ever told arrives
+ * in the answer to a report it was already making.
  */
 
+import { endTurn, startAnswering, type Answering, type Asking } from './answering.ts'
+import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
 
 /** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
 const RETRY_SECONDS = 5
+
+/**
+ * How often to report while an agent is working.
+ *
+ * The deployment sets the resting rate, and this is a floor under it for the one time a machine
+ * has something to hear: somebody who asks an agent to stop is watching it, and the answer to
+ * "why is it still going" cannot be "it will find out in twenty-five seconds". Reporting costs
+ * nothing here — the machine is already awake, holding a running agent.
+ */
+const WHILE_WORKING_SECONDS = 3
 
 export type CheckingIn = {
   /**
@@ -24,6 +38,8 @@ export type CheckingIn = {
   /** Told when something changed, so a person watching a terminal sees why it went quiet. */
   readonly say: (line: string) => void
   readonly env: NodeJS.ProcessEnv
+  /** Where an agent works: this process's own directory, which is where it was connected. */
+  readonly where: string
 }
 
 /**
@@ -39,6 +55,10 @@ export type Reported =
       readonly found: readonly Found[]
       readonly lookFor: readonly string[]
       readonly pollSeconds: number
+      /** One question waiting on this machine, when there is one. */
+      readonly asking: Asking | undefined
+      /** A conversation somebody asked this machine to stop working on. */
+      readonly stopping: string | undefined
     }
   /** The server does not know this credential. Nothing to retry — somebody has to enrol again. */
   | { readonly said: 'not-ours' }
@@ -54,14 +74,22 @@ export async function reportOnce(
   api: Api,
   lookFor: readonly string[],
   env: NodeJS.ProcessEnv,
+  restarted = false,
 ): Promise<Reported> {
   const found = await findAgents(lookFor, env)
-  const came = await api.POST('/machines/current/poll', { body: { found } })
+  const came = await api.POST('/machines/current/poll', { body: { found, restarted } })
 
   if (came.response.status === 401) return { said: 'not-ours' }
   if (came.data === undefined) return { said: 'unreachable', found }
 
-  return { said: 'here', found, lookFor: came.data.lookFor, pollSeconds: came.data.pollSeconds }
+  return {
+    said: 'here',
+    found,
+    lookFor: came.data.lookFor,
+    pollSeconds: came.data.pollSeconds,
+    asking: came.data.asking,
+    stopping: came.data.stopping,
+  }
 }
 
 export type Stopped =
@@ -83,9 +111,14 @@ export async function keepCheckingIn(
   stopping: AbortSignal,
 ): Promise<Stopped> {
   let looking = lookFor
+  let answering: Answering | undefined
+  // Said once, on the first report. Anything still open on this machine then was left by whatever
+  // ran before this process, and went on without anybody watching it.
+  let restarted = true
 
   while (!stopping.aborted) {
-    const reported = await reportOnce(api, looking, running.env)
+    const reported = await reportOnce(api, looking, running.env, restarted)
+    restarted = false
 
     if (reported.said === 'not-ours') return { kind: 'removed' }
 
@@ -96,8 +129,78 @@ export async function keepCheckingIn(
     }
 
     looking = reported.lookFor
-    await running.sleep(reported.pollSeconds, stopping)
+
+    // Asked to stop what it is doing. Told on every report until the agent says it stopped, so a
+    // request made while this machine was between reports arrives on the next one instead of
+    // being lost; `stop` is asked more than once and means the same thing each time.
+    if (answering !== undefined && reported.stopping === answering.conversationId) {
+      running.say(`stopping ${answering.conversationId}`)
+      await answering.stop()
+    }
+
+    // One at a time. Reporting carries on either way: a turn can take ten minutes, and a machine
+    // that goes quiet for ten minutes is one its Space shows as gone.
+    if (answering === undefined && reported.asking !== undefined) {
+      answering = answer(api, reported.asking, running, () => {
+        answering = undefined
+      })
+    }
+
+    // Never slower than the deployment asked, and never slower than the floor while working.
+    const busy = answering !== undefined
+    await running.sleep(
+      busy ? Math.min(reported.pollSeconds, WHILE_WORKING_SECONDS) : reported.pollSeconds,
+      stopping,
+    )
   }
 
+  // Stopping on purpose stops the agent too, and waits for the last of what it said to be written
+  // down. A turn abandoned here would be one nobody can say the outcome of, and the measured
+  // difference between asking an agent to stop and being killed is exactly that.
+  await settle(answering, running)
+
   return { kind: 'asked-to-stop' }
+}
+
+/**
+ * Takes one question, or says why this machine cannot.
+ *
+ * A machine with no adapter for an agent the server knows about is the ordinary way an older
+ * machine meets a newer deployment. It has to come back as a turn that ended saying so, not as a
+ * question that sits unanswered forever with nobody able to explain why.
+ */
+function answer(api: Api, asking: Asking, running: CheckingIn, over: () => void): Answering {
+  const agent = agentFor(asking.agentKind, running.env)
+  running.say(
+    agent === undefined
+      ? `cannot run ${asking.agentKind} on this machine`
+      : `answering in ${asking.conversationId}`,
+  )
+
+  const started =
+    agent === undefined ? cannot(api, asking, running) : startAnswering(api, asking, agent, running)
+
+  void started.done.then(over, over)
+
+  return started
+}
+
+function cannot(api: Api, asking: Asking, running: CheckingIn): Answering {
+  const text = `This machine cannot run ${asking.agentKind}.`
+
+  return {
+    conversationId: asking.conversationId,
+    stop: async () => {
+      // Nothing was ever started, so there is nothing to stop. Saying so is the whole answer.
+    },
+    done: endTurn(api, asking, running.say, { activityType: 'failed', text }),
+  }
+}
+
+async function settle(answering: Answering | undefined, running: CheckingIn): Promise<void> {
+  if (answering === undefined) return
+
+  running.say('stopping what the agent was doing')
+  await answering.stop()
+  await answering.done
 }

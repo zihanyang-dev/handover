@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { api } from '../api.ts'
 import { SignOut } from '../features/identity/sign-out.tsx'
+import { Conversations } from '../features/conversations/conversations.tsx'
 import { Machines } from '../features/machines/machines.tsx'
 
 function Screen() {
@@ -26,6 +27,18 @@ function Screen() {
     )
   }
 
+  // A read that failed is not a Space that is missing. Saying "not available" here would send
+  // somebody looking for a Space that is theirs and is there, over a moment of no network.
+  if (space.isError) {
+    return (
+      <div className="page">
+        <section className="panel">
+          <p className="empty">Could not read this Space. Try again.</p>
+        </section>
+      </div>
+    )
+  }
+
   // Not there and not yours are the same answer, so this page cannot tell them apart either.
   if (space.data === null) {
     return (
@@ -44,13 +57,14 @@ function Screen() {
     <div className="page">
       <div className="row">
         <span className="row-name">
-          <strong>{space.data?.displayName ?? ''}</strong>
+          <strong>{space.data.displayName}</strong>
         </span>
         <Link className="row-where" to="/">
           All Spaces
         </Link>
       </div>
       <Machines slug={slug} />
+      <Conversations slug={slug} />
       {/* Reachable from in here, not only from the Spaces list: somebody who came straight to a
           Space by its address should not have to go somewhere else to leave. */}
       <SignOut />

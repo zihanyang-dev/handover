@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../routeTree.gen.ts'
+import { theSpace } from '../a-space.ts'
 import { signedIn } from '../signed-in.ts'
 
 const server = setupServer()
@@ -34,13 +35,7 @@ function open(at: string) {
 
 describe('entering a Space', () => {
   it('shows the one at that address', async () => {
-    server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
-      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
-      signedIn(),
-    )
+    server.use(...theSpace())
     open('/s/acme')
 
     expect(await screen.findByText('Acme')).toBeDefined()
@@ -48,11 +43,11 @@ describe('entering a Space', () => {
 
   it('answers one that is not yours the same as one that is not there', async () => {
     server.use(
+      // First, so it answers instead of the one the Space double carries.
       http.get('*/spaces/:slug', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
-      http.get('*/spaces/:slug/machines', () => HttpResponse.json({ machines: [] })),
-      signedIn(),
+      ...theSpace({ slug: 'somebody-elses' }),
     )
     open('/s/somebody-elses')
 
@@ -64,11 +59,8 @@ describe('entering a Space', () => {
     // Somebody who came straight to a Space by its address should not have to go somewhere else
     // to leave. `prd.md` asks for this on every screen in here.
     server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
-      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
       signedIn({ credentials: [{ kind: 'email', address: 'mina@example.com', state: 'ready' }] }),
+      ...theSpace(),
     )
     open('/s/acme')
 

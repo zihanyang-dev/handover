@@ -8,19 +8,38 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
+import { forgetStranded, stopWantedOn, waitingOn, type Waiting } from '../db/conversation.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
-import { agentsFound, AGENT_COMMANDS, AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
+import { Asked } from '../conversation/transcript.ts'
+import {
+  agentsFound,
+  AGENT_COMMANDS,
+  AGENT_KIND_NAMES,
+  type AgentKind,
+} from '../machine/agent-kind.ts'
 import { POLL_SECONDS, presence } from '../machine/presence.ts'
-import { api, insteadOfMalformed, rowId, saysNothing, sends, takes } from './contract.ts'
-import { body, refusal, type Failure } from './failure.ts'
+import {
+  api,
+  endpointsBehind,
+  insteadOfMalformed,
+  rowId,
+  saysNothing,
+  sends,
+  takes,
+} from './contract.ts'
+import {
+  BEHIND_A_MACHINE,
+  BEHIND_A_SESSION,
+  body,
+  MALFORMED_BODY,
+  refusal,
+  UNAVAILABLE,
+} from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
 export type MachineApi = { readonly db: Database }
-
-/** An id that names a machine in another Space says what a missing Space says: nothing is here. */
-const UNAVAILABLE: Failure<404> = { reason: 'unavailable', recovery: 'start-over', status: 404 }
 
 /**
  * What a machine reports by command name, not by kind.
@@ -35,10 +54,36 @@ const reporting = z
       .array(z.object({ command: z.string().min(1).max(100), version: z.string().min(1).max(100) }))
       .max(50)
       .readonly(),
+    /**
+     * This machine has just started.
+     *
+     * Only it can say so, and it is worth saying: a turn left open on a machine that has just
+     * started is one whose agent went on working with nobody watching, and no answer about it can
+     * be had from here.
+     */
+    restarted: z.boolean().optional(),
   })
   .openapi('MachineReport')
 
-const nothingYetBody = z
+/** One question waiting for an answer on this machine. */
+const askingBody = z
+  .object({
+    conversationId: z.uuid(),
+    agentKind: z.enum(AGENT_KIND_NAMES),
+    /**
+     * What the agent calls this conversation, when it has said so.
+     *
+     * Absent on a first turn, and handed back on every later one — it is how the agent is asked to
+     * remember, and how a turn nobody saw the end of can be read back afterwards.
+     */
+    agentSession: z.string().nullable(),
+    /** Where the question sits, so the machine can name what it writes after it. */
+    askedSeq: z.number().int(),
+    asked: Asked,
+  })
+  .openapi('SomethingToAnswer')
+
+const checkedInBody = z
   .object({
     /**
      * How long to wait before asking again.
@@ -49,8 +94,18 @@ const nothingYetBody = z
     pollSeconds: z.number().int().positive(),
     /** Which commands to look for. Told every time, so the list can change without a release. */
     lookFor: z.array(z.string()).readonly(),
+    /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
+    asking: askingBody.optional(),
+    /**
+     * A conversation somebody has asked this machine to stop working on.
+     *
+     * Told rather than pushed, because a machine is reached by nothing but its own asking. It
+     * keeps being told until the agent says it stopped, which is what makes a stop that arrived
+     * while nothing was listening arrive on the next report instead of being lost.
+     */
+    stopping: z.uuid().optional(),
   })
-  .openapi('NothingForThisMachine')
+  .openapi('CheckedIn')
 
 const agentBody = z
   .object({ kind: z.enum(AGENT_KIND_NAMES), version: z.string() })
@@ -70,71 +125,121 @@ const machineBody = z
 
 const machinesBody = z.object({ machines: z.array(machineBody).readonly() }).openapi('Machines')
 
-const poll = createRoute({
-  method: 'post',
-  path: '/machines/current/poll',
-  summary: 'Report what this machine has, and ask whether there is anything for it',
-  request: { body: takes(reporting) },
-  responses: {
-    200: sends(nothingYetBody, 'Nothing for it yet; ask again'),
-    400: refusal('The body was not the shape it claims'),
-    401: refusal('That is not a live machine credential'),
-  },
-})
+/**
+ * A waiting question as the machine is told it.
+ *
+ * `asked` is parsed on the way out rather than trusted: it went in as JSON, and a row written by
+ * an older build is exactly the case where a shape can be wrong. A row that will not parse is one
+ * this machine cannot act on, and pretending otherwise sends it a turn it cannot take.
+ */
+function asAsking(waiting: Waiting) {
+  return {
+    conversationId: waiting.conversationId,
+    agentKind: waiting.agentKind as AgentKind,
+    agentSession: waiting.agentSession,
+    askedSeq: waiting.askedSeq,
+    asked: Asked.parse(waiting.asked),
+  }
+}
 
-const leave = createRoute({
-  method: 'delete',
-  path: '/machines/current/session',
-  summary: 'Say this machine is stopping on purpose',
-  responses: {
-    204: saysNothing('Gone, without waiting out the silence'),
-    401: refusal('That is not a live machine credential'),
-  },
-})
-
-const listMachines = createRoute({
-  method: 'get',
-  path: '/spaces/{slug}/machines',
-  summary: 'The machines in this Space',
-  request: { params: z.object({ slug: z.string() }) },
-  responses: {
-    200: sends(machinesBody, 'Everything attached, here or not'),
-    401: refusal('Nobody is signed in here'),
-    404: refusal('No such Space'),
-  },
-})
-
-const detach = createRoute({
-  method: 'delete',
-  path: '/spaces/{slug}/machines/{id}',
-  summary: 'Take a machine out of this Space',
-  request: { params: z.object({ slug: z.string(), id: rowId }) },
-  responses: {
-    204: saysNothing('Out, and its credential stops working'),
-    401: refusal('Nobody is signed in here'),
-    404: refusal('No such Space, or no such machine in it'),
-  },
-})
+const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
+const its = endpointsBehind<{ Variables: Attached }>()
 
 export function machineApi(deps: MachineApi) {
-  const inSpace = [requireSession(deps.db), requireMember(deps.db)]
-  const attached = requireMachine(deps.db)
+  return api<{ Variables: Signed & InSpace }>()
+    .openapiRoutes([listing(deps), detaching(deps)])
+    .route('/', whatMachinesDo(deps))
+}
 
-  return api<{ Variables: Signed & Attached & InSpace }>()
-    .openapi({ ...poll, middleware: [attached] }, async (c) => {
-      await checkIn(deps.db, c.get('machineId'), agentsFound(c.req.valid('json').found))
+/**
+ * What a machine does for itself.
+ *
+ * Its own app, because it is behind its own door: a machine's credential is not a person's, and
+ * one app holding both would be one `c` that claims to have what only half its routes ever do.
+ */
+function whatMachinesDo(deps: MachineApi) {
+  return api<{ Variables: Attached }>().openapiRoutes([polling(deps), leaving(deps)])
+}
 
-      // Nothing to hand out in this slice. The shape is the one work will arrive in, so adding it
-      // is adding to this answer rather than replacing this route.
-      return c.json({ pollSeconds: POLL_SECONDS, lookFor: AGENT_COMMANDS }, 200)
-    })
+/** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
+function polling(deps: MachineApi) {
+  return its({
+    route: createRoute({
+      method: 'post',
+      path: '/machines/current/poll',
+      summary: 'Report what this machine has, and ask whether there is anything for it',
+      middleware: [requireMachine(deps.db)],
+      request: { body: takes(reporting) },
+      responses: {
+        ...BEHIND_A_MACHINE,
+        ...MALFORMED_BODY,
+        200: sends(checkedInBody, 'What to look for, and anything waiting'),
+      },
+    }),
 
-    .openapi({ ...leave, middleware: [attached] }, async (c) => {
+    handler: async (c) => {
+      const machineId = c.get('machineId')
+      const reported = c.req.valid('json')
+      await checkIn(deps.db, machineId, agentsFound(reported.found))
+
+      if (reported.restarted === true) await forgetStranded(deps.db, machineId)
+
+      const [waiting, wanted] = await Promise.all([
+        waitingOn(deps.db, machineId),
+        stopWantedOn(deps.db, machineId),
+      ])
+
+      return c.json(
+        {
+          pollSeconds: POLL_SECONDS,
+          lookFor: AGENT_COMMANDS,
+          ...(waiting === undefined ? {} : { asking: asAsking(waiting) }),
+          ...(wanted === undefined ? {} : { stopping: wanted }),
+        },
+        200,
+      )
+    },
+  })
+}
+
+/** Going away on purpose, so nobody has to wait out the silence to find out. */
+function leaving(deps: MachineApi) {
+  return its({
+    route: createRoute({
+      method: 'delete',
+      path: '/machines/current/session',
+      summary: 'Say this machine is stopping on purpose',
+      middleware: [requireMachine(deps.db)],
+      responses: {
+        ...BEHIND_A_MACHINE,
+        204: saysNothing('Gone, without waiting out the silence'),
+      },
+    }),
+
+    handler: async (c) => {
       await sayGoodbye(deps.db, c.get('machineId'))
       return c.body(null, 204)
-    })
+    },
+  })
+}
 
-    .openapi({ ...listMachines, middleware: inSpace }, async (c) => {
+/** Everything attached to this Space, here or not. */
+function listing(deps: MachineApi) {
+  return theirs({
+    route: createRoute({
+      method: 'get',
+      path: '/spaces/{slug}/machines',
+      summary: 'The machines in this Space',
+      middleware: [requireSession(deps.db), requireMember(deps.db)],
+      request: { params: z.object({ slug: z.string() }) },
+      responses: {
+        ...BEHIND_A_SESSION,
+        200: sends(machinesBody, 'Everything attached, here or not'),
+        404: refusal('No such Space'),
+      },
+    }),
+
+    handler: async (c) => {
       // `asOf` comes back with them, from the same clock that wrote `last_seen_at`. A `new Date()`
       // here would be this process's clock deciding a fact the database's clock recorded.
       const seen = await machinesIn(deps.db, c.get('space').id)
@@ -146,20 +251,37 @@ export function machineApi(deps: MachineApi) {
       }))
 
       return c.json({ machines }, 200)
-    })
+    },
+  })
+}
 
-    .openapi(
-      { ...detach, middleware: inSpace },
-      async (c) => {
-        const removed = await removeMachine(deps.db, c.req.valid('param').id, c.get('space').id)
-
-        // An id from another Space removes nothing, and says the same thing a missing Space says.
-        if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-
-        return c.body(null, 204)
+/** Taking one out, which is also what stops its credential working. */
+function detaching(deps: MachineApi) {
+  return theirs({
+    route: createRoute({
+      method: 'delete',
+      path: '/spaces/{slug}/machines/{id}',
+      summary: 'Take a machine out of this Space',
+      middleware: [requireSession(deps.db), requireMember(deps.db)],
+      request: { params: z.object({ slug: z.string(), id: rowId }) },
+      responses: {
+        ...BEHIND_A_SESSION,
+        204: saysNothing('Out, and its credential stops working'),
+        404: refusal('No such Space, or no such machine in it'),
       },
-      insteadOfMalformed(UNAVAILABLE),
-    )
+    }),
+
+    hook: insteadOfMalformed(UNAVAILABLE),
+
+    handler: async (c) => {
+      const removed = await removeMachine(deps.db, c.req.valid('param').id, c.get('space').id)
+
+      // An id from another Space removes nothing, and says the same thing a missing Space says.
+      if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
+
+      return c.body(null, 204)
+    },
+  })
 }
 
 /** A `Date` is not a wire value. Converting here keeps the owner's shape free of transport. */

@@ -65,6 +65,20 @@ CREATE TABLE public.browser_sessions (
 
 
 --
+-- Name: conversations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.conversations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    space_id uuid NOT NULL,
+    machine_id uuid NOT NULL,
+    agent_kind text NOT NULL,
+    agent_session_id text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: credentials; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -151,6 +165,22 @@ CREATE TABLE public.memberships (
 
 
 --
+-- Name: messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.messages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    seq integer NOT NULL,
+    key text NOT NULL,
+    role text NOT NULL,
+    content jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT messages_role_check CHECK ((role = ANY (ARRAY['user'::text, 'assistant'::text, 'tool'::text, 'activity'::text])))
+);
+
+
+--
 -- Name: spaces; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -195,6 +225,14 @@ ALTER TABLE ONLY public.browser_sessions
 
 ALTER TABLE ONLY public.browser_sessions
     ADD CONSTRAINT browser_sessions_token_hash_key UNIQUE (token_hash);
+
+
+--
+-- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_pkey PRIMARY KEY (id);
 
 
 --
@@ -286,6 +324,30 @@ ALTER TABLE ONLY public.memberships
 
 
 --
+-- Name: messages messages_in_order; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_in_order UNIQUE (conversation_id, seq);
+
+
+--
+-- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: messages messages_said_once; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_said_once UNIQUE (conversation_id, key);
+
+
+--
 -- Name: spaces spaces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -307,6 +369,20 @@ ALTER TABLE ONLY public.spaces
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: conversations_in_space; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX conversations_in_space ON public.conversations USING btree (space_id, created_at DESC);
+
+
+--
+-- Name: conversations_on_machine; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX conversations_on_machine ON public.conversations USING btree (machine_id);
 
 
 --
@@ -351,6 +427,22 @@ ALTER TABLE ONLY public.agents
 
 ALTER TABLE ONLY public.browser_sessions
     ADD CONSTRAINT browser_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: conversations conversations_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id);
+
+
+--
+-- Name: conversations conversations_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
 
 
 --
@@ -407,6 +499,14 @@ ALTER TABLE ONLY public.memberships
 
 ALTER TABLE ONLY public.memberships
     ADD CONSTRAINT memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: messages messages_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
 
 
 --

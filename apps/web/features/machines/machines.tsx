@@ -9,13 +9,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
+import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
-
-const LOOKS: Record<string, string> = {
-  'claude-code': 'Claude Code',
-  codex: 'Codex',
-  'cursor-agent': 'Cursor Agent',
-}
+import { agentName, type AgentKind } from '../agents.ts'
+import { useOpenConversation } from '../conversations/talking.ts'
 
 function machinesIn(slug: string) {
   return {
@@ -90,13 +87,20 @@ export function Machines({ slug }: { readonly slug: string }) {
                 with something to install, and calling it "no machines" would send somebody to
                 connect one that is already connected.
               */}
-              <span className="note">
-                {machine.agents.length === 0
-                  ? 'No agents found on it yet'
-                  : machine.agents
-                      .map((agent) => `${LOOKS[agent.kind] ?? agent.kind} ${agent.version}`)
-                      .join(' · ')}
-              </span>
+              {machine.agents.length === 0 ? (
+                <span className="note">No agents found on it yet</span>
+              ) : (
+                machine.agents.map((agent) => (
+                  <TalkTo
+                    key={agent.kind}
+                    slug={slug}
+                    machineId={machine.id}
+                    kind={agent.kind}
+                    version={agent.version}
+                    here={machine.presence.state === 'here'}
+                  />
+                ))
+              )}
             </span>
             <button
               className="button button-quiet"
@@ -113,6 +117,54 @@ export function Machines({ slug }: { readonly slug: string }) {
 
       <MachineKey slug={slug} />
     </section>
+  )
+}
+
+/**
+ * One agent on one machine, as a way in.
+ *
+ * The way to start talking to an agent is to point at the one you mean, where it is. A second
+ * list somewhere else asking which machine and which agent would be the same question asked
+ * again, about the same rows already on this screen.
+ */
+function TalkTo({
+  slug,
+  machineId,
+  kind,
+  version,
+  here,
+}: {
+  readonly slug: string
+  readonly machineId: string
+  readonly kind: AgentKind
+  readonly version: string
+  readonly here: boolean
+}) {
+  const navigate = useNavigate()
+  const open = useOpenConversation(slug)
+
+  return (
+    <button
+      className="button button-quiet"
+      type="button"
+      // Nothing would pick it up, so it is refused before it is started rather than after.
+      disabled={!here || open.isPending}
+      title={here ? undefined : 'This machine is not here'}
+      onClick={() => {
+        open.mutate(
+          { machineId, agentKind: kind },
+          {
+            onSuccess: (id) => {
+              void navigate({ to: '/s/$slug/c/$id', params: { slug, id } })
+            },
+          },
+        )
+      }}
+    >
+      <span className="button-label">
+        {agentName(kind)} {version}
+      </span>
+    </button>
   )
 }
 

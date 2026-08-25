@@ -19,6 +19,7 @@ import { spaceApi } from './space-api.ts'
 import { credentialApi } from './credential-api.ts'
 import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
+import { conversationApi } from './conversation-api.ts'
 import { machineApi } from './machine-api.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
@@ -60,4 +61,5 @@ export function handoverApp(deps: App) {
     .route('/', enrolmentApi({ db: deps.db, webOrigin: deps.webOrigin }))
     .route('/', approvalApi({ db: deps.db }))
     .route('/', machineApi({ db: deps.db }))
+    .route('/', conversationApi({ db: deps.db }))
 }

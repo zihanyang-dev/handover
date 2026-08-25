@@ -278,7 +278,9 @@ async function stayConnected(attachment: Attachment): Promise<void> {
   const stopped = await keepCheckingIn(
     api,
     attachment.lookFor,
-    { sleep, say, env: machineEnvironment() },
+    // Where an agent works is where this process is, which the service file set to the directory
+    // `connect` was run in. Nobody chooses it, and nothing asks.
+    { sleep, say, env: machineEnvironment(), where: process.cwd() },
     stopping.signal,
   )
 

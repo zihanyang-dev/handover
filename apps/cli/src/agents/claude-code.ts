@@ -1,0 +1,293 @@
+/**
+ * Driving Claude Code.
+ *
+ * Through Anthropic's own SDK, pointed at the copy already on this machine: the person's login,
+ * their subscription and their settings all live in that CLI, and a second copy of it here would
+ * be a second thing to keep signed in.
+ */
+
+import { query } from '@anthropic-ai/claude-agent-sdk'
+import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
+import { plain, shorten } from './agent.ts'
+import { onPath } from './on-path.ts'
+
+/** Tools this adapter recognises well enough to say what they did in a word. */
+const VERBS: Record<string, { readonly verb: string; readonly arg: (input: Input) => string }> = {
+  Read: { verb: 'read', arg: (i) => file(i['file_path']) },
+  Write: { verb: 'wrote', arg: (i) => file(i['file_path']) },
+  Edit: { verb: 'edited', arg: (i) => file(i['file_path']) },
+  NotebookEdit: { verb: 'edited', arg: (i) => file(i['notebook_path']) },
+  Bash: { verb: 'ran', arg: (i) => plain(i['command']) },
+  Grep: { verb: 'searched', arg: (i) => plain(i['pattern']) },
+  Glob: { verb: 'looked for', arg: (i) => plain(i['pattern']) },
+  WebFetch: { verb: 'fetched', arg: (i) => plain(i['url']) },
+  WebSearch: { verb: 'searched the web', arg: (i) => plain(i['query']) },
+  Task: { verb: 'delegated', arg: (i) => plain(i['description']) },
+  // A count, not a list: a plan belongs on the page as a plan, and this line is only meant to
+  // say that one was made. A missing or misshapen field counts as nothing rather than throwing.
+  TodoWrite: {
+    verb: 'planned',
+    arg: (i) => `${Array.isArray(i['todos']) ? i['todos'].length : 0} steps`,
+  },
+}
+
+type Input = Record<string, unknown>
+
+/** A tool call that has begun, held until its result comes back to be paired with it. */
+type Call = { readonly name: string; readonly verb: string; readonly arg: string }
+
+/** A path is easier to recognise by its last part; the rest is the same for every line. */
+function file(value: unknown): string {
+  const [last] = plain(value).split('/').slice(-1)
+  return last ?? ''
+}
+
+/**
+ * What a tool call did, in our words.
+ *
+ * An unrecognised tool keeps its own name and no verb — the set is open, and one MCP server adds
+ * as many as it likes, so a page that can only show tools from a list would go blind the first
+ * time somebody connected one.
+ */
+function asDoing(name: string, input: Input): { verb: string; arg: string } {
+  const known = VERBS[name]
+  if (known === undefined) return { verb: '', arg: '' }
+
+  return { verb: known.verb, arg: known.arg(input) }
+}
+
+function blocksOf(message: unknown): readonly Record<string, unknown>[] {
+  const content = (message as { content?: unknown } | undefined)?.content
+  return Array.isArray(content) ? (content as Record<string, unknown>[]) : []
+}
+
+/**
+ * Turns Claude's messages into ours, live or replayed.
+ *
+ * A tool call and its result arrive as two blocks in two messages, so what a page finally shows
+ * as one line is assembled here — a call is remembered until its result comes back. Nothing is
+ * written until then: the row for a tool is written once, when there is something to say about it.
+ */
+export function fold(): (message: unknown) => readonly Said[] {
+  const started = new Map<string, Call>()
+
+  return (message) =>
+    blocksOf(message).flatMap((block): Said[] => {
+      if (block['type'] === 'text') return [{ said: 'text', text: plain(block['text']) }]
+      if (block['type'] === 'thinking')
+        return [{ said: 'thinking', text: plain(block['thinking']) }]
+      if (block['type'] === 'tool_use') return [beginning(started, block)]
+      if (block['type'] === 'tool_result') return finishing(started, block)
+
+      return []
+    })
+}
+
+function beginning(started: Map<string, Call>, block: Record<string, unknown>): Said {
+  const name = plain(block['name'])
+  const { verb, arg } = asDoing(name, (block['input'] ?? {}) as Input)
+  started.set(plain(block['id']), { name, verb, arg })
+
+  return { said: 'doing', name, verb, arg }
+}
+
+function finishing(started: Map<string, Call>, block: Record<string, unknown>): Said[] {
+  const id = plain(block['tool_use_id'])
+  const call = started.get(id)
+  if (call === undefined) return []
+
+  started.delete(id)
+  return [
+    {
+      said: 'did',
+      ...call,
+      ok: block['is_error'] !== true,
+      excerpt: shorten(readable(block['content'])),
+    },
+  ]
+}
+
+function readable(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+
+  return content.map((part: Record<string, unknown>) => plain(part['text'])).join(' ')
+}
+
+/**
+ * Input that never arrives, so the CLI starts and waits instead of doing anything.
+ *
+ * Not an empty generator: one of those ends immediately, and the CLI would shut down before it
+ * could be asked anything.
+ */
+const SILENCE: AsyncIterable<never> = {
+  [Symbol.asyncIterator]: () => ({ next: async () => new Promise<never>(() => {}) }),
+}
+
+/**
+ * What this agent lets a person choose.
+ *
+ * Asked of the CLI itself rather than kept as a list here: which models an account may use is not
+ * something this program can know, and a list it carried would be wrong for somebody the day
+ * their plan changed. The prompt never yields, so the CLI starts, answers, and is stopped without
+ * a single model call.
+ */
+async function offers(where: string, env: NodeJS.ProcessEnv): Promise<readonly Model[]> {
+  const claude = await onPath('claude', env)
+  if (claude === undefined) return []
+
+  const stopping = new AbortController()
+  const asking = query({
+    prompt: SILENCE,
+    options: { cwd: where, pathToClaudeCodeExecutable: claude, abortController: stopping },
+  })
+
+  try {
+    const models = await asking.supportedModels()
+
+    return models.map((one) => ({
+      id: one.value,
+      name: one.displayName,
+      about: one.description,
+      efforts: one.supportedEffortLevels ?? [],
+      // Claude Code publishes its default as a row of its own, named for what it is, so the
+      // list already says which one somebody gets by saying nothing.
+      isDefault: one.value === 'default',
+    }))
+  } finally {
+    // It was started to answer one question and was never given anything to do. Both are needed:
+    // closing stops us listening, aborting stops it running. Leaving it would be a CLI sitting on
+    // this machine for as long as this program lives, waiting for input that never comes.
+    asking.close()
+    stopping.abort()
+  }
+}
+
+/**
+ * The one thing Claude Code refuses in a way that is not a fault: it no longer has that session.
+ *
+ * Recognised here because only this adapter knows what its own agent's refusal reads like, and
+ * calling it a failure would send somebody looking for a fault that is not there.
+ */
+function isForgotten(trouble: unknown): boolean {
+  return String((trouble as Error | undefined)?.message ?? '').includes('No conversation found')
+}
+
+/** What to show a person when a turn ends badly. Never the raw throw, which is for us. */
+function plainly(trouble: unknown): string {
+  const said = String((trouble as Error | undefined)?.message ?? '').trim()
+  return said === '' ? 'Claude Code stopped without saying why.' : said
+}
+
+type SdkMessage = {
+  type: string
+  subtype?: string
+  session_id?: string
+  message?: unknown
+} & Record<string, unknown>
+
+function toldFrom(message: SdkMessage, translate: (message: unknown) => readonly Said[]): Told[] {
+  if (message.type === 'system' && message.subtype === 'init') {
+    return [{ told: 'session', id: message.session_id ?? '' }]
+  }
+  if (message.type === 'assistant' || message.type === 'user') {
+    return translate(message.message).map((said) => ({ told: 'said', said }) as const)
+  }
+  if (message.type === 'result') {
+    return [
+      message.subtype === 'success'
+        ? { told: 'ended', why: { why: 'done' } }
+        : { told: 'ended', why: { why: 'failed', said: plainly(message) } },
+    ]
+  }
+
+  return []
+}
+
+function settings(where: string, claude: string, resume: string | null, asked: Asked) {
+  return {
+    cwd: where,
+    pathToClaudeCodeExecutable: claude,
+    // Nobody is standing at this machine to answer a prompt, so anything that asks would hang
+    // there until the turn was given up on. What it may do is bounded by the account it runs as
+    // and the directory it was connected in, which is what a person is told up front.
+    permissionMode: 'bypassPermissions' as const,
+    ...(resume === null ? {} : { resume }),
+    ...(asked.model === undefined ? {} : { model: asked.model }),
+    // Cast to the SDK's own type rather than to one of its members: what a person may pick came
+    // from `offers`, which is this CLI's own answer, so the check that matters happened there.
+    ...(asked.effort === undefined
+      ? {}
+      : { effort: asked.effort as NonNullable<Options['effort']> }),
+  }
+}
+
+/** What a turn somebody asked to stop ends as, however the CLI happened to report it. */
+const STOPPED = { told: 'ended', why: { why: 'cancelled' } } as const
+
+const asStopped = (told: Told): Told => (told.told === 'ended' ? STOPPED : told)
+
+function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk {
+  let running: ReturnType<typeof query> | undefined
+  let interrupted = false
+
+  /** Returns true when the agent could not pick up the session it was given. */
+  async function* run(resume: string | null, asked: Asked): AsyncGenerator<Told, boolean> {
+    const claude = await onPath('claude', env)
+    if (claude === undefined) {
+      const said = 'Claude Code is no longer on this machine.'
+      yield { told: 'ended', why: { why: 'failed', said } }
+      return false
+    }
+
+    const translate = fold()
+    running = query({ prompt: asked.text, options: settings(where, claude, resume, asked) })
+
+    try {
+      // An interrupt does not always arrive as a throw: asked to stop part way through, the CLI
+      // finishes the turn normally and reports an error result. Both paths mean the same thing,
+      // and only we know which it was — we are the ones who asked.
+      for await (const message of running) {
+        const told = toldFrom(message, translate)
+        yield* interrupted ? told.map(asStopped) : told
+      }
+    } catch (trouble) {
+      if (interrupted) yield STOPPED
+      else if (isForgotten(trouble) && resume !== null) return true
+      else yield { told: 'ended', why: { why: 'failed', said: plainly(trouble) } }
+    } finally {
+      running.close()
+    }
+
+    return false
+  }
+
+  return {
+    say: async function* (asked: Asked): AsyncIterable<Told> {
+      if (sofar !== null) {
+        const forgotten = yield* run(sofar, asked)
+        if (!forgotten) return
+        yield { told: 'forgot' }
+      }
+
+      yield* run(null, asked)
+    },
+
+    stop: async () => {
+      interrupted = true
+      // Interrupting leaves the conversation alive to be picked up again; killing the process
+      // would not. Somebody who stops an agent means to redirect it, not to lose it.
+      await running?.interrupt().catch(() => {
+        // It had already finished, or it is gone. Either way there is nothing left to stop.
+      })
+    },
+  }
+}
+
+export function claudeCode(env: NodeJS.ProcessEnv): Agent {
+  return {
+    offers: async (where) => offers(where, env),
+    talk: (where, sofar) => talk(where, sofar, env),
+  }
+}

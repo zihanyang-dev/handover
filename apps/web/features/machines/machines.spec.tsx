@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
-import { signedIn } from '../../signed-in.ts'
+import { theSpace } from '../../a-space.ts'
 
 const server = setupServer()
 
@@ -32,7 +32,7 @@ function open(at: string) {
   )
 }
 
-const HERE = { state: 'here' }
+const HERE = { state: 'here' } as const
 
 /**
  * Fresh each time, and half a minute away from where the rounding changes.
@@ -41,17 +41,7 @@ const HERE = { state: 'here' }
  * offset sitting on a minute boundary flips to the next number partway through a slow run.
  */
 function goneHalfAnHourAgo() {
-  return { state: 'gone', since: new Date(Date.now() - 1_770_000).toISOString() }
-}
-
-function theSpace(machines: unknown[]) {
-  return [
-    http.get('*/spaces/acme', () =>
-      HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-    ),
-    http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines })),
-    signedIn(),
-  ]
+  return { state: 'gone', since: new Date(Date.now() - 1_770_000).toISOString() } as const
 }
 
 async function panel() {
@@ -60,7 +50,7 @@ async function panel() {
 
 describe('the machines in a Space', () => {
   it('says agents run on your own machine before anybody wonders why nothing works', async () => {
-    server.use(...theSpace([]))
+    server.use(...theSpace())
     open('/s/acme')
 
     const machines = await panel()
@@ -71,14 +61,16 @@ describe('the machines in a Space', () => {
 
   it('shows one that is here, with what it has', async () => {
     server.use(
-      ...theSpace([
-        {
-          id: 'm-1',
-          name: 'mina-mbp',
-          presence: HERE,
-          agents: [{ kind: 'claude-code', version: '2.1.4' }],
-        },
-      ]),
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            presence: HERE,
+            agents: [{ kind: 'claude-code', version: '2.1.4' }],
+          },
+        ],
+      }),
     )
     open('/s/acme')
 
@@ -93,7 +85,9 @@ describe('the machines in a Space', () => {
     // Gone is not the same as never connected. Somebody looking for a machine they set up needs
     // to see it sitting there, offline.
     server.use(
-      ...theSpace([{ id: 'm-1', name: 'mina-mbp', presence: goneHalfAnHourAgo(), agents: [] }]),
+      ...theSpace({
+        machines: [{ id: 'm-1', name: 'mina-mbp', presence: goneHalfAnHourAgo(), agents: [] }],
+      }),
     )
     open('/s/acme')
 
@@ -107,7 +101,9 @@ describe('the machines in a Space', () => {
   it('says a connected machine has no agents, rather than calling it no machines', async () => {
     // Two different things to do next: install an agent, or connect a machine. Merging them sends
     // somebody to reconnect one that is already connected, while its terminal says it is online.
-    server.use(...theSpace([{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }]))
+    server.use(
+      ...theSpace({ machines: [{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }] }),
+    )
     open('/s/acme')
 
     const machines = await panel()
@@ -119,12 +115,10 @@ describe('the machines in a Space', () => {
   it('says it could not read them, rather than saying there are none', async () => {
     // The failure that would otherwise be silent: a Space with machines showing the message that
     // tells you to go and connect one.
+    // First, so it answers instead of the one the Space double carries.
     server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
       http.get('*/spaces/acme/machines', () => HttpResponse.error()),
-      signedIn(),
+      ...theSpace(),
     )
     open('/s/acme')
 
@@ -138,14 +132,19 @@ describe('the machines in a Space', () => {
     // A server that learned a new agent should give this page a row it can still read, not a
     // blank. The name it does not recognise is better than the name it does not have.
     server.use(
-      ...theSpace([
-        {
-          id: 'm-1',
-          name: 'mina-mbp',
-          presence: HERE,
-          agents: [{ kind: 'some-agent-from-next-year', version: '1.0.0' }],
-        },
-      ]),
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            presence: HERE,
+            // The one place the double is allowed to answer outside the contract, and the whole
+            // point of the test: this is what a newer server sends, and this build cannot have a
+            // type for a name it has never heard.
+            agents: [{ kind: 'some-agent-from-next-year' as 'codex', version: '1.0.0' }],
+          },
+        ],
+      }),
     )
     open('/s/acme')
 
@@ -156,13 +155,10 @@ describe('the machines in a Space', () => {
 
   it('says it could not read them when the server refuses, not only when it is unreachable', async () => {
     server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
       http.get('*/spaces/acme/machines', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
-      signedIn(),
+      ...theSpace(),
     )
     open('/s/acme')
 
@@ -174,7 +170,7 @@ describe('the machines in a Space', () => {
   it('takes one away when asked', async () => {
     const removed: string[] = []
     server.use(
-      ...theSpace([{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }]),
+      ...theSpace({ machines: [{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }] }),
       http.delete('*/spaces/acme/machines/:id', ({ params }) => {
         removed.push(String(params['id']))
         return new HttpResponse(null, { status: 204 })
@@ -192,7 +188,7 @@ describe('the machines in a Space', () => {
 describe('a key for a machine with no browser', () => {
   it('is offered right where the machines are', async () => {
     server.use(
-      ...theSpace([]),
+      ...theSpace(),
       http.post('*/spaces/acme/machine-keys', () =>
         HttpResponse.json(
           { key: 'hk_secret', expiresAt: new Date().toISOString() },
@@ -211,7 +207,7 @@ describe('a key for a machine with no browser', () => {
   it('says the key will not be shown again, because only its hash is kept', async () => {
     // Somebody who closes this without copying it needs another key, not a way to look it up.
     server.use(
-      ...theSpace([]),
+      ...theSpace(),
       http.post('*/spaces/acme/machine-keys', () =>
         HttpResponse.json(
           { key: 'hk_secret', expiresAt: new Date().toISOString() },
@@ -229,7 +225,7 @@ describe('a key for a machine with no browser', () => {
 
   it('says it could not make one, rather than looking like a button that does nothing', async () => {
     server.use(
-      ...theSpace([]),
+      ...theSpace(),
       http.post('*/spaces/acme/machine-keys', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
