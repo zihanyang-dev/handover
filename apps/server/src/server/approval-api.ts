@@ -144,13 +144,12 @@ function makingAKey(deps: ApprovalApi) {
     handler: async (c) => {
       const secret = newEnrolmentSecret()
 
+      // A key: no code and no machine name, because nobody will read one and nobody knows the
+      // other yet. Which of those an enrolment has is the shape, not four fields left blank.
       const opened = await openEnrolment(deps.db, {
-        spaceId: c.get('space').id,
-        // Nobody knows yet. The machine that collects this is the only party that does.
-        machineName: undefined,
+        kind: 'key',
         secretHash: secret.hash,
-        // No code: nobody will read one, and a code nobody reads can only leak.
-        userCode: undefined,
+        spaceId: c.get('space').id,
         approvedBy: c.get('userId'),
       })
 

@@ -180,7 +180,7 @@ export function EmailCode({
         )}
 
         <input
-          className="code"
+          className="otp"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"

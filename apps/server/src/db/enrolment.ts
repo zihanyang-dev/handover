@@ -20,22 +20,38 @@ import type { UserCode } from '../machine/user-code.ts'
 import type { DB } from '../../generated/db.ts'
 import type { Database } from './connection.ts'
 
-export type OpeningEnrolment = {
-  /**
-   * Absent when a machine opened it: which Space it joins is the approver's to choose, and a
-   * machine naming one would let an unauthenticated caller tell a real slug from a missing one.
-   */
-  readonly spaceId: string | undefined
-  /**
-   * Absent on the key path: a key is generated before anybody knows which machine will use it,
-   * and the machine that collects it is the only party that knows its own name.
-   */
-  readonly machineName: string | undefined
+/**
+ * The two ways an enrolment begins, as two shapes rather than one with holes in it.
+ *
+ * Written as one shape with four optional fields, the illegal combinations were all expressible:
+ * a key with a user code nobody will ever read, a machine asking that names its own Space, an
+ * enrolment approved by somebody and waiting for an answer at once. Which of those are possible is
+ * the whole of what this type has to say.
+ */
+export type OpeningEnrolment = MachineAsking | KeyMade
+
+/** A machine that showed a code and is waiting for a person to answer it. */
+export type MachineAsking = {
+  readonly kind: 'asking'
   readonly secretHash: string
-  /** Absent on the key path: nobody reads a code there, and one nobody types can only leak. */
-  readonly userCode: UserCode | undefined
-  /** Set on the key path, where whoever generated it has already said yes by generating it. */
-  readonly approvedBy: string | undefined
+  /** What the machine calls itself, which is all anybody knows about it yet. */
+  readonly machineName: string
+  /** What somebody reads off one screen and types into another. */
+  readonly userCode: UserCode
+}
+
+/**
+ * A key generated inside a Space, which is an enrolment that arrives approved.
+ *
+ * No code, because nobody will read one and a code nobody reads can only leak. No machine name,
+ * because it is made before anybody knows which machine will use it. A Space and an approver,
+ * because generating it in a Space *was* the approving.
+ */
+export type KeyMade = {
+  readonly kind: 'key'
+  readonly secretHash: string
+  readonly spaceId: string
+  readonly approvedBy: string
 }
 
 export type Opened = {
@@ -44,18 +60,26 @@ export type Opened = {
 }
 
 export async function openEnrolment(db: Database, opening: OpeningEnrolment): Promise<Opened> {
-  const approved = opening.approvedBy === undefined ? null : sql<Date>`clock_timestamp()`
-
   const row = await db
     .insertInto('enrolments')
     .values({
-      space_id: opening.spaceId ?? null,
-      machine_name: opening.machineName ?? null,
       secret_hash: opening.secretHash,
-      user_code: opening.userCode ?? null,
-      approved_by: opening.approvedBy ?? null,
-      approved_at: approved,
       expires_at: sql`now() + make_interval(mins => ${LIFETIME_MINUTES})`,
+      ...(opening.kind === 'asking'
+        ? {
+            machine_name: opening.machineName,
+            user_code: opening.userCode,
+            space_id: null,
+            approved_by: null,
+            approved_at: null,
+          }
+        : {
+            machine_name: null,
+            user_code: null,
+            space_id: opening.spaceId,
+            approved_by: opening.approvedBy,
+            approved_at: sql<Date>`clock_timestamp()`,
+          }),
     })
     .returning(['id', 'expires_at'])
     .executeTakeFirstOrThrow()

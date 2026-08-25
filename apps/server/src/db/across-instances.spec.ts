@@ -232,11 +232,10 @@ async function aQuestion(): Promise<{ machineId: string; conversationId: string 
   const secret = newEnrolmentSecret()
   const userCode = newUserCode()
   await openEnrolment(one, {
-    spaceId: undefined,
+    kind: 'asking',
     machineName: 'mina-mbp',
     secretHash: secret.hash,
     userCode,
-    approvedBy: undefined,
   })
   await approveEnrolment(one, userCode, { userId, spaceId: made.space.id })
   const collected = await collectEnrolment(one, {

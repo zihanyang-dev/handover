@@ -1,12 +1,12 @@
 /**
- * Conversations and what was said in them.
+ * A conversation: opening one, saying something into it, and reading it back.
+ *
+ * What one line of it is made of is `message.ts`, and what is being run in it is `turn.ts`. This
+ * file is the conversation itself — the thing a person opens, talks into and scrolls.
  *
  * Reads take no locks. Every path that writes takes them in this order:
  *   1. the `conversations` row, so only one writer at a time decides what comes next
  *   2. the `messages` rows appended under it
- *
- * `forgetStranded` is the exception and says so where it is written: it closes turns on a machine
- * that has just started, when by definition nobody else is writing them.
  */
 
 import { sql } from 'kysely'
@@ -14,8 +14,11 @@ import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/transcript.ts'
-import type { Database, Tx } from './connection.ts'
-import { endTurn, openTurn, openTurnsOn } from './turn.ts'
+import type { Database } from './connection.ts'
+import { append, alreadySaid, held, unfinished, type Saying, type Said } from './message.ts'
+
+export type { Saying, Said } from './message.ts'
+import { endTurn, openTurn } from './turn.ts'
 
 export type Opening = {
   readonly spaceId: string
@@ -73,31 +76,6 @@ export async function openConversation(db: Database, opening: Opening): Promise<
   })
 }
 
-/** One message and where it goes. Everything a writer needs and nothing about who they are. */
-type Appending = {
-  readonly conversationId: string
-  /** This message's name in this conversation. A repeat of it is the same message, not a second. */
-  readonly key: string
-  readonly message: Message
-}
-
-/** Something a person does to a conversation they are a member of the Space of. */
-export type Saying = {
-  readonly conversationId: string
-  readonly spaceId: string
-  readonly key: string
-}
-
-export type Said =
-  | { readonly kind: 'said' }
-  /** The same message again. Nothing was written the second time, and nothing needs to be. */
-  | { readonly kind: 'said-already' }
-  | { readonly kind: 'no-conversation' }
-  /** It is still working on the last thing. Wait for it rather than stacking another on top. */
-  | { readonly kind: 'still-answering' }
-  /** Its machine is not here. Nobody would pick this up, so it is refused rather than queued. */
-  | { readonly kind: 'machine-away' }
-
 /**
  * Adds one message a person said, if the agent is free to hear it.
  *
@@ -125,96 +103,6 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
 
     return append(tx, { ...saying, message: { role: 'user', content: asked } })
   })
-}
-
-/**
- * The conversation, held for the rest of the transaction, and where its machine was as of now.
- *
- * One read rather than two, and one lock rather than a lock and a hope: whether the agent is busy
- * and whether its machine is here are both answered from this row, and both stop being true the
- * moment somebody else writes.
- */
-async function held(tx: Tx, saying: Saying) {
-  return tx
-    .selectFrom('conversations')
-    .innerJoin('machines', 'machines.id', 'conversations.machine_id')
-    .select([
-      'conversations.id',
-      'machines.last_seen_at as lastSeenAt',
-      'machines.left_at as leftAt',
-      sql<Date>`now()`.as('asOf'),
-    ])
-    .where('conversations.id', '=', saying.conversationId)
-    .where('conversations.space_id', '=', saying.spaceId)
-    .where('machines.removed_at', 'is', null)
-    .forUpdate()
-    .executeTakeFirst()
-}
-
-async function alreadySaid(tx: Tx, saying: Saying): Promise<boolean> {
-  const already = await tx
-    .selectFrom('messages')
-    .select('id')
-    .where('conversation_id', '=', saying.conversationId)
-    .where('key', '=', saying.key)
-    .executeTakeFirst()
-
-  return already !== undefined
-}
-
-/**
- * Whether a question in this conversation is still owed an answer.
- *
- * A question with no turn is one nobody has taken; a question whose turn has not ended is one
- * being run. Both are owed. What was said after it decides nothing — the words are the record, and
- * whether the work is finished is the ledger's to say.
- */
-async function unfinished(db: Database | Tx, conversationId: string): Promise<boolean> {
-  const owed = await db
-    .selectFrom('messages')
-    .leftJoin('turns', (join) =>
-      join
-        .onRef('turns.conversation_id', '=', 'messages.conversation_id')
-        .onRef('turns.asked_seq', '=', 'messages.seq'),
-    )
-    .select('messages.seq')
-    .where('messages.conversation_id', '=', conversationId)
-    .where('messages.role', '=', 'user')
-    .where('turns.ended_at', 'is', null)
-    .limit(1)
-    .executeTakeFirst()
-
-  return owed !== undefined
-}
-
-/**
- * Puts one message at the end of a conversation.
- *
- * `seq` is read and written inside the caller's lock, so two writers cannot both believe they are
- * next. A repeat of a key that is already there is not an error: the first write is what the
- * caller wanted, and the only reason they are asking again is that they never heard so.
- */
-async function append(tx: Tx, appending: Appending): Promise<Said> {
-  const next = await tx
-    .selectFrom('messages')
-    .select(sql<number>`coalesce(max(seq), 0) + 1`.as('seq'))
-    .where('conversation_id', '=', appending.conversationId)
-    .executeTakeFirstOrThrow()
-
-  const written = await tx
-    .insertInto('messages')
-    .values({
-      conversation_id: appending.conversationId,
-      seq: next.seq,
-      key: appending.key,
-      role: appending.message.role,
-      content: JSON.stringify(appending.message.content),
-    })
-    .onConflict((conflict) => conflict.columns(['conversation_id', 'key']).doNothing())
-    .returning('id')
-    .executeTakeFirst()
-
-  return written === undefined ? { kind: 'said-already' } : { kind: 'said' }
 }
 
 export type Stopping =
@@ -257,70 +145,13 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
   })
 }
 
-/**
- * The conversation on this machine that somebody has asked it to stop, if there is one.
- *
- * Answered by the ledger: a stop matters exactly while the turn it was asked about is still
- * running. Read from the transcript instead, every line the agent wrote after the request would
- * have to be examined to decide whether the request was still standing — and an agent goes on
- * writing for as long as it takes the request to reach it.
- *
- * Nothing has to clear it. The turn ending is the answer, and until there is one the machine is
- * told again on every report — which is also what makes a request that arrived while the machine
- * was between reports arrive on the next one instead of being lost.
- */
-export async function stopWantedOn(db: Database, machineId: string): Promise<string | undefined> {
-  const wanted = await db
-    .selectFrom('turns')
-    .innerJoin('messages', (join) =>
-      join
-        .onRef('messages.conversation_id', '=', 'turns.conversation_id')
-        .on('messages.role', '=', 'activity'),
-    )
-    .select('turns.conversation_id as conversationId')
-    .where('turns.machine_id', '=', machineId)
-    .where('turns.ended_at', 'is', null)
-    .whereRef('messages.seq', '>', 'turns.asked_seq')
-    .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`)
-    .limit(1)
-    .executeTakeFirst()
-
-  return wanted?.conversationId
+/** A machine reporting something, which is one message it has to be the owner of. */
+export type Reporting = {
+  readonly conversationId: string
+  readonly key: string
+  readonly message: Message
+  readonly machineId: string
 }
-
-/**
- * Closes every turn this machine left open, saying nobody knows how they went.
- *
- * Called when a machine says it has just started, which is the one moment when an open turn on it
- * is certainly nobody's: killing the process that drives an agent does not kill the agent, so a
- * turn abandoned that way went on without anybody watching, and what it did is unknowable here.
- *
- * `unknown` and not `failed`, because the two ask different things of a person: a failed turn is
- * safe to ask for again, and this one may already have done everything it was asked.
- *
- * Both halves in one transaction: the ledger says the turn is over and the transcript says how it
- * looked. A ledger closed without the record would leave a conversation that reads as still
- * running to anybody who scrolls it.
- */
-export async function forgetStranded(db: Database, machineId: string): Promise<number> {
-  return db.transaction().execute(async (tx) => {
-    const stranded = await openTurnsOn(tx, machineId)
-
-    for (const turn of stranded) {
-      await append(tx, {
-        conversationId: turn.conversationId,
-        key: `${String(turn.askedSeq)}/end`,
-        message: { role: 'activity', content: { activityType: ACTIVITY.unknown } },
-      })
-      await endTurn(tx, turn.conversationId, turn.askedSeq)
-    }
-
-    return stranded.length
-  })
-}
-
-/** A machine reporting something, which is an {@link Appending} it has to be the owner of. */
-export type Reporting = Appending & { readonly machineId: string }
 
 /**
  * Adds one message the agent's machine reported.

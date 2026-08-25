@@ -8,10 +8,16 @@
  * Every fact here is decided by the database. Taking a turn is an insert against a primary key, so
  * two machines racing both run it and one of them loses; ending one is a conditional update, so a
  * turn ends once. Nothing is inferred, and nothing is decided in TypeScript.
+ *
+ * `forgetStranded` is the one path here that writes into the transcript as well, and it must: the
+ * ledger saying a turn is over while the transcript still reads as running would be a conversation
+ * that looks alive to anybody who scrolls it. Both halves go in one transaction.
  */
 
 import { sql } from 'kysely'
+import { ACTIVITY } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
+import { append } from './message.ts'
 
 /** A question waiting to be answered, as the machine that just took it is told. */
 export type Taken = {
@@ -114,4 +120,66 @@ export async function openTurnsOn(
     .where('machine_id', '=', machineId)
     .where('ended_at', 'is', null)
     .execute()
+}
+
+/**
+ * The conversation on this machine that somebody has asked it to stop, if there is one.
+ *
+ * Answered by the ledger: a stop matters exactly while the turn it was asked about is still
+ * running. Read from the transcript instead, every line the agent wrote after the request would
+ * have to be examined to decide whether the request was still standing — and an agent goes on
+ * writing for as long as it takes the request to reach it.
+ *
+ * Nothing has to clear it. The turn ending is the answer, and until there is one the machine is
+ * told again on every report — which is also what makes a request that arrived while the machine
+ * was between reports arrive on the next one instead of being lost.
+ */
+export async function stopWantedOn(db: Database, machineId: string): Promise<string | undefined> {
+  const wanted = await db
+    .selectFrom('turns')
+    .innerJoin('messages', (join) =>
+      join
+        .onRef('messages.conversation_id', '=', 'turns.conversation_id')
+        .on('messages.role', '=', 'activity'),
+    )
+    .select('turns.conversation_id as conversationId')
+    .where('turns.machine_id', '=', machineId)
+    .where('turns.ended_at', 'is', null)
+    .whereRef('messages.seq', '>', 'turns.asked_seq')
+    .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`)
+    .limit(1)
+    .executeTakeFirst()
+
+  return wanted?.conversationId
+}
+
+/**
+ * Closes every turn this machine left open, saying nobody knows how they went.
+ *
+ * Called when a machine says it has just started, which is the one moment when an open turn on it
+ * is certainly nobody's: killing the process that drives an agent does not kill the agent, so a
+ * turn abandoned that way went on without anybody watching, and what it did is unknowable here.
+ *
+ * `unknown` and not `failed`, because the two ask different things of a person: a failed turn is
+ * safe to ask for again, and this one may already have done everything it was asked.
+ *
+ * Both halves in one transaction: the ledger says the turn is over and the transcript says how it
+ * looked. A ledger closed without the record would leave a conversation that reads as still
+ * running to anybody who scrolls it.
+ */
+export async function forgetStranded(db: Database, machineId: string): Promise<number> {
+  return db.transaction().execute(async (tx) => {
+    const stranded = await openTurnsOn(tx, machineId)
+
+    for (const turn of stranded) {
+      await append(tx, {
+        conversationId: turn.conversationId,
+        key: `${String(turn.askedSeq)}/end`,
+        message: { role: 'activity', content: { activityType: ACTIVITY.unknown } },
+      })
+      await endTurn(tx, turn.conversationId, turn.askedSeq)
+    }
+
+    return stranded.length
+  })
 }

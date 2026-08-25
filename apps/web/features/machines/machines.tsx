@@ -199,7 +199,7 @@ function MachineKey({ slug }: { readonly slug: string }) {
     return (
       <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
         <p className="label">Run this on that machine, within 15 minutes</p>
-        <code className="field">handover connect --key {key}</code>
+        <code className="command">handover connect --key {key}</code>
         {/*
           Said because it is true and cannot be undone: only the hash is kept, so this is the one
           moment it can be read. Somebody who closes this without copying it needs another key,

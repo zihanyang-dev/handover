@@ -109,11 +109,10 @@ function askingToConnect(deps: EnrolmentApi) {
       const userCode = newUserCode()
 
       const opened = await openEnrolment(deps.db, {
-        spaceId: undefined,
+        kind: 'asking',
         machineName: c.req.valid('json').machineName,
         secretHash: secret.hash,
         userCode,
-        approvedBy: undefined,
       })
 
       return c.json(

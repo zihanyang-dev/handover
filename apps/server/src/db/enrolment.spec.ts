@@ -9,7 +9,7 @@ import {
   enrolmentWaiting,
   openEnrolment,
   refuseEnrolment,
-  type OpeningEnrolment,
+  type MachineAsking,
 } from './enrolment.ts'
 import { collectEnrolment } from './machine.ts'
 import { arrive } from './user.ts'
@@ -51,13 +51,13 @@ beforeEach(async () => {
   SPACE = made.space.id
 })
 
-function opening(overrides: Partial<OpeningEnrolment> = {}): OpeningEnrolment {
+/** A machine that showed a code and is waiting for somebody to answer it. */
+function opening(overrides: Partial<MachineAsking> = {}): MachineAsking {
   return {
-    spaceId: undefined,
+    kind: 'asking',
     machineName: `mina-mbp-${RUN.slice(0, 8)}`,
     secretHash: newEnrolmentSecret().hash,
     userCode: newUserCode(),
-    approvedBy: undefined,
     ...overrides,
   }
 }
@@ -75,7 +75,7 @@ describe('opening one', () => {
     const asked = opening()
     await openEnrolment(db, asked)
 
-    expect(await enrolmentWaiting(db, asked.userCode as UserCode)).toMatchObject({
+    expect(await enrolmentWaiting(db, asked.userCode)).toMatchObject({
       machineName: asked.machineName,
     })
   })
@@ -98,9 +98,13 @@ describe('opening one', () => {
   it('is already answered when a person generated it, so nothing waits on a code', async () => {
     // The key path. Generating it in a browser is the approval; there is no second step and no
     // code, because a code nobody will ever type can only leak.
-    const asked = opening({ spaceId: SPACE, userCode: undefined, approvedBy: PERSON })
     const secret = newEnrolmentSecret()
-    await openEnrolment(db, { ...asked, secretHash: secret.hash })
+    await openEnrolment(db, {
+      kind: 'key',
+      secretHash: secret.hash,
+      spaceId: SPACE,
+      approvedBy: PERSON,
+    })
 
     const collected = await collectEnrolment(db, {
       secretHash: secret.hash,
@@ -116,7 +120,7 @@ describe('answering one', () => {
   it('takes the first answer and refuses the second, whichever way round', async () => {
     const asked = opening()
     await openEnrolment(db, asked)
-    const code = asked.userCode as UserCode
+    const code = asked.userCode
 
     expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({
       kind: 'answered',
@@ -129,7 +133,7 @@ describe('answering one', () => {
     // and deciding in TypeScript would let both through.
     const asked = opening()
     await openEnrolment(db, asked)
-    const code = asked.userCode as UserCode
+    const code = asked.userCode
 
     const answers = await Promise.all(
       Array.from({ length: 10 }, async () =>
@@ -143,7 +147,7 @@ describe('answering one', () => {
   it('cannot be answered once it has run out', async () => {
     const asked = opening()
     await openEnrolment(db, asked)
-    const code = asked.userCode as UserCode
+    const code = asked.userCode
     await ageOut(code)
 
     expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({

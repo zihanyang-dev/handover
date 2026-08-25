@@ -7,16 +7,14 @@ import { loadEnv } from '../env.ts'
 import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
-import { takeOne } from './turn.ts'
+import { forgetStranded, stopWantedOn, takeOne } from './turn.ts'
 import {
   askToStop,
   conversationWith,
-  forgetStranded,
   machineSays,
   noteAgentSession,
   openConversation,
   sayTo,
-  stopWantedOn,
   type Said,
 } from './conversation.ts'
 import { approveEnrolment, openEnrolment } from './enrolment.ts'
@@ -64,11 +62,10 @@ async function attached(): Promise<string> {
   const secret = newEnrolmentSecret()
   const userCode = newUserCode()
   await openEnrolment(db, {
-    spaceId: undefined,
+    kind: 'asking',
     machineName: 'mina-mbp',
     secretHash: secret.hash,
     userCode,
-    approvedBy: undefined,
   })
   await approveEnrolment(db, userCode, { userId: PERSON, spaceId: SPACE })
 

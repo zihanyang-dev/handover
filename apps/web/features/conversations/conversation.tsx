@@ -148,7 +148,7 @@ function Used({ content }: { readonly content: unknown }) {
           <span className="button-label">{open ? 'Hide' : 'What came back'}</span>
         </button>
       )}
-      {open && <pre className="code">{did.excerpt}</pre>}
+      {open && <pre className="output">{did.excerpt}</pre>}
     </li>
   )
 }
