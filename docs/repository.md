@@ -129,9 +129,11 @@ pnpm check        以上全部 + generate 无 diff
 ```
 main       全量 pnpm check
 PR         同上
-nightly    真实凭据的 canary(缺凭据时明确记录阻塞,不冒充通过)
 release    tag v* → 四个平台的可执行文件 + SHA256SUMS → GitHub Release
 ```
+
+**还没有 nightly。** 真实凭据的 canary(Resend、两个 OAuth)要等这套东西真的部署在某处 ——
+现在写一个,它只会因为没有 secret 而绿,那比没有更糟。
 
 **release 是一个 job,不是每个平台一个。** bun 交叉编译,所以一次发布里的四个文件出自同一份源码的
 同一时刻;分成四个 job 就有了「一半是这版一半是上版」这种状态。
