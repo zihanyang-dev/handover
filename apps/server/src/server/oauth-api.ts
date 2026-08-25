@@ -8,7 +8,7 @@
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
-import type { Context } from 'hono'
+import type { Context, Env } from 'hono'
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Database } from '../db/connection.ts'
 import { connectProvider } from '../db/credential.ts'
@@ -208,22 +208,27 @@ async function leave(
 }
 
 /**
- * Every leg of the round trip, whether or not a session is involved: coming back has to work for
- * a browser that is not signed in yet, which is the whole point of going.
+ * Two doors again. Leaving to sign in and coming back have to work for a browser that is not
+ * signed in yet — that is the whole point of going. Leaving to connect a way in to an account
+ * needs the account, and so needs the session that is holding it.
  */
-const trip = endpointsBehind<{ Variables: Signed }>()
+const openToAnyone = endpointsBehind<Env>()
+const behindASession = endpointsBehind<{ Variables: Signed }>()
 
 export function oauthApi(deps: OAuthApi) {
-  return api<{ Variables: Signed }>().openapiRoutes([
-    leavingToSignIn(deps),
-    leavingToConnect(deps),
-    comingBack(deps),
-  ])
+  return api()
+    .openapiRoutes([leavingToSignIn(deps), comingBack(deps)])
+    .route('/', asSomebody(deps))
+}
+
+/** The one leg that is about an account that already exists. */
+function asSomebody(deps: OAuthApi) {
+  return api<{ Variables: Signed }>().openapiRoutes([leavingToConnect(deps)])
 }
 
 /** Leaving with nobody signed in, which is how somebody becomes signed in. */
 function leavingToSignIn(deps: OAuthApi) {
-  return trip({
+  return openToAnyone({
     route: createRoute({
       method: 'post',
       path: '/auth/{provider}/start',
@@ -252,7 +257,7 @@ function leavingToSignIn(deps: OAuthApi) {
 
 /** Leaving as somebody, to come back with one more way of proving it is them. */
 function leavingToConnect(deps: OAuthApi) {
-  return trip({
+  return behindASession({
     route: createRoute({
       method: 'post',
       path: '/me/credentials/{provider}/start',
@@ -282,7 +287,7 @@ function leavingToConnect(deps: OAuthApi) {
 
 /** Coming back, which always ends at a page: the browser was redirected, so nobody reads a body. */
 function comingBack(deps: OAuthApi) {
-  return trip({
+  return openToAnyone({
     route: createRoute({
       method: 'get',
       path: '/auth/{provider}/callback',

@@ -45,7 +45,7 @@ const offeredBody = z
  * There is still a door — it is just an open one, and naming it says that on purpose rather than
  * by the absence of anything.
  */
-const anyone = endpointsBehind<Env>()
+const openToAnyone = endpointsBehind<Env>()
 
 export function signInApi(deps: SignInApi) {
   return api().openapiRoutes([offering(deps), asking(deps), answering(deps)])
@@ -62,7 +62,7 @@ function asking(deps: SignInApi) {
 
 /** Which ways in this deployment can actually offer. A way nobody can use is not offered. */
 function offering(deps: SignInApi) {
-  return anyone({
+  return openToAnyone({
     route: createRoute({
       method: 'get',
       path: '/auth/credentials',
@@ -77,7 +77,7 @@ function offering(deps: SignInApi) {
 
 /** Handing a code back, which is the step that signs somebody in. */
 function answering(deps: SignInApi) {
-  return anyone({
+  return openToAnyone({
     route: createRoute({
       method: 'post',
       path: '/auth/email-codes/{id}/answer',

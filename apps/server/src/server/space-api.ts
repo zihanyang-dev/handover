@@ -47,8 +47,8 @@ const takenBody = z
  * what `c` holds. Making one is behind the weaker of the two: there is no Space to be a member of
  * yet, which is the whole of what the endpoint is for.
  */
-const signedIn = endpointsBehind<{ Variables: Signed }>()
-const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
 
 export function spaceApi(db: Database) {
   return api<{ Variables: Signed }>()
@@ -58,7 +58,7 @@ export function spaceApi(db: Database) {
 
 /** Making one, with whoever asked as its first member. */
 function making(db: Database) {
-  return signedIn({
+  return behindASession({
     route: createRoute({
       method: 'post',
       path: '/spaces',
@@ -98,7 +98,7 @@ function making(db: Database) {
 
 /** Entering one. The gate answers it entirely: reaching the handler is the whole question. */
 function entering(db: Database) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}',

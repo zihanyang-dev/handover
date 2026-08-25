@@ -61,7 +61,7 @@ export type MeApi = {
  * swallows every path in the whole app — including the sign-in routes, which escaped only by
  * being registered first. Nothing this important should rest on ordering.
  */
-const theirs = endpointsBehind<{ Variables: Signed }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>()
 
 export function meApi(deps: MeApi) {
   return api<{ Variables: Signed }>().openapiRoutes([who(deps), renaming(deps), leaving(deps)])
@@ -69,7 +69,7 @@ export function meApi(deps: MeApi) {
 
 /** Who is signed in, and everything they can reach from here. */
 function who({ db, providers }: MeApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'get',
       path: '/me',
@@ -95,7 +95,7 @@ function who({ db, providers }: MeApi) {
 
 /** Changing the name everything shows. One name, so changing it changes every Space at once. */
 function renaming({ db }: MeApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'patch',
       path: '/me',
@@ -115,7 +115,7 @@ function renaming({ db }: MeApi) {
 
 /** Leaving. The session is revoked on this side as well as forgotten on the browser's. */
 function leaving({ db }: MeApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'delete',
       path: '/browser/sessions/current',

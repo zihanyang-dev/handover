@@ -163,8 +163,8 @@ function asAsking(taken: Taken) {
   }
 }
 
-const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
-const its = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindAMachine = endpointsBehind<{ Variables: Attached }>()
 
 export function machineApi(deps: MachineApi) {
   return api<{ Variables: Signed & InSpace }>()
@@ -184,7 +184,7 @@ function whatMachinesDo(deps: MachineApi) {
 
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
 function polling(deps: MachineApi) {
-  return its({
+  return behindAMachine({
     route: createRoute({
       method: 'post',
       path: '/machines/current/poll',
@@ -225,7 +225,7 @@ function polling(deps: MachineApi) {
 
 /** Going away on purpose, so nobody has to wait out the silence to find out. */
 function leaving(deps: MachineApi) {
-  return its({
+  return behindAMachine({
     route: createRoute({
       method: 'delete',
       path: '/machines/current/session',
@@ -246,7 +246,7 @@ function leaving(deps: MachineApi) {
 
 /** Everything attached to this Space, here or not. */
 function listing(deps: MachineApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}/machines',
@@ -278,7 +278,7 @@ function listing(deps: MachineApi) {
 
 /** Taking one out, which is also what stops its credential working. */
 function detaching(deps: MachineApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'delete',
       path: '/spaces/{slug}/machines/{id}',

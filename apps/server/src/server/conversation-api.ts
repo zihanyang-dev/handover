@@ -185,8 +185,8 @@ function asStanding(standing: Standing) {
  * own — which of them it is behind is the one thing that decides what `c` holds, and repeating it
  * at each endpoint would be the same fact with seven places to drift.
  */
-const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
-const its = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindAMachine = endpointsBehind<{ Variables: Attached }>()
 
 export function conversationApi(deps: ConversationApi) {
   return api<{ Variables: Signed & InSpace }>()
@@ -206,7 +206,7 @@ function whatMachinesReport(deps: ConversationApi) {
 
 /** Everything in this Space, newest first. */
 function listing(deps: ConversationApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}/conversations',
@@ -230,7 +230,7 @@ function listing(deps: ConversationApi) {
 
 /** One conversation and everything said in it. Reading changes nothing, so nothing is refused. */
 function reading(deps: ConversationApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}/conversations/{id}',
@@ -259,7 +259,7 @@ function reading(deps: ConversationApi) {
 
 /** Starting one, which pins it to an agent on a machine for as long as it exists. */
 function opening(deps: ConversationApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'post',
       path: '/spaces/{slug}/conversations',
@@ -293,7 +293,7 @@ function opening(deps: ConversationApi) {
 
 /** Saying something, which only lands when the agent is free to hear it. */
 function saying(deps: ConversationApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'post',
       path: '/spaces/{slug}/conversations/{id}/messages',
@@ -330,7 +330,7 @@ function saying(deps: ConversationApi) {
 
 /** Asking it to stop, which is allowed only while there is something to stop. */
 function stopping(deps: ConversationApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'post',
       path: '/spaces/{slug}/conversations/{id}/stop',
@@ -365,7 +365,7 @@ function stopping(deps: ConversationApi) {
 
 /** What the agent said or did. The path never names a machine — its credential does. */
 function reporting(deps: ConversationApi) {
-  return its({
+  return behindAMachine({
     route: createRoute({
       method: 'post',
       path: '/machines/current/conversations/{id}/messages',
@@ -398,7 +398,7 @@ function reporting(deps: ConversationApi) {
 
 /** What the agent calls a conversation, which is how a later turn asks it to remember. */
 function naming(deps: ConversationApi) {
-  return its({
+  return behindAMachine({
     route: createRoute({
       method: 'put',
       path: '/machines/current/conversations/{id}/session',

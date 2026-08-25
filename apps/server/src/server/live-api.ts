@@ -30,8 +30,8 @@ export type LiveApi = {
  */
 const HEARTBEAT_MS = 20_000
 
-const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
-const its = endpointsBehind<{ Variables: Attached }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindAMachine = endpointsBehind<{ Variables: Attached }>()
 
 export function liveApi(deps: LiveApi) {
   return api<{ Variables: Signed & InSpace }>()
@@ -41,7 +41,7 @@ export function liveApi(deps: LiveApi) {
 
 /** What is happening right now, for as long as somebody is looking. */
 function watching(deps: LiveApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}/conversations/{id}/live',
@@ -90,7 +90,7 @@ function watching(deps: LiveApi) {
 
 /** What the machine running a turn is seeing, as it sees it. */
 function reporting(deps: LiveApi) {
-  return its({
+  return behindAMachine({
     route: createRoute({
       method: 'post',
       path: '/machines/current/conversations/{id}/live',

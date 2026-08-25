@@ -77,9 +77,21 @@ export function api<E extends Env>(): OpenAPIHono<E> {
 /**
  * Endpoints behind one door.
  *
- * A door is named once per file, and every endpoint behind it says only its two halves: the
+ * A door is named once per app, and every endpoint behind it says only its two halves: the
  * contract it answers by, and what it does. Named rather than told apart by which came first —
  * `}, async (c) => {` reads as one thing, and they are two.
+ *
+ * There are four doors in this system and each has one name, used in every file:
+ *
+ * ```
+ * openToAnyone       nothing is proved, and nothing needs to be
+ * behindASession     somebody signed in                       → BEHIND_A_SESSION
+ * behindAMembership  signed in, and in this Space             → BEHIND_A_SESSION, and a 404
+ * behindAMachine     a live machine credential                → BEHIND_A_MACHINE
+ * ```
+ *
+ * One app, one door. An app whose `Variables` cover two of them is an app whose `c` claims to hold
+ * what only half its routes ever set — so a second door is a second app, mounted alongside.
  *
  * `addRoute` is said out loud because it has to be: left off, its type is `boolean | undefined`,
  * and this repository's `exactOptionalPropertyTypes` will not have that where a `boolean` is

@@ -34,23 +34,29 @@ const waitingBody = z
 const keyBody = z.object({ key: z.string(), expiresAt: z.iso.datetime() }).openapi('MachineKey')
 
 /**
- * A live session. Two of these also need membership of the Space being joined, which is the whole
- * of somebody's standing to let a machine in, and which each says for itself.
+ * Two doors, two apps.
+ *
+ * Looking at a machine and turning one away need a session and nothing more — a code is not about
+ * a Space until somebody picks one. Saying yes needs membership of the Space being joined, which
+ * is the whole of somebody's standing to let a machine in.
  */
-const theirs = endpointsBehind<{ Variables: Signed & InSpace }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>()
+const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>()
 
 export function approvalApi(deps: ApprovalApi) {
-  return api<{ Variables: Signed & InSpace }>().openapiRoutes([
-    whatIsWaiting(deps),
-    approving(deps),
-    makingAKey(deps),
-    refusing(deps),
-  ])
+  return api<{ Variables: Signed }>()
+    .openapiRoutes([whatIsWaiting(deps), refusing(deps)])
+    .route('/', intoASpace(deps))
+}
+
+/** The half that names a Space, and so needs somebody who is in it. */
+function intoASpace(deps: ApprovalApi) {
+  return api<{ Variables: Signed & InSpace }>().openapiRoutes([approving(deps), makingAKey(deps)])
 }
 
 /** Looking at a machine before answering it. */
 function whatIsWaiting(deps: ApprovalApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'get',
       path: '/enrolments/{userCode}',
@@ -80,7 +86,7 @@ function whatIsWaiting(deps: ApprovalApi) {
 
 /** Saying yes. */
 function approving(deps: ApprovalApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'post',
       // The Space is in the path, not the body: approving is something you do *to a Space*, and
@@ -121,7 +127,7 @@ function approving(deps: ApprovalApi) {
  * For a machine with no browser to open, which is most machines that are not somebody's laptop.
  */
 function makingAKey(deps: ApprovalApi) {
-  return theirs({
+  return behindAMembership({
     route: createRoute({
       method: 'post',
       path: '/spaces/{slug}/machine-keys',
@@ -155,7 +161,7 @@ function makingAKey(deps: ApprovalApi) {
 
 /** Saying no, which is final: asking again under the same code will not change it. */
 function refusing(deps: ApprovalApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'post',
       path: '/enrolments/{userCode}/refuse',

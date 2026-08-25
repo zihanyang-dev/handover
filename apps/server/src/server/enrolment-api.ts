@@ -76,7 +76,7 @@ const collectedBody = z
  * A machine nobody has approved has no identity to prove, and the secret handed back at the
  * asking is the only proof collecting needs. Nothing either does matters until a person says yes.
  */
-const anyone = endpointsBehind<Env>()
+const openToAnyone = endpointsBehind<Env>()
 
 export function enrolmentApi(deps: EnrolmentApi) {
   return api().openapiRoutes([askingToConnect(deps), collecting_(deps)])
@@ -84,7 +84,7 @@ export function enrolmentApi(deps: EnrolmentApi) {
 
 /** Asking to come in, which produces a code somebody has to say yes to. */
 function askingToConnect(deps: EnrolmentApi) {
-  return anyone({
+  return openToAnyone({
     route: createRoute({
       method: 'post',
       path: '/enrolments',
@@ -122,7 +122,7 @@ function askingToConnect(deps: EnrolmentApi) {
 
 /** Collecting the credential, which is also how a machine asks whether it has been approved yet. */
 function collecting_(deps: EnrolmentApi) {
-  return anyone({
+  return openToAnyone({
     route: createRoute({
       method: 'post',
       path: '/enrolments/collect',

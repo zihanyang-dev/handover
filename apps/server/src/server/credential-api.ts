@@ -28,7 +28,7 @@ export type CredentialApi = {
 const ELSEWHERE: Failure<409> = { reason: 'address-elsewhere', recovery: 'retype', status: 409 }
 
 /** Somebody already signed in, which is the whole difference from signing in. */
-const theirs = endpointsBehind<{ Variables: Signed }>()
+const behindASession = endpointsBehind<{ Variables: Signed }>()
 
 export function credentialApi(deps: CredentialApi) {
   return api<{ Variables: Signed }>().openapiRoutes([asking(deps), answering(deps)])
@@ -47,7 +47,7 @@ function asking(deps: CredentialApi) {
 
 /** Answering it, which is the step that actually adds the address. */
 function answering(deps: CredentialApi) {
-  return theirs({
+  return behindASession({
     route: createRoute({
       method: 'post',
       path: '/me/credentials/email-codes/{id}/answer',
