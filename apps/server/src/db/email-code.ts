@@ -29,6 +29,41 @@ import type { Database, Tx } from './connection.ts'
 const WAIT = sql<number>`ceil(extract(epoch from
   created_at + make_interval(secs => ${RESEND_INTERVAL_SECONDS}) - now()))::int`.as('wait')
 
+/**
+ * Whether this caller has already asked for as many codes this hour as it may.
+ *
+ * Counted per caller rather than across the deployment: a ceiling over everybody is one an
+ * attacker can burn through to keep real people from signing in, which trades an uncertain bill
+ * for a certain outage. Read in the same transaction that would add to the count.
+ *
+ * A deployment that cannot tell who is calling counts nobody. That is the honest answer — the
+ * alternative is counting a number the caller chose.
+ */
+async function askedTooOften(
+  tx: Tx,
+  askedBy: string | null,
+  perHour: number,
+): Promise<number | undefined> {
+  if (askedBy === null) return undefined
+
+  const sofar = await tx
+    .selectFrom('email_codes')
+    .select((eb) => [
+      eb.fn.countAll<number>().as('count'),
+      // When the oldest of them falls out of the window, which is when there is room again. Said
+      // rather than left to guess: a page that has to invent a number invents the wrong one.
+      sql<number>`ceil(extract(epoch from
+        min(created_at) + interval '1 hour' - now()))::int`.as('freeIn'),
+    ])
+    .where('asked_by', '=', askedBy)
+    .where('created_at', '>', sql<Date>`now() - interval '1 hour'`)
+    .executeTakeFirstOrThrow()
+
+  if (sofar.count < perHour) return undefined
+
+  return Math.max(sofar.freeIn, 1)
+}
+
 export type CodeToSend = {
   /** The caller's idempotency key. Retrying with the same one must not send a second mail. */
   readonly requestKey: string
@@ -36,6 +71,10 @@ export type CodeToSend = {
   /** What the code is for. Signing in and attaching an address never share one. */
   readonly purpose: Purpose
   readonly codeHash: string
+  /**
+   * Who asked, as a hash. Null when this deployment cannot honestly tell — see `caller.ts`.
+   */
+  readonly askedBy: string | null
 }
 
 /**
@@ -50,14 +89,35 @@ export type IssuedCode = {
 }
 
 export type Issued =
+  /** This caller has asked for as many codes this hour as it may. Nothing is wrong with the
+   *  address; there is nothing to do but wait, and this says how long. */
+  | { readonly kind: 'too-many'; readonly retryAfterSeconds: number }
   | ({ readonly kind: 'issued' } & IssuedCode)
   /**
-   * This request key already issued one. The mail for it is sent or in flight, so the caller must
-   * not send another.
+   * This request already issued one, and a letter for it is in that inbox or may be. The caller
+   * must not send another: a second code kills the first, which is the one somebody is reading.
    */
   | ({ readonly kind: 'replayed' } & IssuedCode)
   /** A code went to this address moments ago. Sending now would break the one in the inbox. */
   | { readonly kind: 'too-soon'; readonly retryAfterSeconds: number }
+  /** This request already tried, and no letter can reach that address. Saying otherwise is a
+   *  person waiting for something that will never arrive. */
+  | { readonly kind: 'undeliverable' }
+
+/**
+ * How long a send has to have been going before nothing having been recorded means nobody is
+ * sending. The mailer gives up on its own after ten seconds and always writes down what happened,
+ * so past this the process that was doing it is gone.
+ */
+const NOBODY_IS_SENDING = sql<boolean>`created_at < now() - interval '30 seconds'`.as('abandoned')
+
+/** The attempt this request already made, if it made one. */
+type Attempt = IssuedCode & {
+  /** What became of the letter. Null when no attempt has finished. */
+  readonly delivery: 'sent' | 'refused' | 'unknown' | null
+  /** Nothing was recorded, and long enough has passed that nothing will be. */
+  readonly abandoned: boolean
+}
 
 /**
  * The code this request already issued, if it issued one.
@@ -66,20 +126,24 @@ export type Issued =
  * string alone, the same key sent for a different address hands back the first letter's id and
  * expiry and says a code is on its way — to an inbox nothing was ever sent to.
  */
-async function replayOf(db: Database, request: CodeToSend): Promise<IssuedCode | undefined> {
+async function replayOf(db: Database, request: CodeToSend): Promise<Attempt | undefined> {
   const found = await db
     .selectFrom('email_codes')
-    .select(['id', 'expires_at', WAIT])
+    .select(['id', 'expires_at', 'delivery', WAIT, NOBODY_IS_SENDING])
     .where('request_key', '=', request.requestKey)
     .where('email', '=', request.email)
     .where('purpose', '=', request.purpose)
+    .$narrowType<{ delivery: 'sent' | 'refused' | 'unknown' | null }>()
     .executeTakeFirst()
 
   if (found === undefined) return undefined
+
   return {
     id: found.id,
     expiresAt: found.expires_at,
     resendAfterSeconds: Math.max(found.wait, 0),
+    delivery: found.delivery,
+    abandoned: found.abandoned,
   }
 }
 
@@ -105,7 +169,12 @@ async function waitLeft(db: Database, email: string, purpose: Purpose): Promise<
  * Sending the mail happens after this commits, never inside it: a code that exists without
  * its mail can be resent, while mail sent for a code that rolled back cannot be recalled.
  */
-export async function issueCode(db: Database, request: CodeToSend): Promise<Issued> {
+export async function issueCode(
+  db: Database,
+  request: CodeToSend,
+  /** What this deployment is willing to send in an hour, over every address together. */
+  perHour: number,
+): Promise<Issued> {
   return db.transaction().execute(async (tx) => {
     await sql`select pg_advisory_xact_lock(hashtext(${`${request.purpose}:${request.email}`}))`.execute(
       tx,
@@ -113,21 +182,24 @@ export async function issueCode(db: Database, request: CodeToSend): Promise<Issu
 
     // Before anything is closed. A retry must hand back a working code, and closing first
     // would supersede the very one it is about to return.
-    const replayed = await replayOf(tx, request)
-    if (replayed !== undefined) return { kind: 'replayed', ...replayed }
+    const already = await replayOf(tx, request)
+    const answered = replay(already)
+    if (answered !== undefined) return answered
+
+    // Left over from an attempt whose process died. Nobody has its code — it only ever existed in
+    // memory — so it is not something to hand back, and it is holding this request's name.
+    if (already !== undefined)
+      await tx.deleteFrom('email_codes').where('id', '=', already.id).execute()
 
     const wait = await waitLeft(tx, request.email, request.purpose)
     if (wait > 0) return { kind: 'too-soon', retryAfterSeconds: wait }
 
-    // Whatever else is open for this address and this purpose is now stale, and reads as expired
-    // rather than wrong. A sign-in halfway through is left alone: it is a different letter.
-    await tx
-      .updateTable('email_codes')
-      .set({ closed_at: sql`now()`, closed_reason: 'superseded' })
-      .where('email', '=', request.email)
-      .where('purpose', '=', request.purpose)
-      .where('closed_at', 'is', null)
-      .execute()
+    // After the replay and the per-address wait, so a retry of something already sent is never
+    // refused by a budget it did not spend.
+    const freeIn = await askedTooOften(tx, request.askedBy, perHour)
+    if (freeIn !== undefined) return { kind: 'too-many', retryAfterSeconds: freeIn }
+
+    await supersede(tx, request)
 
     // No conflict handling on the key: the advisory lock already serialised every retry that
     // shares this address, so reaching here with a spent key means the caller reused one for a
@@ -139,6 +211,7 @@ export async function issueCode(db: Database, request: CodeToSend): Promise<Issu
         purpose: request.purpose,
         code_hash: request.codeHash,
         request_key: request.requestKey,
+        asked_by: request.askedBy,
         expires_at: sql`now() + make_interval(mins => ${LIFETIME_MINUTES})`,
       })
       .returning(['id', 'expires_at'])
@@ -151,6 +224,61 @@ export async function issueCode(db: Database, request: CodeToSend): Promise<Issu
       resendAfterSeconds: RESEND_INTERVAL_SECONDS,
     }
   })
+}
+
+/**
+ * What a repeat of the same request is told, or nothing when there is nothing to repeat.
+ *
+ * Four situations that used to be one answer. A letter that went and one that may have gone are
+ * both "do not send another": a second code kills the first, and the first is the one somebody is
+ * reading. A refusal is said out loud rather than dressed as success. And an attempt that recorded
+ * nothing and has had long enough is one whose letter will never exist.
+ */
+function replay(already: Attempt | undefined): Issued | undefined {
+  if (already === undefined) return undefined
+  if (already.delivery === 'refused') return { kind: 'undeliverable' }
+  if (already.delivery === null && already.abandoned) return undefined
+
+  const { delivery: _outcome, abandoned: _stale, ...code } = already
+  return { kind: 'replayed', ...code }
+}
+
+/**
+ * Writes down what became of the letter, once it is known.
+ *
+ * Outside the transaction that made the code, because it is about something that happened outside
+ * the database. Nothing waits on it: a request whose answer is already on its way to a browser
+ * must not fail because a bookkeeping write did.
+ */
+export async function noteDelivery(
+  db: Database,
+  /** The same three things that make a request that request, so it names the same row. */
+  request: Pick<CodeToSend, 'requestKey' | 'email' | 'purpose'>,
+  delivery: 'sent' | 'refused' | 'unknown',
+): Promise<void> {
+  await db
+    .updateTable('email_codes')
+    .set({ delivery })
+    .where('request_key', '=', request.requestKey)
+    .where('email', '=', request.email)
+    .where('purpose', '=', request.purpose)
+    .execute()
+}
+
+/**
+ * Closes whatever else is open for this address and this purpose.
+ *
+ * They read as expired rather than wrong: a newer code is out, and the older one is no longer the
+ * one in the inbox. A sign-in halfway through is left alone — it is a different letter.
+ */
+async function supersede(tx: Tx, request: CodeToSend): Promise<void> {
+  await tx
+    .updateTable('email_codes')
+    .set({ closed_at: sql`now()`, closed_reason: 'superseded' })
+    .where('email', '=', request.email)
+    .where('purpose', '=', request.purpose)
+    .where('closed_at', 'is', null)
+    .execute()
 }
 
 /** Which letter is being answered, and with what. */

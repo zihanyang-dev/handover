@@ -14,6 +14,9 @@ beforeEach(() => {
 
 const env = loadEnv()
 
+/** Room enough that no test trips the per-caller limit, and no proxy to believe. */
+const SENDING = { lettersPerCallerPerHour: 500, trustedProxyHops: 0 }
+
 /** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
 const WEB = 'http://localhost:5173'
 const db: Database = connect(env)
@@ -28,6 +31,7 @@ const sendCode: SendCode = async (_to, code) => {
   return 'sent'
 }
 const auth = signInApi({
+  ...SENDING,
   db,
   secret: env.AUTH_SECRET,
   sendCode,

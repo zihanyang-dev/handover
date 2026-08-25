@@ -10,6 +10,9 @@ import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
+
+/** Room enough that no test here trips the per-caller limit. */
+const ROOM = 1000
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -30,13 +33,18 @@ beforeEach(() => {
 const CODE = '493018'
 
 async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string> {
-  const opened = await issueCode(db, {
-    purpose: 'sign-in',
-    requestKey,
-    email,
-    codeHash: hashCode(email, CODE, env.AUTH_SECRET),
-  })
-  if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
+  const opened = await issueCode(
+    db,
+    {
+      purpose: 'sign-in',
+      requestKey,
+      email,
+      codeHash: hashCode(email, CODE, env.AUTH_SECRET),
+      askedBy: null,
+    },
+    ROOM,
+  )
+  if (opened.kind !== 'issued') throw new Error(`the fixture could not get a code: ${opened.kind}`)
   return opened.id
 }
 

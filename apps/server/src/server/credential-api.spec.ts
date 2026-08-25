@@ -8,6 +8,9 @@ import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
+
+/** Room enough that no test trips the per-caller limit, and no proxy to believe. */
+const SENDING = { lettersPerCallerPerHour: 500, trustedProxyHops: 0 }
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -30,8 +33,8 @@ const sendCode: SendCode = async (_to, code) => {
 /** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
 const WEB = 'http://localhost:5173'
 
-const deps = { db, secret: env.AUTH_SECRET, sendCode }
-const auth = signInApi({ ...deps, providers: ['google', 'github'], webOrigin: WEB })
+const deps = { db, secret: env.AUTH_SECRET, sendCode, ...SENDING }
+const auth = signInApi({ ...deps, providers: ['google', 'github'], webOrigin: WEB, ...SENDING })
 const app = credentialApi(deps)
 const me = meApi({ db, providers: ['google', 'github'] })
 

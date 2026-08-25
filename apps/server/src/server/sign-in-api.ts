@@ -31,6 +31,9 @@ export type SignInApi = {
   readonly providers: readonly Provider[]
   readonly secret: string
   readonly sendCode: SendCode
+  /** What one caller may ask for in an hour, and how to tell callers apart. See `caller.ts`. */
+  readonly lettersPerCallerPerHour: number
+  readonly trustedProxyHops: number
 }
 
 const signedInBody = z.object({ userId: z.uuid() }).openapi('SignedIn')

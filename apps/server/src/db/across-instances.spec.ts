@@ -27,6 +27,9 @@ import { normalizeSlug } from '@handover/universal'
 import type { Slug } from '@handover/universal'
 
 const env = loadEnv()
+
+/** Room enough that no test here trips the per-caller limit. */
+const ROOM = 1000
 const one: Database = connect(env)
 const two: Database = connect(env)
 
@@ -52,9 +55,10 @@ describe('two instances at once', () => {
       email: EMAIL,
       purpose: 'sign-in' as const,
       codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
+      askedBy: null,
     }
 
-    const [a, b] = await Promise.all([issueCode(one, request), issueCode(two, request)])
+    const [a, b] = await Promise.all([issueCode(one, request, ROOM), issueCode(two, request, ROOM)])
 
     expect([a.kind, b.kind].sort()).toEqual(['issued', 'replayed'])
     expect(
@@ -87,13 +91,19 @@ describe('two instances at once', () => {
   })
 
   it('let exactly one of them spend a code', async () => {
-    const opened = await issueCode(one, {
-      purpose: 'sign-in',
-      requestKey: `${RUN}-k1`,
-      email: EMAIL,
-      codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
-    })
-    if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
+    const opened = await issueCode(
+      one,
+      {
+        purpose: 'sign-in',
+        requestKey: `${RUN}-k1`,
+        email: EMAIL,
+        codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
+        askedBy: null,
+      },
+      ROOM,
+    )
+    if (opened.kind !== 'issued')
+      throw new Error(`the fixture could not get a code: ${opened.kind}`)
 
     const attempt = { codeId: opened.id, submittedCode: CODE }
     const [a, b] = await Promise.all([
@@ -120,13 +130,19 @@ describe('two instances at once', () => {
   })
 
   it('honour a session the other one issued', async () => {
-    const opened = await issueCode(one, {
-      purpose: 'sign-in',
-      requestKey: `${RUN}-k1`,
-      email: EMAIL,
-      codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
-    })
-    if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
+    const opened = await issueCode(
+      one,
+      {
+        purpose: 'sign-in',
+        requestKey: `${RUN}-k1`,
+        email: EMAIL,
+        codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
+        askedBy: null,
+      },
+      ROOM,
+    )
+    if (opened.kind !== 'issued')
+      throw new Error(`the fixture could not get a code: ${opened.kind}`)
     const token = newSessionToken()
     await signInWithCode(one, env.AUTH_SECRET, {
       codeId: opened.id,
@@ -138,13 +154,19 @@ describe('two instances at once', () => {
   })
 
   it('stop honouring it the moment the other one revokes it', async () => {
-    const opened = await issueCode(one, {
-      purpose: 'sign-in',
-      requestKey: `${RUN}-k1`,
-      email: EMAIL,
-      codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
-    })
-    if (opened.kind === 'too-soon') throw new Error('the fixture asked for codes too fast')
+    const opened = await issueCode(
+      one,
+      {
+        purpose: 'sign-in',
+        requestKey: `${RUN}-k1`,
+        email: EMAIL,
+        codeHash: hashCode(EMAIL, CODE, env.AUTH_SECRET),
+        askedBy: null,
+      },
+      ROOM,
+    )
+    if (opened.kind !== 'issued')
+      throw new Error(`the fixture could not get a code: ${opened.kind}`)
     const token = newSessionToken()
     await signInWithCode(one, env.AUTH_SECRET, {
       codeId: opened.id,

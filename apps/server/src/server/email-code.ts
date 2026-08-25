@@ -11,10 +11,11 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import type { BlankEnv } from 'hono/types'
 import type { Env, MiddlewareHandler } from 'hono'
-import { issueCode } from '../db/email-code.ts'
+import { issueCode, noteDelivery } from '../db/email-code.ts'
 import type { Database } from '../db/connection.ts'
 import { DIGITS, hashCode, newCode, type Purpose, type Rejection } from '../identity/email-code.ts'
 import { normalizeEmail } from '../identity/email-address.ts'
+import { callerAddress, callerId } from './caller.ts'
 import { endpointsBehind, sends, takes } from './contract.ts'
 import { failureBody, refusal, type Failure } from './failure.ts'
 
@@ -86,6 +87,8 @@ export type CodeRequest = {
   readonly requestKey: string
   readonly email: string
   readonly purpose: Purpose
+  /** Who asked, as a hash. Null when this deployment cannot honestly tell. */
+  readonly askedBy: string | null
 }
 
 /**
@@ -101,6 +104,13 @@ export type CodeRequest = {
  */
 export type Asked =
   | { readonly kind: 'issued'; readonly body: z.infer<typeof issuedBody> }
+  /** This caller has asked for as many codes this hour as it may. Nothing is wrong with the
+   *  address, and there is nothing to do but wait. */
+  | {
+      readonly kind: 'too-many'
+      readonly body: z.infer<typeof waitBody>
+      readonly retryAfterSeconds: number
+    }
   | {
       readonly kind: 'too-soon'
       readonly body: z.infer<typeof waitBody>
@@ -108,36 +118,51 @@ export type Asked =
     }
   | { readonly kind: 'undeliverable'; readonly body: z.infer<typeof failureBody> }
 
+/** Nothing is wrong, and this is how long. The only two answers that carry a number. */
+function waitFor(reason: string, retryAfterSeconds: number): Asked {
+  return {
+    kind: reason === 'too-soon' ? 'too-soon' : 'too-many',
+    body: { reason, recovery: 'wait', retryAfterSeconds },
+    retryAfterSeconds,
+  }
+}
+
+/** No letter can reach that address, so there is nothing to wait for and something to fix. */
+const UNDELIVERABLE = {
+  kind: 'undeliverable',
+  body: { reason: 'address-refused', recovery: 'retype' },
+} as const
+
 export async function askForCode(
-  db: Database,
-  secret: string,
+  sender: Sender,
   send: SendCode,
   request: CodeRequest,
 ): Promise<Asked> {
   const code = newCode()
-  const opened = await issueCode(db, {
-    requestKey: request.requestKey,
-    email: request.email,
-    purpose: request.purpose,
-    codeHash: hashCode(request.email, code, secret),
-  })
+  const opened = await issueCode(
+    sender.db,
+    {
+      requestKey: request.requestKey,
+      email: request.email,
+      purpose: request.purpose,
+      codeHash: hashCode(request.email, code, sender.secret),
+      askedBy: request.askedBy,
+    },
+    sender.lettersPerCallerPerHour,
+  )
 
-  if (opened.kind === 'too-soon') {
-    return {
-      kind: 'too-soon',
-      body: {
-        reason: 'too-soon',
-        recovery: 'wait',
-        retryAfterSeconds: opened.retryAfterSeconds,
-      },
-      retryAfterSeconds: opened.retryAfterSeconds,
-    }
-  }
+  // Two different reasons to wait, and the same thing to do about either.
+  if (opened.kind === 'too-soon') return waitFor('too-soon', opened.retryAfterSeconds)
+  if (opened.kind === 'too-many') return waitFor('too-many-letters', opened.retryAfterSeconds)
 
-  // A replay means the mail for this request is already sent or already in flight, and the code
-  // just minted is not the one inside it. Sending would put two codes in one inbox.
-  if (opened.kind === 'issued' && (await send(request.email, code)) === 'refused') {
-    return { kind: 'undeliverable', body: { reason: 'address-refused', recovery: 'retype' } }
+  // This request already tried and no letter can reach that address. Told again rather than
+  // dressed as success, which would leave somebody waiting for what will never arrive.
+  if (opened.kind === 'undeliverable') return UNDELIVERABLE
+
+  // A replay means the letter for this request is in that inbox, or may be. The code just minted
+  // is not the one inside it, and a second code would kill the one somebody is reading.
+  if (opened.kind === 'issued' && (await sending(sender, send, request, code)) === 'refused') {
+    return UNDELIVERABLE
   }
 
   return {
@@ -152,6 +177,25 @@ export async function askForCode(
 }
 
 /**
+ * Hands the letter over and writes down what became of it.
+ *
+ * Written down before anybody is answered: the next request carrying this key has to be able to
+ * tell "it went", "it never will" and "nobody knows" apart, and only this moment knows which of
+ * the three it was.
+ */
+async function sending(
+  sender: Sender,
+  send: SendCode,
+  request: CodeRequest,
+  code: string,
+): Promise<Awaited<ReturnType<SendCode>>> {
+  const delivery = await send(request.email, code)
+  await noteDelivery(sender.db, request, delivery)
+
+  return delivery
+}
+
+/**
  * The route that sends a code, in the same shape as any other endpoint, so both screens mount it
  * the way they mount their own and cannot end up disagreeing about what a wait, a dead address,
  * or a live code looks like on the wire.
@@ -163,6 +207,10 @@ export type Sender = {
   readonly db: Database
   readonly secret: string
   readonly sendCode: SendCode
+  /** What one caller may ask for in an hour. */
+  readonly lettersPerCallerPerHour: number
+  /** How many proxies stand in front of this process, so a caller can be told apart honestly. */
+  readonly trustedProxyHops: number
 }
 
 export function sendsACode<P extends string, E extends Env = BlankEnv>(
@@ -196,14 +244,16 @@ export function sendsACode<P extends string, E extends Env = BlankEnv>(
     }),
 
     handler: async (c) => {
-      const answered = await askForCode(deps.db, deps.secret, deps.sendCode, {
+      const answered = await askForCode(deps, deps.sendCode, {
         ...c.req.valid('json'),
         purpose: spec.purpose,
+        askedBy: callerId(callerAddress(c, deps.trustedProxyHops)),
       })
 
       if (answered.kind === 'issued') return c.json(answered.body, 201)
       if (answered.kind === 'undeliverable') return c.json(answered.body, 400)
 
+      // Both waits answer the same way: nothing is wrong, and this is how long.
       c.header('Retry-After', String(answered.retryAfterSeconds))
       return c.json(answered.body, 429)
     },

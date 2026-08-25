@@ -27,6 +27,28 @@ const SHAPE = z.object({
    * browser back here, and here has to send it on to a page, which may be a separate deployment.
    */
   WEB_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://localhost:5173'),
+  /**
+   * How many codes one caller may ask for in an hour.
+   *
+   * The per-address wait is no defence against somebody rotating addresses, and every one of those
+   * letters costs money and spends the sending domain's reputation — a domain marked as a source
+   * of spam takes months to recover. Counted per caller rather than across the deployment: a
+   * ceiling over everybody is one an attacker can burn through to keep real people from signing
+   * in, which trades an uncertain bill for a certain outage.
+   */
+  LETTERS_PER_CALLER_PER_HOUR: z.coerce.number().int().min(1).default(20),
+
+  /**
+   * How many proxies stand in front of this process.
+   *
+   * Zero — the default — means the connection is the caller, and `X-Forwarded-For` is ignored:
+   * unset, that header is written by whoever is calling, and trusting it turns the limit above
+   * into a counter anybody can reset. One means the last entry was written by our own proxy, two
+   * means the one before that, and so on. It is a fact about the deployment, so the deployment
+   * says it.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   /**
    * What this process is. No default, on purpose.

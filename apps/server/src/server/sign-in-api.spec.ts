@@ -10,6 +10,9 @@ import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
 
+/** Room enough that no test trips the per-caller limit, and no proxy to believe. */
+const SENDING = { lettersPerCallerPerHour: 500, trustedProxyHops: 0 }
+
 /** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
 const WEB = 'http://localhost:5173'
 const db: Database = connect(env)
@@ -34,6 +37,7 @@ const sendCode: SendCode = async (to, code) => {
   return 'sent'
 }
 const app = signInApi({
+  ...SENDING,
   db,
   secret: env.AUTH_SECRET,
   sendCode,
@@ -134,6 +138,7 @@ describe('asking for a code', () => {
 describe('when the letter did not go', () => {
   function whenDeliveryIs(delivery: Awaited<ReturnType<SendCode>>) {
     return signInApi({
+      ...SENDING,
       webOrigin: WEB,
       db,
       secret: env.AUTH_SECRET,
@@ -179,6 +184,7 @@ describe('what a stranger is offered', () => {
 
   it('leaves out a provider this deployment has no keys for', async () => {
     const half = signInApi({
+      ...SENDING,
       db,
       secret: env.AUTH_SECRET,
       sendCode,

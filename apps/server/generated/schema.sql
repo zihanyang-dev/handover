@@ -93,8 +93,11 @@ CREATE TABLE public.email_codes (
     expires_at timestamp with time zone NOT NULL,
     closed_at timestamp with time zone,
     closed_reason text,
+    delivery text,
+    asked_by text,
     CONSTRAINT email_codes_closed_reason_check CHECK ((closed_reason = ANY (ARRAY['consumed'::text, 'superseded'::text]))),
     CONSTRAINT email_codes_closed_together CHECK (((closed_at IS NULL) = (closed_reason IS NULL))),
+    CONSTRAINT email_codes_delivery_check CHECK ((delivery = ANY (ARRAY['sent'::text, 'refused'::text, 'unknown'::text]))),
     CONSTRAINT email_codes_purpose_check CHECK ((purpose = ANY (ARRAY['sign-in'::text, 'attach'::text])))
 );
 
@@ -398,6 +401,13 @@ CREATE INDEX conversations_on_machine ON public.conversations USING btree (machi
 --
 
 CREATE UNIQUE INDEX credentials_one_provider_account_each ON public.credentials USING btree (user_id, kind) WHERE (kind <> 'email'::text);
+
+
+--
+-- Name: email_codes_asked_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX email_codes_asked_by ON public.email_codes USING btree (asked_by, created_at) WHERE (asked_by IS NOT NULL);
 
 
 --

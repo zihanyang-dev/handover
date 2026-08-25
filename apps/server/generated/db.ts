@@ -57,11 +57,13 @@ export interface Credentials {
 }
 
 export interface EmailCodes {
+  asked_by: string | null;
   attempts: Generated<number>;
   closed_at: Timestamp | null;
   closed_reason: string | null;
   code_hash: string;
   created_at: Generated<Timestamp>;
+  delivery: string | null;
   email: string;
   expires_at: Timestamp;
   id: Generated<string>;

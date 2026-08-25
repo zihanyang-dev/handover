@@ -2,11 +2,14 @@ import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { hashCode, RESEND_INTERVAL_SECONDS, checkCode } from '../identity/email-code.ts'
-import { issueCode, type Issued } from './email-code.ts'
+import { issueCode, noteDelivery, type Issued } from './email-code.ts'
 import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
+
+/** Room enough that no test here trips the per-caller limit. */
+const ROOM = 1000
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -32,7 +35,19 @@ beforeEach(() => {
 })
 
 async function ask(requestKey: string, email = EMAIL, codeHash = HASH): Promise<Issued> {
-  return issueCode(db, { purpose: 'sign-in', requestKey, email, codeHash })
+  return issueCode(db, { purpose: 'sign-in', requestKey, email, codeHash, askedBy: null }, ROOM)
+}
+
+/** The three things that make a request that request. */
+const asking = (requestKey: string) => ({ requestKey, email: EMAIL, purpose: 'sign-in' as const })
+
+/** Makes an attempt look like one whose process died: committed, and nothing ever recorded. */
+async function abandon(codeId: string): Promise<void> {
+  await db
+    .updateTable('email_codes')
+    .set({ created_at: sql<Date>`now() - interval '1 minute'` })
+    .where('id', '=', codeId)
+    .execute()
 }
 
 /** Moves a code back in time, so a test can reach past the resend interval without waiting. */
@@ -193,7 +208,7 @@ describe('issueCode', () => {
 
   it('says when it expires and when another may be asked for, so no page has to guess', async () => {
     const opened = await ask(`${RUN}-k1`)
-    if (opened.kind === 'too-soon') throw new Error('unexpected')
+    if (opened.kind !== 'issued') throw new Error(`unexpected: ${opened.kind}`)
 
     // A number compiled into a page is right until somebody changes this one and not that one.
     expect(opened.expiresAt.getTime()).toBeGreaterThan(Date.now())
@@ -211,6 +226,106 @@ describe('issueCode', () => {
 
     expect(first.kind).toBe('issued')
     expect(second.kind).toBe('issued')
-    expect(second.kind !== 'too-soon' && second.id).not.toBe(first.kind !== 'too-soon' && first.id)
+    if (first.kind !== 'issued' || second.kind !== 'issued') throw new Error('both should issue')
+    expect(second.id).not.toBe(first.id)
+  })
+
+  it('will not say a code is on its way to an address that refused the last one', async () => {
+    // Left unrecorded, a refusal came back as "a code is on its way" on every retry — somebody
+    // waiting for a letter that will never exist, told twice that it is coming.
+    const key = `${RUN}-dead`
+    const first = await ask(key)
+    if (first.kind !== 'issued') throw new Error('expected a code')
+    await noteDelivery(db, asking(key), 'refused')
+
+    expect(await ask(key)).toEqual({ kind: 'undeliverable' })
+  })
+
+  it('hands back the same code when the letter went, rather than sending a second', async () => {
+    const key = `${RUN}-sent`
+    const first = await ask(key)
+    if (first.kind !== 'issued') throw new Error('expected a code')
+    await noteDelivery(db, asking(key), 'sent')
+
+    expect(await ask(key)).toMatchObject({ kind: 'replayed', id: first.id })
+  })
+
+  it('hands back the same code when nobody can say whether the letter went', async () => {
+    // It may be in the inbox. A second one would kill it, and the first is the one being read.
+    const key = `${RUN}-maybe`
+    const first = await ask(key)
+    if (first.kind !== 'issued') throw new Error('expected a code')
+    await noteDelivery(db, asking(key), 'unknown')
+
+    expect(await ask(key)).toMatchObject({ kind: 'replayed', id: first.id })
+  })
+
+  it('mints a fresh code when the last attempt died without sending anything', async () => {
+    // The one case this column exists for. The row was committed and the process died before the
+    // letter went; nobody knows that code, including us — it only ever existed in memory.
+    const key = `${RUN}-orphan`
+    const first = await ask(key)
+    if (first.kind !== 'issued') throw new Error('expected a code')
+    await abandon(first.id)
+
+    const second = await ask(key)
+
+    expect(second.kind).toBe('issued')
+    expect(second.kind === 'issued' && second.id).not.toBe(first.id)
+  })
+
+  it('stops one caller asking again and again, whatever address they use', async () => {
+    // The per-address wait is no defence against rotating addresses, and every letter that gets
+    // sent that way costs money and spends the sending domain's reputation.
+    const caller = `caller-${RUN}`
+    for (let n = 0; n < 3; n += 1) {
+      const asked = await issueCode(
+        db,
+        {
+          requestKey: `${RUN}-n${String(n)}`,
+          email: `${RUN}-${String(n)}@example.com`,
+          purpose: 'sign-in',
+          codeHash: HASH,
+          askedBy: caller,
+        },
+        3,
+      )
+      expect(asked.kind).toBe('issued')
+    }
+
+    const refused = await issueCode(
+      db,
+      {
+        requestKey: `${RUN}-n4`,
+        email: `${RUN}-4@example.com`,
+        purpose: 'sign-in',
+        codeHash: HASH,
+        askedBy: caller,
+      },
+      3,
+    )
+
+    expect(refused.kind).toBe('too-many')
+    // How long, rather than a number a page had to invent.
+    expect(refused.kind === 'too-many' && refused.retryAfterSeconds).toBeGreaterThan(0)
+  })
+
+  it('counts nobody when the deployment cannot tell who is calling', async () => {
+    // Better than counting a number the caller chose. What guards the endpoint then is whatever
+    // terminates TLS, which is the only thing that knows the address for certain.
+    for (let n = 0; n < 4; n += 1) {
+      const asked = await issueCode(
+        db,
+        {
+          requestKey: `${RUN}-anon${String(n)}`,
+          email: `${RUN}-anon${String(n)}@example.com`,
+          purpose: 'sign-in',
+          codeHash: HASH,
+          askedBy: null,
+        },
+        3,
+      )
+      expect(asked.kind).toBe('issued')
+    }
   })
 })

@@ -13,6 +13,9 @@ import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
+
+/** Room enough that no test here trips the per-caller limit. */
+const ROOM = 1000
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -53,12 +56,17 @@ async function arrive(identity: ProviderIdentity) {
 
 /** Opens a code and hands the code straight back, the way the other half of the product does. */
 async function sendCode(email: string, requestKey: string, purpose: 'sign-in' | 'attach') {
-  const opened = await issueCode(db, {
-    requestKey,
-    email,
-    purpose,
-    codeHash: hashCode(email, CODE, env.AUTH_SECRET),
-  })
+  const opened = await issueCode(
+    db,
+    {
+      requestKey,
+      email,
+      purpose,
+      codeHash: hashCode(email, CODE, env.AUTH_SECRET),
+      askedBy: null,
+    },
+    ROOM,
+  )
   if (opened.kind !== 'issued') throw new Error('the fixture asked for codes too fast')
   return opened.id
 }

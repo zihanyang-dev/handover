@@ -99,6 +99,8 @@ const app = handoverApp({
   webOrigin: env.WEB_ORIGIN,
   clients,
   live: liveThrough(db, watching),
+  lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
+  trustedProxyHops: env.TRUSTED_PROXY_HOPS,
 })
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (address) => {
