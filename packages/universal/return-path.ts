@@ -1,9 +1,12 @@
 /**
- * Where a browser is sent back to after leaving for a provider.
+ * Where a browser is sent back to after being sent away.
  *
- * Whatever asked for the trip chose this, and by the time it is used it has been through a site we
- * do not control. An absolute URL here is an open redirect: a link that starts on our domain,
- * carries our name through a sign-in, and lands on somebody else's page asking for a password.
+ * Both sides have to agree, which is why it lives here. The server uses it for the round trip
+ * through a provider; the page uses it for the address it remembered while somebody signed in
+ * again. Whatever asked for it chose it, and by the time it is used it has been through a site we
+ * do not control — or through the address bar. An absolute URL here is an open redirect: a link
+ * that starts on our domain, carries our name through a sign-in, and lands on somebody else's page
+ * asking for a password.
  */
 
 const HOME = '/'

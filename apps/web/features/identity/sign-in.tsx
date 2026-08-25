@@ -25,7 +25,7 @@ async function offeredKinds(): Promise<readonly string[]> {
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
-function OtherWays() {
+function OtherWays({ next }: { readonly next: string | undefined }) {
   const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
   const providers = (offered.data ?? []).filter(isProvider)
 
@@ -33,7 +33,9 @@ function OtherWays() {
     mutationFn: async (provider: string) => {
       const { data } = await api.POST('/auth/{provider}/start', {
         params: { path: { provider } },
-        body: { next: '/' },
+        // The server puts it through `returnPath` again on the way back. Both sides check it,
+        // because by then it has been through a site neither of them controls.
+        body: { next: next ?? '/' },
       })
       // The browser goes; a page cannot read where a redirect points.
       if (data !== undefined) globalThis.location.href = data.url
@@ -62,7 +64,14 @@ function OtherWays() {
   )
 }
 
-export function SignIn({ email: initial = '' }: { readonly email?: string | undefined }) {
+export function SignIn({
+  email: initial = '',
+  next,
+}: {
+  readonly email?: string | undefined
+  /** Where this person was going before they were asked to sign in. */
+  readonly next?: string | undefined
+}) {
   const navigate = useNavigate()
   const [email, setEmail] = useState(initial)
   const field = useId()
@@ -75,7 +84,11 @@ export function SignIn({ email: initial = '' }: { readonly email?: string | unde
       if (data === undefined) throw new Error(error.reason)
       return data
     },
-    onSuccess: async (opened) => navigate({ to: '/sign-in/code', search: { ...opened, email } }),
+    onSuccess: async (opened) =>
+      navigate({
+        to: '/sign-in/code',
+        search: { ...opened, email, ...(next === undefined ? {} : { next }) },
+      }),
   })
 
   return (
@@ -99,7 +112,7 @@ export function SignIn({ email: initial = '' }: { readonly email?: string | unde
           </p>
         )}
 
-        <OtherWays />
+        <OtherWays next={next} />
 
         <div className="stack-tight">
           <label className="label" htmlFor={field}>

@@ -166,4 +166,35 @@ describe('each way it can fail', () => {
     const shown = await screen.findByText(/already been used/i)
     expect(shown.textContent).not.toMatch(/not right/i)
   })
+
+  it('ends where the person was going, not at the front door', async () => {
+    // The other half of the guard: being asked to sign in must not cost somebody the address they
+    // came for. Journey 01 says so, and it is the difference between an interruption and a loss.
+    server.use(
+      signedIn(),
+      http.post('*/answer', () => HttpResponse.json({ userId: CHALLENGE }, { status: 200 })),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
+    )
+    open(`${codeScreen()}&next=%2Fs%2Facme`)
+
+    await typeCode('493018')
+
+    expect(await screen.findByText('Acme')).toBeDefined()
+  })
+
+  it('refuses to be sent to somebody else s site by its own address bar', async () => {
+    server.use(
+      signedIn(),
+      http.post('*/answer', () => HttpResponse.json({ userId: CHALLENGE })),
+    )
+    open(`${codeScreen()}&next=https%3A%2F%2Fevil.example.com%2Fphish`)
+
+    await typeCode('493018')
+
+    expect(await screen.findByText(/your spaces/i)).toBeDefined()
+  })
 })

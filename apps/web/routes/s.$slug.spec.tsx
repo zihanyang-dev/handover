@@ -26,11 +26,14 @@ afterAll(() => {
 function open(at: string) {
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+
+  // Handed back so a test can ask where the app ended up, which is the whole of what a guard does.
+  return router
 }
 
 describe('entering a Space', () => {
@@ -65,5 +68,17 @@ describe('entering a Space', () => {
     open('/s/acme')
 
     expect(await screen.findByRole('button', { name: /sign out/i })).toBeDefined()
+  })
+
+  it('asks somebody whose session ran out to sign in, and remembers where they were', async () => {
+    // Without the guard this reads as a Space that is not there: somebody is told their Space is
+    // gone when what really happened is that they need to sign in again. And a sign-in that
+    // forgets where they were going leaves them to find it a second time.
+    server.use(http.get('*/me', () => new HttpResponse(null, { status: 401 })))
+
+    const router = open('/s/acme')
+
+    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    expect(router.state.location.search).toEqual({ next: '/s/acme' })
   })
 })

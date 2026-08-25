@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { api } from '../api.ts'
 import { SignOut } from '../features/identity/sign-out.tsx'
 import { Conversations } from '../features/conversations/conversations.tsx'
@@ -72,4 +73,9 @@ function Screen() {
   )
 }
 
-export const Route = createFileRoute('/s/$slug')({ component: Screen })
+export const Route = createFileRoute('/s/$slug')({
+  // Without this, nobody signed in reads as a Space that is not there — and somebody whose session
+  // ran out is told their Space is gone rather than being asked to sign in again.
+  beforeLoad: async ({ location }) => onlySignedIn(location),
+  component: Screen,
+})

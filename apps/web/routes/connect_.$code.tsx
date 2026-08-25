@@ -1,5 +1,5 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { api } from '../api.ts'
+import { createFileRoute } from '@tanstack/react-router'
+import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { Connect } from '../features/machines/connect.tsx'
 
 /**
@@ -13,9 +13,6 @@ function Screen() {
 }
 
 export const Route = createFileRoute('/connect_/$code')({
-  beforeLoad: async () => {
-    const { response } = await api.GET('/me')
-    if (response.status === 401) throw redirect({ to: '/sign-in' })
-  },
+  beforeLoad: async ({ location }) => onlySignedIn(location),
   component: Screen,
 })

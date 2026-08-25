@@ -10,6 +10,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { ExclamationCircleFill } from 'react-bootstrap-icons'
+import { returnPath } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 
 /** Rounded up, so "1 minute" never means "any moment now". */
@@ -62,11 +63,13 @@ function Resend({
   email,
   after,
   answering,
+  next,
 }: {
   readonly email: string
   readonly after: number
   /** Which letter is being replaced. One resend per letter, so the name can retire with it. */
   readonly answering: string
+  readonly next: string | undefined
 }) {
   const navigate = useNavigate()
   const waiting = useCountdown(after)
@@ -81,7 +84,11 @@ function Resend({
       retryKeyDone(intention)
       return data
     },
-    onSuccess: async (opened) => navigate({ to: '/sign-in/code', search: { email, ...opened } }),
+    onSuccess: async (opened) =>
+      navigate({
+        to: '/sign-in/code',
+        search: { email, ...opened, ...(next === undefined ? {} : { next }) },
+      }),
   })
 
   return (
@@ -119,6 +126,7 @@ export function EmailCode({
   expiresAt,
   resendAfterSeconds,
   digits: DIGITS,
+  next,
 }: {
   readonly email: string
   readonly codeId: string
@@ -126,6 +134,8 @@ export function EmailCode({
   readonly resendAfterSeconds: number
   /** How long the code is, from whoever sent it. Compiled in here, it would go stale silently. */
   readonly digits: number
+  /** Where the person was going before they were asked to sign in. */
+  readonly next?: string | undefined
 }) {
   const navigate = useNavigate()
   const [code, setCode] = useState('')
@@ -140,7 +150,9 @@ export function EmailCode({
       retryKeyDone(`code:${email}`)
       return data
     },
-    onSuccess: async () => navigate({ to: '/' }),
+    // Where they were going, not the front door. Through `returnPath` because it arrived in this
+    // page's own address bar, and what is done with it next is a navigation.
+    onSuccess: async () => navigate({ to: returnPath(next, globalThis.location.origin) }),
   })
 
   return (
@@ -191,7 +203,7 @@ export function EmailCode({
         </button>
       </form>
 
-      <Resend email={email} after={resendAfterSeconds} answering={codeId} />
+      <Resend email={email} after={resendAfterSeconds} answering={codeId} next={next} />
     </main>
   )
 }

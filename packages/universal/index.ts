@@ -10,3 +10,4 @@
  */
 
 export { normalizeSlug, nextFreeSlug, type Slug } from './slug.ts'
+export { returnPath } from './return-path.ts'

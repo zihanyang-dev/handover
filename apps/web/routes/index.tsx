@@ -1,6 +1,6 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { CheckCircleFill, ExclamationCircleFill } from 'react-bootstrap-icons'
-import { api } from '../api.ts'
 import { DisplayName } from '../features/identity/display-name.tsx'
 import { Credentials } from '../features/identity/credentials.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
@@ -66,9 +66,8 @@ function Screen() {
 
 export const Route = createFileRoute('/')({
   validateSearch: arrived,
-  beforeLoad: async ({ context }) => {
-    const { response } = await api.GET('/me')
-    if (response.status === 401) throw redirect({ to: '/sign-in' })
+  beforeLoad: async ({ context, location }) => {
+    await onlySignedIn(location)
     return context
   },
   component: Screen,
