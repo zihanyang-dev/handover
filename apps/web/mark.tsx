@@ -18,8 +18,7 @@ import type { CSSProperties } from 'react'
 /** What it is doing right now. */
 export type MarkState = 'idle' | 'thinking' | 'working' | 'success'
 
-/* Claude's actual warm accent: sampled from its current UI, not approximated. */
-const BODY = '#d97757'
+const BODY = '#2b292a'
 
 export function Mark({
   state = 'idle',
