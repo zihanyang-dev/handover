@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handoverFor, plistFor, unitFor, type ServiceSpec } from './service.ts'
+import { forEveryone, handoverFor, plistFor, unitFor, type ServiceSpec } from './service.ts'
 
 function spec(overrides: Partial<ServiceSpec> = {}): ServiceSpec {
   return {
@@ -98,6 +98,29 @@ describe('the PATH it carries', () => {
   })
 })
 
+describe('which service manager it hands itself to', () => {
+  it('is the machine one when somebody used sudo', () => {
+    // `sudo handover connect` is somebody saying "this machine, for everyone". Read as a user
+    // service it writes one owned by root's own login session, which on a server begins never.
+    expect(forEveryone({}, 0)).toBe(true)
+  })
+
+  it('is that person s own when they did not', () => {
+    expect(forEveryone({}, 501)).toBe(false)
+  })
+
+  it('takes either flag over what it would have guessed', () => {
+    expect(forEveryone({ system: true }, 501)).toBe(true)
+    expect(forEveryone({ user: true }, 0)).toBe(false)
+  })
+
+  it('gives the narrower one to somebody who asked for both', () => {
+    // Asking for both is asking for two different things. The one that cannot be arrived at by
+    // accident wins.
+    expect(forEveryone({ system: true, user: true }, 0)).toBe(false)
+  })
+})
+
 describe('where it goes and what runs', () => {
   it('is a login agent on a Mac somebody is using', () => {
     const handover = handoverFor(spec({ system: false }), 'darwin', '/Users/mina')
@@ -124,7 +147,8 @@ describe('where it goes and what runs', () => {
     expect(handover.path).toBe('/home/mina/.config/systemd/user/handover.service')
     expect(handover.steps.map((step) => step.run)).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
-      ['systemctl', '--user', 'enable', '--now', 'handover'],
+      ['systemctl', '--user', 'enable', 'handover'],
+      ['systemctl', '--user', 'restart', 'handover'],
     ])
   })
 
@@ -134,7 +158,10 @@ describe('where it goes and what runs', () => {
     expect(handover.path).toBe('/etc/systemd/system/handover.service')
     expect(handover.steps.map((step) => step.run)).toEqual([
       ['systemctl', 'daemon-reload'],
-      ['systemctl', 'enable', '--now', 'handover'],
+      ['systemctl', 'enable', 'handover'],
+      // Restart, not `enable --now`: a running service would otherwise stay on the old PATH, the
+      // old directory and the old command, and running `connect` again would look like nothing.
+      ['systemctl', 'restart', 'handover'],
     ])
   })
 

@@ -293,10 +293,13 @@ docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... 
 
 ```
 生成的 unit          交给 systemd-analyze verify —— 连 ExecStart 指的文件不存在都会挑出来
-系统服务             daemon-reload · enable --now · is-active · is-enabled
+系统服务             daemon-reload · enable · restart · is-active · is-enabled
+再跑一次 connect      MainPID 真的变了 —— enable --now 会让正在跑的那个原样留着
 崩了会不会被拉起来    kill -9 掉进程,看 systemd 把它拉回来,NRestarts 涨了
 日志                 journalctl -u handover 里真的有
-用户服务             systemctl --user enable --now,不用 root
+服务在哪个目录跑      readlink /proc/$pid/cwd 就是 connect 当时所在的目录
+目录没了会怎样        服务干脆起不来,而不是安静地在 / 里读写别人的文件
+用户服务             systemctl --user,不用 root
 ```
 
 **「崩了会不会被拉起来」尤其重要:那是我们把常驻交给操作系统的全部理由**,现在它有证据,不是一句
@@ -308,9 +311,13 @@ docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... 
 那一条是这个仓库里**唯一一处「有人跑过一次」就是全部证据**的地方。但它恰好是我们每天在用的系统 ——
 真正危险的是没人用也没人测的那种,而 Linux 现在两样都有。
 
-## 风险## 风险
+## 风险
 
 **长轮询挂住连接。** 一百台机器就是一百个挂起的请求。Node 扛得住,但它决定了以后横向扩看的是**连接数,不是 QPS** —— 现在不用做什么,但别用 QPS 去估容量。
+
+**哪一种服务由谁在跑决定,不由一个没人传的开关决定。** `sudo handover connect` 是「这台机器,给所有人」
+的意思;读成用户服务,写出来的那个由 root 自己的登录会话拥有 —— 在服务器上那个会话永远不开始。
+`--system` / `--user` 两个开关都在,但它们是用来推翻默认的,不是用来打开正确行为的。
 
 **烤进 ExecStart 的可执行路径会随 node 版本管理器变。** 用 nvm / fnm 的人升级 node 之后服务起不来。**但它是响的**(服务启动失败,`status` 会说),不像陈旧的 PATH 那样哑着骗人。
 

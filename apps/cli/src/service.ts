@@ -182,6 +182,22 @@ export type Step = {
  */
 export type Need = 'do-it' | 'clear-it' | 'wait-out'
 
+/**
+ * Which service manager this machine hands itself to.
+ *
+ * Taken from who is running rather than from a flag nobody passes. `sudo handover connect` is
+ * somebody saying "this machine, for everyone", and read as a user service it writes one owned by
+ * root's own login session — which on a server begins never. Either flag says it out loud when the
+ * default is not what was wanted; asking for both is asking for two different things, and the
+ * narrower one wins because it is the one that cannot be arrived at by accident.
+ */
+export function forEveryone(asked: { system?: boolean; user?: boolean }, uid: number): boolean {
+  if (asked.user === true) return false
+  if (asked.system === true) return true
+
+  return uid === 0
+}
+
 export function handoverFor(spec: ServiceSpec, platform: NodeJS.Platform, home: string): Handover {
   if (platform === 'darwin') return toLaunchd(spec, home)
   return toSystemd(spec, home)
@@ -226,11 +242,16 @@ function toSystemd(spec: ServiceSpec, home: string): Handover {
   return {
     path,
     contents: unitFor(spec),
-    // Both are already repeatable: reloading is always safe, and enabling something enabled and
-    // running does nothing. Nothing here needs clearing out of the way or waiting for.
+    // All three are repeatable: reloading is always safe, enabling something enabled does nothing,
+    // and restarting starts one that is not running. Nothing here needs clearing or waiting for.
     steps: [
       { run: [...systemctl, 'daemon-reload'], need: 'do-it' },
-      { run: [...systemctl, 'enable', '--now', 'handover'], need: 'do-it' },
+      { run: [...systemctl, 'enable', 'handover'], need: 'do-it' },
+      // Restart, not `enable --now`: `--now` starts a stopped service and leaves a running one
+      // exactly as it was — still on the old PATH, the old directory and the old command. Running
+      // `connect` again is somebody saying those changed, and a service that ignores them looks
+      // like a command that did nothing.
+      { run: [...systemctl, 'restart', 'handover'], need: 'do-it' },
     ],
   }
 }

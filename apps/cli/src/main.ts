@@ -22,7 +22,7 @@ import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
 import { machineEnvironment, readEnv } from './env.ts'
 import { offering } from './offering.ts'
-import { handoverFor, type Step } from './service.ts'
+import { forEveryone, handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
 const run = promisify(execFile)
@@ -31,7 +31,8 @@ const { values, positionals } = parseArgs({
   options: {
     origin: { type: 'string' },
     name: { type: 'string' },
-    system: { type: 'boolean', default: false },
+    system: { type: 'boolean' },
+    user: { type: 'boolean' },
     key: { type: 'string' },
   },
   allowPositionals: true,
@@ -39,7 +40,9 @@ const { values, positionals } = parseArgs({
 
 const env = readEnv()
 const machineName = values.name ?? hostname()
-const where = attachmentPath(env.configHome, values.system)
+
+const system = forEveryone(values, process.getuid?.() ?? 1)
+const where = attachmentPath(env.configHome, system)
 const command = positionals[0] ?? 'connect'
 
 /** Long enough for any throttle a service manager holds a name through, short enough to give up in. */
@@ -202,8 +205,8 @@ async function handOver(): Promise<void> {
       // Absolute, and never resolved through a shell: a typo in a profile must not be able to
       // stop a service from starting.
       executable: process.execPath,
-      args: [entryPoint(), 'run', ...(values.system ? ['--system'] : [])],
-      system: values.system,
+      args: [entryPoint(), 'run', ...(system ? ['--system'] : ['--user'])],
+      system,
       label: 'dev.handover.machine',
       // Taken from this terminal, where it is already right. A service inherits four directories
       // and none of them hold an agent.

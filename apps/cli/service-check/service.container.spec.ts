@@ -206,6 +206,18 @@ describe('handing a system service over', () => {
 
     expect(await inside('systemctl is-active handover')).toBe('active')
   }, 120_000)
+
+  it('really replaces the process, so a second connect is not a command that did nothing', async () => {
+    // `enable --now` starts a stopped service and leaves a running one exactly as it was — still
+    // on the old PATH, the old directory and the old command. Somebody running `connect` again is
+    // saying those changed.
+    const before = await inside('systemctl show -p MainPID --value handover')
+
+    await install(true)
+
+    expect(await inside('systemctl show -p MainPID --value handover')).not.toBe(before)
+    expect(await inside('systemctl is-active handover')).toBe('active')
+  }, 120_000)
 })
 
 describe('handing a user service over', () => {
