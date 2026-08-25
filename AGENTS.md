@@ -37,6 +37,7 @@
            同一次改动里删掉被替代的路径
 3  证据    跑冻结时列的命令。不跑全量,CI 负责穷尽
 4  关闭    读完整 diff · pnpm check · 真实旅程跑一遍 · 一次 push · 看终态 CI
+           碰过 adapter 就再跑 pnpm test:agents —— 那一套跑的是真的 claude 和 codex
 ```
 
 **纵向必须完整。** 范围可以窄,但不能只做一半留着旧路径并存。
@@ -67,4 +68,5 @@
 
 ```
 pnpm generate · typecheck · lint · format · test · test:db · check
+pnpm test:agents   不在 check 里:要两个 agent 都装着、登录着,而且花真的模型调用
 ```
