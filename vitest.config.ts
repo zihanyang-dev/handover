@@ -38,6 +38,15 @@ export default defineConfig({
         },
       },
       {
+        // Real agents, on this machine, spending real model calls. Asked for by name rather than
+        // run by `pnpm check`: CI has neither binary and neither is signed in there.
+        test: {
+          name: 'agents',
+          include: ['apps/cli/agent-check/*.agents.spec.ts'],
+          testTimeout: 300_000,
+        },
+      },
+      {
         // A real init, in a container. Slow to start and worth it: what is claimed is that a
         // service manager accepts the unit and keeps the process up, and neither can be faked.
         test: {

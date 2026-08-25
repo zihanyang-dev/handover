@@ -18,6 +18,7 @@ apps/cli/           装在机器上的那个命令
   scripts/build.ts  四个平台的单文件,bun 交叉编译
   install.sh        curl | sh 那一行下载的就是它
   service-check/    交给 systemd 这件事的测试,连同它需要的那台机器
+  agent-check/      注册表里每个 agent 跑同一套旅程,跑真的二进制
   generated/        生成物,永不手改
 packages/universal/ 两边必须算出同一个答案的东西
 
@@ -95,6 +96,7 @@ pnpm typecheck    三个包各自的类型世界
 pnpm lint         oxlint,type-aware,按包
 pnpm format       prettier --check
 pnpm test         vitest —— 四组:unit · web · db(要 postgres)· service(要 docker 里的 systemd)
+pnpm test:agents  第五组,单独点名跑:真的 claude 和 codex,花真的模型调用
 pnpm coverage     跑一遍并打一张表。不设阈值:百分比不是关于正确性的事实
 pnpm check        以上全部 + generate 无 diff
 ```

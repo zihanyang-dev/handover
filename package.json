@@ -30,7 +30,8 @@
     "lint": "oxlint --type-aware --tsconfig apps/server/tsconfig.json apps/server && oxlint --type-aware --tsconfig apps/web/tsconfig.json apps/web && oxlint --type-aware --tsconfig apps/cli/tsconfig.json apps/cli && oxlint --type-aware --tsconfig packages/universal/tsconfig.json packages",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "test": "vitest run",
+    "test": "vitest run --project '!agents'",
+    "test:agents": "vitest run --project agents",
     "coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text",
     "check": "pnpm generate && git diff --exit-code apps/server/generated apps/web/generated apps/cli/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm test"
   }

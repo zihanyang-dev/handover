@@ -23,6 +23,15 @@ const BUILD: Record<string, (env: NodeJS.ProcessEnv) => Agent> = {
 }
 
 /**
+ * Every agent this machine can drive.
+ *
+ * The registry saying what is in it, so the shared journey suite runs against whatever is
+ * registered rather than against a second list of the same names. Registering an adapter is what
+ * puts it under those tests.
+ */
+export const EVERY_KIND: readonly string[] = Object.keys(BUILD)
+
+/**
  * The adapter for a command, or nothing.
  *
  * Discovery finds agents by command, because that is what is on the PATH; the server hands out

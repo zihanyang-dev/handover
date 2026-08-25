@@ -10,13 +10,17 @@
 
 import { Codex } from '@openai/codex-sdk'
 import type { ModelReasoningEffort, ThreadEvent, ThreadItem } from '@openai/codex-sdk'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
 import { plain, shorten } from './agent.ts'
 import { onPath } from './on-path.ts'
 
 /** The binary this drives. Found on the PATH captured when the machine was connected. */
 const COMMAND = 'codex'
+
+/** The flag the SDK starts a turn with, and how a turn is told apart from anything else Codex. */
+const JSON_TURN = '--experimental-json'
 
 /**
  * An item that has only just started.
@@ -148,40 +152,116 @@ export function plainly(trouble: unknown): string {
   }
 }
 
+/**
+ * The turns this program has Codex running right now.
+ *
+ * The SDK spawns Codex as a child of this process and keeps the handle to itself, so the only way
+ * to reach that process is to go and look for it. Matched on the binary and on the flag the SDK
+ * starts it with: an `app-server` asked what models exist is a child of ours too, and stopping a
+ * turn must not stop that.
+ */
+async function turnsRunning(binary: string): Promise<readonly number[]> {
+  const listed = await runningProcesses()
+
+  return listed.flatMap((line) => {
+    const [, pid, parent, command] = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line) ?? []
+    if (pid === undefined || parent !== String(process.pid)) return []
+    if (command === undefined || !command.includes(binary) || !command.includes(JSON_TURN)) {
+      return []
+    }
+
+    return [Number(pid)]
+  })
+}
+
+/** What is running on this machine, in the one form both macOS and Linux answer in. */
+async function runningProcesses(): Promise<readonly string[]> {
+  return promisify(execFile)('ps', ['-A', '-o', 'pid=,ppid=,args=']).then(
+    ({ stdout }) => stdout.split('\n'),
+    () => {
+      // No `ps` on this machine, so a turn cannot be found by looking. Stopping still aborts the
+      // stream below, which is what this did before it could look at all.
+      return []
+    },
+  )
+}
+
+/**
+ * The two halves of stopping a turn, which are not the same half.
+ *
+ * `asked` is whether somebody asked — the only thing that decides whether an ending is written
+ * down as cancelled. `signal` is the SDK's, and aborting it kills Codex outright; it is the
+ * fallback for when there is no process to interrupt politely.
+ */
+type Stopping = {
+  readonly asked: () => boolean
+  readonly signal: AbortSignal
+}
+
+/**
+ * How one turn is run.
+ *
+ * Nothing here is a preference: nobody is standing at this machine to answer a prompt, so
+ * anything that stopped to ask would hang there until the turn was given up on.
+ */
+function howToRun(where: string, asked: Asked) {
+  return {
+    workingDirectory: where,
+    skipGitRepoCheck: true,
+    sandboxMode: 'workspace-write' as const,
+    approvalPolicy: 'never' as const,
+    ...(asked.model === undefined ? {} : { model: asked.model }),
+    // Cast to the SDK's own type rather than to one of its members: what a person may pick came
+    // from `offers`, which is the CLI's own answer, so the check happened there.
+    ...(asked.effort === undefined
+      ? {}
+      : { modelReasoningEffort: asked.effort as ModelReasoningEffort }),
+  }
+}
+
+/**
+ * Interrupts the turns this program has Codex running, and says whether it found any.
+ *
+ * SIGINT is what Ctrl-C sends, and it is the one Codex passes on to the command it is running.
+ * This is measured rather than assumed: killed with SIGTERM instead — which is what aborting the
+ * SDK's stream does — Codex dies without stopping what it started, and a minute after one such
+ * turn had been written down as cancelled, the shell loop it began was still writing files.
+ */
+async function interrupt(binary: string): Promise<number> {
+  const turns = await turnsRunning(binary)
+
+  for (const pid of turns) {
+    try {
+      process.kill(pid, 'SIGINT')
+    } catch {
+      // It ended between being listed and being asked to stop, which is what was wanted.
+    }
+  }
+
+  return turns.length
+}
+
 function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk {
-  const stopping = new AbortController()
+  const aborting = new AbortController()
+  let wasAsked = false
+  const stopping: Stopping = { asked: () => wasAsked, signal: aborting.signal }
+  /** Known once the turn starts, and what `stop` needs to find the process to interrupt. */
+  let running: string | undefined
 
   return {
     say: async function* (asked: Asked): AsyncIterable<Told> {
       const binary = await onPath(COMMAND, env)
+      running = binary
       if (binary === undefined) {
         yield { told: 'ended', why: { why: 'failed', said: 'Codex is no longer on this machine.' } }
         return
       }
 
       const codex = new Codex({ codexPathOverride: binary })
-      const options = {
-        workingDirectory: where,
-        skipGitRepoCheck: true,
-        // Nobody is standing at this machine to answer a prompt, so anything that asks would hang
-        // there until the turn was given up on.
-        sandboxMode: 'workspace-write' as const,
-        approvalPolicy: 'never' as const,
-        ...(asked.model === undefined ? {} : { model: asked.model }),
-        // Cast to the SDK's own type rather than to one of its members: what a person may pick
-        // came from `offers`, which is the CLI's own answer, so the check happened there.
-        ...(asked.effort === undefined
-          ? {}
-          : { modelReasoningEffort: asked.effort as ModelReasoningEffort }),
-      }
+      const options = howToRun(where, asked)
 
       if (sofar !== null) {
-        const forgotten = yield* stream(
-          codex.resumeThread(sofar, options),
-          asked,
-          stopping.signal,
-          true,
-        )
+        const forgotten = yield* stream(codex.resumeThread(sofar, options), asked, stopping, true)
         if (!forgotten) return
 
         // Said before anything else in the turn: this answer was written by an agent with no
@@ -189,13 +269,20 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
         yield { told: 'forgot' }
       }
 
-      yield* stream(codex.startThread(options), asked, stopping.signal)
+      yield* stream(codex.startThread(options), asked, stopping)
     },
 
-    // Codex offers no gentler interruption than this, and it does not need one: the thread is
-    // saved on its side, so the next turn picks the conversation up where this one was stopped.
+    /**
+     * Asks the turn to stop, and interrupts Codex to make it so.
+     *
+     * Aborting is the fallback, not the first move, because aborting is a SIGTERM — see
+     * {@link interrupt}. It is right in exactly one case: there was no process to interrupt,
+     * which is a turn stopped before it had begun.
+     */
     stop: async () => {
-      stopping.abort()
+      wasAsked = true
+      const interrupted = running === undefined ? 0 : await interrupt(running)
+      if (interrupted === 0) aborting.abort()
     },
   }
 }
@@ -203,7 +290,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
 export async function* stream(
   thread: Pick<ReturnType<Codex['startThread']>, 'runStreamed'>,
   asked: Asked,
-  until: AbortSignal,
+  stopping: Stopping,
   /** Whether a thread Codex no longer has is an answer rather than a fault. */
   resuming = false,
 ): AsyncGenerator<Told, boolean> {
@@ -214,7 +301,7 @@ export async function* stream(
   let ended = false
 
   try {
-    const turn = await thread.runStreamed(asked.text, { signal: until })
+    const turn = await thread.runStreamed(asked.text, { signal: stopping.signal })
     for await (const event of turn.events) {
       const told = fromEvent(event)
       ended ||= told.some((one) => one.told === 'ended')
@@ -224,8 +311,9 @@ export async function* stream(
     if (ended) return false
 
     // Never `instanceof`: what is thrown here is minified, and its `name` is not always
-    // `AbortError`. We are the ones who asked it to stop, so we are the ones who know.
-    if (until.aborted) yield { told: 'ended', why: { why: 'cancelled' } }
+    // `AbortError` — and an interrupted Codex does not throw an abort at all, it exits on a
+    // signal. We are the ones who asked it to stop, so we are the ones who know.
+    if (stopping.asked()) yield { told: 'ended', why: { why: 'cancelled' } }
     else if (resuming && isForgotten(trouble)) return true
     else yield { told: 'ended', why: { why: 'failed', said: plainly(trouble) } }
   }

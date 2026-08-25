@@ -30,85 +30,40 @@ adapter 是**边界**,住在常驻进程里,不是 owner。
 
 ## 加一个 agent 要做什么
 
-**两件事,没有第三件:**
-
 ```
-① 写一个文件      apps/cli/src/agents/<kind>.ts        驱动它 + 把它的话翻成人话
-② 注册表加一行    apps/cli/src/agents/agents.ts
+① 写一个文件    apps/cli/src/agents/<kind>.ts          驱动它 + 把它的话翻成人话
+② 注册表加一行  apps/cli/src/agents/known-agents.ts    kind → adapter
+③ 服务端一行    apps/server/src/machine/agent-kind.ts     kind → 要在 PATH 上找的命令
+④ 一条迁移      agents_kind_check 加这个 kind
+⑤ 页面一行      apps/web/features/agents.ts            它在屏幕上怎么写
 ```
 
-不用碰:数据库、迁移、HTTP、序号、幂等、三态、页面。
+**五处,其中三处是机械强制的:**③ 少了它,机器报上来的东西被当作不认识直接丢掉;④ 少了它,
+写库时被 CHECK 拒;⑤ 少了它,`satisfies Record<AgentKind, string>` 编译不过。
 
-**这条有检查器**:一份共享的旅程测试对**注册表里的每一个** agent 跑同一套断言。
-加一行注册就自动获得整套测试;adapter 里但凡漏了业务逻辑进去,共享测试就会挂。
+**曾经这一节写的是「两件事,没有第三件」,那是假的。** 少写的三处里有两处不会立刻报错——
+一个新 adapter 能跑完整个 turn,然后在写库那一步被拒。写一句好听的承诺,代价是下一个人来调这个。
+
+不用碰的是真的:**序号、幂等、三态、SSE、页面怎么渲染一条工具调用**,adapter 一个都不知道。
 
 ### 契约
 
-```ts
-/** One agent runtime we can drive. An adapter implements this and nothing else. */
-export interface Agent {
-  /** Stable key. Matches the database's agent kind and the discovery list from slice 02. */
-  readonly kind: AgentKind
-  /** The executable to look for on PATH. Discovery already scans for this. */
-  readonly command: string
-  /** Start a fresh conversation, or pick up one this agent already remembers. */
-  talk(where: string, sofar: string | null): Talk
-  /** What this agent lets a person choose, as it reports it right now. Empty means it does not
-   *  let you choose, and the page then has no control to show. */
-  offers(where: string): Promise<readonly Model[]>
-}
+`apps/cli/src/agents/agent.ts`。**这里不抄一份。** 一份抄件只会和真的那份分头演化 ——
+它上一次就是这么错的:抄件里的 `Agent` 有个不存在的 `kind`,`say()` 的参数是三年前的形状,
+`stop()` 整个漏了,`ok` 抄成了必填。
 
-export interface Talk {
-  /**
-   * Say one thing and report what happens until the agent is done. Numbering,
-   * persistence, idempotency, and the three-state rule belong to the caller;
-   * an adapter that reaches for any of them is wrong.
-   */
-  say(text: string, until: AbortSignal): AsyncIterable<Told>
-}
+只说类型说不出来的那部分:
 
-/** Everything an adapter is allowed to report while a turn runs. */
-export type Told =
-  /** The agent named its own session. Recorded so a later turn can pick it up. */
-  | { told: 'session'; id: string }
-  /** One thing it said or did, already in our words. */
-  | { told: 'said'; said: Said }
-  /**
-   * We asked it to pick up an earlier session and it could not, so this turn
-   * starts from nothing. Only the adapter can tell this apart from a real
-   * failure — it is the one that knows what its agent's refusal looks like.
-   */
-  | { told: 'forgot' }
-  /** This turn is over. */
-  | { told: 'ended'; why: Why }
+**adapter 只做翻译和驱动。** 不认识数据库、不认识 HTTP、不知道自己是第几轮。它唯一被允许
+自己判断的事是「我这个 agent 说的这句话,是不是『我不记得那个会话了』」——只有它认得自己
+那个 SDK 的拒绝长什么样,而认错了就是让人去找一个根本不存在的故障。
 
-/**
- * One thing, in our words — the page renders every variant; only some are kept.
- * Two are live-only because they exist to show a turn in motion, and the log is
- * append-only: a row is written once and never revised.
- */
-export type Said =
-  | { said: 'text'; text: string }
-  /** Live only. Never written — see 决定⑤. */
-  | { said: 'thinking'; text: string }
-  /** Live only. It started something; the durable record is the `did` below. */
-  | { said: 'doing'; name: string; verb: string; arg: string }
-  /** Kept. `verb` is a courtesy for tools we know; unknown tools carry their own name. */
-  | { said: 'did'; name: string; verb: string; arg: string; ok: boolean; excerpt: string }
+**哪些 `Said` 落库由类型保证:** `thinking` 和 `doing` 是给正在看的人的,`text`、`did`、
+`trouble` 才是记录。**日志一行写下去不改**,所以一次工具调用是**做完之后的那一行**,不是
+「先插一行再回来补结果」——Postgres 每 update 一次就多留一个旧版本,而一次 turn 有几十次调用。
 
-/**
- * Why a turn ended. `unknown` is absent on purpose — see 决定⑧.
- * `said` is shown to a person, so the adapter owes it plain words: both SDKs
- * report trouble by throwing, and what they throw is not fit to read.
- */
-export type Why = { why: 'done' } | { why: 'cancelled' } | { why: 'failed'; said: string }
-```
-
-**adapter 只有这四个成员。** 它不认识数据库、不认识 HTTP、不知道自己是第几轮。
-
-**哪些 `Said` 落库写在一个地方**,由类型保证:`thinking` 和 `doing` 是给在看的人的,
-`text` 和 `did` 才是记录。**日志一行写下去不改**,所以一次工具调用是**做完之后的那一行**,
-不是「先插一行再回来补结果」。
+**这一节有检查器**:`apps/cli/agent-check/journey.agents.spec.ts` 对**注册表里的每一个** agent
+跑同一套断言,跑真的二进制。加一行注册就自动获得整套测试。
 
 ## 数据
 
@@ -254,17 +209,37 @@ resume 接不上     claude 抛 "No conversation found with session ID: …"
 
 **一、`say()` 只产出 `Told`,不抛。** 异常在 adapter 里被接住、翻成 `ended`。上层没有 try/catch。
 
-**二、`cancelled` 由我们自己的 signal 判定,不看异常。** 打断本身是好用的 —— 实测
-`sleep 12 && echo late > late.txt` 在 abort 之前已经开跑,二十五秒后那个文件仍然不存在,
-**子进程连同它起的 shell 一起被收掉了**。麻烦只在于事后怎么认出「这是打断」:
+**二、`cancelled` 的判据是「我们问过没有」,不是异常,也不是 abort 标志。**
 
 ```
 claude 抛出来的     类名 ir(压缩过的),而 e.name 干脆就是 "Error"
-codex 抛出来的      AbortError
+codex 抛出来的      AbortError —— 但被打断的 codex 根本不抛 abort,它是收到信号退出的
 ```
 
-`instanceof` 靠不住,`e.name` 靠不住,匹配 message 文本更靠不住。而我们本来就攥着那个
-`AbortSignal` —— **`signal.aborted` 为真就是 `cancelled`,与它抛了什么无关。**
+`instanceof` 靠不住,`e.name` 靠不住,匹配 message 文本更靠不住,**而 `signal.aborted` 也只
+在「我们是靠 abort 停的」那条路上才为真**。攥在手里的那件事只有一个:**是不是有人按了停止。**
+
+**两家的停法不是一回事,这是实测出来的,不是设计出来的:**
+
+```
+claude   interrupt() —— 官方的控制请求。它自己收掉在跑的东西,而且会回话说接没接受
+codex    没有这种东西。SDK 的 abort 是 spawn({signal}),等于 SIGTERM
+```
+
+**而 SIGTERM 杀不掉 codex 起的那条命令。** 实测:一个写 60 次的 shell 循环,turn 被记成
+cancelled 之后,它把 60 次写完了。SIGTERM 把 codex 本身干掉了,它来不及收自己的子进程。
+
+```
+kill -INT <codex>    循环当场停在第 4 行,13 秒后还是 4 行
+kill -TERM <codex>   codex 没了,循环继续:5 秒后 8 行,13 秒后 16 行
+```
+
+**所以 codex 的 stop 是先 SIGINT 那个进程,而不是 abort。** SIGINT 就是 Ctrl-C 送的那个信号,
+codex 会把它传给正在跑的命令。abort 退成兜底:**只在压根没找到进程可打断的时候用**——
+先 SIGINT 再立刻 abort 等于没打断,后到的 SIGTERM 会把还在收尾的 codex 直接干掉。
+
+进程得去找:SDK 自己 spawn 了 codex 却不把句柄交出来,所以按「我们的直接子进程 + 命令行里
+带着 SDK 那个 `--experimental-json`」去认。这样认不到给模型列表用的 `app-server`。
 
 **三、「接不上」是 `forgot`,不是 `failed`。** 只有 adapter 认得出自己那家的拒绝长什么样
 (claude 是 "No conversation found with session ID"),所以这个判断只能在它那儿做。
@@ -458,7 +433,8 @@ POST   /machines/current/conversations/{id}/messages   机器追加一条
 **横死会留下孤儿,有序停止不会。** 这一对实测过:
 
 ```
-abort()        活儿真的停了,子进程和它起的 shell 一起收掉
+有序停止       活儿真的停了,子进程和它起的 shell 一起收掉
+              —— 但两家要用不同的手段才做得到这件事,见④'二
 kill -9 我们   agent 变孤儿,继续跑、继续花钱、继续写它自己的记录
 ```
 
@@ -473,23 +449,30 @@ kill -9 我们   agent 变孤儿,继续跑、继续花钱、继续写它自己�
 
 ## 测试
 
-**共享旅程测试(注册表里每个 agent 都跑一遍)** —— 这是「加一个 agent 只写 adapter」的检查器:
+**共享旅程测试** `apps/cli/agent-check/journey.agents.spec.ts` —— 注册表里每个 agent 跑同一套,
+**跑真的二进制,不用假 agent**:
 
 ```
-一句话跑完 → assistant 消息落库,收尾 activityType = 'done'
-它读文件 / 跑命令 → tool 消息落库,verb 和 arg 是人话
-用一个没见过的工具名 → 原样显示,不漏也不抛
-say() 在任何一种失败下都不抛,只产出 ended
-abort 之后一定是 cancelled,而且判定不依赖异常的类名或文本
-adapter 一次都没说出 unknown
-thinking 只出现在实时流里,库里一条都没有
-第二句它记得第一句(sofar 生效)
-sofar 是垃圾 → 报 told:'forgot'(不是 failed),落一条 activity 之后接着答
-中途 abort → cancelled 不是 failed;而且活儿真的停了(留痕的命令没留下痕)
-杀掉常驻进程再拉起来 → 那一轮收成 unknown,而没人开始的问题仍然在等
+一句话跑完 → 它报了会话名、答了话、收尾是 done
+跑一条命令 → 一条 did,verb 是人话,ok 是真的
+第二句记得第一句(把上一轮的会话名递回去)
+递一个它没有的会话名 → told:'forgot' 而不是 failed,然后从零答完
+中途叫停 → cancelled 不是 failed,而且活儿真的停了
+          (一条每秒写一行的循环,turn 结束后 4 秒再看,一行都没多)
 ```
 
-**共享旅程测试跑真的二进制**,不用假 agent —— 上面每一条都是实测过能过的。
+**它需要两个二进制都装着且登录着,还要花真的模型调用**,所以不在 `pnpm check` 里,
+用 `pnpm test:agents` 单独点名跑。**二进制不在就红,不是跳过** —— 一个因为没跑而绿的测试
+比红的更糟。
+
+**没进这一套的两条,以及为什么:**
+
+```
+没见过的工具名 → 原样显示    真 agent 逼不出来。改成对着翻译函数的确定性单测:
+                            claude-code.spec.ts / codex.spec.ts,各一条
+adapter 从不说 unknown       这条由类型保证:Why 里根本没有 unknown 这个成员,
+                            测试测不出「不可能被表达的东西」
+```
 
 **owner 行为**:一轮开合的配对 · 没收尾 + 离线 = 不知道的判定边界 · 四种收尾 activityType 互斥 ·
 per-role 的 content schema 校验。
