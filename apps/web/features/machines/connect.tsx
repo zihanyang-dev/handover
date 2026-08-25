@@ -7,6 +7,7 @@
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { CheckCircleFill, ExclamationCircleFill, Laptop } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
@@ -40,11 +41,13 @@ function waitingFor(code: string) {
  */
 function Answer({
   machineName,
+  who,
   spaces,
   pending,
   onAnswer,
 }: {
   readonly machineName: string
+  readonly who: string
   readonly spaces: readonly { id: string; slug: string; displayName: string }[]
   readonly pending: boolean
   readonly onAnswer: (slug: string, yes: boolean) => void
@@ -58,19 +61,32 @@ function Answer({
       </p>
 
       <p className="label">Let it into</p>
-      {spaces.map((space) => (
-        <button
-          key={space.id}
-          className="button button-primary"
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            onAnswer(space.slug, true)
-          }}
-        >
-          <span className="button-label">{space.displayName}</span>
-        </button>
-      ))}
+      {spaces.length === 0 ? (
+        // Not a Space that went missing — a person who is in none. Arriving here that way is
+        // ordinary: signing in with a way in that turns out to have its own account is exactly
+        // how somebody lands with nothing to approve into, and they will be sure they have a
+        // Space, because on their other account they do. So the account is named. Without the
+        // name this reads as a broken screen, and the next thing tried is the button that turns
+        // your own machine away.
+        <p className="empty">
+          Signed in as <strong>{who}</strong>, who is not in any Space yet.{' '}
+          <Link to="/">Make one</Link>, then come back to this code.
+        </p>
+      ) : (
+        spaces.map((space) => (
+          <button
+            key={space.id}
+            className="button button-primary"
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              onAnswer(space.slug, true)
+            }}
+          >
+            <span className="button-label">{space.displayName}</span>
+          </button>
+        ))
+      )}
 
       <button
         className="button button-quiet"
@@ -83,6 +99,32 @@ function Answer({
         <span className="button-label">That is not mine — turn it away</span>
       </button>
     </div>
+  )
+}
+
+/** The screen after answering. Nothing of the form survives onto it, so it is not part of it. */
+function Answered({ letIn }: { readonly letIn: boolean }) {
+  return (
+    <main className="sheet">
+      <section className="card stack">
+        <p className="said said-good">
+          <CheckCircleFill aria-hidden />
+          {letIn ? 'That machine is in. Its terminal will say so.' : 'Turned away.'}
+        </p>
+      </section>
+    </main>
+  )
+}
+
+/** Something did not work. Words where there are words for it, and never the word off the wire. */
+function Trouble({ error, fallback }: { readonly error: Error | null; readonly fallback: string }) {
+  if (error === null) return null
+
+  return (
+    <p className="said said-bad">
+      <ExclamationCircleFill aria-hidden />
+      {SAID[error.message] ?? fallback}
+    </p>
   )
 }
 
@@ -111,18 +153,7 @@ export function Connect({ typed }: { readonly typed: string }) {
     },
   })
 
-  if (answer.isSuccess) {
-    return (
-      <main className="sheet">
-        <section className="card stack">
-          <p className="said said-good">
-            <CheckCircleFill aria-hidden />
-            {answer.data ? 'That machine is in. Its terminal will say so.' : 'Turned away.'}
-          </p>
-        </section>
-      </main>
-    )
-  }
+  if (answer.isSuccess) return <Answered letIn={answer.data} />
 
   return (
     <main className="sheet">
@@ -138,19 +169,8 @@ export function Connect({ typed }: { readonly typed: string }) {
           <p className="lede">Type the code shown in the terminal you ran the command in.</p>
         </div>
 
-        {waiting.isError && (
-          <p className="said said-bad">
-            <ExclamationCircleFill aria-hidden />
-            {SAID[waiting.error.message] ?? 'That could not be checked. Try again shortly.'}
-          </p>
-        )}
-
-        {answer.isError && (
-          <p className="said said-bad">
-            <ExclamationCircleFill aria-hidden />
-            {SAID[answer.error.message] ?? 'That could not be done. Try again shortly.'}
-          </p>
-        )}
+        <Trouble error={waiting.error} fallback="That could not be checked. Try again shortly." />
+        <Trouble error={answer.error} fallback="That could not be done. Try again shortly." />
 
         <div className="stack-tight">
           <label className="label" htmlFor={field}>
@@ -176,6 +196,7 @@ export function Connect({ typed }: { readonly typed: string }) {
         {waiting.data !== undefined && (
           <Answer
             machineName={waiting.data.machineName}
+            who={me.data?.displayName ?? ''}
             spaces={spaces}
             pending={answer.isPending}
             onAnswer={(slug, yes) => {

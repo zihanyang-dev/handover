@@ -75,6 +75,19 @@ describe('answering a machine', () => {
     expect(screen.getByRole('button', { name: 'Beta' })).toBeDefined()
   })
 
+  it('says what to do when there is no Space to let it into', async () => {
+    // How somebody lands here: signing in with a way in that turns out to have its own account.
+    // The heading with nothing under it reads as a screen that did not work, and the next thing
+    // they would try is the button that turns their own machine away.
+    server.use(signedIn({ displayName: 'zane', spaces: [] }), waiting())
+    open('/connect/WDJB-MJHT')
+
+    expect(await screen.findByText(/not in any Space yet/i)).toBeDefined()
+    expect(screen.getByRole('link', { name: /make one/i })).toBeDefined()
+    // Named, because somebody with two accounts is sure they have a Space — on the other one.
+    expect(screen.getByText('zane')).toBeDefined()
+  })
+
   it('lets it in, into the Space that was picked', async () => {
     const approved: string[] = []
     server.use(
