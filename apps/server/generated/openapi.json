@@ -376,9 +376,6 @@
                   "granted"
                 ]
               },
-              "token": {
-                "type": "string"
-              },
               "machineId": {
                 "type": "string",
                 "format": "uuid"
@@ -392,7 +389,6 @@
             },
             "required": [
               "kind",
-              "token",
               "machineId",
               "lookFor"
             ]
@@ -482,11 +478,17 @@
             "minLength": 1,
             "maxLength": 200,
             "example": "build-server-1"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 200
           }
         },
         "required": [
           "secret",
-          "machineName"
+          "machineName",
+          "token"
         ]
       },
       "MachineWaiting": {

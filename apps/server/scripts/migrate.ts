@@ -38,6 +38,11 @@ function dumpSchema(url: string): void {
     `--username=${target.username}`,
     `--dbname=${target.pathname.slice(1)}`,
     '--schema-only',
+    // Whether `public` carries a comment depends on how the database was made, not on any
+    // migration: dbmate's `create` leaves one, `createdb` and a hand-made database do not. Dumped,
+    // it makes the file say something about the machine it came from — and the drift check then
+    // fails on a fresh database for a reason no migration could ever fix.
+    '--no-comments',
     '--no-owner',
     '--no-privileges',
     // dbmate's bookkeeping is not part of our schema.

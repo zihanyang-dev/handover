@@ -32,6 +32,6 @@
     "format:write": "prettier --write .",
     "test": "vitest run",
     "coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text",
-    "check": "pnpm generate && git diff --exit-code apps/server/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm test"
+    "check": "pnpm generate && git diff --exit-code apps/server/generated apps/web/generated apps/cli/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm test"
   }
 }

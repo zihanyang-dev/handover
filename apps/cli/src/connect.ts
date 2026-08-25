@@ -6,12 +6,29 @@
  * approving happens on whatever device the person has to hand.
  */
 
+import { randomBytes } from 'node:crypto'
 import type { Api } from './api.ts'
 import type { components } from '../generated/api.ts'
 import type { Attachment } from './store.ts'
 
 /** How often to ask while waiting for a person. Short: somebody is watching a terminal. */
 const POLL_SECONDS = 2
+
+/**
+ * The credential this machine will hold, minted here.
+ *
+ * Made by the machine rather than handed to it, for one reason: the answer to `collect` can be
+ * lost. Generated on the server, the plaintext existed once, in that one response — and a machine
+ * that never received it could only ask again and be told the enrolment was spent, leaving a
+ * machine in somebody's Space that nobody could recover. Held here, asking again is the same
+ * machine asking again.
+ *
+ * `hm_` so a secret found in a log or a shell history says what it is and where to go revoke it,
+ * and 256 bits because the only thing guarding it afterwards is that nobody can guess it.
+ */
+function newMachineToken(): string {
+  return `hm_${randomBytes(32).toString('base64url')}`
+}
 
 /** What came back from asking, and what was asked with — the name is part of the request. */
 export type Asked = {
@@ -80,9 +97,10 @@ export async function connectWithKey(
   key: string,
   machineName: string,
 ): Promise<Connected> {
+  const token = newMachineToken()
   // Unlike the waiting path there is nothing to sit through: a key that does not work now will
   // not start working, so a failure here ends the attempt rather than becoming a retry.
-  const came = await api.POST('/enrolments/collect', { body: { secret: key, machineName } })
+  const came = await api.POST('/enrolments/collect', { body: { secret: key, machineName, token } })
 
   if (came.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
 
@@ -97,12 +115,7 @@ export async function connectWithKey(
 
   return {
     kind: 'connected',
-    attachment: {
-      origin,
-      machineId: came.data.machineId,
-      token: came.data.token,
-      lookFor: came.data.lookFor,
-    },
+    attachment: { origin, machineId: came.data.machineId, token, lookFor: came.data.lookFor },
   }
 }
 
@@ -127,10 +140,13 @@ export async function waitToBeLetIn(
   waiting: Waiting,
 ): Promise<Connected> {
   waiting.show(asked)
+  // Minted once, before the waiting starts: every attempt in this loop is the same machine asking,
+  // and the server answers a repeat with the answer the first one missed.
+  const token = newMachineToken()
 
   for (;;) {
     const came = await api.POST('/enrolments/collect', {
-      body: { secret: asked.secret, machineName: asked.machineName },
+      body: { secret: asked.secret, machineName: asked.machineName, token },
     })
 
     if (came.data === undefined) {
@@ -145,12 +161,7 @@ export async function waitToBeLetIn(
     if (data.kind === 'granted') {
       return {
         kind: 'connected',
-        attachment: {
-          origin,
-          machineId: data.machineId,
-          token: data.token,
-          lookFor: data.lookFor,
-        },
+        attachment: { origin, machineId: data.machineId, token, lookFor: data.lookFor },
       }
     }
     if (data.kind !== 'waiting') return { kind: 'gave-up', why: data.kind }

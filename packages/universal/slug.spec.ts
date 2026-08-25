@@ -82,4 +82,16 @@ describe('nextFreeSlug', () => {
   it('numbers a non-ASCII name the same way', () => {
     expect(nextFreeSlug('徐悦泰' as Slug, ['徐悦泰'])).toBe('徐悦泰-2')
   })
+
+  it('offers a name that survives being submitted, even at the limit', () => {
+    // A suggestion is something a person submits, and submitting it normalizes it again. One over
+    // the limit and it comes back clipped to exactly the name that was taken — the same refusal,
+    // with the same suggestion, forever.
+    const longest = normalizeSlug('x'.repeat(200)) as Slug
+
+    const offered = nextFreeSlug(longest, [longest])
+
+    expect(normalizeSlug(offered)).toBe(offered)
+    expect(offered).not.toBe(longest)
+  })
 })

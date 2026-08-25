@@ -4,7 +4,7 @@ import { sql } from 'kysely'
 import { normalizeSlug, type Slug } from '@handover/universal'
 import { ACTIVITY, ROLES } from '../conversation/transcript.ts'
 import { loadEnv } from '../env.ts'
-import { newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
+import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
 import { takeOne } from './turn.ts'
@@ -74,7 +74,7 @@ async function attached(): Promise<string> {
 
   const collected = await collectEnrolment(db, {
     secretHash: secret.hash,
-    tokenHash: newMachineToken().hash,
+    tokenHash: hashSecret(`hm_${randomUUID()}`),
     machineName: 'mina-mbp',
   })
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')

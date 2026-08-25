@@ -1960,7 +1960,6 @@ export interface components {
         Collected: {
             /** @enum {string} */
             kind: "granted";
-            token: string;
             /** Format: uuid */
             machineId: string;
             lookFor: string[];
@@ -1984,6 +1983,7 @@ export interface components {
             secret: string;
             /** @example build-server-1 */
             machineName: string;
+            token: string;
         };
         MachineWaiting: {
             machineName: string;

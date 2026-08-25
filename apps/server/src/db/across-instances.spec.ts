@@ -21,7 +21,7 @@ import { openConversation, sayTo } from './conversation.ts'
 import { takeOne } from './turn.ts'
 import { openEnrolment, approveEnrolment } from './enrolment.ts'
 import { checkIn, collectEnrolment } from './machine.ts'
-import { newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
+import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { normalizeSlug } from '@handover/universal'
 import type { Slug } from '@handover/universal'
@@ -219,7 +219,7 @@ async function aQuestion(): Promise<{ machineId: string; conversationId: string 
   await approveEnrolment(one, userCode, { userId, spaceId: made.space.id })
   const collected = await collectEnrolment(one, {
     secretHash: secret.hash,
-    tokenHash: newMachineToken().hash,
+    tokenHash: hashSecret(`hm_${randomUUID()}`),
     machineName: 'mina-mbp',
   })
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')

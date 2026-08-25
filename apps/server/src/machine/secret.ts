@@ -1,10 +1,13 @@
 /**
- * The two secrets a machine holds, and the prefixes that say which is which.
+ * The secrets around a machine, and the prefixes that say which is which.
  *
  * They are deliberately different things with different lives. An enrolment secret may be pasted
  * onto ten servers by whoever generated it; the credential a machine ends up with belongs to that
  * machine alone. Leaking the first must not be leaking the tenth machine's, and taking one machine
  * away must not take the other nine with it.
+ *
+ * Only the enrolment secret is minted here. A machine's own credential is minted by the machine —
+ * see `collect` — and this side only ever sees its hash.
  */
 
 import { createHash, randomBytes } from 'node:crypto'
@@ -16,7 +19,6 @@ const SECRET_BYTES = 32
  * where to go revoke it. GitHub, Multica and Tailscale all label theirs for the same reason.
  */
 const ENROLMENT = 'hk'
-const MACHINE = 'hm'
 
 export type Secret = {
   /** Handed over once and never stored. */
@@ -28,11 +30,6 @@ export type Secret = {
 /** What a machine shows to collect its credential. Spent the moment it works. */
 export function newEnrolmentSecret(): Secret {
   return mint(ENROLMENT)
-}
-
-/** What a machine shows on every call afterwards. */
-export function newMachineToken(): Secret {
-  return mint(MACHINE)
 }
 
 /**

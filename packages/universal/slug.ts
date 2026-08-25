@@ -25,9 +25,9 @@ const SEPARATORS = /[^\p{L}\p{N}\p{M}]+/gu
 const EDGE_SEPARATORS = /^-+|-+$/gu
 
 /** Clipping so that a name is never cut through the middle of a character. */
-function clip(value: string): string {
+function clip(value: string, howMany = MAX_GRAPHEMES): string {
   const graphemes = Array.from(GRAPHEMES.segment(value), (entry) => entry.segment)
-  return graphemes.slice(0, MAX_GRAPHEMES).join('')
+  return graphemes.slice(0, howMany).join('')
 }
 
 /**
@@ -50,10 +50,20 @@ export function normalizeSlug(displayName: string): Slug | null {
  * It is a suggestion, not a reservation: nothing holds it, and submitting it can lose the same
  * race again. Numbering fills gaps rather than always climbing, so a Space deleted at `-2` gives
  * that number back instead of leaving everyone after it counting from `-3`.
+ *
+ * The base is shortened first when the suffix would not fit. A suggestion is something a person
+ * submits, and submitting it puts it back through {@link normalizeSlug} — one over the limit and
+ * it comes back clipped to the very name that was taken, so the same refusal happens again with
+ * the same suggestion, forever.
  */
 export function nextFreeSlug(base: Slug, taken: Iterable<string>): Slug {
   const used = new Set(taken)
   let suffix = 2
-  while (used.has(`${base}-${String(suffix)}`)) suffix += 1
-  return `${base}-${String(suffix)}` as Slug
+  for (;;) {
+    const room = MAX_GRAPHEMES - `-${String(suffix)}`.length
+    const shorter = clip(base, room)
+    const offered = `${shorter}-${String(suffix)}`
+    if (!used.has(offered)) return offered as Slug
+    suffix += 1
+  }
 }

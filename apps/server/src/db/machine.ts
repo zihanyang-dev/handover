@@ -46,7 +46,7 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
       .$narrowType<{ space_id: string }>()
       .executeTakeFirst()
 
-    if (won === undefined) return whyNot(tx, collecting.secretHash)
+    if (won === undefined) return whyNot(tx, collecting)
 
     const machine = await tx
       .insertInto('machines')
@@ -66,12 +66,28 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
 }
 
 /**
- * Why the collection did not happen. Only reached when the update matched nothing.
+ * Why the collection did not happen, or that it already did.
  *
- * The order is what the reader needs most, not the order the columns are in: being told somebody
- * else already collected this beats being told it also happened to run out afterwards.
+ * A machine that collected and never heard the answer asks again with the same secret and the same
+ * token. That is not somebody else taking its place — it is the same machine, and the answer it
+ * missed is still the true one. Anything else with a spent secret really is somebody else.
+ *
+ * The rest is ordered by what the reader needs most, not by the order the columns are in: being
+ * told somebody else already collected this beats being told it also happened to run out.
  */
-async function whyNot(tx: Tx, secretHash: string): Promise<Enrolment> {
+async function whyNot(tx: Tx, collecting: Collecting): Promise<Collected> {
+  const secretHash = collecting.secretHash
+  const already = await tx
+    .selectFrom('enrolments')
+    .innerJoin('machines', 'machines.enrolled_from', 'enrolments.id')
+    .select('machines.id')
+    .where('enrolments.secret_hash', '=', secretHash)
+    .where('machines.token_hash', '=', collecting.tokenHash)
+    .where('machines.removed_at', 'is', null)
+    .executeTakeFirst()
+
+  if (already !== undefined) return { kind: 'granted', machineId: already.id }
+
   const row = await tx
     .selectFrom('enrolments')
     // Whether it ran out is decided by the database's clock, like every other deadline here.

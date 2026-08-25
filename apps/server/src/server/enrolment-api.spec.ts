@@ -72,13 +72,16 @@ async function as(path: string, method = 'GET', json?: unknown): Promise<Respons
 async function collect(
   secret: string,
   machineName = 'mina-mbp',
-): Promise<{ kind: string; token?: string }> {
+  // The credential the machine is bringing with it. Minted by the machine, so asking twice with
+  // the same one is the same machine asking twice.
+  token = `hm_${randomUUID()}`,
+): Promise<{ kind: string; machineId?: string }> {
   const answered = await app.request('/enrolments/collect', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ secret, machineName }),
+    body: JSON.stringify({ secret, machineName, token }),
   })
-  return (await answered.json()) as { kind: string; token?: string }
+  return (await answered.json()) as { kind: string; machineId?: string }
 }
 
 /** A key generated in a Space: an enrolment that arrived approved. */
@@ -144,16 +147,28 @@ describe('answering', () => {
     expect(await collect(asked.secret)).toMatchObject({ kind: 'granted' })
   })
 
-  it('hands over a credential that is not the enrolment secret', async () => {
-    // Two secrets, two lives: a key pasted onto ten servers must not be the credential any one of
-    // them ends up holding.
+  it('answers a machine that never heard the first answer with the same one', async () => {
+    // The whole reason a machine mints its own credential. Generated on this side, the plaintext
+    // existed once — in one response — and a machine that never received it could only ask again
+    // and be told the enrolment was spent, leaving a machine in the Space nobody could recover.
     const asked = await ask()
     await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')
+    const token = `hm_${randomUUID()}`
+    const first = await collect(asked.secret, 'mina-mbp', token)
 
-    const collected = await collect(asked.secret)
+    const again = await collect(asked.secret, 'mina-mbp', token)
 
-    expect(collected.token).toMatch(/^hm_/u)
-    expect(collected.token).not.toBe(asked.secret)
+    expect(again).toEqual(first)
+  })
+
+  it('tells a different machine the enrolment is spent, however it asks', async () => {
+    // A single-use key really can be taken by somebody else, and that is worth being told rather
+    // than being handed a second credential for a Space that agreed to one machine.
+    const asked = await ask()
+    await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')
+    await collect(asked.secret)
+
+    expect(await collect(asked.secret)).toEqual({ kind: 'spent' })
   })
 
   it('refuses to approve into a Space the person is not in', async () => {

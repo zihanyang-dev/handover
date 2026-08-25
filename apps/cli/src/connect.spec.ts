@@ -100,15 +100,20 @@ describe('waiting to be let in', () => {
     expect(connected).toMatchObject({ kind: 'connected' })
   })
 
-  it('keeps the credential it was handed, not the secret it asked with', async () => {
+  it('keeps the credential it minted, not the secret it asked with', async () => {
+    // Minted here rather than handed back, so a lost answer is something this machine can ask
+    // about again: the server has only its hash, and the same machine asking twice is the same.
     server.use(answers('granted'))
 
     const connected = await waitToBeLetIn(apiFor(ORIGIN), ORIGIN, ASKED, waiting())
 
     expect(connected).toMatchObject({
       kind: 'connected',
-      attachment: { origin: ORIGIN, machineId: 'm-1', token: 'hm_token', lookFor: ['claude'] },
+      attachment: { origin: ORIGIN, machineId: 'm-1', lookFor: ['claude'] },
     })
+    const held = connected.kind === 'connected' ? connected.attachment.token : ''
+    expect(held).toMatch(/^hm_/u)
+    expect(held).not.toBe(ASKED.secret)
   })
 
   it.each(['refused', 'expired', 'spent', 'no-enrolment'])('gives up on %s', async (kind) => {
@@ -159,7 +164,8 @@ describe('coming in with a key', () => {
 
     await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
 
-    expect(sent).toEqual({ secret: 'hk_key', machineName: 'build-server-1' })
+    expect(sent).toMatchObject({ secret: 'hk_key', machineName: 'build-server-1' })
+    expect((sent as { token: string }).token).toMatch(/^hm_/u)
   })
 
   it('gives up on a key somebody else already used, rather than waiting for nothing', async () => {

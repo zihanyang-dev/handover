@@ -2,7 +2,7 @@ import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { newUserCode, type UserCode } from '../machine/user-code.ts'
-import { newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
+import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import {
   approveEnrolment,
@@ -104,7 +104,7 @@ describe('opening one', () => {
 
     const collected = await collectEnrolment(db, {
       secretHash: secret.hash,
-      tokenHash: newMachineToken().hash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
       machineName: 'mina-mbp',
     })
 

@@ -56,6 +56,8 @@ beforeEach(async () => {
 
 /** A machine that got in, and the credential it holds. */
 async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: string }> {
+  // Minted here because a machine mints its own: the server only ever sees the hash.
+  const token = `hm_${randomUUID()}`
   const asked = (await (
     await enrolments.request('/enrolments', {
       method: 'POST',
@@ -73,11 +75,11 @@ async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: 
     await enrolments.request('/enrolments/collect', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ secret: asked.secret, machineName }),
+      body: JSON.stringify({ secret: asked.secret, machineName, token }),
     })
-  ).json()) as { token: string; machineId: string }
+  ).json()) as { machineId: string }
 
-  return { token: collected.token, id: collected.machineId }
+  return { token, id: collected.machineId }
 }
 
 async function asMachine(

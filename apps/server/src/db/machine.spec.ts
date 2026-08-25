@@ -1,7 +1,7 @@
 import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
+import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { presence } from '../machine/presence.ts'
 import { approveEnrolment, openEnrolment, refuseEnrolment } from './enrolment.ts'
@@ -69,7 +69,7 @@ async function approved(name = 'mina-mbp'): Promise<string> {
 async function attached(name = 'mina-mbp'): Promise<string> {
   const collected = await collectEnrolment(db, {
     secretHash: await approved(name),
-    tokenHash: newMachineToken().hash,
+    tokenHash: hashSecret(`hm_${randomUUID()}`),
     machineName: 'mina-mbp',
   })
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
@@ -91,7 +91,7 @@ describe('collecting an approved enrolment', () => {
       Array.from({ length: 10 }, async () =>
         collectEnrolment(db, {
           secretHash,
-          tokenHash: newMachineToken().hash,
+          tokenHash: hashSecret(`hm_${randomUUID()}`),
           machineName: 'mina-mbp',
         }),
       ),
@@ -105,13 +105,13 @@ describe('collecting an approved enrolment', () => {
     const secretHash = await approved()
     await collectEnrolment(db, {
       secretHash,
-      tokenHash: newMachineToken().hash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
       machineName: 'mina-mbp',
     })
 
     const again = await collectEnrolment(db, {
       secretHash,
-      tokenHash: newMachineToken().hash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
       machineName: 'mina-mbp',
     })
 
@@ -292,17 +292,17 @@ describe('whether it is here', () => {
 describe('taking one away', () => {
   it('stops its credential working', async () => {
     const secretHash = await approved()
-    const token = newMachineToken()
+    const token = `hm_${randomUUID()}`
     const collected = await collectEnrolment(db, {
       secretHash,
-      tokenHash: token.hash,
+      tokenHash: hashSecret(token),
       machineName: 'mina-mbp',
     })
     if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
 
-    expect(await machineHolding(db, token.hash)).toBe(collected.machineId)
+    expect(await machineHolding(db, hashSecret(token))).toBe(collected.machineId)
     await removeMachine(db, collected.machineId, SPACE)
-    expect(await machineHolding(db, token.hash)).toBeUndefined()
+    expect(await machineHolding(db, hashSecret(token))).toBeUndefined()
   })
 
   it('says when it looked, from the clock that wrote what it is comparing against', async () => {
