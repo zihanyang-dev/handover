@@ -92,7 +92,7 @@ function Resend({
   })
 
   return (
-    <div className="card stack-tight" style={{ marginTop: '0.75rem' }}>
+    <div className="auth-aside">
       {/* A button that did nothing looks the same as a letter that never came. */}
       {resend.isError && (
         <p className="said said-bad" role="alert">
@@ -155,15 +155,16 @@ export function EmailCode({
   })
 
   return (
-    <main className="sheet">
+    <main className="auth">
+      <span className="auth-mark">Handover</span>
       <form
-        className="card stack"
+        className="auth-stack"
         onSubmit={(event) => {
           event.preventDefault()
           handBack.mutate(code)
         }}
       >
-        <div className="stack-tight">
+        <div className="auth-head">
           <h1>Check your email</h1>
           <p className="lede">
             We sent a {DIGITS}-digit code to <span className="address">{email}</span>. It works for{' '}

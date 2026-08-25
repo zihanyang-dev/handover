@@ -92,15 +92,16 @@ export function SignIn({
   })
 
   return (
-    <main className="sheet">
+    <main className="auth">
+      <span className="auth-mark">Handover</span>
       <form
-        className="card stack"
+        className="auth-stack"
         onSubmit={(event) => {
           event.preventDefault()
           askForCode.mutate(email)
         }}
       >
-        <div className="stack-tight">
+        <div className="auth-head">
           <h1>Sign in or sign up</h1>
           <p className="lede">However you sign in, the same address reaches the same account.</p>
         </div>
