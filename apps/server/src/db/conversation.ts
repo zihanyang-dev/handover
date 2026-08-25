@@ -12,9 +12,10 @@
 import { sql } from 'kysely'
 import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
-import { working, type LastWord, type Working } from '../conversation/busy.ts'
+import { working, type Working } from '../conversation/busy.ts'
 import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
+import { endTurn, openTurn, openTurnsOn } from './turn.ts'
 
 export type Opening = {
   readonly spaceId: string
@@ -119,7 +120,7 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     const machine = presence(conversation, conversation.asOf)
     if (machine.state === 'gone') return { kind: 'machine-away' }
 
-    const busy = working(await lastWord(tx, conversation.id), machine)
+    const busy = working(await unfinished(tx, conversation.id), machine)
     if (busy.state === 'working') return { kind: 'still-answering' }
 
     return append(tx, { ...saying, message: { role: 'user', content: asked } })
@@ -162,21 +163,28 @@ async function alreadySaid(tx: Tx, saying: Saying): Promise<boolean> {
 }
 
 /**
- * The last thing said, which is what says whether a turn is still open.
+ * Whether a question in this conversation is still owed an answer.
  *
- * Only an `activity` can close one, so only its `activityType` is read; every other role leaves
- * the turn as it found it.
+ * A question with no turn is one nobody has taken; a question whose turn has not ended is one
+ * being run. Both are owed. What was said after it decides nothing — the words are the record, and
+ * whether the work is finished is the ledger's to say.
  */
-async function lastWord(tx: Tx, conversationId: string): Promise<LastWord> {
-  const last = await tx
+async function unfinished(db: Database | Tx, conversationId: string): Promise<boolean> {
+  const owed = await db
     .selectFrom('messages')
-    .select(sql<string | null>`content ->> 'activityType'`.as('activityType'))
-    .where('conversation_id', '=', conversationId)
-    .orderBy('seq', 'desc')
+    .leftJoin('turns', (join) =>
+      join
+        .onRef('turns.conversation_id', '=', 'messages.conversation_id')
+        .onRef('turns.asked_seq', '=', 'messages.seq'),
+    )
+    .select('messages.seq')
+    .where('messages.conversation_id', '=', conversationId)
+    .where('messages.role', '=', 'user')
+    .where('turns.ended_at', 'is', null)
     .limit(1)
     .executeTakeFirst()
 
-  return last ?? null
+  return owed !== undefined
 }
 
 /**
@@ -235,7 +243,7 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
     if (await alreadySaid(tx, saying)) return { kind: 'asked-already' }
 
     const busy = working(
-      await lastWord(tx, conversation.id),
+      await unfinished(tx, conversation.id),
       presence(conversation, conversation.asOf),
     )
     if (busy.state === 'idle') return { kind: 'nothing-to-stop' }
@@ -252,9 +260,10 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
 /**
  * The conversation on this machine that somebody has asked it to stop, if there is one.
  *
- * Answered by whether anything ended the turn since, not by whether anything was said since: an
- * agent goes on working for as long as it takes the request to reach it, and every line it writes
- * in that time would otherwise bury the request that was meant to stop it.
+ * Answered by the ledger: a stop matters exactly while the turn it was asked about is still
+ * running. Read from the transcript instead, every line the agent wrote after the request would
+ * have to be examined to decide whether the request was still standing — and an agent goes on
+ * writing for as long as it takes the request to reach it.
  *
  * Nothing has to clear it. The turn ending is the answer, and until there is one the machine is
  * told again on every report — which is also what makes a request that arrived while the machine
@@ -262,25 +271,17 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
  */
 export async function stopWantedOn(db: Database, machineId: string): Promise<string | undefined> {
   const wanted = await db
-    .selectFrom('messages')
-    .innerJoin('conversations', 'conversations.id', 'messages.conversation_id')
-    .select('conversations.id as conversationId')
-    .where('conversations.machine_id', '=', machineId)
-    .where('messages.role', '=', 'activity')
-    .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`)
-    .where((eb) =>
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom('messages as ended')
-            .select('ended.id')
-            .whereRef('ended.conversation_id', '=', 'messages.conversation_id')
-            .whereRef('ended.seq', '>', 'messages.seq')
-            .where('ended.role', '=', 'activity')
-            .where(sql<boolean>`ended.content ->> 'activityType' = any(${sql.val(ENDINGS)})`),
-        ),
-      ),
+    .selectFrom('turns')
+    .innerJoin('messages', (join) =>
+      join
+        .onRef('messages.conversation_id', '=', 'turns.conversation_id')
+        .on('messages.role', '=', 'activity'),
     )
+    .select('turns.conversation_id as conversationId')
+    .where('turns.machine_id', '=', machineId)
+    .where('turns.ended_at', 'is', null)
+    .whereRef('messages.seq', '>', 'turns.asked_seq')
+    .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`)
     .limit(1)
     .executeTakeFirst()
 
@@ -292,95 +293,30 @@ export async function stopWantedOn(db: Database, machineId: string): Promise<str
  *
  * Called when a machine says it has just started, which is the one moment when an open turn on it
  * is certainly nobody's: killing the process that drives an agent does not kill the agent, so a
- * turn abandoned that way went on without anybody watching, and what it did is unknowable from
- * here.
+ * turn abandoned that way went on without anybody watching, and what it did is unknowable here.
  *
  * `unknown` and not `failed`, because the two ask different things of a person: a failed turn is
  * safe to ask for again, and this one may already have done everything it was asked.
+ *
+ * Both halves in one transaction: the ledger says the turn is over and the transcript says how it
+ * looked. A ledger closed without the record would leave a conversation that reads as still
+ * running to anybody who scrolls it.
  */
 export async function forgetStranded(db: Database, machineId: string): Promise<number> {
-  const closed = await sql<{ id: string }>`
-    insert into messages (conversation_id, seq, key, role, content)
-    select last.conversation_id,
-           last.seq + 1,
-           last.seq || '/end',
-           'activity',
-           ${JSON.stringify({ activityType: ACTIVITY.unknown })}::jsonb
-      from (
-        select distinct on (m.conversation_id) m.conversation_id, m.seq, m.role, m.content
-          from messages m
-          join conversations c on c.id = m.conversation_id
-         where c.machine_id = ${machineId}
-         order by m.conversation_id, m.seq desc
-      ) as last
-     where last.role <> 'user'
-       and coalesce(last.content ->> 'activityType', '') <> all(${sql.val(ENDINGS)})
-    on conflict do nothing
-    returning id
-  `.execute(db)
+  return db.transaction().execute(async (tx) => {
+    const stranded = await openTurnsOn(tx, machineId)
 
-  return closed.rows.length
-}
+    for (const turn of stranded) {
+      await append(tx, {
+        conversationId: turn.conversationId,
+        key: `${String(turn.askedSeq)}/end`,
+        message: { role: 'activity', content: { activityType: ACTIVITY.unknown } },
+      })
+      await endTurn(tx, turn.conversationId, turn.askedSeq)
+    }
 
-export type Waiting = {
-  readonly conversationId: string
-  readonly agentKind: string
-  /** What the agent calls this conversation, when it has said so. Absent on the first turn. */
-  readonly agentSession: string | null
-  /**
-   * Where the question sits in the conversation.
-   *
-   * Sent so the machine can name what it writes after it — a name built from the question it is
-   * answering is one it can rebuild if a write goes unanswered and has to be sent again.
-   */
-  readonly askedSeq: number
-  readonly asked: unknown
-}
-
-/**
- * The longest-waiting question on this machine, if it has one.
- *
- * A question is waiting exactly when it is the last thing said in its conversation. Nothing marks
- * it as taken: the machine that asks is the only one that could answer, and it answers by
- * appending, which is what stops it being the last thing said.
- */
-export async function waitingOn(db: Database, machineId: string): Promise<Waiting | undefined> {
-  const waiting = await db
-    .selectFrom('messages')
-    .innerJoin('conversations', 'conversations.id', 'messages.conversation_id')
-    .select([
-      'conversations.id as conversationId',
-      'conversations.agent_kind as agentKind',
-      'conversations.agent_session_id as agentSession',
-      'messages.seq as askedSeq',
-      'messages.content as asked',
-    ])
-    .where('conversations.machine_id', '=', machineId)
-    .where('messages.role', '=', 'user')
-    // Nothing said after it is what makes a question still a question — except somebody asking it
-    // to stop, which is not an answer to it. Counting that would hide the question from the only
-    // machine that could ever end the turn, and leave the conversation working forever: the person
-    // asked to stop something nobody had started, and their asking is what buried it.
-    .where((eb) =>
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom('messages as later')
-            .select('later.id')
-            .whereRef('later.conversation_id', '=', 'messages.conversation_id')
-            .whereRef('later.seq', '>', 'messages.seq')
-            .where(
-              sql<boolean>`not (later.role = 'activity'
-                and later.content ->> 'activityType' = ${ACTIVITY.stopAsked})`,
-            ),
-        ),
-      ),
-    )
-    .orderBy('messages.created_at')
-    .limit(1)
-    .executeTakeFirst()
-
-  return waiting
+    return stranded.length
+  })
 }
 
 /** A machine reporting something, which is an {@link Appending} it has to be the owner of. */
@@ -405,8 +341,23 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
 
     if (conversation === undefined) return { kind: 'no-conversation' }
 
-    return append(tx, reporting)
+    const written = await append(tx, reporting)
+
+    // The record and the ledger move together. An ending in the transcript with the turn still
+    // open would leave a conversation that reads as finished and is still owed an answer — and
+    // the machine would be handed the same question again on its next report.
+    if (ends(reporting.message)) {
+      const running = await openTurn(tx, reporting.conversationId)
+      if (running !== undefined) await endTurn(tx, reporting.conversationId, running)
+    }
+
+    return written
   })
+}
+
+/** Whether this is the message that says how a turn went. */
+function ends(message: Message): boolean {
+  return message.role === 'activity' && ENDINGS.includes(message.content.activityType)
 }
 
 /**
@@ -443,8 +394,8 @@ export type Standing = {
 /**
  * The conversations in a Space, and whether each is being worked on.
  *
- * `working` is computed here from the last message and the machine's silence rather than stored,
- * for the same reason presence is: a machine that is killed writes nothing on the way out.
+ * `working` is computed from the ledger and the machine's silence rather than stored, for the same
+ * reason presence is: a machine that is killed writes nothing on the way out.
  */
 export async function conversationsIn(db: Database, spaceId: string): Promise<readonly Standing[]> {
   const rows = await db
@@ -467,15 +418,23 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
         .orderBy('messages.seq')
         .limit(1)
         .as('opening'),
-      // Whether anything has been said at all, and what closed the turn if anything did. Two
-      // answers out of one row, which is why they are not two subqueries.
+      // Whether a question here is still owed an answer: one nobody has taken, or one a machine
+      // took and has not ended.
       eb
-        .selectFrom('messages')
-        .select(sql<string | null>`coalesce(content ->> 'activityType', '')`.as('closing'))
-        .whereRef('messages.conversation_id', '=', 'conversations.id')
-        .orderBy('messages.seq', 'desc')
-        .limit(1)
-        .as('closing'),
+        .exists(
+          eb
+            .selectFrom('messages')
+            .leftJoin('turns', (join) =>
+              join
+                .onRef('turns.conversation_id', '=', 'messages.conversation_id')
+                .onRef('turns.asked_seq', '=', 'messages.seq'),
+            )
+            .select('messages.seq')
+            .whereRef('messages.conversation_id', '=', 'conversations.id')
+            .where('messages.role', '=', 'user')
+            .where('turns.ended_at', 'is', null),
+        )
+        .as('unfinished'),
     ])
     .where('conversations.space_id', '=', spaceId)
     .orderBy('conversations.created_at', 'desc')
@@ -483,7 +442,8 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
 
   return rows.map((row) => ({
     ...row,
-    working: working(spoken(row.closing), presence(row, row.asOf)),
+    // `exists` comes back as a boolean from Postgres; the driver's type is wider than the column.
+    working: working(row.unfinished === true, presence(row, row.asOf)),
   }))
 }
 
@@ -547,28 +507,12 @@ export async function conversationWith(
     .orderBy('seq')
     .execute()
 
-  const last = messages.at(-1)
-  const lastWord: LastWord = last === undefined ? null : { activityType: closingOf(last.content) }
-
   return {
     ...conversation,
-    working: working(lastWord, presence(conversation, conversation.asOf)),
+    working: working(
+      await unfinished(db, conversation.id),
+      presence(conversation, conversation.asOf),
+    ),
     messages,
   }
-}
-
-function closingOf(content: unknown): string | null {
-  const named = (content as { activityType?: unknown } | null)?.activityType
-  return typeof named === 'string' ? named : null
-}
-
-/**
- * The last word of a conversation, from a single value.
- *
- * A row with no messages comes back as SQL null; one whose last message is not an activity comes
- * back as the empty string. Both mean something different, and folding them together would show a
- * fresh question as an idle conversation.
- */
-function spoken(closing: string | null): LastWord {
-  return closing === null ? null : { activityType: closing === '' ? null : closing }
 }

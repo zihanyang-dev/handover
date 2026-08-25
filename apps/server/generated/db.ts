@@ -119,6 +119,14 @@ export interface Spaces {
   slug: string;
 }
 
+export interface Turns {
+  asked_seq: number;
+  claimed_at: Generated<Timestamp>;
+  conversation_id: string;
+  ended_at: Timestamp | null;
+  machine_id: string;
+}
+
 export interface Users {
   created_at: Generated<Timestamp>;
   display_name: string;
@@ -136,5 +144,6 @@ export interface DB {
   memberships: Memberships;
   messages: Messages;
   spaces: Spaces;
+  turns: Turns;
   users: Users;
 }

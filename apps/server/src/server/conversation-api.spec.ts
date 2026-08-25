@@ -205,6 +205,9 @@ describe('a machine that has just started', () => {
       key: 'turn-1',
       asked: { text: 'take your time' },
     })
+    // The machine takes it the way it really does — by reporting — and then says one thing before
+    // whatever was driving it went away.
+    await asMachine('/machines/current/poll', 'POST', { found: [] })
     await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
       key: 'turn-1/1',
       message: { role: 'assistant', content: { text: 'on it' } },

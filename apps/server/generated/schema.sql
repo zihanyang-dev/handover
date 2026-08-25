@@ -194,6 +194,19 @@ CREATE TABLE public.spaces (
 
 
 --
+-- Name: turns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.turns (
+    conversation_id uuid NOT NULL,
+    asked_seq integer NOT NULL,
+    machine_id uuid NOT NULL,
+    claimed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    ended_at timestamp with time zone
+);
+
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -365,6 +378,14 @@ ALTER TABLE ONLY public.spaces
 
 
 --
+-- Name: turns turns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.turns
+    ADD CONSTRAINT turns_pkey PRIMARY KEY (conversation_id, asked_seq);
+
+
+--
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -412,6 +433,13 @@ CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (us
 --
 
 CREATE INDEX machines_in_space ON public.machines USING btree (space_id) WHERE (removed_at IS NULL);
+
+
+--
+-- Name: turns_open_on_machine; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX turns_open_on_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
 
 
 --
@@ -508,6 +536,30 @@ ALTER TABLE ONLY public.memberships
 
 ALTER TABLE ONLY public.messages
     ADD CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: turns turns_conversation_id_asked_seq_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.turns
+    ADD CONSTRAINT turns_conversation_id_asked_seq_fkey FOREIGN KEY (conversation_id, asked_seq) REFERENCES public.messages(conversation_id, seq) ON DELETE CASCADE;
+
+
+--
+-- Name: turns turns_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.turns
+    ADD CONSTRAINT turns_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: turns turns_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.turns
+    ADD CONSTRAINT turns_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id);
 
 
 --

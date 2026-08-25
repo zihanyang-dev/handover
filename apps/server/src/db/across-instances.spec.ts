@@ -17,6 +17,13 @@ import { signInWithCode } from './sign-in.ts'
 import { arrive } from './user.ts'
 import { createSpace } from './space.ts'
 import { connectProvider } from './credential.ts'
+import { openConversation, sayTo } from './conversation.ts'
+import { takeOne } from './turn.ts'
+import { openEnrolment, approveEnrolment } from './enrolment.ts'
+import { checkIn, collectEnrolment } from './machine.ts'
+import { newEnrolmentSecret, newMachineToken } from '../machine/secret.ts'
+import { newUserCode } from '../machine/user-code.ts'
+import { normalizeSlug } from '@handover/universal'
 import type { Slug } from '@handover/universal'
 
 const env = loadEnv()
@@ -174,7 +181,66 @@ describe('two instances at once', () => {
     const outcomes = [first.kind, second.kind].sort()
     expect(outcomes).toEqual(['connected', 'rejected'])
   })
+
+  it('let exactly one of two instances take the same turn', async () => {
+    // The whole reason the ledger exists. Two processes holding the same machine credential both
+    // poll, both see the same unanswered question, and without the database deciding, both run it
+    // — two agents in one directory, doing the same work twice.
+    const { machineId, conversationId } = await aQuestion()
+
+    const [first, second] = await Promise.all([takeOne(one, machineId), takeOne(two, machineId)])
+
+    const took = [first, second].filter((taken) => taken !== undefined)
+    expect(took).toHaveLength(1)
+    expect(took[0]?.conversationId).toBe(conversationId)
+  })
 })
+
+/** A machine in a Space, a conversation on it, and one question nobody has answered. */
+async function aQuestion(): Promise<{ machineId: string; conversationId: string }> {
+  const userId = await someone('asking')
+  const made = await createSpace(one, {
+    requestKey: `${RUN}-space`,
+    userId,
+    displayName: `Acme ${RUN.slice(0, 6)}`,
+    slug: normalizeSlug(`Acme ${RUN.slice(0, 6)}`) as Slug,
+  })
+  if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
+
+  const secret = newEnrolmentSecret()
+  const userCode = newUserCode()
+  await openEnrolment(one, {
+    spaceId: undefined,
+    machineName: 'mina-mbp',
+    secretHash: secret.hash,
+    userCode,
+    approvedBy: undefined,
+  })
+  await approveEnrolment(one, userCode, { userId, spaceId: made.space.id })
+  const collected = await collectEnrolment(one, {
+    secretHash: secret.hash,
+    tokenHash: newMachineToken().hash,
+    machineName: 'mina-mbp',
+  })
+  if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
+  await checkIn(one, collected.machineId, [{ kind: 'claude-code', version: '2.1.231' }])
+
+  const conversation = await openConversation(one, {
+    spaceId: made.space.id,
+    machineId: collected.machineId,
+    agentKind: 'claude-code',
+  })
+  if (conversation.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+
+  const said = await sayTo(
+    one,
+    { conversationId: conversation.conversationId, spaceId: made.space.id, key: `${RUN}-turn` },
+    { text: 'take your time' },
+  )
+  if (said.kind !== 'said') throw new Error('the fixture could not ask')
+
+  return { machineId: collected.machineId, conversationId: conversation.conversationId }
+}
 
 /** An account, made the way arriving makes one. */
 async function someone(address: string): Promise<string> {

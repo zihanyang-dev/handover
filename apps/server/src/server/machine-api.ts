@@ -8,7 +8,8 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { forgetStranded, stopWantedOn, waitingOn, type Waiting } from '../db/conversation.ts'
+import { forgetStranded, stopWantedOn } from '../db/conversation.ts'
+import { takeOne, type Taken } from '../db/turn.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
 import { Asked } from '../conversation/transcript.ts'
 import {
@@ -146,19 +147,19 @@ const machineBody = z
 const machinesBody = z.object({ machines: z.array(machineBody).readonly() }).openapi('Machines')
 
 /**
- * A waiting question as the machine is told it.
+ * A question this machine has just taken, as it is told about it.
  *
  * `asked` is parsed on the way out rather than trusted: it went in as JSON, and a row written by
  * an older build is exactly the case where a shape can be wrong. A row that will not parse is one
  * this machine cannot act on, and pretending otherwise sends it a turn it cannot take.
  */
-function asAsking(waiting: Waiting) {
+function asAsking(taken: Taken) {
   return {
-    conversationId: waiting.conversationId,
-    agentKind: waiting.agentKind as AgentKind,
-    agentSession: waiting.agentSession,
-    askedSeq: waiting.askedSeq,
-    asked: Asked.parse(waiting.asked),
+    conversationId: taken.conversationId,
+    agentKind: taken.agentKind as AgentKind,
+    agentSession: taken.agentSession,
+    askedSeq: taken.askedSeq,
+    asked: Asked.parse(taken.asked),
   }
 }
 
@@ -204,16 +205,16 @@ function polling(deps: MachineApi) {
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 
-      const [waiting, wanted] = await Promise.all([
-        waitingOn(deps.db, machineId),
-        stopWantedOn(deps.db, machineId),
-      ])
+      // The stop first: a machine that is already running a turn has to hear about it, and taking
+      // a new one is only worth doing once nothing else is owed.
+      const wanted = await stopWantedOn(deps.db, machineId)
+      const taken = await takeOne(deps.db, machineId)
 
       return c.json(
         {
           pollSeconds: POLL_SECONDS,
           lookFor: AGENT_COMMANDS,
-          ...(waiting === undefined ? {} : { asking: asAsking(waiting) }),
+          ...(taken === undefined ? {} : { asking: asAsking(taken) }),
           ...(wanted === undefined ? {} : { stopping: wanted }),
         },
         200,

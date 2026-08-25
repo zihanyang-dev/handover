@@ -1,59 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import type { Presence } from '../machine/presence.ts'
 import { working } from './busy.ts'
-import { ACTIVITY } from './transcript.ts'
 
-const HERE: Presence = { state: 'here' }
-const GONE: Presence = { state: 'gone', since: new Date('2026-08-25T12:00:00Z') }
-
-const said = { role: 'user', activityType: null }
-const answered = { role: 'assistant', activityType: null }
-const ended = (activityType: string) => ({ role: 'activity', activityType })
+const HERE = { state: 'here' } as const
+const GONE = { state: 'gone', since: new Date() } as const
 
 describe('whether a conversation is being worked on', () => {
-  it('is idle before anybody has said anything', () => {
-    expect(working(null, HERE)).toEqual({ state: 'idle' })
+  it('is idle when every question has been answered', () => {
+    expect(working(false, HERE)).toEqual({ state: 'idle' })
   })
 
-  it('is working from the moment a person speaks, before the agent has answered anything', () => {
-    // The machine has not written a word yet. Waiting for one would show a fresh question as idle.
-    expect(working(said, HERE)).toEqual({ state: 'working' })
+  it('is idle even when the machine is gone, because nothing is owed', () => {
+    expect(working(false, GONE)).toEqual({ state: 'idle' })
   })
 
-  it('is still working while the agent is part way through', () => {
-    expect(working(answered, HERE)).toEqual({ state: 'working' })
+  it('is working while a question is outstanding on a machine that is here', () => {
+    // One nobody has taken yet and one a machine is running are the same thing from here: the
+    // conversation is owed an answer, and somebody is around to give it.
+    expect(working(true, HERE)).toEqual({ state: 'working' })
   })
 
-  it('is idle once the turn is closed', () => {
-    expect(working(ended(ACTIVITY.done), HERE)).toEqual({ state: 'idle' })
-  })
-
-  it('is idle after a failure, because nothing is owed until somebody speaks again', () => {
-    expect(working(ended(ACTIVITY.failed), HERE)).toEqual({ state: 'idle' })
-  })
-
-  it('is idle after somebody stopped it', () => {
-    expect(working(ended(ACTIVITY.cancelled), HERE)).toEqual({ state: 'idle' })
-  })
-
-  it('is unknown when the turn is open and the machine is not here', () => {
-    expect(working(answered, GONE)).toEqual({ state: 'unknown' })
-  })
-
-  it('does not become unknown just because the machine left after the turn closed', () => {
-    // A finished conversation on a laptop that is now shut is finished, not in doubt.
-    expect(working(ended(ACTIVITY.done), GONE)).toEqual({ state: 'idle' })
-  })
-
-  it('is idle once nobody knows, because nothing more is owed until somebody speaks', () => {
-    // `unknown` closes the turn. The doubt stays visible in the transcript; it is not a state the
-    // conversation is stuck in, and nothing retries on its own.
-    expect(working(ended(ACTIVITY.unknown), GONE)).toEqual({ state: 'idle' })
-  })
-
-  it('treats an activity it has never heard of as not closing the turn', () => {
-    // New kinds of activity arrive as values. Assuming an unfamiliar one ended the turn would
-    // quietly drop a question on the floor; assuming it did not leaves the turn visibly open.
-    expect(working(ended('some-future-thing'), HERE)).toEqual({ state: 'working' })
+  it('is nobody-knows when the machine that owes an answer is not here', () => {
+    // Not failed. The agent may have finished the whole turn, and calling it failed would invite
+    // somebody to ask for it all over again — running whatever it already did a second time.
+    expect(working(true, GONE)).toEqual({ state: 'unknown' })
   })
 })
