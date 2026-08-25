@@ -10,7 +10,6 @@ import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
-import { Mark } from '../../mark.tsx'
 
 /** Rounded up, so "1 minute" never means "any moment now". */
 function minutesLeft(expiresAt: string): number {
@@ -158,7 +157,6 @@ export function EmailCode({
         }}
       >
         <div className="auth-head">
-          <Mark size={80} state={handBack.isPending ? 'working' : 'thinking'} />
           <h1>Check your email</h1>
           <p className="lede">
             We sent a {DIGITS}-digit code to <span className="address">{email}</span>. It works for{' '}

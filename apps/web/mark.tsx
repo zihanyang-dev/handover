@@ -3,13 +3,11 @@
  *
  * Shipped to us as `AnimatedLogo.tsx` and reworked, not copied:
  *
- * - the viewBox is trimmed to the artwork's real bounding box (255 60 612 737). The one it
- *   came with carried ~30px of empty stage on every side, so a `size` prop never meant the
- *   size you got;
+ * - the viewBox is trimmed to the character's real bounding box (245 168 633 639). The one it
+ *   came with carried an empty stage and a detached pom, so a `size` prop never meant the size
+ *   you got;
  * - `role="img"` announces "Handover". The label it shipped with described the implementation
- *   ("Animated character logo, idle state") to whoever was listening;
- * - `overflow: visible` (mark.css) is what the pom's hop relies on — it leaves the frame by
- *   ~34px at the top of `thinking` and `success`. Do not clip it.
+ *   ("Animated character logo, idle state") to whoever was listening.
  *
  * The motion lives in mark.css, one state per class; this file only says which one is on.
  */
@@ -20,21 +18,18 @@ import type { CSSProperties } from 'react'
 /** What it is doing right now. */
 export type MarkState = 'idle' | 'thinking' | 'working' | 'success'
 
-const BODY = '#2b292a'
-/* A green that lets the white through a little; the solid orange read murky on the page. */
-const ACCENT = '#34a853e6'
+/* Claude's actual warm accent: sampled from its current UI, not approximated. */
+const BODY = '#d97757'
 
 export function Mark({
   state = 'idle',
   size = 64,
   bodyColor = BODY,
-  accentColor = ACCENT,
   className,
 }: {
   readonly state?: MarkState
   readonly size?: number
   readonly bodyColor?: string
-  readonly accentColor?: string
   readonly className?: string | undefined
 }) {
   return (
@@ -43,13 +38,12 @@ export function Mark({
       style={
         {
           '--body': bodyColor,
-          '--accent': accentColor,
           width: size,
           height: 'auto',
           maxWidth: '100%',
         } as CSSProperties
       }
-      viewBox="255 60 612 737"
+      viewBox="245 168 633 639"
       role="img"
       aria-label="Handover"
     >
@@ -70,11 +64,6 @@ export function Mark({
           </g>
         </g>
       </g>
-      <path
-        className="mark-pom"
-        fill="var(--accent)"
-        d="M546 71c33-4 54 9 66 34 12 27 4 61-15 80-19 20-50 26-77 17-30-9-48-33-47-64 1-30 17-51 41-61 10-4 21-6 32-6z"
-      />
     </svg>
   )
 }

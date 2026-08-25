@@ -395,6 +395,7 @@ textarea.field {
   --primary: #0075de; /* notion's blue */
   --primary-200: #0069c8;
   --primary-500: #0075de;
+  --focus: #2383e2; /* notion login's computed focus ring */
   --grey-300: #b9b9b7; /* manus --text-disable, placeholder */
   --grey-800: #0000001f; /* hairlines */
   --grey-900: #f7f7f5;
@@ -562,6 +563,17 @@ textarea.field {
   font-size: var(--text-m);
   letter-spacing: 0.4em;
   text-indent: 0.4em;
+}
+
+/* Notion uses the same blue both inside and outside the control: a crisp 2px focus state
+   without changing its dimensions. Email and code must not tell two different stories. */
+.auth .field:focus,
+.auth .code:focus {
+  outline: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--focus),
+    0 0 0 1px var(--focus);
+  background: #ffffff;
 }
 
 /* Manus says a field is wrong in the field: coral ring, coral words beneath it. */
