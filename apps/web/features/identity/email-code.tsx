@@ -71,7 +71,7 @@ function Resend({ email, after }: { readonly email: string; readonly after: numb
     <div className="card stack-tight" style={{ marginTop: '0.75rem' }}>
       {/* A button that did nothing looks the same as a letter that never came. */}
       {resend.isError && (
-        <p className="said said-bad">
+        <p className="said said-bad" role="alert">
           <ExclamationCircleFill aria-hidden />
           {SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.'}
         </p>
@@ -144,7 +144,7 @@ export function EmailCode({
         </div>
 
         {handBack.isError && (
-          <p className="said said-bad">
+          <p className="said said-bad" role="alert">
             <ExclamationCircleFill aria-hidden />
             {SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.'}
           </p>

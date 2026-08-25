@@ -8,24 +8,10 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useId, useState, type ReactElement } from 'react'
-import { ExclamationCircleFill, Github, Google } from 'react-bootstrap-icons'
+import { useId, useState } from 'react'
+import { ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api, retryKey } from '../../api.ts'
-
-/**
- * Required, one entry per provider: a name added without a label and a mark is a compile error,
- * not a button that reads `undefined`.
- */
-type Provider = 'google' | 'github'
-
-const LOOKS: Record<Provider, { readonly label: string; readonly icon: ReactElement }> = {
-  google: { label: 'Google', icon: <Google aria-hidden /> },
-  github: { label: 'GitHub', icon: <Github aria-hidden /> },
-}
-
-function known(kind: string): kind is Provider {
-  return kind in LOOKS
-}
+import { isProvider, PROVIDERS } from './providers.tsx'
 
 const SAID: Record<string, string> = {
   'too-soon': 'A code just went out. Give it a moment.',
@@ -41,7 +27,7 @@ async function offeredKinds(): Promise<readonly string[]> {
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
 function OtherWays() {
   const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
-  const providers = (offered.data ?? []).filter(known)
+  const providers = (offered.data ?? []).filter(isProvider)
 
   const leaveFor = useMutation({
     mutationFn: async (provider: string) => {
@@ -67,8 +53,8 @@ function OtherWays() {
             leaveFor.mutate(provider)
           }}
         >
-          {LOOKS[provider].icon}
-          <span className="button-label">Continue with {LOOKS[provider].label}</span>
+          {PROVIDERS[provider].icon}
+          <span className="button-label">Continue with {PROVIDERS[provider].label}</span>
         </button>
       ))}
       <div className="or">or</div>
@@ -107,7 +93,7 @@ export function SignIn({ email: initial = '' }: { readonly email?: string | unde
         </div>
 
         {askForCode.isError && (
-          <p className="said said-bad">
+          <p className="said said-bad" role="alert">
             <ExclamationCircleFill aria-hidden />
             {SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.'}
           </p>

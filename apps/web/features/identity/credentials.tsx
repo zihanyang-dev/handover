@@ -7,16 +7,12 @@
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Github, Google, Key } from 'react-bootstrap-icons'
-import { useId, type ReactElement } from 'react'
+import { Key } from 'react-bootstrap-icons'
+import { useId } from 'react'
 import { api } from '../../api.ts'
 import { AddAddress } from './add-address.tsx'
 import { meQuery } from './me.ts'
-
-const LOOKS: Record<string, { readonly label: string; readonly icon: ReactElement }> = {
-  google: { label: 'Google', icon: <Google aria-hidden /> },
-  github: { label: 'GitHub', icon: <Github aria-hidden /> },
-}
+import { PROVIDERS } from './providers.tsx'
 
 export function Credentials() {
   const me = useQuery(meQuery)
@@ -53,8 +49,8 @@ export function Credentials() {
           ) : (
             <li key={way.kind} className="row">
               <span className="row-name">
-                {LOOKS[way.kind]?.icon}
-                <strong>{LOOKS[way.kind]?.label ?? way.kind}</strong>
+                {PROVIDERS[way.kind].icon}
+                <strong>{PROVIDERS[way.kind].label}</strong>
               </span>
               {way.state === 'ready' ? (
                 <span className="chip chip-ready">Ready</span>

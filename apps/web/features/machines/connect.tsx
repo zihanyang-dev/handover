@@ -54,7 +54,7 @@ function Answer({
 }) {
   return (
     <div className="stack-tight">
-      <p className="said said-good">
+      <p className="said said-good" role="status">
         <Laptop aria-hidden />
         <strong>{machineName}</strong> is asking to come in. Is that the machine you just ran the
         command on?
@@ -107,7 +107,7 @@ function Answered({ letIn }: { readonly letIn: boolean }) {
   return (
     <main className="sheet">
       <section className="card stack">
-        <p className="said said-good">
+        <p className="said said-good" role="status">
           <CheckCircleFill aria-hidden />
           {letIn ? 'That machine is in. Its terminal will say so.' : 'Turned away.'}
         </p>
@@ -121,7 +121,7 @@ function Trouble({ error, fallback }: { readonly error: Error | null; readonly f
   if (error === null) return null
 
   return (
-    <p className="said said-bad">
+    <p className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
       {SAID[error.message] ?? fallback}
     </p>

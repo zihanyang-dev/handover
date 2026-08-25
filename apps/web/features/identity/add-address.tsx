@@ -25,7 +25,7 @@ const SAID: Record<string, string> = {
 
 function Said({ reason, fallback }: { readonly reason: string; readonly fallback: string }) {
   return (
-    <p className="said said-bad">
+    <p className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
       {SAID[reason] ?? fallback}
     </p>

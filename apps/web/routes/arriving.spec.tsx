@@ -76,10 +76,13 @@ describe('arriving after a trip through a provider', () => {
   })
 
   it('says nothing at all when the trip left nothing behind', async () => {
+    // Nothing announced either: every one of these is a message about something that was clicked,
+    // so it is announced, and this screen was reached without clicking anything.
     server.use(signedIn())
     open('/')
 
     await screen.findByText(/your spaces/i)
     expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

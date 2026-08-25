@@ -16,6 +16,9 @@ function arrived(search: Record<string, unknown>): { handover_result?: string } 
 /**
  * Every way a trip can end badly, in words about what to do next.
  *
+ * Announced as well as shown — every one of these appears after something was clicked, and a
+ * message that only exists on screen is a button that did nothing to anybody not looking at it.
+ *
  * A trip that failed and said nothing looks exactly like a button that does nothing. Every one of
  * these was silent once, and the silence was indistinguishable from the feature being broken.
  */
@@ -39,14 +42,14 @@ function Screen() {
         and a reload does not say it again.
       */}
       {result === 'merged' && (
-        <p className="said said-good">
+        <p className="said said-good" role="status">
           <CheckCircleFill aria-hidden />
           You already had an account here. This way of signing in now reaches the same one.
         </p>
       )}
 
       {wentWrong !== undefined && (
-        <p className="said said-bad">
+        <p className="said said-bad" role="alert">
           <ExclamationCircleFill aria-hidden />
           {wentWrong}
         </p>

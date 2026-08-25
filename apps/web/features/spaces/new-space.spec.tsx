@@ -97,4 +97,19 @@ describe('making a Space', () => {
 
     expect(await screen.findByText(/acme-2 is free/i)).toBeDefined()
   })
+
+  it('says a call that never arrived could not be sent, rather than going blank', async () => {
+    // Nobody answering is not the server saying no. Read as a refusal, this took the whole screen
+    // down: what comes back from a dropped connection is not in the shape a refusal is in.
+    server.use(
+      signedIn(),
+      http.post('*/spaces', () => HttpResponse.error()),
+    )
+    open('/')
+
+    await type('Acme')
+    await userEvent.click(screen.getByRole('button', { name: /make it/i }))
+
+    expect(await screen.findByText(/could not be sent/i)).toBeDefined()
+  })
 })
