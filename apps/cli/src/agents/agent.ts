@@ -88,34 +88,16 @@ export type Told =
 /**
  * One thing said or done, in our words.
  *
- * A page shows every kind; only some are kept. Two are live-only because they exist to show a
- * turn in motion, and a message is written once and never revised — a row per streamed fragment
- * would be an update per fragment, and Postgres keeps every version of a row it updates.
+ * The wire's shape, not a second one beside it. What an adapter reports is exactly what is pushed
+ * to whoever is watching and, for the kinds that settle, exactly what is written down — so a copy
+ * written out here would be a copy that could disagree with both.
+ *
+ * Two of the five never reach the transcript: what it was thinking, and that it had started
+ * something. Both exist to show a turn in motion, and a message is written once and never revised
+ * — a row per streamed fragment would be an update per fragment, and Postgres keeps every version
+ * of a row it updates.
  */
-export type Said =
-  | { readonly said: 'text'; readonly text: string }
-  /** Live only. Worth watching, worth nothing afterwards — and Claude Code agrees with itself:
-   *  the thinking in its own session file carries a signature and no readable text. */
-  | { readonly said: 'thinking'; readonly text: string }
-  /** Live only. It started something; the record of it is the `did` that follows. */
-  | { readonly said: 'doing'; readonly name: string; readonly verb: string; readonly arg: string }
-  /** Something went wrong and it carried on anyway. Neither speech nor a tool, and not the end of
-   *  the turn — a page that folded this into a failure would be saying the turn is over when it
-   *  is not. */
-  | { readonly said: 'trouble'; readonly text: string }
-  | {
-      readonly said: 'did'
-      /** The tool's own name, never translated. The set of tools is open — one MCP server adds as
-       *  many as it likes — so a table mapping names to our words is wrong the day it is written. */
-      readonly name: string
-      /** A courtesy for tools this adapter recognises. A page with none still has `name`. */
-      readonly verb: string
-      readonly arg: string
-      /** Absent when the tool never says how it went. Not everything reports a verdict, and
-       *  inventing one would put a tick beside something nobody checked. */
-      readonly ok?: boolean
-      readonly excerpt: string
-    }
+export type Said = components['schemas']['Moment']
 
 /**
  * Why a turn ended.

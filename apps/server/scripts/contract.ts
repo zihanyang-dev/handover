@@ -23,6 +23,8 @@ export function writeContract(env: Env): void {
     origin: env.PUBLIC_ORIGIN,
     webOrigin: env.WEB_ORIGIN,
     clients: {},
+    // Nothing is ever called: a spec is read off the routes, not produced by serving anything.
+    live: { say: async () => undefined, watch: () => () => undefined },
   })
 
   const document = app.getOpenAPIDocument(CONTRACT)

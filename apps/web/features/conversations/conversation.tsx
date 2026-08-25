@@ -10,7 +10,14 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CheckCircle, ExclamationCircle, Terminal } from 'react-bootstrap-icons'
 import { agentName } from '../agents.ts'
-import { useConversation, useSay, useStop, type Model } from './talking.ts'
+import {
+  useConversation,
+  useSay,
+  useStop,
+  useWatching,
+  type Model,
+  type Moment,
+} from './talking.ts'
 
 type Message = { readonly seq: number; readonly role: string; readonly content?: unknown }
 
@@ -60,6 +67,10 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
           <Said key={message.seq} message={message} />
         ))}
       </ul>
+
+      {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
+          screen. Nothing at all while it is idle — a settled turn has nothing to watch. */}
+      {working.state === 'working' && <Watching key={turnOf(messages)} slug={slug} id={id} />}
 
       <Doing state={working.state} slug={slug} id={id} turn={turnOf(messages)} />
       <Ask slug={slug} id={id} busy={working.state === 'working'} offers={offers} />
@@ -141,6 +152,46 @@ function Happened({ content }: { readonly content: unknown }) {
   const said = what.text ?? ACTIVITIES[what.activityType] ?? what.activityType
 
   return <li className="note">{said}</li>
+}
+
+/**
+ * What is happening right now, which is not what the transcript will keep.
+ *
+ * Said out loud rather than left to be discovered: the thinking on this list is gone once the turn
+ * settles, and a person who came back looking for it would otherwise think something was lost.
+ */
+function Watching({ slug, id }: { readonly slug: string; readonly id: string }) {
+  const moments = useWatching(slug, id)
+  if (moments.length === 0) return null
+
+  return (
+    <ul className="stack-tight" aria-label="Happening now">
+      {moments.map((moment, at) => (
+        // Nothing here has a name of its own: it is a stream, and its place in it is what it is.
+        // Nothing is ever removed or reordered, so the index is stable while it matters.
+        <li key={at} className="note">
+          {said(moment)}
+        </li>
+      ))}
+      <li className="note">Thinking is shown here and never kept.</li>
+    </ul>
+  )
+}
+
+/**
+ * One live moment, in a line.
+ *
+ * Thinking with nothing in it is still worth a line: Claude Code's own record keeps a signature
+ * and no readable text, so "it is thinking" is all there is to say and all anybody needs.
+ */
+function said(moment: Moment): string {
+  if (moment.said === 'thinking') {
+    return moment.text.trim() === '' ? 'Thinking…' : `Thinking — ${moment.text}`
+  }
+  if (moment.said === 'text') return moment.text
+  if (moment.said === 'trouble') return moment.text
+
+  return `${moment.verb === '' ? moment.name : moment.verb} ${moment.arg}`.trim()
 }
 
 function Doing({

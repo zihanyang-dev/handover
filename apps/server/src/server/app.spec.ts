@@ -45,6 +45,7 @@ const deps = {
   origin: 'http://localhost:3000',
   webOrigin: 'http://localhost:5173',
   clients: { google: unreachable, github: unreachable },
+  live: { say: async () => undefined, watch: () => () => undefined },
 }
 const app = handoverApp(deps)
 

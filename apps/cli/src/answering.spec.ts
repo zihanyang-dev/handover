@@ -30,10 +30,12 @@ type Written = { readonly key: string; readonly message: { role: string; content
 
 let written: Written[] = []
 let named: string[] = []
+let watched: Said[] = []
 
 beforeEach(() => {
   written = []
   named = []
+  watched = []
   server.use(
     http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, async ({ request }) => {
       written.push((await request.json()) as Written)
@@ -41,6 +43,10 @@ beforeEach(() => {
     }),
     http.put(`${ORIGIN}/machines/current/conversations/:id/session`, async ({ request }) => {
       named.push(((await request.json()) as { session: string }).session)
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.post(`${ORIGIN}/machines/current/conversations/:id/live`, async ({ request }) => {
+      watched.push((await request.json()) as Said)
       return new HttpResponse(null, { status: 204 })
     }),
   )
@@ -190,5 +196,21 @@ describe('what a turn leaves behind', () => {
     )
 
     expect(kept.map((one) => one.key)).toEqual(['4/1', '4/2', '4/end'])
+  })
+
+  it('shows somebody watching the two kinds nothing keeps', async () => {
+    // What it is thinking and that it has started something: both are worth watching and worth
+    // nothing afterwards, which is the whole of what the live stream adds over the transcript.
+    await answered(
+      saying(
+        said({ said: 'thinking', text: 'let me look at the file' }),
+        said({ said: 'doing', name: 'Bash', verb: 'ran', arg: 'ls' }),
+        said({ said: 'text', text: 'done' }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
+    )
+
+    expect(watched.map((one) => one.said)).toEqual(['thinking', 'doing', 'text'])
+    expect(JSON.stringify(written)).not.toContain('let me look at the file')
   })
 })

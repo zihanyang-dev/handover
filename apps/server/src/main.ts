@@ -8,6 +8,8 @@
 
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
+import { handTo, listenForMoments, liveThrough } from './db/live.ts'
+import type { Moment } from './conversation/live.ts'
 import { PROVIDER_KEYS, loadEnv } from './env.ts'
 import { codeLetter } from './identity/email-code.ts'
 import { createLog } from './log.ts'
@@ -77,6 +79,16 @@ for (const provider of PROVIDERS) {
 log.info({ providers: Object.keys(clients) }, 'sign-in providers')
 
 const db = connect(env)
+
+/**
+ * Everyone watching a turn on this instance, and the connection that hears about turns running on
+ * the others. A moment is worth nothing a second later, so none of this is kept anywhere.
+ */
+const watching = new Map<string, Set<(moment: Moment) => void>>()
+const listening = listenForMoments(env, log, (happening) => {
+  handTo(watching, happening)
+})
+
 const app = handoverApp({
   db,
   secret: env.AUTH_SECRET,
@@ -85,6 +97,7 @@ const app = handoverApp({
   origin: env.PUBLIC_ORIGIN,
   webOrigin: env.WEB_ORIGIN,
   clients,
+  live: liveThrough(db, watching),
 })
 
 const server = serve({ fetch: app.fetch, port: env.PORT }, (address) => {
@@ -106,6 +119,9 @@ async function stop(signal: string): Promise<void> {
   })
   const deadline = new Promise<void>((resolve) => setTimeout(resolve, GRACE_MS).unref())
   await Promise.race([drained, deadline])
+
+  // Its own connection, so it is its own to close.
+  await listening.stop()
 
   // Last, and only once nothing is still using it: closing the pool under a live request would
   // fail it after its transaction had already committed.

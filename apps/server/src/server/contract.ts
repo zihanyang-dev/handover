@@ -46,6 +46,14 @@ export function sends<T extends z.ZodType>(schema: T, description: string) {
   return { description, content: { 'application/json': { schema } } }
 }
 
+/**
+ * An answer that keeps going: one JSON value per `data:` line, for as long as there is anything
+ * to say. The schema is what one line holds, not what the whole answer is — there is no whole.
+ */
+export function streams<T extends z.ZodType>(schema: T, description: string) {
+  return { description, content: { 'text/event-stream': { schema } } }
+}
+
 /** An answer with nothing in it: a 204, or a redirect the browser is expected to follow. */
 export function saysNothing(description: string) {
   return { description }

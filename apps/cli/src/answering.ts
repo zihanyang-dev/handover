@@ -33,6 +33,13 @@ type Writing = {
   readonly message: (key: string, message: Written) => Promise<void>
   /** What the agent calls this conversation, so a later turn can ask it to remember. */
   readonly session: (id: string) => Promise<void>
+  /**
+   * One moment, to whoever is watching right now.
+   *
+   * Not awaited by the turn and never retried: it is worth something for about a second, and a
+   * turn that stopped to make sure somebody saw it would be a turn held up by a browser.
+   */
+  readonly moment: (said: Said) => void
 }
 
 export type Answering = {
@@ -121,6 +128,10 @@ async function write(writing: Writing, asking: Asking, told: AsyncIterable<Told>
       return
     }
 
+    // Everything goes to whoever is watching, including the two kinds nothing keeps: what it is
+    // thinking, and that it has started something. That is the whole of what live adds.
+    if (one.told === 'said') writing.moment(one.said)
+
     const message = one.told === 'forgot' ? FORGOT : keep(one.said)
     if (message === undefined) continue
 
@@ -202,6 +213,10 @@ function writingInto(api: Api, asking: Asking, say: Speaks): Writing {
         ...path,
         body: { session: id },
       })
+    },
+
+    moment: (said) => {
+      void api.POST('/machines/current/conversations/{id}/live', { ...path, body: said })
     },
   }
 }

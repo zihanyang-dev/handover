@@ -1182,6 +1182,133 @@
         "required": [
           "session"
         ]
+      },
+      "Moment": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 20000
+              }
+            },
+            "required": [
+              "said",
+              "text"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "thinking"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 20000
+              }
+            },
+            "required": [
+              "said",
+              "text"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "doing"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "verb": {
+                "type": "string",
+                "maxLength": 50
+              },
+              "arg": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "said",
+              "name",
+              "verb",
+              "arg"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "trouble"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 20000
+              }
+            },
+            "required": [
+              "said",
+              "text"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "did"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "verb": {
+                "type": "string",
+                "maxLength": 50
+              },
+              "arg": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "excerpt": {
+                "type": "string",
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "said",
+              "name",
+              "verb",
+              "arg",
+              "excerpt"
+            ]
+          }
+        ]
       }
     },
     "parameters": {}
@@ -2682,6 +2809,103 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/live": {
+      "get": {
+        "summary": "Watch a turn while it runs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One moment per event, until the browser goes away",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Moment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/live": {
+      "post": {
+        "summary": "Say what is happening right now, which is kept nowhere",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Moment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Said to whoever is watching, and to nobody if nobody is"
           },
           "401": {
             "description": "That is not a live machine credential",

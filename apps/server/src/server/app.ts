@@ -21,10 +21,16 @@ import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { conversationApi } from './conversation-api.ts'
 import { machineApi } from './machine-api.ts'
+import { liveApi } from './live-api.ts'
+import type { Live } from '../conversation/live.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
 export type App = Omit<SignInApi, 'providers'> &
-  Omit<OAuthApi, 'db' | 'secret'> & { readonly log: Log }
+  Omit<OAuthApi, 'db' | 'secret'> & {
+    readonly log: Log
+    /** Where moments go while a turn runs. Nothing here is kept; see `conversation/live.ts`. */
+    readonly live: Live
+  }
 
 /** The document a client is generated from, built from the routes and nothing else. */
 export const CONTRACT = {
@@ -62,4 +68,5 @@ export function handoverApp(deps: App) {
     .route('/', approvalApi({ db: deps.db }))
     .route('/', machineApi({ db: deps.db }))
     .route('/', conversationApi({ db: deps.db }))
+    .route('/', liveApi({ db: deps.db, live: deps.live }))
 }

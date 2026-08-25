@@ -426,6 +426,7 @@ GET    /spaces/{slug}/conversations              列表。在答没答是算出�
 GET    /conversations/{id}                       对话 + 消息,按 seq
 POST   /conversations/{id}/messages              幂等键;说一句
 GET    /conversations/{id}/live                  SSE。翻译过的实时流,不是真相
+POST   /machines/current/conversations/{id}/live  机器把同一份翻译推出去,不落表
 
 POST   /machines/current/poll                    (上一片)返回值里多了一件活
 POST   /machines/current/conversations/{id}/messages   机器追加一条
@@ -435,6 +436,13 @@ POST   /machines/current/conversations/{id}/messages   机器追加一条
 和上一片同一条。机器只能写它自己那段对话:`machine_id` 从凭据来,不从路径来。
 
 **契约从路由本身导出**,zod 是真相,OpenAPI 是产物。
+
+**实时那一路跨实例走 Postgres 的 `NOTIFY`。** 机器 POST 到哪个实例、浏览器挂在哪个实例上,
+在一个机群里通常不是同一个进程,而一个进程内存里的东西到不了另一个。Postgres 本来就站在
+所有实例中间、本来就是这套系统信任的东西 —— 不用多跑一件基础设施,也没有第二份状态要同步。
+它**故意**不是 transcript:没人在听的通知就是没了,而这正是「只在发生的时候才值钱」的东西
+该有的样子。超过 8000 字节 Postgres 会拒绝,所以长文本是**截断**而不是丢弃 —— 看的是一轮
+正在跑,而同样这句话的定稿版本本来就在去 transcript 的路上。
 
 ## 风险
 

@@ -1751,6 +1751,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{slug}/conversations/{id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watch a turn while it runs */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One moment per event, until the browser goes away */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["Moment"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, or no such conversation in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/machines/current/conversations/{id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say what is happening right now, which is kept nowhere */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Moment"];
+                };
+            };
+            responses: {
+                /** @description Said to whoever is watching, and to nobody if nobody is */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description That is not a live machine credential */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2050,6 +2156,33 @@ export interface components {
         };
         AgentSession: {
             session: string;
+        };
+        Moment: {
+            /** @enum {string} */
+            said: "text";
+            text: string;
+        } | {
+            /** @enum {string} */
+            said: "thinking";
+            text: string;
+        } | {
+            /** @enum {string} */
+            said: "doing";
+            name: string;
+            verb: string;
+            arg: string;
+        } | {
+            /** @enum {string} */
+            said: "trouble";
+            text: string;
+        } | {
+            /** @enum {string} */
+            said: "did";
+            name: string;
+            verb: string;
+            arg: string;
+            ok?: boolean;
+            excerpt: string;
         };
     };
     responses: never;

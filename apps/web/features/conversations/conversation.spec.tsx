@@ -7,6 +7,7 @@ import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
 import { signedIn } from '../../signed-in.ts'
+import { isWatching, serverSends } from '../../event-source.ts'
 import type { components } from '../../generated/api.ts'
 
 const server = setupServer()
@@ -172,6 +173,64 @@ describe('reading a conversation', () => {
     open('/s/acme/c/c-1')
 
     expect(await screen.findByText('This conversation is not available')).toBeDefined()
+  })
+})
+
+describe('watching it work', () => {
+  const LIVE = '/spaces/acme/conversations/c-1/live'
+  const working = () => transcript([say(1, 'user', { text: 'take your time' })], 'working')
+
+  it('shows what it is thinking, which the transcript never keeps', async () => {
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, { said: 'thinking', text: 'let me look at the file' })
+
+    expect(await screen.findByText(/let me look at the file/i)).toBeDefined()
+  })
+
+  it('shows that it has started something, before there is anything to say about it', async () => {
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, { said: 'doing', name: 'Bash', verb: 'ran', arg: 'rg timeout src/' })
+
+    expect(await screen.findByText(/ran rg timeout src\//i)).toBeDefined()
+  })
+
+  it('still says it is thinking when the agent keeps no readable thought', async () => {
+    // Claude Code's own record keeps a signature and no text. "It is thinking" is all there is to
+    // say, and a line reading "Thinking —" with nothing after it says less than nothing.
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, { said: 'thinking', text: '' })
+
+    expect(await screen.findByText('Thinking…')).toBeDefined()
+  })
+
+  it('says out loud that the thinking is not kept', async () => {
+    // The difference between watching and coming back, said before somebody discovers it by
+    // looking for something that is gone.
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, { said: 'thinking', text: 'hm' })
+
+    expect(await screen.findByText(/never kept/i)).toBeDefined()
+  })
+
+  it('watches nothing at all once the turn has settled', async () => {
+    // A connection held open on a finished conversation is one held open for nothing.
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })]))
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Send' })
+
+    expect(isWatching(LIVE)).toBe(false)
   })
 })
 

@@ -8,11 +8,49 @@
  */
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
 /** Often enough that a person watching sees it move, rarely enough to be free at rest. */
 const WHILE_WORKING_MS = 1000
+
+/** One thing happening right now. Shown while it happens and kept nowhere — see the server's. */
+export type Moment = components['schemas']['Moment']
+
+/**
+ * What is happening in this conversation right now.
+ *
+ * A stream rather than the poll, because these are the parts that never reach the transcript: what
+ * it is thinking, and that it has started something. Held only while the browser is open, and
+ * cleared whenever the turn settles — the transcript is what survives, and showing a finished
+ * turn's live lines beside it would be showing the same words twice.
+ *
+ * Nothing is ever cleared here. What starts a fresh list is the caller mounting a fresh component
+ * for a fresh turn, which is what a key is for — clearing it from inside would be a state change
+ * during the render that noticed the turn had moved on.
+ */
+export function useWatching(slug: string, id: string): readonly Moment[] {
+  const [moments, setMoments] = useState<readonly Moment[]>([])
+
+  useEffect(() => {
+    const live = new EventSource(`/spaces/${slug}/conversations/${id}/live`, {
+      withCredentials: true,
+    })
+
+    live.onmessage = (event: MessageEvent<string>) => {
+      // The heartbeat, which says only that the connection is still there.
+      if (event.data === '') return
+      setMoments((sofar) => [...sofar, JSON.parse(event.data) as Moment])
+    }
+
+    return () => {
+      live.close()
+    }
+  }, [slug, id])
+
+  return moments
+}
 
 export function conversationsIn(slug: string) {
   return queryOptions({
