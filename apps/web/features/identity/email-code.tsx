@@ -105,11 +105,11 @@ function Resend({
         </span>
       </button>
       {/* A button that did nothing looks the same as a letter that never came. */}
-      {resend.isError && (
-        <p className="auth-error">
-          {SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.'}
-        </p>
-      )}
+      <p className="auth-error" style={resend.isError ? undefined : { visibility: 'hidden' }}>
+        {resend.isError
+          ? (SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.')
+          : null}
+      </p>
     </>
   )
 }
@@ -191,11 +191,11 @@ export function EmailCode({
           <Resend email={email} after={resendAfterSeconds} />
         </div>
 
-        {handBack.isError && (
-          <p className="auth-error">
-            {SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.'}
-          </p>
-        )}
+        <p className="auth-error" style={handBack.isError ? undefined : { visibility: 'hidden' }}>
+          {handBack.isError
+            ? (SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.')
+            : null}
+        </p>
 
         <button className="button button-primary" type="submit" disabled={handBack.isPending}>
           <span className="button-label">{handBack.isPending ? 'Signing in…' : 'Continue'}</span>

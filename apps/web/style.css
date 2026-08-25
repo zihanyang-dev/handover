@@ -484,8 +484,11 @@ textarea.field {
   display: flex;
   flex-direction: column;
   gap: 1.25rem; /* manus separates the groups by 20px */
-  width: 100%;
-  max-width: 26rem;
+  /* A definite width, not max-width: inside the centering grid the column shrink-wraps, and
+     100%/max-width resolve against the content instead of the other way round — the buttons
+     spent days at 245px while the token said otherwise. Manus's column is 360px. */
+  width: 22.5rem;
+  max-width: 100%;
   animation: auth-in 180ms ease-out both;
 }
 
@@ -574,6 +577,9 @@ textarea.field {
 
 .auth-error {
   margin: 0;
+  /* One line is always reserved: an error that pushes the button down mid-form reads as
+     the whole form lurching, not as a message arriving. */
+  min-height: 1.125rem;
   color: var(--danger);
   font-size: var(--text-xxs);
 }

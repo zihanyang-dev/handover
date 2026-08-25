@@ -156,13 +156,13 @@ export function SignIn({
               askForCode.reset()
             }}
           />
-          {invalid && (
-            <p className="auth-error">
-              {refused || askForCode.error === null
+          <p className="auth-error" style={invalid ? undefined : { visibility: 'hidden' }}>
+            {invalid
+              ? refused || askForCode.error === null
                 ? SAID['malformed-request']
-                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')}
-            </p>
-          )}
+                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
+              : null}
+          </p>
         </div>
 
         <button
