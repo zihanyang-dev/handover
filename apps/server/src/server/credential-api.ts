@@ -9,7 +9,7 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import { addAddress } from '../db/credential.ts'
 import type { Database } from '../db/connection.ts'
-import { api, saysNothing, takes } from './contract.ts'
+import { api, insteadOfMalformed, rowId, saysNothing, takes } from './contract.ts'
 import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
 import { body, refusal, type Failure } from './failure.ts'
 import { requireSession, type Signed } from './session.ts'
@@ -31,7 +31,7 @@ const answerCode = createRoute({
   method: 'post',
   path: '/me/credentials/email-codes/{id}/answer',
   summary: 'Answer the code, which adds the address to this account',
-  request: { params: z.object({ id: z.string() }), body: takes(submittedCode) },
+  request: { params: z.object({ id: rowId }), body: takes(submittedCode) },
   responses: {
     204: saysNothing('The address now opens this account, or already did'),
     400: refusal('Wrong digits, or a body that was not the shape it claims'),
@@ -55,24 +55,23 @@ export function credentialApi(deps: CredentialApi) {
   return api<{ Variables: Signed }>()
     .openapi(asking.route, asking.handler(deps))
 
-    .openapi({ ...answerCode, middleware: [signedIn] }, async (c) => {
-      const id = c.req.valid('param').id
+    .openapi(
+      { ...answerCode, middleware: [signedIn] },
+      async (c) => {
+        const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
+          codeId: c.req.valid('param').id,
+          code: c.req.valid('json').code,
+        })
 
+        // Already this account's comes back attached: what was asked for is true either way.
+        if (added.kind === 'attached') return c.body(null, 204)
+        if (added.kind === 'rejected') return c.json(body(ELSEWHERE), ELSEWHERE.status)
+
+        const refused = explainRejection(added.rejection)
+        return c.json(body(refused), refused.status)
+      },
       // An id that is not an id names no code, which is the situation a gone one is in, and gets
       // the answer that situation gets.
-      const failure = z.uuid().safeParse(id).success ? undefined : explainRejection('no-code')
-      if (failure !== undefined) return c.json(body(failure), failure.status)
-
-      const added = await addAddress(deps.db, deps.secret, c.get('userId'), {
-        codeId: id,
-        code: c.req.valid('json').code,
-      })
-
-      // Already this account's comes back attached: what was asked for is true either way.
-      if (added.kind === 'attached') return c.body(null, 204)
-      if (added.kind === 'rejected') return c.json(body(ELSEWHERE), ELSEWHERE.status)
-
-      const refused = explainRejection(added.rejection)
-      return c.json(body(refused), refused.status)
-    })
+      insteadOfMalformed(explainRejection('no-code')),
+    )
 }

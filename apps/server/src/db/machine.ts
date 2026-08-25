@@ -176,8 +176,29 @@ export type Attached = {
   readonly agents: readonly FoundAgent[]
 }
 
-export async function machinesIn(db: Database, spaceId: string): Promise<readonly Attached[]> {
-  const rows = await db
+/**
+ * What was there, and the moment it was true.
+ *
+ * `asOf` is the database's clock, not this process's, and that is the whole reason it is carried
+ * out of here. `last_seen_at` is written by `clock_timestamp()`; measuring the silence since then
+ * against a `new Date()` in the app would be two clocks deciding one fact. A few seconds of drift
+ * either way and every machine in a Space reads as gone, or as here forever — and nothing would
+ * raise an error, the page would simply lie.
+ */
+export type Seen = {
+  readonly asOf: Date
+  readonly machines: readonly Attached[]
+}
+
+export async function machinesIn(db: Database, spaceId: string): Promise<Seen> {
+  // One transaction, so `now()` and every row it is compared against are the same instant.
+  return db.transaction().execute(async (tx) => attachedIn(tx, spaceId))
+}
+
+async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
+  const { asOf } = await tx.selectNoFrom(sql<Date>`now()`.as('asOf')).executeTakeFirstOrThrow()
+
+  const rows = await tx
     .selectFrom('machines')
     .select(['id', 'name', 'last_seen_at as lastSeenAt', 'left_at as leftAt'])
     .where('space_id', '=', spaceId)
@@ -185,11 +206,15 @@ export async function machinesIn(db: Database, spaceId: string): Promise<readonl
     .orderBy('created_at')
     .execute()
 
-  if (rows.length === 0) return []
+  if (rows.length === 0) return { asOf, machines: [] }
 
-  const found = await db
+  const found = await tx
     .selectFrom('agents')
     .select(['machine_id as machineId', 'kind', 'version'])
+    // `agents_kind_is_one_we_know` is the list this type is made of, and there is a test that says
+    // the two are the same list. Stated here rather than cast below, like every other invariant
+    // in this file that the schema already guarantees.
+    .$narrowType<{ kind: AgentKind }>()
     .where(
       'machine_id',
       'in',
@@ -198,14 +223,17 @@ export async function machinesIn(db: Database, spaceId: string): Promise<readonl
     .orderBy('kind')
     .execute()
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
-    agents: found
-      .filter((agent) => agent.machineId === row.id)
-      .map((agent) => ({ kind: agent.kind as AgentKind, version: agent.version })),
-  }))
+  return {
+    asOf,
+    machines: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
+      agents: found
+        .filter((agent) => agent.machineId === row.id)
+        .map((agent) => ({ kind: agent.kind, version: agent.version })),
+    })),
+  }
 }
 
 /** Takes a machine out of its Space. Its credential stops working on the next call it makes. */

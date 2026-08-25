@@ -14,9 +14,10 @@
  * decision out of SQL, where it is enforced, into TypeScript, where it is remembered.
  */
 
-import { sql } from 'kysely'
+import { sql, type UpdateObject } from 'kysely'
 import { LIFETIME_MINUTES } from '../machine/enrolment.ts'
 import type { UserCode } from '../machine/user-code.ts'
+import type { DB } from '../../generated/db.ts'
 import type { Database } from './connection.ts'
 
 export type OpeningEnrolment = {
@@ -118,11 +119,10 @@ export async function refuseEnrolment(db: Database, userCode: UserCode): Promise
   return answer(db, userCode, { refused_at: sql`clock_timestamp()` })
 }
 
-async function answer(
-  db: Database,
-  userCode: UserCode,
-  transition: Record<string, unknown>,
-): Promise<Answered> {
+/** Typed against the table, so a column name that is not one is a compile error, not a 500. */
+type Transition = UpdateObject<DB, 'enrolments'>
+
+async function answer(db: Database, userCode: UserCode, transition: Transition): Promise<Answered> {
   const changed = await db
     .updateTable('enrolments')
     .set(transition)

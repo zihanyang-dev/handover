@@ -11,7 +11,7 @@ import type { Database } from '../db/connection.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
 import { agentsFound, AGENT_COMMANDS, AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import { POLL_SECONDS, presence } from '../machine/presence.ts'
-import { api, saysNothing, sends, takes } from './contract.ts'
+import { api, insteadOfMalformed, rowId, saysNothing, sends, takes } from './contract.ts'
 import { body, refusal, type Failure } from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
 import { requireMember, type InSpace } from './membership.ts'
@@ -108,7 +108,7 @@ const detach = createRoute({
   method: 'delete',
   path: '/spaces/{slug}/machines/{id}',
   summary: 'Take a machine out of this Space',
-  request: { params: z.object({ slug: z.string(), id: z.string() }) },
+  request: { params: z.object({ slug: z.string(), id: rowId }) },
   responses: {
     204: saysNothing('Out, and its credential stops working'),
     401: refusal('Nobody is signed in here'),
@@ -135,25 +135,31 @@ export function machineApi(deps: MachineApi) {
     })
 
     .openapi({ ...listMachines, middleware: inSpace }, async (c) => {
-      const now = new Date()
-      const machines = (await machinesIn(deps.db, c.get('space').id)).map((machine) => ({
+      // `asOf` comes back with them, from the same clock that wrote `last_seen_at`. A `new Date()`
+      // here would be this process's clock deciding a fact the database's clock recorded.
+      const seen = await machinesIn(deps.db, c.get('space').id)
+      const machines = seen.machines.map((machine) => ({
         id: machine.id,
         name: machine.name,
-        presence: onTheWire(presence(machine.whereabouts, now)),
+        presence: onTheWire(presence(machine.whereabouts, seen.asOf)),
         agents: machine.agents,
       }))
 
       return c.json({ machines }, 200)
     })
 
-    .openapi({ ...detach, middleware: inSpace }, async (c) => {
-      const removed = await removeMachine(deps.db, c.req.valid('param').id, c.get('space').id)
+    .openapi(
+      { ...detach, middleware: inSpace },
+      async (c) => {
+        const removed = await removeMachine(deps.db, c.req.valid('param').id, c.get('space').id)
 
-      // An id from another Space removes nothing, and says the same thing a missing Space says.
-      if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
+        // An id from another Space removes nothing, and says the same thing a missing Space says.
+        if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
 
-      return c.body(null, 204)
-    })
+        return c.body(null, 204)
+      },
+      insteadOfMalformed(UNAVAILABLE),
+    )
 }
 
 /** A `Date` is not a wire value. Converting here keeps the owner's shape free of transport. */

@@ -225,6 +225,22 @@ describe('taking one away', () => {
     expect((await seenInSpace()).machines).toHaveLength(1)
   })
 
+  it('answers an id that is not an id the way it answers one that names nothing', async () => {
+    // It used to reach a uuid column and come back a database error: a 500 for something the
+    // caller did. Telling "not a uuid" apart from "not yours" would make the URL a way to find
+    // out, which is the same reason a missing Space and one you are not in read alike.
+    await attached()
+
+    const answered = await app.request(`/spaces/${SLUG}/machines/not-a-uuid`, {
+      method: 'DELETE',
+      headers: { cookie: COOKIE },
+    })
+
+    expect(answered.status).toBe(404)
+    expect(await answered.json()).toMatchObject({ reason: 'unavailable' })
+    expect((await seenInSpace()).machines).toHaveLength(1)
+  })
+
   it('needs the Space it is in, not just its id', async () => {
     const machine = await attached()
 

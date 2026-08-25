@@ -6,7 +6,7 @@
  * nothing would ever correct it.
  */
 
-/** How often a machine checks in. It holds the request open until there is something to say. */
+/** How often a machine checks in. Answered at once — nothing is held open until there is work. */
 export const POLL_SECONDS = 25
 
 /**

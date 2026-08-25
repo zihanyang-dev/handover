@@ -76,7 +76,7 @@ const sleep = async (seconds: number, until?: AbortSignal): Promise<void> =>
   })
 
 if (command === 'connect') {
-  await joined()
+  await checkIn()
   await handOver()
 } else if (command === 'run') {
   const attachment = await readAttachment(where)
@@ -92,23 +92,21 @@ if (command === 'connect') {
 }
 
 /**
- * The attachment to go on with, which is not the same as the one on disk.
+ * Makes sure this machine really is in a Space, and says what is on it.
  *
  * A file is not a connection. The credential in it can be taken away while nothing here is
  * running, and the recovery somebody is told for exactly that is this very command — so believing
  * the file would make `connect` say "running" to a machine that is in no Space at all, which is
  * the one thing it must never say.
  *
- * Saying what is here is the same request as asking whether we are still in, so this costs
- * nothing extra: the answer to the report is the answer to the question.
+ * Checking in is the same request as asking whether we are still in, so this costs nothing extra:
+ * the answer to the report is the answer to the question.
  */
-async function joined(): Promise<Attachment> {
+async function checkIn(): Promise<void> {
   const held = await readAttachment(where)
-  if (held !== undefined && (await sayWhatIsHere(held)) !== 'not-ours') return held
+  if (held !== undefined && (await sayWhatIsHere(held)) !== 'not-ours') return
 
-  const fresh = await enrol()
-  await sayWhatIsHere(fresh)
-  return fresh
+  await sayWhatIsHere(await enrol())
 }
 
 async function enrol(): Promise<Attachment> {
@@ -144,7 +142,7 @@ async function askAndWait(origin: string): Promise<Connected> {
 }
 
 /** The way in for a machine with no browser: the approving already happened, in a Space. */
-async function useKey(origin: string, key: string) {
+async function useKey(origin: string, key: string): Promise<Connected> {
   return connectWithKey(apiFor(origin), origin, key, machineName)
 }
 
@@ -161,12 +159,12 @@ async function sayWhatIsHere(attachment: Attachment): Promise<Reported['said']> 
     machineEnvironment(),
   )
 
-  for (const line of aboutIt(reported, attachment.lookFor)) say(line)
+  for (const line of wordsFor(reported, attachment.lookFor)) say(line)
   return reported.said
 }
 
 /** What to say about one report. Pure, so the words are one thing and the asking is another. */
-function aboutIt(reported: Reported, lookFor: readonly string[]): readonly string[] {
+function wordsFor(reported: Reported, lookFor: readonly string[]): readonly string[] {
   if (reported.said === 'not-ours') return ['this machine is not in that Space any more']
 
   const here =

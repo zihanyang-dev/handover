@@ -80,7 +80,7 @@ describe('collecting an approved enrolment', () => {
   it('turns it into a machine in that Space', async () => {
     const machineId = await attached()
 
-    expect((await machinesIn(db, SPACE)).map((one) => one.id)).toEqual([machineId])
+    expect((await machinesIn(db, SPACE)).machines.map((one) => one.id)).toEqual([machineId])
   })
 
   it('lets exactly one of many machines take a single key', async () => {
@@ -196,7 +196,7 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.1.4' }])
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.1.4' }])
   })
 
@@ -206,7 +206,7 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, [{ kind: 'claude-code', version: '2.2.0' }])
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.2.0' }])
   })
 
@@ -216,7 +216,7 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, [])
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([])
   })
 })
@@ -226,7 +226,7 @@ describe('whether it is here', () => {
     const machineId = await attached()
     await checkIn(db, machineId, [])
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })
   })
 
@@ -236,7 +236,7 @@ describe('whether it is here', () => {
 
     await sayGoodbye(db, machineId)
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date()).state).toBe('gone')
   })
 
@@ -246,7 +246,7 @@ describe('whether it is here', () => {
 
     await checkIn(db, machineId, [])
 
-    const [machine] = await machinesIn(db, SPACE)
+    const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })
   })
 })
@@ -267,12 +267,27 @@ describe('taking one away', () => {
     expect(await machineHolding(db, token.hash)).toBeUndefined()
   })
 
+  it('says when it looked, from the clock that wrote what it is comparing against', async () => {
+    // `last_seen_at` is `clock_timestamp()`. Measuring the silence since then against this
+    // process's clock would be two clocks deciding one fact — and a few seconds of drift reads as
+    // a whole Space that is gone, or one that never goes, with nothing raising an error.
+    await attached()
+
+    const seen = await machinesIn(db, SPACE)
+    const [machine] = seen.machines
+
+    expect(machine).toBeDefined()
+    expect(seen.asOf.getTime()).toBeGreaterThanOrEqual(
+      machine?.whereabouts.lastSeenAt.getTime() ?? 0,
+    )
+  })
+
   it('takes it off the Space screen', async () => {
     const machineId = await attached()
 
     await removeMachine(db, machineId, SPACE)
 
-    expect(await machinesIn(db, SPACE)).toEqual([])
+    expect((await machinesIn(db, SPACE)).machines).toEqual([])
   })
 
   it('removes nothing when the id belongs to another Space', async () => {
@@ -281,7 +296,7 @@ describe('taking one away', () => {
     const machineId = await attached()
 
     expect(await removeMachine(db, machineId, randomUUID())).toBe(false)
-    expect(await machinesIn(db, SPACE)).toHaveLength(1)
+    expect((await machinesIn(db, SPACE)).machines).toHaveLength(1)
   })
 
   it('says so when it was already taken away', async () => {
