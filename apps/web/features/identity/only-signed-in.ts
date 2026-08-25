@@ -9,11 +9,21 @@
 
 import { redirect } from '@tanstack/react-router'
 import { returnPath } from '@handover/universal'
-import { api } from '../../api.ts'
+import { cache } from '../../query-client.ts'
+import { meQuery, NotSignedIn } from './me.ts'
 
 export async function onlySignedIn(at: { readonly href: string }): Promise<void> {
-  const { response } = await api.GET('/me')
-  if (response.status !== 401) return
+  // Through the cache, so what this reads on the way in is what the screen behind it renders from.
+  // Read and thrown away, every protected screen asks the same question twice and shows its empty
+  // state during the second ask.
+  const asked = await cache.query(meQuery).then(
+    () => undefined,
+    (trouble: unknown) => trouble,
+  )
+
+  // Anything else — a server that broke, a network that went — is not "sign in again". The screen
+  // says so itself; sending somebody to sign in would be this guard guessing.
+  if (!(asked instanceof NotSignedIn)) return
 
   // Through `returnPath` even though it came from this browser's own address bar: what is put in
   // it next is a redirect, and the one rule about a redirect is that it stays on this site.

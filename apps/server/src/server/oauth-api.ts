@@ -297,9 +297,11 @@ function comingBack(deps: OAuthApi) {
       path: '/auth/{provider}/callback',
       summary: 'Where the provider sends the browser back to',
       request: { params: named },
+      // One answer, always: the browser arrived here by being redirected, so everything that can
+      // go wrong ends at a page rather than at a status somebody would have to read. A 404 was
+      // declared here and never returned.
       responses: {
         303: saysNothing('Follow the Location; any `handover_result` says what became of the trip'),
-        404: refusal('No way in by that name'),
       },
     }),
 

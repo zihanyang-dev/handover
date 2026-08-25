@@ -1535,16 +1535,6 @@
         "responses": {
           "303": {
             "description": "Follow the Location; any `handover_result` says what became of the trip"
-          },
-          "404": {
-            "description": "No way in by that name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
           }
         }
       }
@@ -2908,6 +2898,16 @@
         "responses": {
           "204": {
             "description": "Said to whoever is watching, and to nobody if nobody is"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
           },
           "401": {
             "description": "That is not a live machine credential",

@@ -12,7 +12,14 @@ import { Moment, type Live } from '../conversation/live.ts'
 import { conversationWith } from '../db/conversation.ts'
 import type { Database } from '../db/connection.ts'
 import { api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
-import { BEHIND_A_MACHINE, BEHIND_A_SESSION, body, refusal, UNAVAILABLE } from './failure.ts'
+import {
+  BEHIND_A_MACHINE,
+  BEHIND_A_SESSION,
+  body,
+  MALFORMED_BODY,
+  refusal,
+  UNAVAILABLE,
+} from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
@@ -99,6 +106,7 @@ function reporting(deps: LiveApi) {
       request: { params: z.object({ id: rowId }), body: takes(Moment) },
       responses: {
         ...BEHIND_A_MACHINE,
+        ...MALFORMED_BODY,
         204: saysNothing('Said to whoever is watching, and to nobody if nobody is'),
       },
     }),

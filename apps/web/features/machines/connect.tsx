@@ -196,17 +196,22 @@ export function Connect({ typed }: { readonly typed: string }) {
         {/* Only while the box still says what was looked up. Editing it and pressing approve
             would let go of a machine somebody is no longer looking at: the screen says code B and
             the button answers for code A. */}
-        {waiting.data !== undefined && code.trim().toUpperCase() === asked.trim().toUpperCase() && (
-          <Answer
-            machineName={waiting.data.machineName}
-            who={me.data?.displayName ?? ''}
-            spaces={spaces}
-            pending={answer.isPending}
-            onAnswer={(slug, yes) => {
-              answer.mutate({ slug, yes })
-            }}
-          />
-        )}
+        {/* Not until the Spaces are really known: "who is not in any Space yet" is what this
+          screen tells somebody when there is nothing to let a machine into, and saying it while
+          the answer is still coming sends them away from a machine that is waiting. */}
+        {me.isSuccess &&
+          waiting.data !== undefined &&
+          code.trim().toUpperCase() === asked.trim().toUpperCase() && (
+            <Answer
+              machineName={waiting.data.machineName}
+              who={me.data.displayName}
+              spaces={spaces}
+              pending={answer.isPending}
+              onAnswer={(slug, yes) => {
+                answer.mutate({ slug, yes })
+              }}
+            />
+          )}
       </form>
     </main>
   )

@@ -264,15 +264,6 @@ export interface paths {
                     };
                     content?: never;
                 };
-                /** @description No way in by that name */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
             };
         };
         put?: never;
@@ -1839,6 +1830,15 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
                 };
                 /** @description That is not a live machine credential */
                 401: {
