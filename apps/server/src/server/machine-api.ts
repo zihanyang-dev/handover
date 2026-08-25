@@ -35,6 +35,7 @@ import {
   body,
   MALFORMED_BODY,
   refusal,
+  type Failure,
   UNAVAILABLE,
 } from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
@@ -43,6 +44,14 @@ import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
 export type MachineApi = { readonly db: Database }
+
+/**
+ * Not a machine any more.
+ *
+ * The same answer the door gives, said again by the transaction that writes: a credential can stop
+ * being one between the two, and the CLI already knows to stop for good when it hears this.
+ */
+const NOT_OURS: Failure<401> = { reason: 'no-machine', recovery: 'start-over', status: 401 }
 
 /**
  * What a machine reports by command name, not by kind.
@@ -201,7 +210,11 @@ function polling(deps: MachineApi) {
     handler: async (c) => {
       const machineId = c.get('machineId')
       const reported = c.req.valid('json')
-      await checkIn(deps.db, machineId, agentsFound(reported.found))
+      // Removed between the credential being read and this transaction opening: nothing to check
+      // in, nothing to take, and the same answer a stranger gets. Waiting for the next request to
+      // notice would be one more report, one more turn taken, from a machine somebody took out.
+      const still = await checkIn(deps.db, machineId, agentsFound(reported.found))
+      if (!still) return c.json(body(NOT_OURS), NOT_OURS.status)
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 

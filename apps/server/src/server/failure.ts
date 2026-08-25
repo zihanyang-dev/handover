@@ -65,22 +65,21 @@ export function refusal(description: string) {
 /**
  * The answers that come with a door rather than with a route.
  *
+ * Not `as const`: a readonly response is one a route can declare and a handler cannot then return,
+ * so the door would be documented and unusable. The shapes here are already literal.
+ *
  * Every route behind the same door refuses the same way, and saying so at each of them is the
  * same sentence written nineteen times — nineteen places for it to drift, and no way to tell a
  * route that means something different from one that was copied.
  *
  * A route spreads the door it is behind and then says only what is its own.
  */
-export const BEHIND_A_SESSION = { 401: refusal('Nobody is signed in here') } as const
+export const BEHIND_A_SESSION = { 401: refusal('Nobody is signed in here') }
 
-export const BEHIND_A_MACHINE = {
-  401: refusal('That is not a live machine credential'),
-} as const
+export const BEHIND_A_MACHINE = { 401: refusal('That is not a live machine credential') }
 
 /** What any route that takes a body answers when the body is not the shape it claims. */
-export const MALFORMED_BODY = {
-  400: refusal('The body was not the shape it claims'),
-} as const
+export const MALFORMED_BODY = { 400: refusal('The body was not the shape it claims') }
 
 /** Nothing about which of the two it was: an absent session and an expired one look identical. */
 export const MALFORMED: Failure<400> = {

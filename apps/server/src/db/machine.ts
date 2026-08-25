@@ -116,15 +116,23 @@ export async function checkIn(
   db: Database,
   machineId: string,
   found: readonly FoundAgent[],
-): Promise<void> {
-  await db.transaction().execute(async (tx) => {
-    await tx
+): Promise<boolean> {
+  return db.transaction().execute(async (tx) => {
+    // Still ours, decided here rather than trusted from the check the middleware made before this
+    // transaction opened. Somebody can remove a machine in between, and a removal that only takes
+    // effect on the next request is a machine that stays alive for one more of them.
+    const still = await tx
       .updateTable('machines')
       .set({ last_seen_at: sql<Date>`clock_timestamp()`, left_at: null })
       .where('id', '=', machineId)
-      .execute()
+      .where('removed_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+
+    if (still === undefined) return false
 
     await replaceAgents(tx, machineId, found)
+    return true
   })
 }
 

@@ -148,6 +148,46 @@ describe('staying connected', () => {
     expect(stopped).toEqual({ kind: 'removed' })
   })
 
+  it('stops the agent it was running before it goes, rather than leaving an orphan', async () => {
+    // A machine taken out of its Space exits for good. The agent it was driving is a separate
+    // process: left alone it goes on changing files in somebody's project with nobody watching.
+    let stopped = false
+    let asked = 0
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, () => {
+        return HttpResponse.json(
+          {
+            pollSeconds: 25,
+            lookFor: [],
+            asking: {
+              conversationId: 'c-1',
+              agentKind: 'claude-code',
+              agentSession: null,
+              askedSeq: 1,
+              asked: { text: 'take your time' },
+            },
+          },
+          { status: asked++ === 0 ? 200 : 401 },
+        )
+      }),
+      http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, () => {
+        stopped = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post(
+        `${ORIGIN}/machines/current/conversations/:id/live`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    )
+    const { running, signal } = runningFor(3)
+
+    const over = await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(over).toEqual({ kind: 'removed' })
+    // Whatever the turn ended as, it ended: the record was closed before this process left.
+    expect(stopped).toBe(true)
+  })
+
   it('keeps trying through a server that is gone, and says so once it is back', async () => {
     let asked = 0
     server.use(

@@ -130,7 +130,7 @@ export async function keepCheckingIn(
   while (!stopping.aborted) {
     const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
 
-    if (reported.said === 'not-ours') return { kind: 'removed' }
+    if (reported.said === 'not-ours') return taken(answering, running)
 
     if (reported.said === 'unreachable') {
       // Still unsaid. A report nobody received did not tell the server this machine restarted, and
@@ -169,6 +169,18 @@ export async function keepCheckingIn(
   await settle(answering, running)
 
   return { kind: 'asked-to-stop' }
+}
+
+/**
+ * A machine that has been taken out of its Space, on its way out.
+ *
+ * The agent is still running, and this process is about to exit. Left alone it becomes an orphan:
+ * nobody watching, still changing files in somebody's project, still spending their subscription.
+ */
+async function taken(answering: Answering | undefined, running: CheckingIn): Promise<Stopped> {
+  await settle(answering, running)
+
+  return { kind: 'removed' }
 }
 
 /** Never slower than the deployment asked, and never slower than the floor while working. */

@@ -331,11 +331,17 @@ export type Reporting = Appending & { readonly machineId: string }
  */
 export async function machineSays(db: Database, reporting: Reporting): Promise<Said> {
   return db.transaction().execute(async (tx) => {
+    // The machine is proved by its credential, matched against the conversation, and checked for
+    // still being in its Space — all inside the transaction that writes. The middleware's check
+    // happened before this opened, and a machine somebody removed in between must not get one
+    // more line into a transcript.
     const conversation = await tx
       .selectFrom('conversations')
-      .select('id')
-      .where('id', '=', reporting.conversationId)
-      .where('machine_id', '=', reporting.machineId)
+      .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+      .select('conversations.id')
+      .where('conversations.id', '=', reporting.conversationId)
+      .where('conversations.machine_id', '=', reporting.machineId)
+      .where('machines.removed_at', 'is', null)
       .forUpdate()
       .executeTakeFirst()
 
