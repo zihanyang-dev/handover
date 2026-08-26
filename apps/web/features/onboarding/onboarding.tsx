@@ -2,14 +2,15 @@
  * The first step: where things will happen.
  *
  * Somebody with Spaces is offered them and goes straight in — the steps that remain are not
- * theirs to walk again. Somebody with none is making one right away: their name is already here
- * from the way they signed in, so the form is mostly a Space's name and what its address will be.
+ * theirs to walk again. Somebody with none is making one right away: the form asks only for the
+ * workspace name and shows what its address will be.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { motion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
-import { ChevronRight, Plus } from 'react-bootstrap-icons'
+import { ChevronRight, Plus, X } from 'react-bootstrap-icons'
 import { normalizeSlug } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Arrival } from '../identity/arrival.tsx'
@@ -17,20 +18,36 @@ import { ME, meQuery, type Me } from '../identity/me.ts'
 import { spaceRefusal } from '../spaces/refusal.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
-/** The name and the Space, one decision. The address appears as the name is typed. */
-function NameAndSpace({
+function spaceFormPresentation(embedded: boolean, hasSpaces: boolean) {
+  if (embedded) return { className: 'stack-tight space-create-form', autoFocus: false }
+  return { className: 'stack-tight', autoFocus: !hasSpaces }
+}
+
+function SpaceFormHeading({ embedded }: { readonly embedded: boolean }) {
+  if (embedded) return null
+  return (
+    <div className="auth-head">
+      <h1>Name your workspace</h1>
+      <p className="lede">Machines and agents gather here.</p>
+    </div>
+  )
+}
+
+/** One workspace name, with its address appearing as it is typed. */
+function MakeSpace({
   me,
   onMade,
+  embedded = false,
 }: {
   readonly me: Me
   readonly onMade: (slug: string) => void
+  readonly embedded?: boolean
 }) {
   const client = useQueryClient()
-  const nameField = useId()
   const spaceField = useId()
   const urlField = useId()
-  const [name, setName] = useState(me.displayName)
   const [space, setSpace] = useState('')
+  const presentation = spaceFormPresentation(embedded, me.spaces.length > 0)
   const slug = normalizeSlug(space)
   // This is for a person to read, not an HTTP client to serialize. URL.href percent-encodes
   // perfectly valid Unicode slugs and turns a name such as 你好 into noise.
@@ -38,8 +55,6 @@ function NameAndSpace({
 
   const begin = useMutation({
     mutationFn: async () => {
-      const renamed = name.trim()
-      if (renamed !== me.displayName) await api.PATCH('/me', { body: { displayName: renamed } })
       const { data, error } = await api.POST('/spaces', {
         body: { displayName: space.trim(), requestKey: retryKey(`space:${space.trim()}`) },
       })
@@ -54,7 +69,6 @@ function NameAndSpace({
         const person = current ?? me
         return {
           ...person,
-          displayName: name.trim(),
           spaces: [...person.spaces.filter((space) => space.slug !== made.slug), made],
         }
       })
@@ -66,38 +80,22 @@ function NameAndSpace({
 
   return (
     <>
-      <div className="auth-head">
-        <h1>Make your Space</h1>
-        <p className="lede">A Space is where your machines and agents gather.</p>
-      </div>
+      <SpaceFormHeading embedded={embedded} />
 
       <form
-        className="stack-tight"
+        className={presentation.className}
         onSubmit={(event) => {
           event.preventDefault()
           begin.mutate()
         }}
       >
-        <label className="label" htmlFor={nameField}>
-          Your name
-        </label>
-        <input
-          id={nameField}
-          className="field"
-          autoComplete="name"
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value)
-          }}
-        />
-
         <label className="label" htmlFor={spaceField}>
-          Space
+          Workspace name
         </label>
         <input
           id={spaceField}
           className="field"
-          autoFocus={me.spaces.length === 0}
+          autoFocus={presentation.autoFocus}
           placeholder="Acme"
           value={space}
           onChange={(event) => {
@@ -106,7 +104,7 @@ function NameAndSpace({
           }}
         />
         <label className="label" htmlFor={urlField}>
-          Space URL
+          Workspace URL
         </label>
         <input
           id={urlField}
@@ -125,7 +123,7 @@ function NameAndSpace({
         <button
           className="button button-primary"
           type="submit"
-          disabled={slug === null || name.trim() === '' || begin.isPending}
+          disabled={slug === null || begin.isPending}
         >
           <span className="button-label">{begin.isPending ? 'Making…' : 'Continue'}</span>
         </button>
@@ -134,53 +132,174 @@ function NameAndSpace({
   )
 }
 
+/** A non-modal bottom sheet: it rises from the viewport edge and leaves the Spaces readable. */
+function SpaceCreateDrawer({
+  open,
+  me,
+  onClose,
+  onMade,
+}: {
+  readonly open: boolean
+  readonly me: Me
+  readonly onClose: () => void
+  readonly onMade: (slug: string) => void
+}) {
+  const drawer = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const frame = requestAnimationFrame(() => {
+      drawer.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus()
+    })
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    const closeFromOutside = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      const surface = drawer.current?.querySelector('.space-create-disclosure')
+      if (surface?.contains(target)) return
+      if (target instanceof Element && target.closest('[aria-controls="new-space-form"]') !== null)
+        return
+      onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    document.addEventListener('pointerdown', closeFromOutside)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', closeOnEscape)
+      document.removeEventListener('pointerdown', closeFromOutside)
+    }
+  }, [onClose, open])
+
+  return (
+    <div
+      ref={drawer}
+      id="new-space-form"
+      className="space-create-drawer t-panel-slide"
+      data-open={open}
+      role="region"
+      aria-label="New Space drawer"
+      aria-hidden={!open}
+      inert={!open}
+    >
+      <div className="space-create-disclosure">
+        <span className="space-create-drawer-handle" aria-hidden />
+        <div className="space-create-drawer-head">
+          <strong>New Space</strong>
+          <button type="button" aria-label="Close New Space" onClick={onClose}>
+            <X size={20} aria-hidden />
+          </button>
+        </div>
+        <MakeSpace me={me} embedded onMade={onMade} />
+      </div>
+    </div>
+  )
+}
+
 /** New and existing Spaces in one hierarchy: make is primary, the known places stay compact. */
 function PickSpace({
-  spaces,
+  me,
+  making,
   onPick,
   onMake,
+  onMade,
 }: {
-  readonly spaces: Me['spaces']
+  readonly me: Me
+  readonly making: boolean
   readonly onPick: (slug: string) => void
   readonly onMake: () => void
+  readonly onMade: (slug: string) => void
 }) {
+  const spaces = me.spaces
+  const canStack = spaces.length > 1
+  const [spacesExpanded, setSpacesExpanded] = useState(!canStack)
   return (
     <>
       <div className="auth-head">
         <h1>Choose a Space</h1>
-        <p className="lede">Continue to one you have, or start a new one.</p>
       </div>
 
       <div className="space-picker">
-        <button className="space-choice space-choice-new" type="button" onClick={onMake}>
+        <button
+          className="space-choice space-choice-new"
+          type="button"
+          aria-controls="new-space-form"
+          aria-expanded={making}
+          onClick={onMake}
+        >
           <span className="space-choice-icon" aria-hidden>
             <Plus size={20} />
           </span>
           <span className="space-choice-copy">
             <strong>New Space</strong>
           </span>
-          <ChevronRight className="space-choice-arrow" aria-hidden />
         </button>
 
-        <p className="space-picker-label">Your Spaces</p>
-        <div className="space-choice-list">
-          {spaces.map((space) => (
+        <SpaceCreateDrawer open={making} me={me} onClose={onMake} onMade={onMade} />
+
+        <div className="space-picker-label-row">
+          <p className="space-picker-label">Your Spaces</p>
+          {canStack && (
             <button
-              key={space.id}
-              className="space-choice"
+              className="space-spread-toggle"
               type="button"
-              aria-label={`Open ${space.displayName}`}
+              aria-controls="space-choice-list"
+              aria-expanded={spacesExpanded}
+              aria-label={spacesExpanded ? 'Stack Spaces' : 'Spread Spaces'}
               onClick={() => {
-                onPick(space.slug)
+                setSpacesExpanded((expanded) => !expanded)
               }}
             >
-              <span className="space-choice-copy">
-                <strong>{space.displayName}</strong>
-                <small>/s/{space.slug}</small>
-              </span>
-              <ChevronRight className="space-choice-arrow" aria-hidden />
+              <ChevronRight aria-hidden />
             </button>
-          ))}
+          )}
+        </div>
+
+        <div className="space-choice-deck" data-expanded={spacesExpanded}>
+          <motion.div
+            layout
+            id="space-choice-list"
+            className="space-choice-list"
+            data-expanded={spacesExpanded}
+            aria-hidden={!spacesExpanded}
+            inert={!spacesExpanded}
+          >
+            {spaces.map((space) => (
+              <motion.div
+                key={space.id}
+                layout="position"
+                className="space-choice-position"
+                transition={{ layout: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } }}
+              >
+                <button
+                  className="space-choice"
+                  type="button"
+                  aria-label={`Open ${space.displayName}`}
+                  onClick={() => {
+                    onPick(space.slug)
+                  }}
+                >
+                  <span className="space-choice-copy">
+                    <strong>{space.displayName}</strong>
+                    <small>/s/{space.slug}</small>
+                  </span>
+                  <ChevronRight className="space-choice-arrow" aria-hidden />
+                </button>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {canStack && !spacesExpanded && (
+            <button
+              className="space-choice-deck-open"
+              type="button"
+              aria-label={`Spread ${spaces.length} Spaces`}
+              onClick={() => {
+                setSpacesExpanded(true)
+              }}
+            />
+          )}
         </div>
       </div>
     </>
@@ -202,7 +321,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
   }, [])
 
   const spaces = me.data?.spaces ?? []
-  const choosing = spaces.length > 0 && !making
+  const choosing = spaces.length > 0
   const done = leave !== undefined
 
   useEffect(() => {
@@ -221,34 +340,41 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
   }, [leave, navigate])
 
   return (
-    <main className="auth">
-      <div className="auth-stack">
+    <main className="auth onboarding-page">
+      <div className="onboarding-shell">
         <Steps step={1} done={done} mark={done ? 'success' : 'thinking'} />
-        <Arrival result={result} />
 
-        {me.isPending && <p className="empty">Looking…</p>}
+        <section className="onboarding-content">
+          <Arrival result={result} />
 
-        {me.isSuccess && choosing && (
-          <PickSpace
-            spaces={spaces}
-            onPick={(slug) => {
-              setLeave({ to: 'space', slug })
-            }}
-            onMake={() => {
-              setMaking(true)
-            }}
-          />
-        )}
+          {me.isPending && <p className="empty">Looking…</p>}
 
-        {me.isSuccess && !choosing && (
-          <NameAndSpace
-            // isSuccess guards this; the type does not learn that through the JSX.
-            me={me.data as Me}
-            onMade={(slug) => {
-              setLeave({ to: 'host', slug })
-            }}
-          />
-        )}
+          {me.isSuccess && choosing && (
+            <PickSpace
+              me={me.data as Me}
+              making={making}
+              onPick={(slug) => {
+                setLeave({ to: 'space', slug })
+              }}
+              onMake={() => {
+                setMaking((open) => !open)
+              }}
+              onMade={(slug) => {
+                setLeave({ to: 'host', slug })
+              }}
+            />
+          )}
+
+          {me.isSuccess && !choosing && (
+            <MakeSpace
+              // isSuccess guards this; the type does not learn that through the JSX.
+              me={me.data as Me}
+              onMade={(slug) => {
+                setLeave({ to: 'host', slug })
+              }}
+            />
+          )}
+        </section>
       </div>
     </main>
   )

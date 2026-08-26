@@ -1,12 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../../routeTree.gen.ts'
-import { theSpace } from '../../pretend/a-space.ts'
+import { Machines } from './machines.tsx'
 
 const server = setupServer()
 
@@ -23,11 +21,13 @@ afterAll(() => {
 })
 
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  void at
   return render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <div>
+        <Machines slug="acme" />
+      </div>
     </QueryClientProvider>,
   )
 }
@@ -41,7 +41,11 @@ const HERE = { state: 'here' } as const
  * offset sitting on a minute boundary flips to the next number partway through a slow run.
  */
 function goneHalfAnHourAgo() {
-  return { state: 'gone', since: new Date(Date.now() - 1_770_000).toISOString() } as const
+  return { state: 'gone', since: new Date(Date.now() - 1_770_000).toISOString() }
+}
+
+function theSpace(machines: unknown[]) {
+  return [http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines }))]
 }
 
 async function panel() {
@@ -208,11 +212,7 @@ describe('the machines in a Space', () => {
   it('says it could not read them, rather than saying there are none', async () => {
     // The failure that would otherwise be silent: a Space with machines showing the message that
     // tells you to go and connect one.
-    // First, so it answers instead of the one the Space double carries.
-    server.use(
-      http.get('*/spaces/acme/machines', () => HttpResponse.error()),
-      ...theSpace(),
-    )
+    server.use(http.get('*/spaces/acme/machines', () => HttpResponse.error()))
     open('/s/acme')
 
     const machines = await panel()
@@ -255,7 +255,6 @@ describe('the machines in a Space', () => {
       http.get('*/spaces/acme/machines', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
-      ...theSpace(),
     )
     open('/s/acme')
 

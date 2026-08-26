@@ -9,9 +9,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircleFill } from 'react-bootstrap-icons'
+import { Check2, CheckCircleFill, ChevronRight, Clipboard } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
+import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { meQuery } from '../identity/me.ts'
+import { AgentMark } from '../machines/agent-mark.tsx'
 import { AGENT_NAMES } from '../machines/machines.tsx'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
@@ -51,111 +53,221 @@ function machinesIn(slug: string) {
 function ShellCommand({ command }: { readonly command: string }) {
   return (
     <div className="shell-snippet">
-      <div className="shell-snippet-head">
-        <span>Terminal</span>
-        <Copy text={command} />
-      </div>
-      <pre>
-        <code>
-          <span className="shell-prompt" aria-hidden>
-            $
-          </span>{' '}
-          <span>{command}</span>
-        </code>
-      </pre>
+      <code>
+        <span className="shell-prompt" aria-hidden>
+          $
+        </span>{' '}
+        <span>{command}</span>
+      </code>
+      <Copy text={command} />
+    </div>
+  )
+}
+
+function timeLeft(expiresAt: string) {
+  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000))
+}
+
+function countdown(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  return `${String(minutes)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+function RegularCommandChoice({ onBack }: { readonly onBack: () => void }) {
+  return (
+    <button className="host-method" type="button" onClick={onBack}>
+      Use the regular command
+    </button>
+  )
+}
+
+function SkipChoice({ onSkip }: { readonly onSkip: () => void }) {
+  return (
+    <button className="host-skip" type="button" onClick={onSkip}>
+      <span>Skip for now</span>
+      <ChevronRight aria-hidden />
+    </button>
+  )
+}
+
+function KeySetupTitle({
+  status,
+  onBack,
+}: {
+  readonly status: string | undefined
+  readonly onBack: () => void
+}) {
+  return (
+    <div className="host-setup-title">
+      <span className="host-setup-title-copy">
+        <strong>One-time key</strong>
+        {status !== undefined && <small>{status}</small>}
+      </span>
+      <RegularCommandChoice onBack={onBack} />
     </div>
   )
 }
 
 /** The direct way in, disclosed only when somebody asks for the fallback. */
-function KeyCommand({ slug, onBack }: { readonly slug: string; readonly onBack: () => void }) {
+function KeyCommand({
+  slug,
+  active,
+  onBack,
+  onSkip,
+}: {
+  readonly slug: string
+  readonly active: boolean
+  readonly onBack: () => void
+  readonly onSkip: () => void
+}) {
   const client = useQueryClient()
-  const key = useQuery(keyFor(slug))
-  /** Set by a timer aimed at the key's own expiry; a clock read mid-render is impure. */
-  const [expired, setExpired] = useState(false)
+  const key = useQuery({ ...keyFor(slug), enabled: active })
+  /** Kept in state so time is read by a timer, not as an impure calculation during render. */
+  const [remaining, setRemaining] = useState<number>()
   useEffect(() => {
-    if (key.data === undefined) return
-    const timer = setTimeout(
-      () => {
-        setExpired(true)
-      },
-      Math.max(new Date(key.data.expiresAt).getTime() - Date.now(), 0),
-    )
-    return () => {
-      clearTimeout(timer)
+    if (!active || key.data === undefined) return
+    const refresh = () => {
+      setRemaining(timeLeft(key.data.expiresAt))
     }
-  }, [key.data])
+    // Let the effect finish before updating React, then keep the visible clock honest.
+    const first = setTimeout(refresh, 0)
+    const timer = setInterval(refresh, 1000)
+    return () => {
+      clearTimeout(first)
+      clearInterval(timer)
+    }
+  }, [active, key.data])
 
-  if (key.isPending) return <p className="empty">Preparing a one-time key…</p>
-
+  const expired = remaining === 0
   if (key.isError || expired) {
+    const makeAnother = () => {
+      setRemaining(undefined)
+      void client.resetQueries({ queryKey: ['machine-key', slug] })
+    }
     return (
-      <div className="stack-tight">
-        <p className="note">
-          {expired ? 'That key expired; they live fifteen minutes.' : 'Could not make a key.'}
-        </p>
-        <button
-          className="button button-quiet auth-disclosure"
-          type="button"
-          onClick={() => {
-            setExpired(false)
-            void client.resetQueries({ queryKey: ['machine-key', slug] })
-          }}
-        >
-          <span className="button-label">Make another</span>
-        </button>
-        <button className="button button-quiet auth-disclosure" type="button" onClick={onBack}>
-          <span className="button-label">Use the regular command</span>
-        </button>
+      <div className="host-setup">
+        <div className="host-setup-body">
+          <KeySetupTitle status={expired ? 'Expired' : 'Unavailable'} onBack={onBack} />
+          <p className="host-key-message">
+            {expired
+              ? 'This key can no longer connect a machine.'
+              : 'A one-time key could not be generated.'}
+          </p>
+          <button
+            className="button button-primary host-key-refresh"
+            type="button"
+            onClick={makeAnother}
+          >
+            <span className="button-label">{expired ? 'Generate a new key' : 'Try again'}</span>
+          </button>
+        </div>
+        <div className="host-method-row">
+          <SkipChoice onSkip={onSkip} />
+        </div>
+      </div>
+    )
+  }
+
+  if (key.isPending || remaining === undefined) {
+    return (
+      <div className="host-setup">
+        <div className="host-setup-body">
+          <KeySetupTitle status={undefined} onBack={onBack} />
+          <div className="shell-snippet host-key-placeholder" aria-hidden />
+          <StatusLine message="Preparing a one-time key…" onSkip={onSkip} />
+        </div>
       </div>
     )
   }
 
   const command = `handover connect --key ${key.data.key}`
   return (
-    <>
-      <p className="host-instruction">
-        Run this command on your machine. The key expires in fifteen minutes.
-      </p>
-      <ShellCommand command={command} />
-      <button className="button button-secondary host-choice" type="button" onClick={onBack}>
-        <span className="button-label">Use the regular command</span>
-      </button>
-    </>
+    <div className="host-setup">
+      <div className="host-setup-body">
+        <KeySetupTitle status={`Expires in ${countdown(remaining)}`} onBack={onBack} />
+        <ShellCommand command={command} />
+        <Waiting onSkip={onSkip} />
+      </div>
+    </div>
   )
 }
 
+function StatusLine({
+  message,
+  onSkip,
+}: {
+  readonly message: string
+  readonly onSkip: () => void
+}) {
+  return (
+    <div className="host-status-row">
+      <div className="host-waiting" role="status">
+        <span className="host-waiting-dot" aria-hidden />
+        <span>{message}</span>
+      </div>
+      <SkipChoice onSkip={onSkip} />
+    </div>
+  )
+}
+
+function Waiting({ onSkip }: { readonly onSkip: () => void }) {
+  return <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
+}
+
 /** The normal code-and-approval path first; a key is an explicit fallback. */
-function ConnectionCommand({ slug }: { readonly slug: string }) {
+function ConnectionCommand({
+  slug,
+  onSkip,
+}: {
+  readonly slug: string
+  readonly onSkip: () => void
+}) {
   const [usingKey, setUsingKey] = useState(false)
 
-  if (usingKey) {
-    return (
-      <KeyCommand
-        slug={slug}
-        onBack={() => {
-          setUsingKey(false)
-        }}
-      />
-    )
-  }
-
   return (
-    <>
-      <p className="host-instruction">
-        Run this command on your machine, then open the link it gives you.
-      </p>
-      <ShellCommand command="handover connect" />
-      <button
-        className="button button-secondary host-choice"
-        type="button"
-        onClick={() => {
-          setUsingKey(true)
-        }}
+    <div className="host-command-switch">
+      <div
+        className="host-command-pane"
+        data-active={!usingKey}
+        aria-hidden={usingKey}
+        inert={usingKey}
       >
-        <span className="button-label">Use a key instead</span>
-      </button>
-    </>
+        <div className="host-setup">
+          <div className="host-setup-body">
+            <div className="host-setup-title">
+              <strong>Run in Terminal</strong>
+              <button
+                className="host-method"
+                type="button"
+                onClick={() => {
+                  setUsingKey(true)
+                }}
+              >
+                Use a key instead
+              </button>
+            </div>
+            <ShellCommand command="handover connect" />
+            <Waiting onSkip={onSkip} />
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="host-command-pane"
+        data-active={usingKey}
+        aria-hidden={!usingKey}
+        inert={!usingKey}
+      >
+        <KeyCommand
+          slug={slug}
+          active={usingKey}
+          onBack={() => {
+            setUsingKey(false)
+          }}
+          onSkip={onSkip}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -173,6 +285,8 @@ function Copy({ text }: { readonly text: string }) {
     <button
       className="shell-copy"
       type="button"
+      aria-label={copied ? 'Copied' : 'Copy command'}
+      title={copied ? 'Copied' : 'Copy command'}
       onClick={() => {
         void navigator.clipboard.writeText(text)
         setCopied(true)
@@ -181,7 +295,7 @@ function Copy({ text }: { readonly text: string }) {
         }, 1600)
       }}
     >
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? <Check2 aria-hidden /> : <Clipboard aria-hidden />}
     </button>
   )
 }
@@ -194,19 +308,39 @@ function Arrived({ slug }: { readonly slug: string }) {
   if (found.length === 0) return null
 
   return (
-    <div className="stack-tight">
+    <div className="host-arrived-list">
       {found.map((machine) => (
-        <p key={machine.id} className="said said-good">
-          <CheckCircleFill aria-hidden />
-          <span>
-            <strong>{machine.name}</strong> is in.
-            {machine.agents.length === 0
-              ? ' No agents found on it yet.'
-              : ` It found: ${machine.agents
-                  .map((agent) => `${AGENT_NAMES[agent.kind] ?? agent.kind} ${agent.version}`)
-                  .join(' · ')}`}
-          </span>
-        </p>
+        <section
+          key={machine.id}
+          className="host-arrived-machine"
+          aria-label={`${machine.name} connected`}
+        >
+          <p className="said said-good">
+            <CheckCircleFill aria-hidden />
+            <span className="host-machine-connected">{machine.name} is connected.</span>
+          </p>
+
+          {machine.agents.length === 0 ? (
+            <p className="host-agents-empty">No agents found on it yet.</p>
+          ) : (
+            <>
+              <p className="host-agents-label">Agents found</p>
+              <ul className="host-agent-list" aria-label={`Agents found on ${machine.name}`}>
+                {machine.agents.map((agent) => (
+                  <li key={agent.kind} className="host-agent" data-agent={agent.kind}>
+                    <span className="host-agent-mark" aria-hidden>
+                      <AgentMark kind={agent.kind} />
+                    </span>
+                    <span className="host-agent-copy">
+                      <strong>{AGENT_NAMES[agent.kind] ?? agent.kind}</strong>
+                      <small>{agent.version}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       ))}
     </div>
   )
@@ -253,11 +387,7 @@ function Leave({
       </button>
     )
   }
-  return (
-    <button className="button button-quiet auth-skip" type="button" onClick={onGo}>
-      <span className="button-label">Skip for now</span>
-    </button>
-  )
+  return null
 }
 
 export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined }) {
@@ -277,6 +407,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
 
   const goIn = () => {
     if (slug === undefined) return
+    burstConfetti()
     setLeaving(true)
     timer.current = setTimeout(() => {
       void navigate({ to: '/s/$slug', params: { slug } })
@@ -284,22 +415,24 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
   }
 
   return (
-    <main className="auth">
-      <div className="auth-stack">
+    <main className="auth onboarding-page">
+      <div className="onboarding-shell">
         <Steps step={2} done={leaving} mark={leaving || arrived ? 'success' : 'working'} />
 
-        <div className="auth-head host-head">
-          <h1>Connect a machine</h1>
-        </div>
-
-        {slug !== undefined && (
-          <div className="stack-tight">
-            {!arrived && <ConnectionCommand slug={slug} />}
-            <Arrived slug={slug} />
+        <section className="onboarding-content host-stack">
+          <div className="auth-head host-head">
+            <h1>Connect a machine</h1>
           </div>
-        )}
 
-        <Leave arrived={arrived} spaceName={name} onGo={goIn} />
+          {slug !== undefined && (
+            <div className="stack-tight">
+              {!arrived && <ConnectionCommand slug={slug} onSkip={goIn} />}
+              <Arrived slug={slug} />
+            </div>
+          )}
+
+          <Leave arrived={arrived} spaceName={name} onGo={goIn} />
+        </section>
       </div>
     </main>
   )

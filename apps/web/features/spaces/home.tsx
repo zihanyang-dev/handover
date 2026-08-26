@@ -1,0 +1,179 @@
+/**
+ * The quiet frame inside a Space.
+ *
+ * Its sidebar structure, states, and motion come from Notion's live app. Handover supplies the
+ * identity without exposing unfinished Space-switching behavior.
+ */
+
+import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import { Mark } from '../../mark.tsx'
+import type { Me } from '../identity/me.ts'
+import { CollapseIcon, HomeIcon, MenuIcon } from './sidebar-icons.tsx'
+
+type Space = Me['spaces'][number]
+
+const DEFAULT_SIDEBAR_WIDTH = 270
+const MIN_SIDEBAR_WIDTH = 220
+const MAX_SIDEBAR_WIDTH = 480
+
+function resizedWidth(width: number) {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
+}
+
+function beginSidebarResize(
+  event: ReactPointerEvent<HTMLDivElement>,
+  width: number,
+  setWidth: (next: number) => void,
+  setResizing: (resizing: boolean) => void,
+) {
+  event.preventDefault()
+  const start = event.clientX
+  const move = (pointer: PointerEvent) => {
+    setWidth(resizedWidth(width + pointer.clientX - start))
+  }
+  const finish = () => {
+    setResizing(false)
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', finish)
+  }
+
+  setResizing(true)
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', finish)
+}
+
+function WorkspaceMark() {
+  return (
+    <span className="home-workspace-icon" aria-hidden>
+      <Mark size={22} bodyColor="#2c2c2b" />
+    </span>
+  )
+}
+
+function WorkspaceHeader({
+  space,
+  closeSidebar,
+}: {
+  readonly space: Space
+  readonly closeSidebar: () => void
+}) {
+  return (
+    <div className="home-workspace-root">
+      <div className="home-workspace-pill">
+        <div className="home-workspace-identity">
+          <WorkspaceMark />
+          <span className="home-workspace-name">{space.displayName}</span>
+        </div>
+        <button
+          className="home-close-sidebar"
+          type="button"
+          aria-label="Close sidebar"
+          onClick={closeSidebar}
+        >
+          <CollapseIcon />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ResizeRail({
+  width,
+  setWidth,
+  setResizing,
+}: {
+  readonly width: number
+  readonly setWidth: (next: number) => void
+  readonly setResizing: (resizing: boolean) => void
+}) {
+  return (
+    <div className="home-sidebar-resize">
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize with left and right arrow keys"
+        aria-orientation="vertical"
+        aria-valuenow={width}
+        aria-valuemin={MIN_SIDEBAR_WIDTH}
+        aria-valuemax={MAX_SIDEBAR_WIDTH}
+        onPointerDown={(event) => {
+          beginSidebarResize(event, width, setWidth, setResizing)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft') setWidth(resizedWidth(width - 8))
+          if (event.key === 'ArrowRight') setWidth(resizedWidth(width + 8))
+        }}
+      />
+    </div>
+  )
+}
+
+export function Home({ space }: { readonly space: Space }) {
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [resizing, setResizing] = useState(false)
+
+  return (
+    <div
+      className="home-shell"
+      data-sidebar-open={sidebarOpen}
+      data-sidebar-resizing={resizing}
+      style={{ '--home-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
+    >
+      <div className="home-sidebar-container">
+        <aside className="home-sidebar" aria-label={`${space.displayName} sidebar`}>
+          <WorkspaceHeader
+            space={space}
+            closeSidebar={() => {
+              setSidebarOpen(false)
+            }}
+          />
+
+          <nav className="home-tabbar" aria-label="Sidebar navigation">
+            <Link
+              className="home-tab"
+              role="tab"
+              aria-selected="true"
+              to="/s/$slug"
+              params={{ slug: space.slug }}
+            >
+              <HomeIcon />
+              <span>Home</span>
+            </Link>
+          </nav>
+          <div className="home-sidebar-panel" role="tabpanel" aria-label="Home" />
+        </aside>
+
+        <ResizeRail width={sidebarWidth} setWidth={setSidebarWidth} setResizing={setResizing} />
+      </div>
+
+      <main className="home-main">
+        <header className="home-topbar">
+          {!sidebarOpen && (
+            <button
+              className="home-open-sidebar"
+              type="button"
+              aria-label="Open sidebar"
+              onClick={() => {
+                setSidebarOpen(true)
+              }}
+            >
+              <MenuIcon />
+            </button>
+          )}
+          <p className="home-breadcrumb">
+            <span>{space.displayName}</span>
+            <span aria-hidden>/</span>
+            <strong>Home</strong>
+          </p>
+        </header>
+
+        <section className="home-content" aria-labelledby="home-title">
+          <h1 id="home-title">Home</h1>
+        </section>
+      </main>
+    </div>
+  )
+}

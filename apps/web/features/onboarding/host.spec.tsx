@@ -1,12 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
 import { signedIn } from '../../signed-in.ts'
+
+const { burstConfetti } = vi.hoisted(() => ({ burstConfetti: vi.fn() }))
+vi.mock('../../components/ui/confetti-burst.ts', () => ({ burstConfetti }))
 
 const server = setupServer()
 
@@ -17,6 +20,7 @@ afterEach(() => {
   cleanup()
   server.resetHandlers()
   sessionStorage.clear()
+  burstConfetti.mockClear()
 })
 afterAll(() => {
   server.close()
@@ -61,6 +65,34 @@ describe('the second step — a machine', () => {
     expect(await screen.findByText(/handover connect --key WDJB-MJHT/u)).toBeDefined()
   })
 
+  it('replaces an expired key instead of leaving a dead command to copy', async () => {
+    let made = 0
+    server.use(
+      signedIn({ spaces: [ACME] }),
+      machinesAre([]),
+      http.post('*/spaces/:slug/machine-keys', () => {
+        made += 1
+        return HttpResponse.json(
+          {
+            key: made === 1 ? 'EXPIRED-KEY' : 'FRESH-KEY',
+            expiresAt: new Date(Date.now() + (made === 1 ? -1000 : 900_000)).toISOString(),
+          },
+          { status: 201 },
+        )
+      }),
+    )
+    open('/onboarding/host?s=acme')
+
+    await userEvent.click(await screen.findByRole('button', { name: /use a key instead/i }))
+
+    expect(await screen.findByText(/this key can no longer connect/i)).toBeDefined()
+    expect(screen.queryByText(/EXPIRED-KEY/u)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /generate a new key/i }))
+
+    expect(await screen.findByText(/handover connect --key FRESH-KEY/u)).toBeDefined()
+  })
+
   it('says how far along this is', async () => {
     server.use(signedIn({ spaces: [ACME] }), keyIs('WDJB-MJHT'), machinesAre([]))
     open('/onboarding/host?s=acme')
@@ -87,8 +119,14 @@ describe('the second step — a machine', () => {
     open('/onboarding/host?s=acme')
 
     expect(await screen.findByText(/Mina's MacBook/)).toBeDefined()
-    expect(screen.getByText(/Claude Code 2\.1\.0/)).toBeDefined()
-    expect(screen.getByText(/Codex 0\.4\.1/)).toBeDefined()
+    const agents = screen.getByRole('list', { name: /agents found on Mina's MacBook/i })
+    expect(within(agents).getByText('Claude Code')).toBeDefined()
+    expect(within(agents).getByText('2.1.0')).toBeDefined()
+    expect(within(agents).getByText('Codex')).toBeDefined()
+    expect(within(agents).getByText('0.4.1')).toBeDefined()
+    expect(within(agents).queryByRole('button')).toBeNull()
+    expect(within(agents).queryByRole('link')).toBeNull()
+    expect(agents.querySelectorAll('svg')).toHaveLength(2)
   })
 
   it('opens the Space when asked, once a machine is in', async () => {
@@ -102,6 +140,7 @@ describe('the second step — a machine', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /open acme/i }))
 
+    expect(burstConfetti).toHaveBeenCalledOnce()
     expect(await screen.findByText(/no agents found on it yet/i)).toBeDefined()
   })
 
@@ -116,7 +155,9 @@ describe('the second step — a machine', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /skip for now/i }))
 
-    expect(await screen.findByText(/nothing can run here yet/i)).toBeDefined()
+    expect(burstConfetti).toHaveBeenCalledOnce()
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeDefined()
+    expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
   it('with exactly one Space, the Space need not be named in the address', async () => {
@@ -145,6 +186,6 @@ describe('the second step — a machine', () => {
     open('/onboarding/host')
 
     // Back at the first step, making one.
-    expect(await screen.findByLabelText(/^space$/i)).toBeDefined()
+    expect(await screen.findByLabelText(/workspace name/i)).toBeDefined()
   })
 })

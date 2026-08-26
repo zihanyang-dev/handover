@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -39,6 +39,7 @@ function open(at: string) {
 }
 
 const ACME = { id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }
+const BETA = { id: '22222222-2222-4222-8222-222222222222', slug: 'beta', displayName: 'Beta' }
 
 /** The machine step follows a made Space; these answer what it asks. */
 function quietMachineStep() {
@@ -54,13 +55,12 @@ function quietMachineStep() {
 }
 
 describe('the first step — a Space', () => {
-  it('somebody with no Spaces is making one right away, their name already filled in', async () => {
+  it('somebody with no Spaces is making a workspace right away', async () => {
     server.use(signedIn({ displayName: 'Mina' }))
     open('/onboarding')
 
-    const name = await screen.findByLabelText(/your name/i)
-    expect(name).toHaveProperty('value', 'Mina')
-    expect(screen.getByLabelText(/^space$/i)).toBeDefined()
+    expect(await screen.findByLabelText(/workspace name/i)).toHaveProperty('value', '')
+    expect(screen.queryByLabelText(/your name/i)).toBeNull()
   })
 
   it('says how far along this is', async () => {
@@ -74,21 +74,36 @@ describe('the first step — a Space', () => {
     server.use(signedIn())
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/^space$/i), '你好')
+    await userEvent.type(await screen.findByLabelText(/workspace name/i), '你好')
 
-    const address = await screen.findByLabelText(/space url/i)
+    const address = await screen.findByLabelText(/workspace url/i)
     expect(address).toHaveProperty('disabled', true)
     expect(address).toHaveProperty('value', expect.stringMatching(/\/s\/你好$/u))
     expect(address).not.toHaveProperty('value', expect.stringContaining('%'))
   })
 
-  it('saves a changed name first, then makes the Space, then moves to the machine', async () => {
-    let renamed: unknown
+  it('keeps several Spaces in a deck until somebody spreads them', async () => {
+    server.use(signedIn({ spaces: [ACME, BETA] }))
+    open('/onboarding')
+
+    expect(await screen.findByRole('button', { name: /spread 2 spaces/i })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /open acme/i })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /spread 2 spaces/i }))
+    expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
+    expect(screen.getByRole('button', { name: /open beta/i })).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: /stack spaces/i }))
+    expect(screen.queryByRole('button', { name: /open acme/i })).toBeNull()
+  })
+
+  it('makes the workspace without rewriting the account profile, then moves to the machine', async () => {
+    let renamed = false
     let made: unknown
     server.use(
       ...quietMachineStep(),
-      http.patch('*/me', async ({ request }) => {
-        renamed = await request.json()
+      http.patch('*/me', () => {
+        renamed = true
         return HttpResponse.json({}, { status: 200 })
       }),
       http.post('*/spaces', async ({ request }) => {
@@ -99,37 +114,12 @@ describe('the first step — a Space', () => {
     )
     open('/onboarding')
 
-    const name = await screen.findByLabelText(/your name/i)
-    await userEvent.clear(name)
-    await userEvent.type(name, 'Mina Kang')
-    await userEvent.type(screen.getByLabelText(/^space$/i), 'Acme')
+    await userEvent.type(await screen.findByLabelText(/workspace name/i), 'Acme')
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
 
-    await waitFor(() => {
-      expect(renamed).toEqual({ displayName: 'Mina Kang' })
-    })
     expect(made).toEqual({ displayName: 'Acme', requestKey: expect.any(String) as unknown })
-    expect(await screen.findByText(/connect a machine/i)).toBeDefined()
-  })
-
-  it('leaves the name alone when it was not changed', async () => {
-    let renamed = false
-    server.use(
-      ...quietMachineStep(),
-      http.patch('*/me', () => {
-        renamed = true
-        return HttpResponse.json({}, { status: 200 })
-      }),
-      http.post('*/spaces', () => HttpResponse.json(ACME, { status: 201 })),
-      signedIn({ displayName: 'Mina' }),
-    )
-    open('/onboarding')
-
-    await userEvent.type(await screen.findByLabelText(/^space$/i), 'Acme')
-    await userEvent.click(screen.getByRole('button', { name: /continue/i }))
-
-    expect(await screen.findByText(/connect a machine/i)).toBeDefined()
     expect(renamed).toBe(false)
+    expect(await screen.findByText(/connect a machine/i)).toBeDefined()
   })
 
   it('offers the address that is free when the one asked for is held', async () => {
@@ -144,7 +134,7 @@ describe('the first step — a Space', () => {
     )
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/^space$/i), 'Acme')
+    await userEvent.type(await screen.findByLabelText(/workspace name/i), 'Acme')
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
 
     expect(await screen.findByText(/acme-2 is free/i)).toBeDefined()
@@ -160,11 +150,12 @@ describe('the first step — a Space', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /open acme/i }))
 
-    // Past onboarding entirely: the Space itself, machines and all.
-    expect(await screen.findByText(/last seen|online|nothing can run here/i)).toBeDefined()
+    // Past onboarding entirely: the Space's new Home frame, not the legacy Machines dashboard.
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeDefined()
+    expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
-  it('makes a new Space the first full choice, before the compact existing list', async () => {
+  it('opens New Space in a bottom drawer without hiding the existing cards', async () => {
     server.use(signedIn({ spaces: [ACME] }))
     open('/onboarding')
 
@@ -172,8 +163,20 @@ describe('the first step — a Space', () => {
     const existing = screen.getByRole('button', { name: /open acme/i })
     expect(make.compareDocumentPosition(existing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+    expect(make.getAttribute('aria-expanded')).toBe('false')
     await userEvent.click(make)
-    expect(await screen.findByLabelText(/^space$/i)).toBeDefined()
+    expect(await screen.findByRole('textbox', { name: /workspace name/i })).toBeDefined()
+    const drawer = screen.getByRole('region', { name: /new space drawer/i })
+    expect(drawer).toBeDefined()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
+    expect(make.getAttribute('aria-expanded')).toBe('true')
+
+    expect(screen.getByRole('button', { name: /close new space/i })).toBeDefined()
+    await userEvent.click(drawer)
+    expect(screen.queryByRole('textbox', { name: /workspace name/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
+    expect(make.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('says once that this way now reaches an account that was already there', async () => {

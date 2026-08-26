@@ -2,9 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { api } from '../api.ts'
-import { SignOut } from '../features/identity/sign-out.tsx'
-import { Conversations } from '../features/conversations/conversations.tsx'
-import { Machines } from '../features/machines/machines.tsx'
+import { Home } from '../features/spaces/home.tsx'
 
 function Screen() {
   const { slug } = Route.useParams()
@@ -20,11 +18,9 @@ function Screen() {
   // for a moment a Space that turns out not to exist looks like one that does.
   if (space.isPending) {
     return (
-      <div className="page">
-        <section className="panel">
-          <p className="empty">Looking…</p>
-        </section>
-      </div>
+      <main className="home-state">
+        <p>Looking…</p>
+      </main>
     )
   }
 
@@ -41,36 +37,18 @@ function Screen() {
   }
 
   // Not there and not yours are the same answer, so this page cannot tell them apart either.
-  if (space.data === null) {
+  if (space.data === null || space.data === undefined) {
     return (
-      <div className="page">
-        <section className="panel">
-          <h2>This Space is not available</h2>
-          <p className="note" style={{ marginTop: '0.5rem' }}>
-            <Link to="/">Back to your Spaces</Link>
-          </p>
-        </section>
-      </div>
+      <main className="home-state">
+        <div>
+          <h1>This Space is not available</h1>
+          <Link to="/onboarding">Back to your Spaces</Link>
+        </div>
+      </main>
     )
   }
 
-  return (
-    <div className="page">
-      <div className="row">
-        <span className="row-name">
-          <strong>{space.data.displayName}</strong>
-        </span>
-        <Link className="row-where" to="/">
-          All Spaces
-        </Link>
-      </div>
-      <Machines slug={slug} />
-      <Conversations slug={slug} />
-      {/* Reachable from in here, not only from the Spaces list: somebody who came straight to a
-          Space by its address should not have to go somewhere else to leave. */}
-      <SignOut />
-    </div>
-  )
+  return <Home space={space.data} />
 }
 
 export const Route = createFileRoute('/s/$slug')({

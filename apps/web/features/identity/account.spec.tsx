@@ -83,6 +83,6 @@ describe('leaving', () => {
 
     // A cookie the page forgets is a session the server would still honour.
     expect(revoked).toBe(true)
-    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    expect(await screen.findByRole('form', { name: /^sign in$/i })).toBeDefined()
   })
 })

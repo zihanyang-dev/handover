@@ -173,7 +173,7 @@ describe('answering a machine', () => {
       )
       open(at)
 
-      expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+      expect(await screen.findByRole('form', { name: /^sign in$/i })).toBeDefined()
     },
   )
 

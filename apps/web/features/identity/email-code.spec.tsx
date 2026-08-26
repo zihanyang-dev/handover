@@ -83,7 +83,7 @@ describe('handing the code back', () => {
     })
     // The real route tree, so this is where somebody actually ends up: onboarding, the first
     // step asking for a Space's name.
-    expect(await screen.findByRole('heading', { name: /make your space/i })).toBeDefined()
+    expect(await screen.findByRole('heading', { name: /name your workspace/i })).toBeDefined()
   })
 
   it('does not submit before there are six', async () => {

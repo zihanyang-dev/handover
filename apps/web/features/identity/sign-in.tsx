@@ -1,16 +1,18 @@
 /**
  * Choosing a way in.
  *
- * The sentence about one address meaning one account sits above the choice, not below it. It is
- * what decides whether somebody dares click a different button than they did last time, and
- * saying it after they have chosen is the same as not saying it.
+ * The brand names the place and the provider and email controls make the task obvious. The form
+ * keeps an accessible name without repeating a visible “Sign in” heading.
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState, type ReactElement } from 'react'
 import { api, retryKey } from '../../api.ts'
+import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
+import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
 import { Mark } from '../../mark.tsx'
+import { HANDOVER_WORDMARK } from './handover-wordmark.ts'
 import { GitHubMark, GoogleMark } from './provider-marks.tsx'
 
 /**
@@ -111,66 +113,78 @@ export function SignIn({
   const invalid = refused || askForCode.isError
 
   return (
-    <main className="auth">
-      <form
-        className="auth-stack"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault()
-          const address = email.trim()
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-            setRefused(true)
-            return
-          }
-          askForCode.mutate(address)
-        }}
-      >
-        <div className="auth-head">
-          <Mark size={80} state={askForCode.isPending ? 'working' : 'thinking'} />
-          <h1>Sign in or sign up</h1>
-          <p className="lede">Every way in reaches the same account.</p>
-        </div>
+    <GradientBlur>
+      <main className="auth auth-on-gradient-blur">
+        <form
+          aria-label="Sign in"
+          className="auth-stack"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            const address = email.trim()
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+              setRefused(true)
+              return
+            }
+            askForCode.mutate(address)
+          }}
+        >
+          <div className="auth-head">
+            <div className="auth-brand">
+              <Mark size={54} state={askForCode.isPending ? 'working' : 'thinking'} />
+              <HandwritingSvg
+                path={HANDOVER_WORDMARK}
+                width={217}
+                height={50}
+                strokeWidth={1.1}
+                duration={2.2}
+                delay={0.1}
+                className="auth-wordmark"
+              />
+            </div>
+          </div>
 
-        <OtherWays />
+          <OtherWays />
 
-        <div className="stack-tight">
-          <label className="label" htmlFor={field}>
-            Email address
-          </label>
-          <input
-            id={field}
-            className="field"
-            type="email"
-            name="email"
-            autoComplete="email"
-            required
-            aria-invalid={invalid}
-            placeholder="you@example.com"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value)
-              // The red lifts as they retype; it described what they sent, not what is there.
-              setRefused(false)
-              askForCode.reset()
-            }}
-          />
-          <p className="auth-error" data-shown={invalid ? '' : undefined}>
-            {invalid
-              ? refused || askForCode.error === null
-                ? SAID['malformed-request']
-                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
-              : null}
-          </p>
+          <div className="stack-tight">
+            <label className="label" htmlFor={field}>
+              Email address
+            </label>
+            <input
+              id={field}
+              className="field"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              aria-invalid={invalid}
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                // The red lifts as they retype; it described what they sent, not what is there.
+                setRefused(false)
+                askForCode.reset()
+              }}
+            />
+            <p className="auth-error" data-shown={invalid ? '' : undefined}>
+              {invalid
+                ? refused || askForCode.error === null
+                  ? SAID['malformed-request']
+                  : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
+                : null}
+            </p>
 
-          <button
-            className="button button-primary"
-            type="submit"
-            disabled={email.trim() === '' || askForCode.isPending}
-          >
-            <span className="button-label">Continue</span>
-          </button>
-        </div>
-      </form>
-    </main>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={email.trim() === '' || askForCode.isPending}
+            >
+              <span className="button-label">Continue</span>
+            </button>
+          </div>
+        </form>
+      </main>
+    </GradientBlur>
   )
 }
