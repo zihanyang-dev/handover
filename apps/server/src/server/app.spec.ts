@@ -159,16 +159,30 @@ describe('what the contract says about who may call what', () => {
    * from and what anybody reads. `pnpm check` rebuilds it before this runs and fails on any diff,
    * so it cannot be stale here.
    */
-  function everyEndpoint(): readonly { at: string; shows: readonly string[] }[] {
+  function everyEndpoint(): readonly {
+    at: string
+    shows: readonly string[]
+    answers: readonly number[]
+  }[] {
     const document = JSON.parse(readFileSync(CONTRACT_FILE, 'utf8')) as {
-      paths: Record<string, Record<string, { security?: readonly Record<string, unknown>[] }>>
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            security?: readonly Record<string, unknown>[]
+            responses: Record<string, unknown>
+          }
+        >
+      >
     }
 
     const endpoints = []
     for (const [path, methods] of Object.entries(document.paths)) {
       for (const [method, operation] of Object.entries(methods)) {
         const shows = (operation.security ?? []).flatMap((one) => Object.keys(one))
-        endpoints.push({ at: `${method.toUpperCase()} ${path}`, shows })
+        const answers = Object.keys(operation.responses).map(Number)
+        endpoints.push({ at: `${method.toUpperCase()} ${path}`, shows, answers })
       }
     }
 
@@ -192,6 +206,17 @@ describe('what the contract says about who may call what', () => {
 
     expect(people.length).toBeGreaterThan(0)
     for (const one of people) expect([one.at, one.shows]).toEqual([one.at, [SHOWS.session]])
+  })
+
+  it('says a Space you are not in is one that is not there, on every path inside one', async () => {
+    // The membership door answers both with the same 404, so that a URL cannot be used to find
+    // out which Spaces exist. A route that declared only a 401 would be telling a client the
+    // difference is knowable, and the first client to act on that turns the address bar into a
+    // way of asking.
+    const inASpace = everyEndpoint().filter((one) => one.at.includes('/spaces/{slug}'))
+
+    expect(inASpace.length).toBeGreaterThan(0)
+    for (const one of inASpace) expect([one.at, one.answers.includes(404)]).toEqual([one.at, true])
   })
 
   it('leaves open only the ways in, which are the ones nobody can have a credential for yet', async () => {
