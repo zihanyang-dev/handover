@@ -2092,10 +2092,47 @@ export interface components {
             messages: components["schemas"]["Message"][];
         };
         Message: {
-            seq: number;
             /** @enum {string} */
-            role: "user" | "assistant" | "tool" | "activity";
-            content?: unknown;
+            role: "user";
+            content: {
+                text: string;
+                model?: string;
+                effort?: string;
+            };
+            seq: number;
+            /** Format: date-time */
+            at: string;
+        } | {
+            /** @enum {string} */
+            role: "assistant";
+            content: {
+                text: string;
+            };
+            seq: number;
+            /** Format: date-time */
+            at: string;
+        } | {
+            /** @enum {string} */
+            role: "tool";
+            content: {
+                name: string;
+                verb: string;
+                arg: string;
+                ok?: boolean;
+                excerpt: string;
+            };
+            seq: number;
+            /** Format: date-time */
+            at: string;
+        } | {
+            /** @enum {string} */
+            role: "activity";
+            content: {
+                activityType: string;
+            } & {
+                [key: string]: unknown;
+            };
+            seq: number;
             /** Format: date-time */
             at: string;
         };

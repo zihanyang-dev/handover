@@ -17,9 +17,8 @@ import {
   useWatching,
   type Model,
   type Moment,
+  type Said as Message,
 } from './talking.ts'
-
-type Message = { readonly seq: number; readonly role: string; readonly content?: unknown }
 
 /**
  * What an activity says, for the ones this page has words for.
@@ -100,23 +99,20 @@ function turnOf(messages: readonly Message[]): number {
 }
 
 function Said({ message }: { readonly message: Message }) {
-  if (message.role === 'user') return <li className="said">{textOf(message.content)}</li>
+  if (message.role === 'user') return <li className="said">{message.content.text}</li>
   if (message.role === 'assistant')
-    return <li className="said said-good">{textOf(message.content)}</li>
-  if (message.role === 'tool') return <Used content={message.content} />
+    return <li className="said said-good">{message.content.text}</li>
+  if (message.role === 'tool') return <Used did={message.content} />
 
-  return <Happened content={message.content} />
+  return <Happened what={message.content} />
 }
 
-function Used({ content }: { readonly content: unknown }) {
+/** What a tool call holds is the contract's to say, and it says it — see `Message` there. */
+type Did = Extract<Message, { role: 'tool' }>['content']
+type Activity = Extract<Message, { role: 'activity' }>['content']
+
+function Used({ did }: { readonly did: Did }) {
   const [open, setOpen] = useState(false)
-  const did = content as {
-    name: string
-    verb: string
-    arg: string
-    ok?: boolean
-    excerpt: string
-  }
   // A tool that never says how it went keeps that: a tick beside one nobody checked would be
   // this page inventing an answer.
   const mark =
@@ -153,13 +149,11 @@ function Used({ content }: { readonly content: unknown }) {
   )
 }
 
-function Happened({ content }: { readonly content: unknown }) {
-  const what = content as { activityType: string; text?: string }
-
+function Happened({ what }: { readonly what: Activity }) {
   // Nothing to say about a turn that simply ended. The next thing said is the end of it.
   if (what.activityType === 'done') return null
 
-  const said = what.text ?? ACTIVITIES[what.activityType] ?? what.activityType
+  const said = textOf(what) ?? ACTIVITIES[what.activityType] ?? what.activityType
 
   return <li className="note">{said}</li>
 }
@@ -407,6 +401,14 @@ function whyNot(reason: string): string {
   return 'That did not go through. Try again.'
 }
 
-function textOf(content: unknown): string {
-  return (content as { text?: string } | null)?.text ?? ''
+/**
+ * The words an activity carries, when it carries any.
+ *
+ * Open by design — a new kind of activity is a value, not a release — so this is the one place
+ * left that has to look before it reads. A failure says what went wrong in its own words; the
+ * rest are named by their type alone.
+ */
+function textOf(what: Activity): string | undefined {
+  const said: unknown = what['text']
+  return typeof said === 'string' && said !== '' ? said : undefined
 }

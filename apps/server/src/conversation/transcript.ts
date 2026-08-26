@@ -80,6 +80,8 @@ export const ACTIVITY = {
   stopAsked: 'stop',
   /** It could not pick up the earlier session, so this turn began with no memory of the last. */
   forgot: 'forgot',
+  /** Not something that happened: a line written in a shape this build cannot read. */
+  unreadable: 'unreadable',
 } as const
 
 /** The activities that close a turn. A conversation is busy until one of these is its last word. */
@@ -90,14 +92,51 @@ export const ENDINGS: readonly string[] = [
   ACTIVITY.unknown,
 ]
 
+/** Who each line is from, and what a line from them holds. The four, written once. */
+const FROM = {
+  person: z.object({ role: z.literal('user'), content: Asked }),
+  agent: z.object({ role: z.literal('assistant'), content: Answered }),
+  tool: z.object({ role: z.literal('tool'), content: Did }),
+  nobody: z.object({ role: z.literal('activity'), content: Happened }),
+} as const
+
 export const Message = z.discriminatedUnion('role', [
-  z.object({ role: z.literal('user'), content: Asked }),
-  z.object({ role: z.literal('assistant'), content: Answered }),
-  z.object({ role: z.literal('tool'), content: Did }),
-  z.object({ role: z.literal('activity'), content: Happened }),
+  FROM.person,
+  FROM.agent,
+  FROM.tool,
+  FROM.nobody,
 ])
 
 export type Message = z.infer<typeof Message>
+
+/** Where a line sits in its conversation, and when it landed. Added when it is read back. */
+const PLACE = { seq: z.number().int(), at: z.iso.datetime() }
+
+/**
+ * One line as a reader gets it: the same four, each with its place.
+ *
+ * Built from the four above rather than written out again, because a second list of what a `tool`
+ * line holds is a second list that can be wrong — and the page reading it would believe it.
+ */
+export const Spoken = z.discriminatedUnion('role', [
+  FROM.person.extend(PLACE),
+  FROM.agent.extend(PLACE),
+  FROM.tool.extend(PLACE),
+  FROM.nobody.extend(PLACE),
+])
+
+export type Spoken = z.infer<typeof Spoken>
+
+/**
+ * What a line this build cannot read comes back as.
+ *
+ * Kept rather than dropped: a transcript is an account of what happened, and a gap in it is worse
+ * than a line saying it cannot be read. It goes through the one door that is deliberately open —
+ * an activity type nobody has heard of — so no reader needs a new branch to show it.
+ */
+export function unreadable(seq: number, at: Date): Spoken {
+  return { seq, at: at.toISOString(), role: 'activity', content: { activityType: 'unreadable' } }
+}
 
 /**
  * Who a message can be from, derived from the messages themselves.

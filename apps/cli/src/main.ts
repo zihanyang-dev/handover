@@ -246,10 +246,20 @@ async function handOver(): Promise<void> {
       case 'wait-out':
         await waitOut(step)
         break
+      default:
+        // A `need` nobody wrote a branch for is a compile error rather than a step that is
+        // quietly skipped. Every other switch in this program answers with a value, where a
+        // missing branch is caught by there being no value to return; this one only does things.
+        return unknownNeed(step.need)
     }
   }
 
   say('running. closing this terminal will not stop it.')
+}
+
+/** There is no fourth kind of step. Typed `never`, so adding one has to be finished here. */
+function unknownNeed(need: never): never {
+  throw new Error(`no such step: ${String(need)}`)
 }
 
 async function attempt(step: Step): Promise<void> {

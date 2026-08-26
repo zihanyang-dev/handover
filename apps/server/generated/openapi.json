@@ -941,32 +941,172 @@
         ]
       },
       "Message": {
-        "type": "object",
-        "properties": {
-          "seq": {
-            "type": "integer"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "user",
-              "assistant",
-              "tool",
-              "activity"
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "effort": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "role",
+              "content",
+              "seq",
+              "at"
             ]
           },
-          "content": {
-            "nullable": true
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "assistant"
+                ]
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "role",
+              "content",
+              "seq",
+              "at"
+            ]
           },
-          "at": {
-            "type": "string",
-            "format": "date-time"
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "tool"
+                ]
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "verb": {
+                    "type": "string"
+                  },
+                  "arg": {
+                    "type": "string"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "excerpt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "verb",
+                  "arg",
+                  "excerpt"
+                ]
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "role",
+              "content",
+              "seq",
+              "at"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "activity"
+                ]
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "activityType": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "activityType"
+                ],
+                "additionalProperties": {
+                  "nullable": true
+                }
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "role",
+              "content",
+              "seq",
+              "at"
+            ]
           }
-        },
-        "required": [
-          "seq",
-          "role",
-          "at"
         ]
       },
       "OpenedConversation": {

@@ -179,6 +179,41 @@ describe('saying something', () => {
   })
 })
 
+describe('a line this build cannot read', () => {
+  it('is still a line, rather than a conversation that will not open', async () => {
+    // A transcript is an account of what happened, and a gap in it is worse than a line saying it
+    // could not be read. What it is stored as does not matter here — a row written by a build
+    // that had a different idea of what a tool call holds looks exactly like this.
+    const conversation = await opened()
+    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
+      key: 'turn-1',
+      asked: { text: 'read notes.txt' },
+    })
+    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await db
+      .insertInto('messages')
+      .values({
+        conversation_id: conversation,
+        seq: 2,
+        key: 'turn-1/from-another-build',
+        role: 'tool',
+        content: JSON.stringify({ toolName: 'Read', outcome: 'ok' }),
+      })
+      .execute()
+
+    const read = (await (
+      await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
+    ).json()) as { messages: readonly { seq: number; role: string; content: unknown }[] }
+
+    expect(read.messages).toHaveLength(2)
+    expect(read.messages.at(-1)).toMatchObject({
+      seq: 2,
+      role: 'activity',
+      content: { activityType: 'unreadable' },
+    })
+  })
+})
+
 describe('coming back to it', () => {
   it('reads the same on another device, because the record is not in the browser', async () => {
     // The promise a person is actually making when they close a laptop: what was said and done is

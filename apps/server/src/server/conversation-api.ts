@@ -8,7 +8,7 @@
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
-import { Asked, Message, ROLES, type Role } from '../conversation/transcript.ts'
+import { Asked, Message, Spoken, unreadable } from '../conversation/transcript.ts'
 import type { Database } from '../db/connection.ts'
 import type { Reading, Standing } from '../db/conversation.ts'
 import {
@@ -102,19 +102,16 @@ const standingsBody = z
 /**
  * One thing said, as a page reads it.
  *
- * `role` is closed, because those four are ours and a page has to be able to switch on them.
- * `content` is not: a line written by an older build, or a kind of activity this one has never
- * heard of, still belongs in the transcript. Refusing to open a conversation because one line in
- * it is unfamiliar would lose the whole of it over the least of it.
+ * The shape of a line is part of the contract, per role — otherwise every page that renders one
+ * has to write down what a tool call holds, and a hand-written copy of a contract is the thing
+ * this repository refuses everywhere else.
+ *
+ * A line this build cannot read still comes back, as an activity that says so: refusing to open
+ * a conversation because one line in it is unfamiliar would lose the whole of it over the least
+ * of it. That door stays open on purpose — an activity type nobody has heard of is a value, not
+ * a release.
  */
-const spokenBody = z
-  .object({
-    seq: z.number().int(),
-    role: z.enum(ROLES),
-    content: z.unknown(),
-    at: z.iso.datetime(),
-  })
-  .openapi('Message')
+const spokenBody = Spoken.openapi('Message')
 
 const readingBody = z
   .object({
@@ -153,24 +150,22 @@ const namingBody = z.object({ session: z.string().min(1).max(200) }).openapi('Ag
 /**
  * A stored conversation as the wire carries it.
  *
- * Times become strings because that is what JSON has. `role` is narrowed rather than parsed: the
- * column has a constraint naming those four and nothing else can be in there, which is a stronger
- * guarantee than re-reading would give. `content` is left alone on purpose — see `spokenBody`.
+ * Everything is parsed on the way out rather than trusted. It all went in as JSON, and a row
+ * written by another build is exactly where a shape can be wrong — the difference between the two
+ * failures is what each costs: a list of models that will not read is nothing to choose from, and
+ * a page with no control still works; a line that will not read is one line, and the rest of the
+ * conversation is still what happened.
  */
 function asTranscript(reading: Reading) {
-  // Parsed on the way out, not trusted: it went in as JSON, and a list written by another build is
-  // exactly where a shape can be wrong. One that will not read comes back as nothing to choose —
-  // a page with no control still works, and a transcript that will not open does not.
   const offers = modelsBody.safeParse(reading.offers)
 
   return {
     ...reading,
     offers: offers.success ? offers.data : [],
-    messages: reading.messages.map((one) => ({
-      ...one,
-      role: one.role as Role,
-      at: one.at.toISOString(),
-    })),
+    messages: reading.messages.map((one) => {
+      const read = Spoken.safeParse({ ...one, at: one.at.toISOString() })
+      return read.success ? read.data : unreadable(one.seq, one.at)
+    }),
   }
 }
 
