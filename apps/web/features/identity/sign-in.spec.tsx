@@ -61,6 +61,18 @@ function answering(bodies: Record<string, unknown>[]) {
 }
 
 describe('choosing a way in', () => {
+  it('says one address is one account before anything is chosen', async () => {
+    server.use(offering('google'))
+    open('/sign-in')
+
+    const said = await screen.findByText(/the same address reaches the same account/i)
+    const google = await screen.findByRole('button', { name: /continue with google/i })
+
+    // Whether somebody dares click a different button than last time is decided by reading this
+    // first. After the choice it is the same as not saying it.
+    expect(said.compareDocumentPosition(google)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
   it('labels the form without repeating the obvious task on the page', async () => {
     server.use(offering('google'))
     open('/sign-in')

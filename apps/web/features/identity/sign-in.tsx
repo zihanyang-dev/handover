@@ -127,6 +127,10 @@ export function SignIn({
                 className="auth-wordmark"
               />
             </div>
+            {/* Before the buttons, not after them. `prd.md` 01 ①: whether somebody dares click a
+                different one than last time is decided by reading this — said afterwards it is
+                the same as not saying it. */}
+            <p className="lede">The same address reaches the same account, whichever way in.</p>
           </div>
 
           <OtherWays />
