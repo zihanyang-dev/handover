@@ -70,15 +70,16 @@ describe('the first step — a Space', () => {
     expect(await screen.findByText(/step 1 of 2/i)).toBeDefined()
   })
 
-  it('shows the address as a read-only URL while the name is typed', async () => {
+  it('shows a non-interactive, readable URL for a name in somebody’s own language', async () => {
     server.use(signedIn())
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/^space$/i), 'Acme Corp')
+    await userEvent.type(await screen.findByLabelText(/^space$/i), '你好')
 
     const address = await screen.findByLabelText(/space url/i)
-    expect(address).toHaveProperty('readOnly', true)
-    expect(address).toHaveProperty('value', expect.stringMatching(/\/s\/acme-corp$/u))
+    expect(address).toHaveProperty('disabled', true)
+    expect(address).toHaveProperty('value', expect.stringMatching(/\/s\/你好$/u))
+    expect(address).not.toHaveProperty('value', expect.stringContaining('%'))
   })
 
   it('saves a changed name first, then makes the Space, then moves to the machine', async () => {

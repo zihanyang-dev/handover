@@ -32,7 +32,9 @@ function NameAndSpace({
   const [name, setName] = useState(me.displayName)
   const [space, setSpace] = useState('')
   const slug = normalizeSlug(space)
-  const spaceUrl = slug === null ? '' : new URL(`/s/${slug}`, globalThis.location.origin).href
+  // This is for a person to read, not an HTTP client to serialize. URL.href percent-encodes
+  // perfectly valid Unicode slugs and turns a name such as 你好 into noise.
+  const spaceUrl = slug === null ? '' : `${globalThis.location.origin}/s/${slug}`
 
   const begin = useMutation({
     mutationFn: async () => {
@@ -111,6 +113,7 @@ function NameAndSpace({
           className="field space-url"
           type="url"
           readOnly
+          disabled
           placeholder="Its URL appears here as you type."
           value={spaceUrl}
         />

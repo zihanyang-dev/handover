@@ -28,11 +28,17 @@ export function Steps({
   const [entered, setEntered] = useState(step === 1)
   useEffect(() => {
     if (step === 1) return
-    const timer = setTimeout(() => {
-      setEntered(true)
-    }, 20)
+    // Two frames guarantee the midpoint was painted before the compositor receives the next
+    // transform. A timer can land in the same paint and make the rider appear to jump.
+    let secondFrame = 0
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        setEntered(true)
+      })
+    })
     return () => {
-      clearTimeout(timer)
+      cancelAnimationFrame(firstFrame)
+      cancelAnimationFrame(secondFrame)
     }
   }, [step])
 
@@ -42,7 +48,15 @@ export function Steps({
   return (
     <div className="steps" role="img" aria-label={leg}>
       <span className="steps-said">{leg}</span>
-      <div className="steps-track" style={{ '--at': `${String(at)}%` } as CSSProperties}>
+      <div
+        className="steps-track"
+        style={
+          {
+            '--at': `${String(at)}%`,
+            '--scale': String(at / 100),
+          } as CSSProperties
+        }
+      >
         <div className="steps-fill" />
         <div className="steps-rider">
           <Mark size={26} state={mark} />

@@ -114,9 +114,11 @@ function KeyCommand({ slug, onBack }: { readonly slug: string; readonly onBack: 
   const command = `handover connect --key ${key.data.key}`
   return (
     <>
+      <p className="host-instruction">
+        Run this command on your machine. The key expires in fifteen minutes.
+      </p>
       <ShellCommand command={command} />
-      <p className="note">This one-time key connects directly and expires in fifteen minutes.</p>
-      <button className="button button-quiet auth-disclosure" type="button" onClick={onBack}>
+      <button className="button button-secondary host-choice" type="button" onClick={onBack}>
         <span className="button-label">Use the regular command</span>
       </button>
     </>
@@ -140,10 +142,12 @@ function ConnectionCommand({ slug }: { readonly slug: string }) {
 
   return (
     <>
+      <p className="host-instruction">
+        Run this command on your machine, then open the link it gives you.
+      </p>
       <ShellCommand command="handover connect" />
-      <p className="note">It prints a link and a code. Open either one to approve this machine.</p>
       <button
-        className="button button-quiet auth-disclosure"
+        className="button button-secondary host-choice"
         type="button"
         onClick={() => {
           setUsingKey(true)
@@ -251,7 +255,7 @@ function Leave({
   }
   return (
     <button className="button button-quiet auth-skip" type="button" onClick={onGo}>
-      <span className="button-label">Not now — look around first</span>
+      <span className="button-label">Skip for now</span>
     </button>
   )
 }
@@ -284,9 +288,8 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
       <div className="auth-stack">
         <Steps step={2} done={leaving} mark={leaving || arrived ? 'success' : 'working'} />
 
-        <div className="auth-head">
+        <div className="auth-head host-head">
           <h1>Connect a machine</h1>
-          <p className="lede">Run this in the terminal on the machine you want to connect.</p>
         </div>
 
         {slug !== undefined && (

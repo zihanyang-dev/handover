@@ -114,7 +114,7 @@ describe('the second step — a machine', () => {
     )
     open('/onboarding/host?s=acme')
 
-    await userEvent.click(await screen.findByRole('button', { name: /not now/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /skip for now/i }))
 
     expect(await screen.findByText(/nothing can run here yet/i)).toBeDefined()
   })
