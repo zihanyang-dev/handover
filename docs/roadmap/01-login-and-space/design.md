@@ -197,14 +197,14 @@ GET   /auth/credentials                  → 这个部署能接受哪几种凭�
 POST  /auth/{provider}/start             → { url },浏览器自己去
 GET   /auth/{provider}/callback          → 建会话,跳回 WEB_ORIGIN + next
 POST  /auth/email-codes                   幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
-POST  /auth/email-codes/{id}/answer       → 建会话
+POST  /browser/sessions                   码 id + 码 → 建会话。码不是被造的东西,会话才是
 DELETE /browser/sessions/current
 
 GET   /me                                → User · 怎么进来 · 他的 Space 列表
 PATCH /me                                → 改 display_name
 POST  /me/credentials/{provider}/start     → { url },连一个提供商到当前账号
 POST  /me/credentials/email-codes              幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
-POST  /me/credentials/email-codes/{id}/answer  → 把这个地址加成当前账号的一条路
+POST  /me/credentials                          码 id + 码 → 把这个地址加成一条路
 POST  /spaces                            幂等键;→ Space,或带建议的冲突
 GET   /spaces/{slug}                     → Space,或「不可用」
 ```

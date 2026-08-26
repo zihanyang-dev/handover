@@ -459,16 +459,19 @@ unknown     activityType = 'unknown'   没有人能说清它那边做到哪了
 ```
 POST   /spaces/{slug}/conversations              挑一台机器上的一个 agent → 一段对话
 GET    /spaces/{slug}/conversations              列表。在答没答是算出来的
-GET    /conversations/{id}                       对话 + 消息,按 seq
-POST   /conversations/{id}/messages              幂等键;说一句
-GET    /conversations/{id}/live                  SSE。两种:此刻在想/在跑,以及「到第 N 条了」
-POST   /machines/current/conversations/{id}/live  机器只推留不下的那两种
+GET    /spaces/{slug}/conversations/{id}         对话 + 消息,按 seq
+POST   /spaces/{slug}/conversations/{id}/messages  幂等键;说一句
+POST   /spaces/{slug}/conversations/{id}/stop      叫停,说清是哪一轮
+GET    /spaces/{slug}/conversations/{id}/live      SSE。此刻在想/在跑,以及「到第 N 条了」
 
 POST   /machines/current/poll                    (上一片)返回值里多了一件活
 POST   /machines/current/conversations/{id}/messages   机器追加一条
+POST   /machines/current/conversations/{id}/live       机器只推留不下的那两种
+PUT    /machines/current/conversations/{id}/session     agent 给这一轮起的名字,记下来
 ```
 
-`/machines/current/…` 用机器凭据,`/conversations/…` 用人的会话。**两种 401 各一个中间件**,
+`/machines/current/…` 用机器凭据,`/spaces/{slug}/…` 用人的会话 **加那道成员门** —— 对话在
+Space 里,路径就得说是哪个 Space,不然那道门没有东西可管。**两种 401 各一个中间件**,
 和上一片同一条。机器只能写它自己那段对话:`machine_id` 从凭据来,不从路径来。
 
 **契约从路由本身导出**,zod 是真相,OpenAPI 是产物。
