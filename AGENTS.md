@@ -12,6 +12,7 @@
 | `docs/roadmap/<旅程>/design.md` | 这一片的技术方案:owner、身份、事务、协议、schema   |
 | `docs/architecture.md`          | 不随功能变化的:拓扑、依赖方向、权威、三态          |
 | `docs/code-style.md`            | 手写代码的可执行美学规则                           |
+| `docs/review.md`                | 怎么评审:分几遍、每遍问什么、发现怎么收敛          |
 | `docs/repository.md`            | 目录、生成物边界、命令、CI、删除                   |
 
 一个事实只有一个家。研究过程和评审记录进 Issue,不进仓库。
