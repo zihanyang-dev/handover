@@ -261,7 +261,12 @@ function Proposal({
     <li className="proposal">
       <p>{goal}</p>
       <div className="beside">
-        <span className="note">It will carry on by itself until it says otherwise.</span>
+        {/* Both halves said here, because the other answer has no button and would otherwise look
+            like no answer at all: nothing has started, and disagreeing is just carrying on. */}
+        <span className="note">
+          It will carry on by itself until it says otherwise. If that is not it, say so below —
+          nothing has started.
+        </span>
         <button
           className="button button-primary"
           type="button"

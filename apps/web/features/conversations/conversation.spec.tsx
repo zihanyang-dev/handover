@@ -828,6 +828,16 @@ describe('what a piece of work shows beside the conversation', () => {
     expect(within(rail).getByText('Its machine is not here')).toBeDefined()
   })
 
+  it('says that disagreeing is just carrying on, since that answer has no button', async () => {
+    // The card has one button. Without saying so, the other answer looks like no answer at all —
+    // and somebody who thinks the only way out is agreeing will agree to the wrong sentence.
+    server.use(...transcript([say(1, 'activity', { activityType: 'proposed', text: 'the goal' })]))
+
+    open('/s/acme/c/c-1')
+
+    expect(await screen.findByText(/nothing has started/i)).toBeDefined()
+  })
+
   it('points each one at the line it happened on, so a beat is a way back into the transcript', async () => {
     // The rail is the summary; the line is the detail. Without a way from one to the other,
     // finding what actually happened at 03:02 means scrolling through the night's work.
