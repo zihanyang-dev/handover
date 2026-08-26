@@ -205,6 +205,9 @@ export async function takeBack(db: Database, saying: Saying): Promise<Stopped> {
     const root = await openTaskOn(tx, conversation.id)
     if (root === undefined) return { kind: 'nothing-to-take-back' }
 
+    // Written by hand because the correctness *is* the SQL: one recursive walk down the tree,
+    // ending every piece of work in it in the snapshot it was read in. Through the builder a
+    // reader would still have to rebuild this to see that no child can be missed on the way.
     const stopped = await sql<{ id: string; conversationId: string; machineId: string }>`
       with recursive tree as (
         select id from tasks where id = ${root.id} and ended_at is null
@@ -430,6 +433,8 @@ export async function writesOutput(
  */
 export async function wakeWhoseTimeHasCome(db: Database): Promise<number> {
   return db.transaction().execute(async (tx) => {
+    // Written by hand because the correctness *is* the SQL: the update and the read of what it
+    // touched are one statement, so nobody is woken about a row this did not actually move.
     const woken = await sql<{ machineId: string }>`
       with due as (
         update tasks set state = ${STATE.working}, sleep_until = null

@@ -150,12 +150,27 @@ function owedATurn(machineId: string) {
            select 1 from turns t
             where t.conversation_id = owed.conversation_id and t.after_seq >= owed.seq
          )
+         -- One at a time, and said here because it is the ledger's to say. prd.md 04 ⑫ is that
+         -- a machine does exactly one thing at once — two agents in one directory tread on each
+         -- other's files — and it is also the only limit on how much runs at once anywhere.
+         --
+         -- A machine that is handed a second question ignores it, so the row would sit claimed by
+         -- somebody who will never run it, and that conversation would read as working until the
+         -- machine restarted. Asked at the door instead of here, every other caller has to
+         -- remember; asked here, none of them can get it wrong.
+         and not exists (
+           select 1 from turns busy
+            where busy.machine_id = ${machineId} and busy.ended_at is null
+         )
        order by created_at
        limit 1
     )`
 }
 
 export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
+  // Written by hand because the correctness *is* the SQL: claiming and reading back what was
+  // claimed happen in one statement, against one snapshot. Two statements would hand the same
+  // turn to two machines, and the builder version would still have to be read as this to see it.
   const taken = await sql<Taken>`
     with ${owedATurn(machineId)},
     claimed as (

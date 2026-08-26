@@ -526,17 +526,20 @@ describe('a turn nobody was watching', () => {
     expect(await forgetStranded(db, MACHINE)).toBe(0)
   })
 
-  it('closes several at once, because a machine can leave more than one behind', async () => {
+  it('closes several at once, because two instances can hand out two before either commits', async () => {
+    // One at a time is the rule, and `takeOne` keeps it — so the only way a machine ends up
+    // holding two is two instances asking at the same instant, each seeing nothing open. Rare,
+    // and it still must not leave a conversation reading as working for ever. Written straight
+    // into the table because that race is the only thing that produces it.
     const first = await opened()
     const second = await opened()
     for (const one of [first, second]) {
-      await running(one, 'turn-1', 'take your time')
-      await machineSays(db, {
-        conversationId: one,
-        machineId: MACHINE,
-        key: 'turn-1/1',
-        message: { role: 'assistant', content: { text: 'on it' } },
-      })
+      const said = await asks(one, 'turn-1', 'take your time')
+      if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
+      await db
+        .insertInto('turns')
+        .values({ conversation_id: one, after_seq: 1, machine_id: MACHINE })
+        .execute()
     }
 
     expect(await forgetStranded(db, MACHINE)).toBe(2)

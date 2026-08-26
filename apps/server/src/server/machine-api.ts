@@ -8,7 +8,7 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { forgetStranded, openTurnsOn, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
+import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
 import { Asked } from '../conversation/transcript.ts'
 import {
@@ -273,21 +273,15 @@ async function anythingFor(deps: MachineApi, machineId: string) {
 /**
  * Anything this machine has to be told, or nothing.
  *
- * A question is only taken for a machine with nothing open, and whether it has is the ledger's to
- * say rather than the machine's. Asked of the machine, the answer is stale the moment it finishes
- * — and it answers one at a time and ignores anything else it is handed, so a second question
- * would be written down as taken by somebody who will never run it, leaving that conversation
- * working until the machine restarts.
+ * The stop is asked first and asked either way: a machine that is busy is exactly the one
+ * somebody wants to stop.
  *
- * The stop is asked either way, and first: a machine that is busy is exactly the one somebody
- * wants to stop.
+ * Nothing here checks whether it is already busy before asking for a question — {@link takeOne}
+ * will not hand one to a machine that is, and that belongs there rather than at this door.
  */
 async function whatIsOwed(db: Database, machineId: string) {
   const wanted = await stopWantedOn(db, machineId)
   if (wanted !== undefined) return { stopping: wanted }
-
-  const running = await openTurnsOn(db, machineId)
-  if (running.length > 0) return undefined
 
   const taken = await takeOne(db, machineId)
   return taken === undefined ? undefined : { asking: asAsking(taken) }

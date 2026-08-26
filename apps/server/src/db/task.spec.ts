@@ -352,6 +352,37 @@ describe('handing a piece of it to somebody else', () => {
     expect(await nextTurn()).toBeUndefined()
   })
 
+  it('opens as many as it likes, because the only limit is a physical one', async () => {
+    // No count anywhere, on purpose: how many can run at once is how many machines somebody
+    // connected. A rule that says four would have to walk the tree on every hand-off to enforce
+    // a thing the machines already enforce.
+    const conversation = await handedOver()
+    await nextTurn()
+    await attached('build-server-1')
+
+    await handedOff(conversation, 'build-server-1', 'one')
+    await handedOff(conversation, 'build-server-1', 'two')
+    await handedOff(conversation, 'build-server-1', 'three')
+
+    const underway = await underwayIn(db, conversation)
+    expect(underway?.handedOff).toHaveLength(3)
+  })
+
+  it('runs them one at a time when they land on one machine, rather than together', async () => {
+    // Two agents in one directory tread on each other. Nothing has to say so — a machine is
+    // handed one turn, and the next only once that one is closed.
+    const conversation = await handedOver()
+    await nextTurn()
+    const other = await attached('build-server-1')
+    const first = await handedOff(conversation, 'build-server-1', 'one')
+    await handedOff(conversation, 'build-server-1', 'two')
+
+    const took = await nextTurn(other)
+    expect(took).toBe(first.conversationId)
+    // Still busy with the first: the second is not handed out beside it.
+    expect(await nextTurn(other)).toBeUndefined()
+  })
+
   it('lets it go when the machine it handed to stops answering, or it waits for ever', async () => {
     // The one way a piece of work can be stuck with nothing anywhere to say so: the machine it
     // handed to never comes back, and "still open" is true for the rest of time.
@@ -515,6 +546,29 @@ describe('taking it back', () => {
     expect(await nextTurn()).toBe(conversation)
     await ends(conversation, '2/end')
     expect(await nextTurn()).toBeUndefined()
+  })
+
+  it('can be handed over a second time once the first is over, as a second piece of work', async () => {
+    // A conversation has one piece of work open at a time, and any number of them over its life.
+    // The agent still remembers how it did the first — it is the same conversation.
+    const conversation = await handedOver('make the timeout configurable')
+    await nextTurn()
+    await stopsWorking(
+      db,
+      { conversationId: conversation, machineId: MACHINE, key: 'first/done' },
+      { state: 'done', ending: 'done', said: 'changed and tested' },
+    )
+
+    const again = await handOver(db, {
+      conversationId: conversation,
+      spaceId: SPACE,
+      key: `over-again-${RUN}`,
+      userId: PERSON,
+      goal: 'watch the numbers for three days',
+    })
+
+    expect(again.kind).toBe('handed-over')
+    expect((await underwayIn(db, conversation))?.task.goal).toBe('watch the numbers for three days')
   })
 
   it('says there is nothing to take back when nothing was handed over', async () => {

@@ -405,6 +405,20 @@ interface AgentAdapter {
 
 - 已提交的 migration 永不修改;live schema 变化用新的前向 migration `人工`
 - 数据库类型从**活 schema 生成** `gen` —— Kysely + kysely-codegen。**SQL 是真相,类型是产物。不用 schema-first ORM。**
+- **默认用 query builder** `test` —— 它的类型是从活 schema 生成的,列改了编译就断。
+  只有两种情况可以手写整条 SQL,而且每一条都要有一句注释说明它是哪一种:
+
+  ```
+  不是查询          pg_notify · advisory lock —— builder 里没有对应物,
+                    而且它们是过程调用,不是关于行的提问
+  正确性就是 SQL     一条语句里同时写和读、要靠同一个快照,或者要走树。
+                    用 builder 写出来,读的人还得在脑子里还原成 SQL
+                    才知道锁范围和快照对不对 —— 那是更多要理解的,不是更少
+  ```
+
+  两条都由 `db/sql.spec.ts` 强制:**允许出现的整条语句是一张手改的名单**,加一条得有人特意去改。
+
+- **SQL 只出现在 `db/`** `test` —— 路由里写查询,就是一条路由拥有了一个事实。同一个测试盯着。
 - 查询名说明真实的状态转移,不叫 `updateState`
 - 幂等、唯一 winner、名字唯一性由唯一索引强制;**迟到的写者必须在 SQL 里失败,不能只在 TS 里失败**
 - 数据库时间拥有 lease、过期、顺序、重试和定时
