@@ -79,6 +79,14 @@ export async function reportOnce(
   also: {
     /** Said once, on the first report a process makes. Only this machine can know it. */
     readonly restarted?: boolean
+    /**
+     * The conversation this machine is already on, when it is on one.
+     *
+     * Said because only it knows. It answers one turn at a time and ignores anything else it is
+     * handed — and a question handed to it anyway is one the server has written down as taken by
+     * somebody who will never run it.
+     */
+    readonly answering?: string
     /** Adds what each agent offers, the first time this process sees each version. */
     readonly offering?: Offering
   } = {},
@@ -89,7 +97,12 @@ export async function reportOnce(
     // Its own version goes with every report, not once at connect: the binary can be replaced
     // between two reports by a person re-running the installer, and the answer to "which build is
     // that machine running" has to be about the process that is running now.
-    body: { found: [...found], restarted: also.restarted ?? false, version: VERSION },
+    body: {
+      found: [...found],
+      restarted: also.restarted ?? false,
+      version: VERSION,
+      ...(also.answering === undefined ? {} : { answering: also.answering }),
+    },
   })
 
   if (came.response.status === 401) return { said: 'not-ours' }
@@ -132,7 +145,11 @@ export async function keepCheckingIn(
   let restarted = true
 
   while (!stopping.aborted) {
-    const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
+    const reported = await reportOnce(api, looking, running.env, {
+      restarted,
+      offering: asks,
+      ...(answering === undefined ? {} : { answering: answering.conversationId }),
+    })
 
     if (reported.said === 'not-ours') return taken(answering, running)
 
@@ -148,13 +165,7 @@ export async function keepCheckingIn(
     restarted = false
     looking = reported.lookFor
 
-    // Asked to stop what it is doing. Told on every report until the agent says it stopped, so a
-    // request made while this machine was between reports arrives on the next one instead of
-    // being lost; `stop` is asked more than once and means the same thing each time.
-    if (answering !== undefined && reported.stopping === answering.conversationId) {
-      running.say(`stopping ${answering.conversationId}`)
-      await answering.stop()
-    }
+    await stopIfAsked(answering, reported.stopping, running.say)
 
     // One at a time. Reporting carries on either way: a turn can take ten minutes, and a machine
     // that goes quiet for ten minutes is one its Space shows as gone.
@@ -173,6 +184,24 @@ export async function keepCheckingIn(
   await settle(answering, running)
 
   return { kind: 'asked-to-stop' }
+}
+
+/**
+ * Passes on a request to stop, when it is about the turn this machine is on.
+ *
+ * Told on every report until the agent says it stopped, so a request made while this machine was
+ * between reports arrives on the next one instead of being lost. `stop` is asked more than once
+ * and means the same thing each time.
+ */
+async function stopIfAsked(
+  answering: Answering | undefined,
+  wanted: string | undefined,
+  say: (line: string) => void,
+): Promise<void> {
+  if (answering === undefined || wanted !== answering.conversationId) return
+
+  say(`stopping ${answering.conversationId}`)
+  await answering.stop()
 }
 
 /**

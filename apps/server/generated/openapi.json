@@ -791,6 +791,10 @@
           "restarted": {
             "type": "boolean"
           },
+          "answering": {
+            "type": "string",
+            "format": "uuid"
+          },
           "version": {
             "type": "string",
             "minLength": 1,

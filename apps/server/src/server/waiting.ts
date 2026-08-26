@@ -13,21 +13,20 @@
 
 export type Waiting = {
   /**
-   * Answers one machine's question, waiting for something to say if there is nothing yet.
+   * Whatever there is for one machine, waiting for something if there is nothing yet.
    *
    * Looking is this function's to do rather than the caller's, because the order is the whole
    * correctness of it: whoever waits has to be listening **before** the first look, or a waking
    * that lands while the tables are being read is missed — and the request then holds for the
    * full time with its answer already written down.
    *
-   * Two looks and no more. The second is what the wait was for, and whatever it finds is the
-   * answer, including nothing.
+   * Two looks and no more. The second is what the wait was for, and nothing is a real answer to
+   * it: a machine that was told nothing has still been told when it was told.
    */
-  readonly answerFor: <T>(
+  readonly somethingFor: <T>(
     machineId: string,
-    look: () => Promise<T>,
-    enough: (found: T) => boolean,
-  ) => Promise<T>
+    look: () => Promise<T | undefined>,
+  ) => Promise<T | undefined>
   /** Somebody has something for this machine. Every request being held for it looks again now. */
   readonly wake: (machineId: string) => void
   /**
@@ -63,23 +62,25 @@ export function waitingRoom(holdSeconds: number): Waiting {
       for (const machineId of held.keys()) wake(machineId)
     },
 
-    answerFor: async (machineId, look, enough) => {
+    somethingFor: async (machineId, look) => {
       const waiters = held.get(machineId) ?? new Set<() => void>()
       held.set(machineId, waiters)
 
-      let answer = (): void => undefined
-      const woken = new Promise<void>((done) => {
-        answer = done
-      })
+      const { promise: woken, resolve: answer } = Promise.withResolvers<void>()
       waiters.add(answer)
+
+      // Unreferenced, so a hold in flight is never what keeps this process alive on the way out.
+      const over = setTimeout(answer, holdSeconds * 1000)
+      over.unref()
 
       try {
         const found = await look()
-        if (enough(found)) return found
+        if (found !== undefined) return found
 
-        await Promise.race([woken, after(holdSeconds)])
+        await woken
         return await look()
       } finally {
+        clearTimeout(over)
         waiters.delete(answer)
         // The last one waiting for a machine takes its name with it, so an instance that has been
         // up for a month is not holding one empty set per machine that ever asked.
@@ -87,12 +88,4 @@ export function waitingRoom(holdSeconds: number): Waiting {
       }
     },
   }
-}
-
-/** The hold running out, which is one of the three things that ends a wait. */
-async function after(seconds: number): Promise<void> {
-  return new Promise((over) => {
-    // Unreferenced, so a hold in flight cannot be what keeps this process alive on the way out.
-    setTimeout(over, seconds * 1000).unref()
-  })
 }

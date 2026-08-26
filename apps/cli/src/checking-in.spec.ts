@@ -92,6 +92,48 @@ describe('staying connected', () => {
     ])
   })
 
+  it('says which conversation it is on, so it is not handed a second one', async () => {
+    // It answers one at a time and ignores anything else. Not saying so leaves the server writing
+    // down that a question was taken by a machine that will never run it, and the page shows that
+    // conversation working until this process restarts.
+    const reports: { answering?: string }[] = []
+    const conversation = '11111111-2222-4333-8444-555555555555'
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
+        const said = (await request.json()) as { answering?: string }
+        reports.push(said)
+
+        return HttpResponse.json({
+          pollSeconds: 0,
+          lookFor: [],
+          ...(reports.length === 1
+            ? {
+                asking: {
+                  conversationId: conversation,
+                  agentKind: 'claude-code',
+                  agentSession: null,
+                  askedSeq: 1,
+                  asked: { text: 'take your time' },
+                },
+              }
+            : {}),
+        })
+      }),
+      http.post(`${ORIGIN}/machines/current/conversations/${conversation}/live`, () =>
+        HttpResponse.json(null, { status: 204 }),
+      ),
+      http.post(`${ORIGIN}/machines/current/conversations/${conversation}/messages`, () =>
+        HttpResponse.json(null, { status: 204 }),
+      ),
+    )
+    const { running, signal } = runningFor(3)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(reports[0]?.answering).toBeUndefined()
+    expect(reports.slice(1).some((one) => one.answering === conversation)).toBe(true)
+  })
+
   it('follows the list the server tells it, without being restarted', async () => {
     // The deployment decides what it knows how to run. A machine carrying its own list would
     // report agents the server drops, or hide ones it could have used.

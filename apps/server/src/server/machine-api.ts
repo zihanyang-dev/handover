@@ -93,6 +93,14 @@ const reporting = z
      */
     restarted: z.boolean().optional(),
     /**
+     * The conversation this machine is already answering, when it is answering one.
+     *
+     * Said because only it knows: it runs one turn at a time and ignores anything else it is
+     * handed, and a question taken for a machine that will never run it is a conversation shown
+     * as working until that machine restarts.
+     */
+    answering: z.uuid().optional(),
+    /**
      * Which build of the CLI this is.
      *
      * Optional so that a machine older than this field can still check in — the same reason a
@@ -218,34 +226,41 @@ function whatMachinesDo(deps: MachineApi) {
  * The wait is what makes the whole journey feel like one: without it, everything anybody says
  * sits until the machine next asks, and that gap is the delay a person feels between pressing
  * send and the agent starting.
- *
- * Started before the first look, never after. A waking that arrives while the tables are being
- * read is exactly the one this request is waiting for, and looking first would miss it and then
- * hold for the full time with the answer already written down.
  */
-async function anythingFor(deps: MachineApi, machineId: string) {
-  return deps.waiting.answerFor(
-    machineId,
-    async () => whatIsThere(deps.db, machineId),
-    (found) => found.asking !== undefined || found.stopping !== undefined,
+async function anythingFor(deps: MachineApi, machineId: string, busyWith: string | undefined) {
+  const owed = await deps.waiting.somethingFor(machineId, async () =>
+    whatIsOwed(deps.db, machineId, busyWith),
   )
-}
-
-/** Everything a machine could be told, asked of the tables once. */
-async function whatIsThere(db: Database, machineId: string) {
-  // The stop first: a machine that is already running a turn has to hear about it, and taking a
-  // new one is only worth doing once nothing else is owed.
-  const wanted = await stopWantedOn(db, machineId)
-  const taken = await takeOne(db, machineId)
 
   return {
     // Nothing, because the waiting happened here. A machine that slept as well would report half
-    // as often as this deployment thinks it does, and be counted as gone while it was waiting.
+    // as often as this deployment thinks it does, and be counted gone halfway through its own
+    // hold.
     pollSeconds: 0,
     lookFor: AGENT_COMMANDS,
-    ...(taken === undefined ? {} : { asking: asAsking(taken) }),
-    ...(wanted === undefined ? {} : { stopping: wanted }),
+    ...owed,
   }
+}
+
+/**
+ * Anything this machine has to be told, or nothing.
+ *
+ * A question is only taken for a machine that says it is free. It answers one at a time and
+ * ignores anything else it is handed — so handing it a second one writes down that the question
+ * was taken by somebody who will never run it, and the page shows that conversation working until
+ * the machine restarts.
+ *
+ * The stop is asked either way, and first: a machine that is busy is exactly the one somebody
+ * wants to stop.
+ */
+async function whatIsOwed(db: Database, machineId: string, busyWith: string | undefined) {
+  const wanted = await stopWantedOn(db, machineId)
+  if (wanted !== undefined) return { stopping: wanted }
+
+  if (busyWith !== undefined) return undefined
+
+  const taken = await takeOne(db, machineId)
+  return taken === undefined ? undefined : { asking: asAsking(taken) }
 }
 
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
@@ -278,7 +293,7 @@ function polling(deps: MachineApi) {
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 
-      return c.json(await anythingFor(deps, machineId), 200)
+      return c.json(await anythingFor(deps, machineId, reported.answering), 200)
     },
   })
 }

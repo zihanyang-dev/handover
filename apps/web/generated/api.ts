@@ -2057,6 +2057,8 @@ export interface components {
                 models?: components["schemas"]["Model"][];
             }[];
             restarted?: boolean;
+            /** Format: uuid */
+            answering?: string;
             version?: string;
         };
         Conversations: {

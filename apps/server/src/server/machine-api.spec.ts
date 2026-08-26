@@ -433,3 +433,26 @@ describe('holding a machine question instead of answering "nothing"', () => {
     expect((await asking).status).toBe(200)
   })
 })
+
+describe('a machine that is already answering something', () => {
+  it('is not handed a second question, because it would drop it on the floor', async () => {
+    // A person can open two conversations on one machine. The machine answers one at a time and
+    // ignores anything else it is handed — while the server has already written down that this
+    // question was taken. Nobody ever runs it, and the page shows it working until the machine
+    // restarts, which is the one outcome `unknown` exists to make rare.
+    const machine = await attached('busy-mbp')
+    const one = await conversationOn(machine)
+    const two = await conversationOn(machine)
+    await said(one, 'the first thing')
+    await said(two, 'the second thing')
+
+    const first = await asMachine(machine.token, '/machines/current/poll')
+    const next = await asMachine(machine.token, '/machines/current/poll', 'POST', {
+      found: [],
+      answering: ((await first.json()) as { asking: { conversationId: string } }).asking
+        .conversationId,
+    })
+
+    expect(await next.json()).not.toHaveProperty('asking')
+  })
+})
