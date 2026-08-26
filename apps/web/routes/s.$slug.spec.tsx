@@ -81,6 +81,31 @@ describe('entering a Space', () => {
     expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
+  it('does not call a Space it could not read a Space you do not have', async () => {
+    // A read that failed is not a Space that is missing. Told "not available", somebody goes
+    // looking for a Space that is theirs and is there, over a moment of no network.
+    server.use(
+      signedIn(),
+      http.get('*/spaces/acme', () => HttpResponse.error()),
+    )
+    open('/s/acme')
+
+    expect(await screen.findByText(/could not read this space/i)).toBeDefined()
+    expect(screen.queryByText(/not available/i)).toBeNull()
+  })
+
+  it('asks somebody whose session ran out to sign in, and remembers where they were', async () => {
+    // Being asked to sign in must not cost the address somebody came for — `prd.md` 01 calls
+    // that the difference between an interruption and a loss.
+    server.use(http.get('*/me', () => new HttpResponse(null, { status: 401 })))
+    const router = open('/s/acme')
+
+    await screen.findByRole('form', { name: /^sign in$/i })
+
+    expect(router.state.location.pathname).toBe('/sign-in')
+    expect(router.state.location.search).toMatchObject({ next: '/s/acme' })
+  })
+
   it('offers a way out from inside, not only from the Spaces list', async () => {
     // Somebody who came straight to a Space by its address should not have to go somewhere else
     // to reach their account or leave.
