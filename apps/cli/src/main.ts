@@ -21,6 +21,7 @@ import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
 import { VERSION, machineEnvironment, readEnv } from './env.ts'
+import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
 import { forEveryone, handoverFor, type Step } from './service.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
@@ -90,6 +91,7 @@ if (values.version === true || command === 'version') {
 if (command === 'connect') {
   await checkIn()
   await handOver()
+  await sayIfThereIsANewerOne()
 } else if (command === 'run') {
   const attachment = await readAttachment(where)
   if (attachment === undefined) {
@@ -199,6 +201,25 @@ function wordsFor(reported: Reported, lookFor: readonly string[]): readonly stri
   return reported.said === 'unreachable'
     ? [`found     ${here}`, '          could not tell the server; it will keep trying']
     : [`found     ${here}`]
+}
+
+/**
+ * Mentions a newer build, once, to the person who could go and get it.
+ *
+ * Here and nowhere else. `connect` is the one command somebody runs by hand, and installing again
+ * is one line they can run in the same minute — while the service that reports every twenty-five
+ * seconds has nobody reading it, and a notice there is a line in a log file for a machine that
+ * cannot act on it anyway. `gh` draws the same line by asking whether it is talking to a terminal.
+ *
+ * Never installs anything. A program that replaced itself while a turn was running would lose
+ * that turn, and Tailscale — the closest thing to this shape — makes its own self-update opt-in
+ * and waits for a device to go quiet before taking it.
+ */
+async function sayIfThereIsANewerOne(): Promise<void> {
+  if (env.checkForUpdates) {
+    const newer = await newerRelease(VERSION)
+    if (newer !== undefined) say(`a newer handover is out (${newer}); the install line gets it`)
+  }
 }
 
 /**

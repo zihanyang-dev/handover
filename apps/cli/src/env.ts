@@ -33,12 +33,21 @@ export type Env = {
   readonly origin: string
   /** Where a user-level attachment is kept, per the XDG convention. */
   readonly configHome: string | undefined
+  /**
+   * Whether to mention a newer build when somebody connects a machine.
+   *
+   * Off by setting it to anything, the way `gh` and every other notifier does it: somebody who
+   * pins a version has decided, and being told about it on every connect is being told they are
+   * wrong about a decision they made on purpose.
+   */
+  readonly checkForUpdates: boolean
 }
 
 export function readEnv(): Env {
   return {
     origin: nonEmpty(process.env['HANDOVER_ORIGIN']) ?? DEFAULT_ORIGIN,
     configHome: nonEmpty(process.env['XDG_CONFIG_HOME']),
+    checkForUpdates: nonEmpty(process.env['HANDOVER_NO_UPDATE_NOTIFIER']) === undefined,
   }
 }
 
