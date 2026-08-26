@@ -16,6 +16,11 @@ apps/server/        API
 apps/web/           浏览器应用
   features/         一块屏幕上的一件事
   routes/           地址到屏幕
+  components/ui/    没有主人的视觉零件:一段手写体、一次礼花、一层渐变模糊
+                    进这里的标准是「它不知道 Handover 是什么」
+  lib/              同上,但不是零件:目前只有拼 class 名的 cn
+  mark.tsx mark.css 那个标识,和它的几种状态
+  style.css         整个产品的样式,一份。token 在 :root
   pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
@@ -27,6 +32,9 @@ apps/cli/           装在机器上的那个命令
 packages/universal/ 两边必须算出同一个答案的东西
 
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
+.21st/              视觉简报,给设计工具读的。**是输入,不是产物** —— 界面照它做,
+                    它不照界面生成。和 prd 重叠的部分以 prd 为准:prd 说做什么,
+                    这里说长什么样
 compose.yml         一个 postgres,两个库
 ```
 
