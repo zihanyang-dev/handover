@@ -76,6 +76,7 @@ function underway(more: Partial<NonNullable<Transcript['underway']>> = {}) {
     goal: 'Make the hard-coded 30s timeout configurable',
     state: 'working' as const,
     sleepUntil: null,
+    presence: { state: 'here' as const },
     handedOff: [],
     outputs: [],
     under: null,
@@ -177,6 +178,47 @@ describe('reading a conversation', () => {
     open('/s/acme/c/c-1')
 
     expect(await screen.findByText('ran')).toBeDefined()
+    expect(await screen.findByText('cat notes.txt')).toBeDefined()
+  })
+
+  it('folds a run of them away, so what matters is not buried under two hundred lines', async () => {
+    // The whole reason somebody walks away: by morning the two lines that matter sit between
+    // hundreds of these. Folded, not hidden — it says how many, and opens where it is.
+    server.use(
+      ...transcript([
+        say(1, 'assistant', { text: 'Looking into it.' }),
+        ...[1, 2, 3, 4].map((n) =>
+          say(n + 1, 'tool', { name: 'Bash', verb: 'ran', arg: `step-${String(n)}`, excerpt: '' }),
+        ),
+        say(6, 'assistant', { text: 'The timeout is 30 seconds.' }),
+      ]),
+    )
+
+    open('/s/acme/c/c-1')
+
+    // Both things said are there to read; the four in between are behind one line.
+    expect(await screen.findByText('Looking into it.')).toBeDefined()
+    expect(await screen.findByText('The timeout is 30 seconds.')).toBeDefined()
+    expect(screen.queryByText('step-1')).toBeNull()
+
+    await userEvent.click(await screen.findByRole('button', { name: /4 things it did/i }))
+
+    expect(await screen.findByText('step-1')).toBeDefined()
+    expect(await screen.findByText('step-4')).toBeDefined()
+  })
+
+  it('leaves a lone tool call where it is, because reading around it is the conversation', async () => {
+    server.use(
+      ...transcript([
+        say(1, 'assistant', { text: 'Checking.' }),
+        say(2, 'tool', { name: 'Bash', verb: 'ran', arg: 'cat notes.txt', excerpt: '' }),
+        say(3, 'assistant', { text: 'Thirty seconds.' }),
+      ]),
+    )
+
+    open('/s/acme/c/c-1')
+
+    // No click needed: one call between two things said costs nothing to read.
     expect(await screen.findByText('cat notes.txt')).toBeDefined()
   })
 
@@ -688,6 +730,7 @@ describe('what a piece of work shows beside the conversation', () => {
               state: 'working',
               machineName: 'build-server-1',
               agentKind: 'codex',
+              presence: { state: 'here' as const },
             },
           ],
         }),
@@ -737,6 +780,78 @@ describe('what a piece of work shows beside the conversation', () => {
     const rail = await screen.findByLabelText('This piece of work')
     expect(rail.textContent).toContain('You handed it over')
     expect(rail.textContent).toContain('It asked you something')
+  })
+
+  it('says its machine is not here, rather than leaving it reading as working', async () => {
+    // The one thing a person cannot act on: a line that says Working about a machine that will
+    // never answer again. Recovery is theirs — wait for it, or take the work back.
+    server.use(
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({ presence: { state: 'gone', since: AT } }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    expect(rail.textContent).toContain('Its machine is not here')
+    expect(rail.textContent).not.toContain('Working')
+  })
+
+  it('says the same about one it handed out, because that is what it is waiting on', async () => {
+    server.use(
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({
+          handedOff: [
+            {
+              conversationId: 'c-2',
+              goal: 'Add an integration test',
+              state: 'working',
+              machineName: 'build-server-1',
+              agentKind: 'codex',
+              presence: { state: 'gone', since: AT },
+            },
+          ],
+        }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    expect(within(rail).getByText('Its machine is not here')).toBeDefined()
+  })
+
+  it('points each one at the line it happened on, so a beat is a way back into the transcript', async () => {
+    // The rail is the summary; the line is the detail. Without a way from one to the other,
+    // finding what actually happened at 03:02 means scrolling through the night's work.
+    server.use(
+      ...transcript(
+        [
+          say(1, 'user', { text: 'go' }),
+          say(2, 'activity', { activityType: 'handed-over', text: 'the goal' }),
+          say(3, 'activity', { activityType: 'asked', text: 'A or B?' }),
+        ],
+        'idle',
+        [],
+        underway({ state: 'wait' }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    const beat = within(rail).getByRole('link', { name: 'It asked you something' })
+
+    // Named by the same sequence number the beat was read from, and that line carries it.
+    expect(beat.getAttribute('href')).toBe('#said-3')
+    expect(document.querySelector('#said-3')?.textContent).toContain('A or B?')
   })
 
   it('opens what it wrote where it is, rather than on a page of its own', async () => {

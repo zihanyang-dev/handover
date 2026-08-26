@@ -79,9 +79,13 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
         </div>
 
         <ul className="stack">
-          {messages.map((message) => (
-            <Said key={message.seq} message={message} slug={slug} id={id} />
-          ))}
+          {inRuns(messages).map((run) =>
+            run.kind === 'run' ? (
+              <Run key={run.at} did={run.did} />
+            ) : (
+              <Said key={run.message.seq} message={run.message} slug={slug} id={id} />
+            ),
+          )}
         </ul>
 
         {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
@@ -108,6 +112,91 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
 }
 
 /**
+ * Where a line sits, so the beats beside the conversation can point at one.
+ *
+ * The sequence number and not an index: it is the same number the beat was read from, and it
+ * survives anything arriving above it while somebody is reading.
+ */
+export function atSeq(seq: number): string {
+  return `said-${String(seq)}`
+}
+
+/** How many tool calls in a row before they are worth folding away rather than read. */
+const A_RUN = 3
+
+type Piece =
+  | { readonly kind: 'one'; readonly message: Message }
+  | { readonly kind: 'run'; readonly at: number; readonly did: readonly Did[] }
+
+/**
+ * Runs of tool calls, folded into one line.
+ *
+ * A piece of work somebody walked away from leaves hundreds of these, and the two lines that
+ * matter sit between them. Folding is not hiding: the run says how many and opens where it is.
+ *
+ * Only runs — a single tool call between two things said is part of reading the conversation, and
+ * folding it would cost a click to learn nothing.
+ */
+function inRuns(messages: readonly Message[]): readonly Piece[] {
+  const pieces: Piece[] = []
+  let run: Message[] = []
+
+  const settle = (): void => {
+    if (run.length >= A_RUN) {
+      pieces.push({
+        kind: 'run',
+        at: run[0]?.seq ?? 0,
+        did: run.map((one) => one.content as Did),
+      })
+    } else {
+      pieces.push(...run.map((message): Piece => ({ kind: 'one', message })))
+    }
+    run = []
+  }
+
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      run.push(message)
+      continue
+    }
+    settle()
+    pieces.push({ kind: 'one', message })
+  }
+  settle()
+
+  return pieces
+}
+
+/** One fold. Shut it says how many; open it is the same lines it was always going to show. */
+function Run({ did }: { readonly did: readonly Did[] }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <li className="run">
+      <button
+        className="button button-quiet"
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open)
+        }}
+      >
+        <span className="button-label">
+          {open ? 'Hide' : `${String(did.length)} things it did`}
+        </span>
+      </button>
+      {open && (
+        <ul className="stack">
+          {did.map((one, index) => (
+            <Used key={`${one.name}-${String(index)}`} did={one} />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+/**
  * Which turn is running, by the question it is answering.
  *
  * The last thing a person said, because saying something is how a turn begins and interrupting is
@@ -127,15 +216,24 @@ function Said({
   readonly slug: string
   readonly id: string
 }) {
-  if (message.role === 'user') return <li className="said">{message.content.text}</li>
+  if (message.role === 'user')
+    return (
+      <li id={atSeq(message.seq)} className="said">
+        {message.content.text}
+      </li>
+    )
   if (message.role === 'assistant')
-    return <li className="said said-good">{message.content.text}</li>
+    return (
+      <li id={atSeq(message.seq)} className="said said-good">
+        {message.content.text}
+      </li>
+    )
   if (message.role === 'tool') return <Used did={message.content} />
   if (message.content.activityType === 'proposed') {
     return <Proposal slug={slug} id={id} what={message.content} />
   }
 
-  return <Happened what={message.content} />
+  return <Happened at={message.seq} what={message.content} />
 }
 
 /**
@@ -222,13 +320,17 @@ function Used({ did }: { readonly did: Did }) {
   )
 }
 
-function Happened({ what }: { readonly what: Activity }) {
+function Happened({ at, what }: { readonly at: number; readonly what: Activity }) {
   // Nothing to say about a turn that simply ended. The next thing said is the end of it.
   if (what.activityType === 'done') return null
 
   const said = textOf(what) ?? ACTIVITIES[what.activityType] ?? what.activityType
 
-  return <li className="note">{said}</li>
+  return (
+    <li id={atSeq(at)} className="note">
+      {said}
+    </li>
+  )
 }
 
 /**

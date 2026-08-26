@@ -11,7 +11,7 @@
  */
 
 import type { Database } from '../db/connection.ts'
-import { wakeWhoseTimeHasCome } from '../db/task.ts'
+import { tellWhoeverIsWaitingOnAGoneMachine, wakeWhoseTimeHasCome } from '../db/task.ts'
 import type { Log } from '../log.ts'
 
 /**
@@ -32,10 +32,15 @@ export function keepWaking(db: Database, log: Log, everyMs = EVERY_MS): Waker {
     try {
       const woken = await wakeWhoseTimeHasCome(db)
       if (woken > 0) log.info({ woken }, 'woke work whose moment had come')
+
+      // The other thing that arrives without anybody doing it: a machine stops answering, and
+      // whatever handed work to it is waiting on something that will never move again.
+      const told = await tellWhoeverIsWaitingOnAGoneMachine(db)
+      if (told > 0) log.info({ told }, 'said that a machine holding somebody up has gone')
     } catch (trouble: unknown) {
-      // Nothing to recover: the next round asks the same question, and a moment that is past
+      // Nothing to recover: the next round asks the same questions, and a moment that is past
       // stays past. Said once rather than thrown at a process that has nobody to throw to.
-      log.error({ err: trouble }, 'could not look for work whose moment had come')
+      log.error({ err: trouble }, 'could not look for work that has come due')
     }
   }
 

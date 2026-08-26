@@ -17,6 +17,7 @@
 
 import { sql } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
+import { SILENT_FOR_SECONDS, type Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
 import { append, held, type Saying } from './message.ts'
 import { wakeMachine } from './waking.ts'
@@ -143,14 +144,23 @@ export async function handOver(db: Database, handing: HandingOver): Promise<Hand
   })
 }
 
-/** One activity, under a name that makes writing it twice write it once. */
+/**
+ * One activity, under a name that makes writing it twice write it once.
+ *
+ * Says whether this call is the one that wrote it. Most callers have nothing to do with the
+ * answer — they are inside a transaction that only runs once anyway. The one that does is the
+ * telling about a machine that has gone: every instance asks the same question every ten seconds,
+ * and only the one that actually wrote the line should go on to wake anybody about it.
+ */
 async function note(
   tx: Tx,
   conversationId: string,
   key: string,
   content: { readonly activityType: string } & Record<string, unknown>,
-): Promise<void> {
-  await append(tx, { conversationId, key, message: { role: 'activity', content } })
+): Promise<boolean> {
+  const said = await append(tx, { conversationId, key, message: { role: 'activity', content } })
+
+  return said.kind !== 'said-already'
 }
 
 /**
@@ -436,6 +446,59 @@ export async function wakeWhoseTimeHasCome(db: Database): Promise<number> {
   })
 }
 
+/**
+ * Tells a piece of work that something it handed out has no machine left.
+ *
+ * The other half of the exception in {@link carryingOn}. Being let go is not being told: a parent
+ * handed a turn with nothing said would be an agent that woke for no reason it can see, and one
+ * told but still held would be an agent that reads the news and cannot act on it. Written apart
+ * once, and the two of them waited on each other with nothing anywhere to say so.
+ *
+ * Said once per child, by a key. Every instance runs this and they all run the same statement;
+ * the second one to arrive writes nothing, because the message is already there under that name.
+ *
+ * A machine that comes back later is not undone. Whether that changes anything is the parent's to
+ * decide, and it has been told everything it needs to decide it — which is the same rule as every
+ * other way a piece of work can stop.
+ */
+export async function tellWhoeverIsWaitingOnAGoneMachine(db: Database): Promise<number> {
+  const gone = await db
+    .selectFrom('tasks as kid')
+    .innerJoin('conversations as kc', 'kc.id', 'kid.conversation_id')
+    .innerJoin('machines as km', 'km.id', 'kc.machine_id')
+    .innerJoin('tasks as parent', 'parent.id', 'kid.parent_id')
+    .innerJoin('conversations as pc', 'pc.id', 'parent.conversation_id')
+    .select([
+      'kid.id as taskId',
+      'kid.goal',
+      'km.name as machineName',
+      'pc.id as parentConversationId',
+      'pc.machine_id as parentMachineId',
+    ])
+    .where('kid.ended_at', 'is', null)
+    .where('kid.state', '=', STATE.working)
+    .where('parent.ended_at', 'is', null)
+    .where('km.last_seen_at', '<', sql<Date>`now() - ${SILENT_FOR_SECONDS} * interval '1 second'`)
+    .execute()
+
+  let told = 0
+  for (const one of gone) {
+    const wrote = await db.transaction().execute(async (tx) => {
+      const written = await note(tx, one.parentConversationId, `gone/${one.taskId}`, {
+        activityType: ACTIVITY.handedBack,
+        text: `Its machine, ${one.machineName}, is not here.`,
+        goal: one.goal,
+      })
+      if (written) await wakeMachine(tx, one.parentMachineId)
+
+      return written
+    })
+    if (wrote) told += 1
+  }
+
+  return told
+}
+
 /** One line of somebody's Inbox: a piece of work that stopped on them, and what it asked. */
 export type Waiting = {
   readonly conversationId: string
@@ -499,6 +562,10 @@ export async function waitingOn(db: Database, userId: string): Promise<readonly 
 /** The piece of work underway in a conversation, as its page shows it. */
 export type Underway = {
   readonly task: Task
+  /** Its own machine, so a page can say the same thing about this one it says about its children. */
+  readonly whereabouts: Whereabouts
+  /** The instant every whereabouts here is read against, from the clock that wrote them. */
+  readonly asOf: Date
   /** Still open, so the one that handed them off is waiting on them. */
   readonly handedOff: readonly HandedOff[]
   readonly outputs: readonly Written[]
@@ -512,6 +579,15 @@ export type HandedOff = {
   readonly state: State
   readonly machineName: string
   readonly agentKind: string
+  /**
+   * Where its machine was last heard from, and when this was read.
+   *
+   * Carried rather than worked out here, for the same reason the machines list carries it: whether
+   * a machine counts as here is one rule, and it lives in `machine/presence.ts`. A page that has
+   * both can say "its machine is not here" about a piece of work that will not move again — which
+   * is the difference between waiting and being stuck.
+   */
+  readonly whereabouts: Whereabouts
 }
 
 export type Written = {
@@ -534,7 +610,40 @@ export async function underwayIn(
 
   if (task === undefined) return undefined
 
-  const handedOff = await db
+  const mine = await itsMachine(db, conversationId)
+
+  return {
+    task,
+    whereabouts: { lastSeenAt: mine.lastSeenAt, leftAt: mine.leftAt },
+    asOf: mine.asOf,
+    handedOff: await whatItHandedOut(db, task.id),
+    outputs: await whatItWrote(db, task.id),
+    under: await whatItIsUnder(db, task.parentId),
+  }
+}
+
+/**
+ * The machine this conversation is on, and the instant to read every whereabouts against.
+ *
+ * `asOf` from the same clock that wrote `last_seen_at`. A `new Date()` here would be this process
+ * deciding a fact the database recorded, and the two clocks disagree by however far they drift.
+ */
+async function itsMachine(db: Database | Tx, conversationId: string) {
+  return db
+    .selectFrom('conversations')
+    .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+    .select([
+      'machines.last_seen_at as lastSeenAt',
+      'machines.left_at as leftAt',
+      sql<Date>`now()`.as('asOf'),
+    ])
+    .where('conversations.id', '=', conversationId)
+    .executeTakeFirstOrThrow()
+}
+
+/** What it handed out, oldest first, each with the machine it landed on. */
+async function whatItHandedOut(db: Database | Tx, taskId: string): Promise<readonly HandedOff[]> {
+  const rows = await db
     .selectFrom('tasks')
     .innerJoin('conversations', 'conversations.id', 'tasks.conversation_id')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
@@ -544,26 +653,42 @@ export async function underwayIn(
       'tasks.state',
       'machines.name as machineName',
       'conversations.agent_kind as agentKind',
+      'machines.last_seen_at as lastSeenAt',
+      'machines.left_at as leftAt',
     ])
-    .where('tasks.parent_id', '=', task.id)
+    .where('tasks.parent_id', '=', taskId)
     .orderBy('tasks.created_at')
     .execute()
 
-  const outputs = await db
+  return rows.map((one) => ({
+    conversationId: one.conversationId,
+    goal: one.goal,
+    state: one.state as State,
+    machineName: one.machineName,
+    agentKind: one.agentKind,
+    whereabouts: { lastSeenAt: one.lastSeenAt, leftAt: one.leftAt },
+  }))
+}
+
+/** What it wrote on purpose, newest first. */
+async function whatItWrote(db: Database | Tx, taskId: string): Promise<readonly Written[]> {
+  return db
     .selectFrom('outputs')
     .select(['title', 'body', 'updated_at as writtenAt'])
-    .where('task_id', '=', task.id)
+    .where('task_id', '=', taskId)
     .orderBy('updated_at', 'desc')
     .execute()
+}
 
-  const under =
-    task.parentId === null
-      ? null
-      : ((await db
-          .selectFrom('tasks')
-          .select(['conversation_id as conversationId', 'goal'])
-          .where('id', '=', task.parentId)
-          .executeTakeFirst()) ?? null)
+/** The piece of work that handed this one out, when an agent did. */
+async function whatItIsUnder(db: Database | Tx, parentId: string | null) {
+  if (parentId === null) return null
 
-  return { task, handedOff: handedOff as readonly HandedOff[], outputs, under }
+  const parent = await db
+    .selectFrom('tasks')
+    .select(['conversation_id as conversationId', 'goal'])
+    .where('id', '=', parentId)
+    .executeTakeFirst()
+
+  return parent ?? null
 }

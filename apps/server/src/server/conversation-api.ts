@@ -35,6 +35,7 @@ import { requireMachine, type Attached } from './machine-session.ts'
 import { modelsBody } from './offers.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
+import { onTheWire, presenceBody } from './whereabouts.ts'
 
 export type ConversationApi = { readonly db: Database }
 
@@ -125,6 +126,8 @@ const underwayBody = z
     state: taskStateBody,
     /** When it will wake by itself. Only ever set while it is asleep. */
     sleepUntil: z.iso.datetime().nullable(),
+    /** Its own machine, said the same way its children's are. */
+    presence: presenceBody,
     /** Still open, which is why the one that handed them out is not being given turns. */
     handedOff: z
       .array(
@@ -134,6 +137,8 @@ const underwayBody = z
           state: taskStateBody,
           machineName: z.string(),
           agentKind: z.string(),
+          /** Its machine. One that is not here is one this piece of work will wait on for ever. */
+          presence: presenceBody,
         }),
       )
       .readonly(),
@@ -212,7 +217,15 @@ function asUnderway(underway: Reading['underway']) {
     goal: underway.task.goal,
     state: underway.task.state,
     sleepUntil: underway.task.sleepUntil?.toISOString() ?? null,
-    handedOff: underway.handedOff,
+    presence: onTheWire(underway.whereabouts, underway.asOf),
+    handedOff: underway.handedOff.map((one) => ({
+      conversationId: one.conversationId,
+      goal: one.goal,
+      state: one.state,
+      machineName: one.machineName,
+      agentKind: one.agentKind,
+      presence: onTheWire(one.whereabouts, underway.asOf),
+    })),
     outputs: underway.outputs.map((one) => ({ ...one, writtenAt: one.writtenAt.toISOString() })),
     under: underway.under,
   }

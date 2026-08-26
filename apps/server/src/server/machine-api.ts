@@ -18,7 +18,6 @@ import {
   type AgentKind,
   type Installed,
 } from '../machine/agent-kind.ts'
-import { presence } from '../machine/presence.ts'
 import {
   SHOWS,
   api,
@@ -43,6 +42,7 @@ import type { Waiting } from './waiting.ts'
 import { modelsBody } from './offers.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
+import { onTheWire, presenceBody } from './whereabouts.ts'
 
 export type MachineApi = {
   readonly db: Database
@@ -198,10 +198,7 @@ const machineBody = z
      * rather than filled in — a version this deployment guessed would be read as one it was told.
      */
     version: z.string().optional(),
-    presence: z.discriminatedUnion('state', [
-      z.object({ state: z.literal('here') }),
-      z.object({ state: z.literal('gone'), since: z.iso.datetime() }),
-    ]),
+    presence: presenceBody,
     agents: z.array(agentBody).readonly(),
   })
   .openapi('Machine')
@@ -378,7 +375,7 @@ function listing(deps: MachineApi) {
         ...(machine.version === undefined ? {} : { version: machine.version }),
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),
-        presence: onTheWire(presence(machine.whereabouts, seen.asOf)),
+        presence: onTheWire(machine.whereabouts, seen.asOf),
         agents: machine.agents.map(asOffered),
       }))
 
@@ -444,8 +441,3 @@ function asOffered(agent: Installed): z.infer<typeof agentBody> {
 }
 
 /** A `Date` is not a wire value. Converting here keeps the owner's shape free of transport. */
-function onTheWire(where: ReturnType<typeof presence>): z.infer<typeof machineBody>['presence'] {
-  return where.state === 'here'
-    ? { state: 'here' }
-    : { state: 'gone', since: where.since.toISOString() }
-}

@@ -587,41 +587,7 @@
             "type": "string"
           },
           "presence": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "state": {
-                    "type": "string",
-                    "enum": [
-                      "here"
-                    ]
-                  }
-                },
-                "required": [
-                  "state"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "state": {
-                    "type": "string",
-                    "enum": [
-                      "gone"
-                    ]
-                  },
-                  "since": {
-                    "type": "string",
-                    "format": "date-time"
-                  }
-                },
-                "required": [
-                  "state",
-                  "since"
-                ]
-              }
-            ]
+            "$ref": "#/components/schemas/Presence"
           },
           "agents": {
             "type": "array",
@@ -637,6 +603,43 @@
           "yours",
           "presence",
           "agents"
+        ]
+      },
+      "Presence": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "here"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "gone"
+                ]
+              },
+              "since": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "state",
+              "since"
+            ]
+          }
         ]
       },
       "MachineAgent": {
@@ -1177,6 +1180,9 @@
             "nullable": true,
             "format": "date-time"
           },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
           "handedOff": {
             "type": "array",
             "items": {
@@ -1203,6 +1209,9 @@
                 },
                 "agentKind": {
                   "type": "string"
+                },
+                "presence": {
+                  "$ref": "#/components/schemas/Presence"
                 }
               },
               "required": [
@@ -1210,7 +1219,8 @@
                 "goal",
                 "state",
                 "machineName",
-                "agentKind"
+                "agentKind",
+                "presence"
               ]
             }
           },
@@ -1259,6 +1269,7 @@
           "goal",
           "state",
           "sleepUntil",
+          "presence",
           "handedOff",
           "outputs",
           "under"

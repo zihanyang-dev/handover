@@ -2383,16 +2383,17 @@ export interface components {
             ownerName: string;
             yours: boolean;
             version?: string;
-            presence: {
-                /** @enum {string} */
-                state: "here";
-            } | {
-                /** @enum {string} */
-                state: "gone";
-                /** Format: date-time */
-                since: string;
-            };
+            presence: components["schemas"]["Presence"];
             agents: components["schemas"]["MachineAgent"][];
+        };
+        Presence: {
+            /** @enum {string} */
+            state: "here";
+        } | {
+            /** @enum {string} */
+            state: "gone";
+            /** Format: date-time */
+            since: string;
         };
         MachineAgent: {
             /** @enum {string} */
@@ -2528,6 +2529,7 @@ export interface components {
             state: "working" | "wait" | "sleep" | "done";
             /** Format: date-time */
             sleepUntil: string | null;
+            presence: components["schemas"]["Presence"];
             handedOff: {
                 /** Format: uuid */
                 conversationId: string;
@@ -2536,6 +2538,7 @@ export interface components {
                 state: "working" | "wait" | "sleep" | "done";
                 machineName: string;
                 agentKind: string;
+                presence: components["schemas"]["Presence"];
             }[];
             outputs: {
                 title: string;

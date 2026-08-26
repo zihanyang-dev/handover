@@ -12,6 +12,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
+import { atSeq } from './conversation.tsx'
 import { useTakeBack, type Message, type Underway as What } from './talking.ts'
 
 /** What each state is called, in the words a person reads. */
@@ -60,7 +61,13 @@ export function Underway({
                   </Link>
                   <span className="row-where">{one.machineName}</span>
                 </span>
-                <span className="chip">{STATES[one.state] ?? one.state}</span>
+                {/* Its machine before its state: one that is not here will not move again, and a
+                    row still saying "Working" is the one thing a person cannot act on. */}
+                <span className="chip">
+                  {one.presence.state === 'gone'
+                    ? 'Its machine is not here'
+                    : (STATES[one.state] ?? one.state)}
+                </span>
               </li>
             ))}
           </ul>
@@ -101,6 +108,9 @@ function whereItIs(underway: What, open: number): string {
   if (underway.state === 'wait') return 'Waiting on you'
   if (underway.state === 'done') return 'Finished'
   if (underway.state === 'sleep') return `Asleep until ${when(underway.sleepUntil)}`
+  // Before "working": a machine that is not here is not working, whatever the state says. Left to
+  // read as working, somebody watches a line that will never move again.
+  if (underway.presence.state === 'gone') return 'Its machine is not here'
   if (open > 0) return `Waiting on ${String(open)} it handed out`
 
   return 'Working'
@@ -186,7 +196,9 @@ function Beats({ messages }: { readonly messages: readonly Message[] }) {
           key={beat.seq}
           className={`beat ${YOURS.has(beat.who) ? 'beat-you' : ''} ${beat.who === 'finished' ? 'beat-over' : ''}`}
         >
-          <span>{beat.said}</span>
+          {/* A link to where it happened, not a button that scrolls: the address bar then holds
+              the place, so it survives a reload and can be handed to somebody else. */}
+          <a href={`#${atSeq(beat.seq)}`}>{beat.said}</a>
           <time dateTime={beat.at}>{new Date(beat.at).toLocaleTimeString()}</time>
         </li>
       ))}

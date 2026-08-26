@@ -7,10 +7,12 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { sql } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeSlug, type Slug } from '@handover/universal'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { loadEnv } from '../env.ts'
+import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
@@ -21,6 +23,7 @@ import { createSpace } from './space.ts'
 import {
   handOver,
   stopsWorking,
+  tellWhoeverIsWaitingOnAGoneMachine,
   underwayIn,
   takeBack,
   waitingOn,
@@ -86,6 +89,26 @@ async function attached(machineName: string): Promise<string> {
     ],
   })
   return collected.machineId
+}
+
+/** A machine that stopped answering: silent for longer than anybody waits before calling it gone. */
+async function wentSilent(machineName: string): Promise<void> {
+  await db
+    .updateTable('machines')
+    .set({ last_seen_at: sql<Date>`now() - ${SILENT_FOR_SECONDS + 60} * interval '1 second'` })
+    .where('name', '=', machineName)
+    .execute()
+}
+
+/** Everything written into a conversation, as one string to look for words in. */
+async function heard(conversationId: string): Promise<string> {
+  const said = await db
+    .selectFrom('messages')
+    .select('content')
+    .where('conversation_id', '=', conversationId)
+    .execute()
+
+  return JSON.stringify(said)
 }
 
 async function opened(machineId = MACHINE): Promise<string> {
@@ -327,6 +350,42 @@ describe('handing a piece of it to somebody else', () => {
     await ends(conversation, '1/end')
 
     expect(await nextTurn()).toBeUndefined()
+  })
+
+  it('lets it go when the machine it handed to stops answering, or it waits for ever', async () => {
+    // The one way a piece of work can be stuck with nothing anywhere to say so: the machine it
+    // handed to never comes back, and "still open" is true for the rest of time.
+    const conversation = await handedOver()
+    await nextTurn()
+    await attached('build-server-1')
+    await handedOff(conversation, 'build-server-1')
+    await ends(conversation, '1/end')
+    expect(await nextTurn()).toBeUndefined()
+
+    await wentSilent('build-server-1')
+
+    expect(await nextTurn()).toBe(conversation)
+  })
+
+  it('says why, once, however many instances are asking', async () => {
+    // Let go without being told is an agent that wakes for no reason it can see. And every
+    // instance runs the same look every ten seconds — the line has to be written exactly once.
+    const conversation = await handedOver()
+    await nextTurn()
+    await attached('build-server-1')
+    await handedOff(conversation, 'build-server-1', 'add an integration test')
+    await ends(conversation, '1/end')
+    await wentSilent('build-server-1')
+
+    // Not the count it returns — that is every parent on this deployment, and the other tests
+    // here leave plenty. What has to be exactly once is the line in *this* conversation.
+    await tellWhoeverIsWaitingOnAGoneMachine(db)
+    const once = await heard(conversation)
+    await tellWhoeverIsWaitingOnAGoneMachine(db)
+
+    expect(once).toContain('build-server-1')
+    expect(once).toContain('add an integration test')
+    expect(await heard(conversation)).toBe(once)
   })
 
   it('starts again as soon as one of them comes back, with what it said', async () => {

@@ -16,6 +16,7 @@
 
 import { sql, type Expression } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
+import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
 import { append } from './message.ts'
 import { STATE } from './task.ts'
@@ -95,14 +96,24 @@ function carryingOn(machineId: string) {
          -- Waiting on what it handed off is not a state of its own: it is whether its children
          -- have ended, which is one index seek and cannot go stale.
          --
-         -- Except a child that is waiting on *it*. A child's owner is the one that handed it out,
-         -- so a child that is waiting is asking this very piece of work a question, and counting
-         -- that as a reason not to run it is the two of them waiting for each other for ever,
-         -- with nothing anywhere to say so.
+         -- Two exceptions, and they are the same reason: a child that will not move again on its
+         -- own is not something to wait for, it is something the parent has to be told about.
+         --
+         -- One is waiting on *it*. A child's owner is the one that handed it out, so a child that
+         -- is waiting is asking this very piece of work a question, and counting that as a reason
+         -- not to run it is the two of them waiting for each other for ever.
+         --
+         -- The other has no machine left. Silence past the threshold is what "gone" means
+         -- everywhere here; a parent held by a machine that never comes back is held for ever.
+         -- Being let go is only half of it — being told is the other half, and that is the
+         -- waker's. Either half alone leaves the two of them waiting on each other.
          and not exists (select 1 from tasks kid
+                          join conversations kc on kc.id = kid.conversation_id
+                          join machines km on km.id = kc.machine_id
                           where kid.parent_id = k.id
                             and kid.ended_at is null
-                            and kid.state <> ${STATE.wait})
+                            and kid.state <> ${STATE.wait}
+                            and km.last_seen_at > now() - ${SILENT_FOR_SECONDS} * interval '1 second')
     )`
 }
 
