@@ -904,7 +904,23 @@ describe('what a piece of work shows beside the conversation', () => {
   it('takes it back, and says that takes back what it handed out too', async () => {
     let asked = false
     server.use(
-      ...transcript([say(1, 'user', { text: 'go' })], 'idle', [], underway()),
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({
+          handedOff: [
+            {
+              conversationId: 'c-2',
+              goal: 'Add an integration test',
+              state: 'working',
+              machineName: 'build-server-1',
+              agentKind: 'codex',
+              presence: { state: 'here' as const },
+            },
+          ],
+        }),
+      ),
       http.delete('*/spaces/acme/conversations/c-1/task', () => {
         asked = true
         return new HttpResponse(null, { status: 204 })
@@ -912,7 +928,11 @@ describe('what a piece of work shows beside the conversation', () => {
     )
     open('/s/acme/c/c-1')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+    // Said before it is pressed. Somebody who finds out afterwards that a second agent stopped
+    // has been told something they could have decided on.
+    expect(await screen.findByText(/also stops the one it handed out/i)).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
 
     await waitFor(() => {
       expect(asked).toBe(true)
