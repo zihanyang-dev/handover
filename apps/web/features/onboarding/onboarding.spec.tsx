@@ -155,6 +155,17 @@ describe('the first step — a Space', () => {
     expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
+  it('with exactly one Space, still asks rather than going in', async () => {
+    // `prd.md` 01 promise ⑤: the URL is the only fact about which Space somebody is in. No
+    // default, and not one just because it is the only one — a product that walks you somewhere
+    // is one you cannot tell where you are in.
+    server.use(signedIn({ spaces: [ACME] }))
+    open('/onboarding')
+
+    expect(await screen.findByRole('button', { name: /acme/i })).toBeDefined()
+    expect(globalThis.location.pathname).not.toContain('/s/')
+  })
+
   it('opens New Space in a bottom drawer without hiding the existing cards', async () => {
     server.use(signedIn({ spaces: [ACME] }))
     open('/onboarding')
