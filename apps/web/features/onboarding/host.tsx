@@ -94,12 +94,10 @@ function KeySetupTitle({
 
 /** The direct way in, disclosed only when somebody asks for the fallback. */
 function KeyCommand({
-  slug,
   active,
   onBack,
   onSkip,
 }: {
-  readonly slug: string
   readonly active: boolean
   readonly onBack: () => void
   readonly onSkip: () => void
@@ -199,13 +197,7 @@ function Waiting({ onSkip }: { readonly onSkip: () => void }) {
 }
 
 /** The normal code-and-approval path first; a key is an explicit fallback. */
-function ConnectionCommand({
-  slug,
-  onSkip,
-}: {
-  readonly slug: string
-  readonly onSkip: () => void
-}) {
+function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
   const [usingKey, setUsingKey] = useState(false)
 
   return (
@@ -243,7 +235,6 @@ function ConnectionCommand({
         inert={!usingKey}
       >
         <KeyCommand
-          slug={slug}
           active={usingKey}
           onBack={() => {
             setUsingKey(false)
@@ -410,7 +401,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
 
           {slug !== undefined && (
             <div className="stack-tight">
-              {!arrived && <ConnectionCommand slug={slug} onSkip={goIn} />}
+              {!arrived && <ConnectionCommand onSkip={goIn} />}
               <Arrived slug={slug} />
             </div>
           )}
