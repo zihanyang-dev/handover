@@ -157,18 +157,21 @@ describe('the first step — a Space', () => {
     )
     open('/onboarding')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Acme' }))
+    await userEvent.click(await screen.findByRole('button', { name: /open acme/i }))
 
     // Past onboarding entirely: the Space itself, machines and all.
     expect(await screen.findByText(/last seen|online|nothing can run here/i)).toBeDefined()
   })
 
-  it('somebody with Spaces can still make another one', async () => {
+  it('makes a new Space the first full choice, before the compact existing list', async () => {
     server.use(signedIn({ spaces: [ACME] }))
     open('/onboarding')
 
-    await userEvent.click(await screen.findByRole('button', { name: /new space/i }))
+    const make = await screen.findByRole('button', { name: /new space/i })
+    const existing = screen.getByRole('button', { name: /open acme/i })
+    expect(make.compareDocumentPosition(existing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+    await userEvent.click(make)
     expect(await screen.findByLabelText(/^space$/i)).toBeDefined()
   })
 

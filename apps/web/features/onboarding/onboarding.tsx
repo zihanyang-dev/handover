@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState } from 'react'
+import { ChevronRight, Plus } from 'react-bootstrap-icons'
 import { normalizeSlug } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Arrival } from '../identity/arrival.tsx'
@@ -130,7 +131,7 @@ function NameAndSpace({
   )
 }
 
-/** The Spaces somebody already has, as the ways in; making another is the quiet option. */
+/** New and existing Spaces in one hierarchy: make is primary, the known places stay compact. */
 function PickSpace({
   spaces,
   onPick,
@@ -143,28 +144,42 @@ function PickSpace({
   return (
     <>
       <div className="auth-head">
-        <h1>Where to?</h1>
-        <p className="lede">Pick a Space, or make a new one.</p>
+        <h1>Choose a Space</h1>
+        <p className="lede">Continue to one you have, or start a new one.</p>
       </div>
 
-      <div className="auth-ways">
-        {spaces.map((space) => (
-          <button
-            key={space.id}
-            className="button button-secondary"
-            type="button"
-            onClick={() => {
-              onPick(space.slug)
-            }}
-          >
-            <span className="button-label">{space.displayName}</span>
-          </button>
-        ))}
-      </div>
+      <div className="space-picker">
+        <button className="space-choice space-choice-new" type="button" onClick={onMake}>
+          <span className="space-choice-icon" aria-hidden>
+            <Plus size={20} />
+          </span>
+          <span className="space-choice-copy">
+            <strong>New Space</strong>
+          </span>
+          <ChevronRight className="space-choice-arrow" aria-hidden />
+        </button>
 
-      <button className="button button-quiet auth-new-space" type="button" onClick={onMake}>
-        <span className="button-label">New space</span>
-      </button>
+        <p className="space-picker-label">Your Spaces</p>
+        <div className="space-choice-list">
+          {spaces.map((space) => (
+            <button
+              key={space.id}
+              className="space-choice"
+              type="button"
+              aria-label={`Open ${space.displayName}`}
+              onClick={() => {
+                onPick(space.slug)
+              }}
+            >
+              <span className="space-choice-copy">
+                <strong>{space.displayName}</strong>
+                <small>/s/{space.slug}</small>
+              </span>
+              <ChevronRight className="space-choice-arrow" aria-hidden />
+            </button>
+          ))}
+        </div>
+      </div>
     </>
   )
 }
