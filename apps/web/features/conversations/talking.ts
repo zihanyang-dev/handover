@@ -20,8 +20,8 @@ const WHILE_WORKING_MS = 1000
 /** One thing happening right now. Shown while it happens and kept nowhere — see the server's. */
 export type Moment = components['schemas']['Moment']
 
-/** One line of a transcript, per role. Taken from the contract, which now says what each holds. */
-export type Said = components['schemas']['Message']
+/** One line of a transcript, per role. The contract's own name for it, and its own shape. */
+export type Message = components['schemas']['Message']
 
 /** One conversation as the server hands it over. The shape this page keeps and adds to. */
 type Transcript = components['schemas']['Transcript']

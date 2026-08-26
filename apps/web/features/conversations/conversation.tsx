@@ -17,7 +17,7 @@ import {
   useWatching,
   type Model,
   type Moment,
-  type Said as Message,
+  type Message,
 } from './talking.ts'
 
 /**

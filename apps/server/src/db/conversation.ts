@@ -298,10 +298,17 @@ export type Reading = {
    */
   readonly offers: unknown
   /** Everything since what the reader said it had, or the whole of it when they said nothing. */
-  readonly messages: readonly Spoken[]
+  readonly messages: readonly Stored[]
 }
 
-type Spoken = {
+/**
+ * One line as the column holds it, unread.
+ *
+ * Not `Spoken`, which is what one becomes once it has been read: the whole point of this shape is
+ * that nobody here has looked inside `content` yet, and the two names would be two ways of saying
+ * a thing has and has not been checked.
+ */
+type Stored = {
   readonly seq: number
   readonly role: string
   readonly content: unknown
@@ -340,7 +347,7 @@ export async function conversationInSpace(
  */
 export async function conversationWith(
   db: Database,
-  reading: Asking,
+  reading: ToRead,
 ): Promise<Reading | undefined> {
   return db.transaction().execute(async (tx) => oneReading(tx, reading))
 }
@@ -353,13 +360,13 @@ export async function conversationWith(
  * again for what it already has would be this page downloading an hour of somebody's work every
  * second for as long as they watch it.
  */
-export type Asking = {
+export type ToRead = {
   readonly conversationId: string
   readonly spaceId: string
   readonly after?: number | undefined
 }
 
-async function oneReading(tx: Tx, reading: Asking): Promise<Reading | undefined> {
+async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined> {
   const conversation = await tx
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
