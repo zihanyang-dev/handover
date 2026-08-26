@@ -213,6 +213,46 @@ describe('handing the code back', () => {
     expect(cookie).toContain('SameSite=Lax')
   })
 
+  it('marks the cookie Secure from the configured origin, not from the request', async () => {
+    // The ordinary production arrangement: TLS ends at a proxy and plain HTTP reaches this
+    // process, so `c.req.url` says `http:` on every real request. Read from there, every session
+    // cookie in production would go out without `Secure` and nothing would say so — the tests
+    // would still be green, because they all speak HTTP.
+    const overTls = signInApi({
+      ...SENDING,
+      db,
+      secret: env.AUTH_SECRET,
+      sendCode,
+      providers: ['google', 'github'],
+      webOrigin: 'https://handover.example',
+    })
+    const asked = await overTls.request('/auth/email-codes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, requestKey: `${RUN}-tls` }),
+    })
+    const { codeId: id } = (await asked.json()) as { codeId: string }
+
+    const response = await overTls.request('/browser/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ codeId: id, code: sent.at(-1)?.code ?? '' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('set-cookie') ?? '').toContain('Secure')
+  })
+
+  it('leaves Secure off when a browser really does reach it over plain HTTP', async () => {
+    // The other half, so the rule cannot be satisfied by always saying Secure — a cookie a local
+    // browser is told to send only over HTTPS is a cookie it never sends.
+    const id = await codeId()
+
+    const response = await submit(id, sent[0]?.code ?? '')
+
+    expect(response.headers.get('set-cookie') ?? '').not.toContain('Secure')
+  })
+
   it('never puts the stored hash in the cookie', async () => {
     const id = await codeId()
 
