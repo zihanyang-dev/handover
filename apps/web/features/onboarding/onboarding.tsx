@@ -45,8 +45,16 @@ function NameAndSpace({
       return data
     },
     onSuccess: (made) => {
-      void client.invalidateQueries({ queryKey: ME })
-      // Handed up: the parent sweeps the bar and navigates, out of the mutation's call stack.
+      // The create response is the authoritative new Space. Put it straight into /me instead of
+      // invalidating and making the Host route wait behind another copy of the same read.
+      client.setQueryData<Me>(ME, (current) => {
+        const person = current ?? me
+        return {
+          ...person,
+          displayName: name.trim(),
+          spaces: [...person.spaces.filter((space) => space.slug !== made.slug), made],
+        }
+      })
       onMade(made.slug)
     },
   })
@@ -181,10 +189,16 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
 
   useEffect(() => {
     if (leave === undefined) return
+
+    // The Host step mounts at the midpoint and carries the rider forward itself. Waiting here as
+    // well made a completed create feel stuck before the route even began to load.
+    if (leave.to === 'host') {
+      void navigate({ to: '/onboarding/host', search: { s: leave.slug } })
+      return
+    }
+
     timer.current = setTimeout(() => {
-      void (leave.to === 'space'
-        ? navigate({ to: '/s/$slug', params: { slug: leave.slug } })
-        : navigate({ to: '/onboarding/host', search: { s: leave.slug } }))
+      void navigate({ to: '/s/$slug', params: { slug: leave.slug } })
     }, STEP_EXIT_MS)
   }, [leave, navigate])
 

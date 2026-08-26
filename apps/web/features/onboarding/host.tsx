@@ -214,7 +214,9 @@ function useHostSpace(forSlug: string | undefined): {
   readonly name: string | undefined
 } {
   const navigate = useNavigate()
-  const me = useQuery(meQuery)
+  // A create hands its response into this cache before navigating. Reuse it instead of issuing a
+  // third /me read behind the route's own authentication check.
+  const me = useQuery({ ...meQuery, staleTime: 30_000 })
   const spaces = me.data?.spaces ?? []
   const slug = forSlug ?? (spaces.length === 1 ? spaces[0]?.slug : undefined)
 

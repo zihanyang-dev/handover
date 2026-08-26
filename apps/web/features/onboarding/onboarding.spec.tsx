@@ -53,11 +53,6 @@ function quietMachineStep() {
   ]
 }
 
-/** Let the progress rider finish its leg before the route follows. */
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 400))
-}
-
 describe('the first step — a Space', () => {
   it('somebody with no Spaces is making one right away, their name already filled in', async () => {
     server.use(signedIn({ displayName: 'Mina' }))
@@ -113,7 +108,6 @@ describe('the first step — a Space', () => {
       expect(renamed).toEqual({ displayName: 'Mina Kang' })
     })
     expect(made).toEqual({ displayName: 'Acme', requestKey: expect.any(String) as unknown })
-    await settle()
     expect(await screen.findByText(/connect a machine/i)).toBeDefined()
   })
 
@@ -133,7 +127,6 @@ describe('the first step — a Space', () => {
     await userEvent.type(await screen.findByLabelText(/^space$/i), 'Acme')
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
 
-    await settle()
     expect(await screen.findByText(/connect a machine/i)).toBeDefined()
     expect(renamed).toBe(false)
   })
