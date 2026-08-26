@@ -47,6 +47,11 @@ export type Appending = {
  * One read rather than two, and one lock rather than a lock and a hope: whether the agent is busy
  * and whether its machine is here are both answered from this row, and both stop being true the
  * moment somebody else writes.
+ *
+ * The machine is joined *under* the lock, so `for update` holds its row as well. That is
+ * deliberate and load-bearing: without it, a machine can be removed between this read and the
+ * write, and something lands on a machine nobody can reach. See `machineSays` for the same
+ * bargain from the other side.
  */
 export async function held(tx: Tx, saying: Saying) {
   return tx

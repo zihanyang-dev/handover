@@ -197,9 +197,15 @@ export type Reporting = {
 export async function machineSays(db: Database, reporting: Reporting): Promise<Said> {
   return db.transaction().execute(async (tx) => {
     // The machine is proved by its credential, matched against the conversation, and checked for
-    // still being in its Space — all inside the transaction that writes. The middleware's check
+    // not having been removed — all inside the transaction that writes. The middleware's check
     // happened before this opened, and a machine somebody removed in between must not get one
     // more line into a transcript.
+    //
+    // The join is under the lock on purpose, so `for update` holds the machine's row too. That is
+    // what makes the removal check mean anything: read without it, `removeMachine` can commit
+    // between this and the write, and the line lands anyway. It costs the writes on one machine
+    // being serialized against each other — a row lock held for one short transaction, against a
+    // few lines a second — which is worth what it buys.
     const conversation = await tx
       .selectFrom('conversations')
       .innerJoin('machines', 'machines.id', 'conversations.machine_id')

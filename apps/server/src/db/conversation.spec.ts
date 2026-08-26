@@ -586,3 +586,20 @@ function contentFor(role: string) {
   if (role === 'activity') return { activityType: 'trouble', text: 'something' }
   return { text: 'something' }
 }
+
+describe('a turn and the conversation it is on', () => {
+  it('cannot name a machine the conversation is not on, however it is written', async () => {
+    // `turns.machine_id` is the same fact as `conversations.machine_id`, kept twice because a
+    // partial index on it answers "is this machine busy" without touching conversations. Two
+    // copies are only safe while they cannot disagree, and that is this constraint's whole job.
+    const conversation = await opened()
+    const somebodyElses = await attached()
+
+    await expect(
+      db
+        .insertInto('turns')
+        .values({ conversation_id: conversation, after_seq: 1, machine_id: somebodyElses })
+        .execute(),
+    ).rejects.toThrow(/violates foreign key constraint/u)
+  })
+})

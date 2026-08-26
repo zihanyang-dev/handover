@@ -267,6 +267,14 @@ ALTER TABLE ONLY public.browser_sessions
 
 
 --
+-- Name: conversations conversations_id_machine_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_id_machine_id_key UNIQUE (id, machine_id);
+
+
+--
 -- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -670,11 +678,11 @@ ALTER TABLE ONLY public.turns
 
 
 --
--- Name: turns turns_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: turns turns_on_its_conversations_machine; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.turns
-    ADD CONSTRAINT turns_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id);
+    ADD CONSTRAINT turns_on_its_conversations_machine FOREIGN KEY (conversation_id, machine_id) REFERENCES public.conversations(id, machine_id);
 
 
 --
