@@ -7,7 +7,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -52,10 +52,17 @@ describe('putting handover where an agent can reach it', () => {
   })
 
   it('leaves the PATH alone rather than failing, when it cannot write', async () => {
-    // A read-only home is a strange machine, not a broken one. Refusing to start over it would be
-    // a machine that answers nothing at all.
+    // A machine it cannot write on is a strange one, not a broken one. Refusing to start over it
+    // would be a machine that answers nothing at all.
+    //
+    // Something in the way, rather than a directory with the write bit off: run as root the bit
+    // means nothing, and this would quietly become a test that writes the shim after all. A file
+    // where a directory has to go stops everybody, root included.
+    const inTheWay = join(await mkdtemp(join(tmpdir(), 'handover-blocked-')), 'nowhere')
+    await writeFile(inTheWay, '')
+
     const path = await reachableAs(
-      { beside: '/proc/nowhere/machine.json', howToRun: 'handover' },
+      { beside: join(inTheWay, 'machine.json'), howToRun: 'handover' },
       { PATH: '/usr/bin' },
     )
 
