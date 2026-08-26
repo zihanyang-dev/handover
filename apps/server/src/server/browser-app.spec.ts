@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { pino } from 'pino'
 import { LOG_OPTIONS } from '../log.ts'
 import { handoverApp, type App } from './app.ts'
+import { waitingRoom } from './waiting.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 
@@ -47,6 +48,7 @@ function serving(webRoot: string | undefined) {
     lettersPerCallerPerHour: 500,
     trustedProxyHops: 0,
     webRoot,
+    waiting: waitingRoom(0),
   }
 
   return handoverApp(deps)

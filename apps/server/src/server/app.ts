@@ -23,6 +23,7 @@ import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { conversationApi } from './conversation-api.ts'
 import { machineApi } from './machine-api.ts'
+import type { Waiting } from './waiting.ts'
 import { liveApi } from './live-api.ts'
 import type { Live } from '../conversation/live.ts'
 
@@ -32,6 +33,8 @@ export type App = Omit<SignInApi, 'providers'> &
     readonly log: Log
     /** Where moments go while a turn runs. Nothing here is kept; see `conversation/live.ts`. */
     readonly live: Live
+    /** The machine questions this instance is holding rather than answering with "nothing". */
+    readonly waiting: Waiting
     /**
      * Where the built browser app is, when this process serves it too.
      *
@@ -101,7 +104,7 @@ export function handoverApp(deps: App) {
     .route('/', credentialApi(deps))
     .route('/', enrolmentApi({ db: deps.db, webOrigin: deps.webOrigin }))
     .route('/', approvalApi({ db: deps.db }))
-    .route('/', machineApi({ db: deps.db }))
+    .route('/', machineApi({ db: deps.db, waiting: deps.waiting }))
     .route('/', conversationApi({ db: deps.db }))
     .route('/', liveApi({ db: deps.db, live: deps.live }))
 }

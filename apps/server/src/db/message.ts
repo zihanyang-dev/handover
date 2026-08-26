@@ -55,6 +55,7 @@ export async function held(tx: Tx, saying: Saying) {
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
     .select([
       'conversations.id',
+      'machines.id as machineId',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       sql<Date>`now()`.as('asOf'),

@@ -19,6 +19,7 @@ import { append, alreadySaid, held, unfinished, type Saying, type Said } from '.
 
 export type { Saying, Said } from './message.ts'
 import { endTurn, openTurn } from './turn.ts'
+import { wakeMachine } from './waking.ts'
 
 export type Opening = {
   readonly spaceId: string
@@ -101,7 +102,13 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     const busy = working(await unfinished(tx, conversation.id), machine)
     if (busy.state === 'working') return { kind: 'still-answering' }
 
-    return append(tx, { ...saying, message: { role: 'user', content: asked } })
+    const said = await append(tx, { ...saying, message: { role: 'user', content: asked } })
+    // In the same transaction as the message, so it is delivered when that commits: woken any
+    // earlier, the machine would look, find nothing, and go back to waiting for the very thing it
+    // was woken for.
+    if (said.kind === 'said') await wakeMachine(tx, conversation.machineId)
+
+    return said
   })
 }
 
@@ -140,6 +147,9 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
     // in the message could hand in any message, through a route that only takes a name.
     const stopped = { activityType: ACTIVITY.stopAsked }
     await append(tx, { ...saying, message: { role: 'activity', content: stopped } })
+    // Somebody is watching a turn they want to end, so this is the wake that matters most: told
+    // on the next report instead, a stop waits out however long the machine is being held for.
+    await wakeMachine(tx, conversation.machineId)
 
     return { kind: 'asked-to-stop' }
   })

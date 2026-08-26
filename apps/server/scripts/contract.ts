@@ -12,6 +12,7 @@ import { connect } from '../src/db/connection.ts'
 import { loadEnv, type Env } from '../src/env.ts'
 import { createLog } from '../src/log.ts'
 import { CONTRACT, handoverApp } from '../src/server/app.ts'
+import { waitingRoom } from '../src/server/waiting.ts'
 import { ROOT } from './run-command.ts'
 
 export function writeContract(env: Env): void {
@@ -27,6 +28,7 @@ export function writeContract(env: Env): void {
     live: { say: async () => undefined, watch: () => () => undefined },
     // A contract is read off the routes, and pages are not routes.
     webRoot: undefined,
+    waiting: waitingRoom(0),
     lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
   })

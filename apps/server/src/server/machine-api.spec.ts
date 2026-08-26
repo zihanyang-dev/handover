@@ -1,26 +1,35 @@
 import { randomUUID } from 'node:crypto'
+import { pino } from 'pino'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
+import { openConversation, sayTo } from '../db/conversation.ts'
+import { listenForWaking } from '../db/waking.ts'
 import { createSpace } from '../db/space.ts'
 import { openSession } from '../db/session.ts'
 import { arrive } from '../db/user.ts'
 import { loadEnv } from '../env.ts'
+import { LOG_OPTIONS } from '../log.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { machineApi } from './machine-api.ts'
+import { waitingRoom, type Waiting } from './waiting.ts'
 import { SESSION_COOKIE } from './session.ts'
 import { normalizeSlug, type Slug } from '@handover/universal'
 import { sql } from 'kysely'
 
 const env = loadEnv()
 const db: Database = connect(env)
+
+/** A log nobody reads: what these tests are about is what comes back, not what was written down. */
+const silent = pino(LOG_OPTIONS, { write: () => undefined })
 const enrolments = enrolmentApi({ db, webOrigin: 'http://localhost:5173' }).route(
   '/',
   approvalApi({ db }),
 )
-const app = machineApi({ db })
+/** Zero, so every test below answers at once. The holding itself has its own tests, at the end. */
+const app = machineApi({ db, waiting: waitingRoom(0) })
 
 afterAll(async () => {
   await db.destroy()
@@ -29,6 +38,7 @@ afterAll(async () => {
 let RUN = ''
 let SLUG = ''
 let COOKIE = ''
+let SPACE = ''
 
 beforeEach(async () => {
   RUN = randomUUID()
@@ -52,6 +62,7 @@ beforeEach(async () => {
     slug: SLUG as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
+  SPACE = made.space.id
 })
 
 /** A machine that got in, and the credential it holds. */
@@ -93,6 +104,32 @@ async function asMachine(
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     ...(method === 'DELETE' ? {} : { body: JSON.stringify(json) }),
   })
+}
+
+/** A conversation on this machine, and something said into it — the only things a machine waits for. */
+async function conversationOn(machine: { id: string; token: string }): Promise<string> {
+  // Reported first: a conversation can only be opened with an agent the machine says it has.
+  await asMachine(machine.token, '/machines/current/poll', 'POST', {
+    found: [{ command: 'claude', version: '2.1.4' }],
+  })
+
+  const opened = await openConversation(db, {
+    spaceId: SPACE,
+    machineId: machine.id,
+    agentKind: 'claude-code',
+  })
+  if (opened.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+
+  return opened.conversationId
+}
+
+async function said(conversationId: string, text: string): Promise<void> {
+  const landed = await sayTo(
+    db,
+    { conversationId, spaceId: SPACE, key: `${conversationId}/${text}` },
+    { text },
+  )
+  if (landed.kind !== 'said') throw new Error(`the fixture could not say anything: ${landed.kind}`)
 }
 
 type Seen = {
@@ -307,5 +344,92 @@ describe('the two doors do not open to each other', () => {
     })
 
     expect(await answered.json()).toEqual({ reason: 'no-machine', recovery: 'start-over' })
+  })
+})
+
+describe('holding a machine question instead of answering "nothing"', () => {
+  /** Long enough that nothing below can pass by timing out, short enough to abandon. */
+  const NEVER = 30
+
+  /** An app of its own, because what is being tested is how long this one holds. */
+  const holding = (room: Waiting) => machineApi({ db, waiting: room })
+
+  it('answers at once when there is already something to take', async () => {
+    // The hold is for when there is nothing. Anything else would make every turn wait out a hold
+    // that had no reason to start.
+    const room = waitingRoom(NEVER)
+    const machine = await attached()
+    const conversation = await conversationOn(machine)
+    await said(conversation, 'read notes.txt')
+
+    const answered = await holding(room).request('/machines/current/poll', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
+      body: JSON.stringify({ found: [] }),
+    })
+
+    expect(await answered.json()).toMatchObject({ asking: { conversationId: conversation } })
+  })
+
+  it('answers the moment somebody says something, rather than on the next report', async () => {
+    // The whole point, and the whole path: the message is written on this connection, Postgres
+    // carries the waking to a connection of its own, and the request being held here answers.
+    // That last hop is also what makes this work between two instances — the listener is not the
+    // pool that wrote, any more than another instance would be.
+    const room = waitingRoom(NEVER)
+    const waking = listenForWaking(env, silent, (machineId) => {
+      room.wake(machineId)
+    })
+    await waking.listening
+
+    try {
+      const machine = await attached('waiting-mbp')
+      const conversation = await conversationOn(machine)
+
+      const asking = holding(room).request('/machines/current/poll', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
+        body: JSON.stringify({ found: [] }),
+      })
+      // Said once the question is already being held, which is the only order that tests anything.
+      await new Promise((soon) => setTimeout(soon, 50))
+      await said(conversation, 'read notes.txt')
+
+      expect(await (await asking).json()).toMatchObject({
+        asking: { conversationId: conversation },
+      })
+    } finally {
+      await waking.stop()
+    }
+  })
+
+  it('says there is nothing, once the hold is over', async () => {
+    const room = waitingRoom(0.05)
+    const machine = await attached('quiet-mbp')
+
+    const answered = await holding(room).request('/machines/current/poll', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
+      body: JSON.stringify({ found: [] }),
+    })
+
+    expect(await answered.json()).not.toHaveProperty('asking')
+  })
+
+  it('lets go of every held question when this instance is stopping', async () => {
+    // Draining them would mean waiting out the hold, and a deploy that takes that long looks
+    // broken. They are answered, and their machines ask again wherever they land.
+    const room = waitingRoom(NEVER)
+    const machine = await attached('leaving-mbp')
+
+    const asking = holding(room).request('/machines/current/poll', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
+      body: JSON.stringify({ found: [] }),
+    })
+    await new Promise((soon) => setTimeout(soon, 50))
+    room.wakeEveryone()
+
+    expect((await asking).status).toBe(200)
   })
 })

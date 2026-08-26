@@ -11,6 +11,7 @@ import { approvalApi } from './approval-api.ts'
 import { conversationApi } from './conversation-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { machineApi } from './machine-api.ts'
+import { waitingRoom } from './waiting.ts'
 import { SESSION_COOKIE } from './session.ts'
 
 const env = loadEnv()
@@ -19,7 +20,7 @@ const enrolments = enrolmentApi({ db, webOrigin: 'http://localhost:5173' }).rout
   '/',
   approvalApi({ db }),
 )
-const machines = machineApi({ db })
+const machines = machineApi({ db, waiting: waitingRoom(0) })
 const app = conversationApi({ db })
 
 afterAll(async () => {

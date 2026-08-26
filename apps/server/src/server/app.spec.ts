@@ -7,6 +7,7 @@ import { pino } from 'pino'
 import { LOG_OPTIONS } from '../log.ts'
 import { handoverApp } from './app.ts'
 import { SHOWS } from './contract.ts'
+import { waitingRoom } from './waiting.ts'
 import type { SendCode } from './sign-in-api.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
@@ -54,6 +55,7 @@ const deps = {
   clients: { google: unreachable, github: unreachable },
   live: { say: async () => undefined, watch: () => () => undefined },
   webRoot: undefined,
+  waiting: waitingRoom(0),
   lettersPerCallerPerHour: 500,
   trustedProxyHops: 0,
 }

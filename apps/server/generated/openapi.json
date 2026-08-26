@@ -686,8 +686,7 @@
         "properties": {
           "pollSeconds": {
             "type": "integer",
-            "minimum": 0,
-            "exclusiveMinimum": true
+            "minimum": 0
           },
           "lookFor": {
             "type": "array",

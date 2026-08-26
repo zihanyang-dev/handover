@@ -12,11 +12,11 @@
  */
 
 import { sql } from 'kysely'
-import { Client } from 'pg'
 import { Happening, type Live, type Moment } from '../conversation/live.ts'
 import type { Env } from '../env.ts'
 import type { Log } from '../log.ts'
 import type { Database } from './connection.ts'
+import { listenOn, type Listening } from './notifications.ts'
 
 /** One name for everything live, and each instance sorts its own watchers out. */
 const CHANNEL = 'handover_live'
@@ -50,51 +50,21 @@ async function announce(db: Database, happening: Happening): Promise<void> {
 }
 
 /**
- * Hears every moment, on a connection of its own.
+ * Hears every moment.
  *
- * `LISTEN` holds the connection for as long as it is listening, so it cannot come from the pool —
- * a pooled connection is handed back and the listening goes with it.
+ * A moment this build cannot read is one nobody can act on, and it is gone in a second either
+ * way — said in the log once rather than thrown at whoever is watching.
  */
 export function listenForMoments(
   env: Env,
   log: Log,
   heard: (happening: Happening) => void,
-): { readonly listening: Promise<void>; readonly stop: () => Promise<void> } {
-  const client = new Client({ connectionString: env.DATABASE_URL })
-
-  client.on('notification', (notice) => {
-    const read = Happening.safeParse(JSON.parse(notice.payload ?? 'null'))
-    // A moment this build cannot read is one nobody can act on, and it is gone in a second either
-    // way. Said in the log once rather than thrown at whoever is watching.
+): Listening {
+  return listenOn(env, log, CHANNEL, (payload) => {
+    const read = Happening.safeParse(JSON.parse(payload === '' ? 'null' : payload))
     if (read.success) heard(read.data)
     else log.warn('a live moment arrived in a shape this build does not know')
   })
-
-  // Nothing here can be recovered by the caller: it is a connection this process owns, and a
-  // browser that stops seeing live moments still has the transcript.
-  client.on('error', (trouble) => {
-    log.error({ err: trouble }, 'the live connection broke')
-  })
-
-  const connected = client
-    .connect()
-    .then(async () => client.query(`listen ${CHANNEL}`))
-    .then(() => undefined)
-    .catch((trouble: unknown) => {
-      log.error({ err: trouble }, 'could not listen for live moments')
-    })
-
-  return {
-    // Settles once this connection is listening. Nothing in the server waits for it — a moment
-    // sent in the first millisecond is a moment nobody was watching for yet either way — but a
-    // test that says "one instance says, another hears" has to know when the other one is there.
-    listening: connected,
-
-    stop: async () => {
-      await connected
-      await client.end()
-    },
-  }
 }
 
 /**

@@ -6,7 +6,14 @@
  * nothing would ever correct it.
  */
 
-/** How often a machine checks in. Answered at once — nothing is held open until there is work. */
+/**
+ * How long a machine goes between reports.
+ *
+ * It is the length of the hold rather than a sleep on the machine's side: its question is kept
+ * open until there is something to say or this many seconds have passed — see `server/waiting.ts`.
+ * Twenty-five because a buffering proxy gives up on a hanging request at about thirty, and a hold
+ * that outlives the connection holding it is a machine that looks like it stopped reporting.
+ */
 export const POLL_SECONDS = 25
 
 /**

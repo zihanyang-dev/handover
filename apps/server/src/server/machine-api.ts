@@ -18,7 +18,7 @@ import {
   type AgentKind,
   type Installed,
 } from '../machine/agent-kind.ts'
-import { POLL_SECONDS, presence } from '../machine/presence.ts'
+import { presence } from '../machine/presence.ts'
 import {
   SHOWS,
   api,
@@ -39,11 +39,16 @@ import {
   UNAVAILABLE,
 } from './failure.ts'
 import { requireMachine, type Attached } from './machine-session.ts'
+import type { Waiting } from './waiting.ts'
 import { modelsBody } from './offers.ts'
 import { requireMember, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
-export type MachineApi = { readonly db: Database }
+export type MachineApi = {
+  readonly db: Database
+  /** The questions this instance is holding. Not a fact, so it is not in the database. */
+  readonly waiting: Waiting
+}
 
 /**
  * Not a machine any more.
@@ -121,10 +126,11 @@ const checkedInBody = z
     /**
      * How long to wait before asking again.
      *
-     * Told rather than compiled in, so the rate is this deployment's to set. Once there is work to
-     * wait for, the server holds the request instead and this becomes how long it holds.
+     * Zero because this deployment holds the question instead: the answer to "is there anything
+     * for me" does not come back until there is, or until the hold is up. A machine that also
+     * slept would double the gap, and be counted as gone halfway through it.
      */
-    pollSeconds: z.number().int().positive(),
+    pollSeconds: z.number().int().nonnegative(),
     /** Which commands to look for. Told every time, so the list can change without a release. */
     lookFor: z.array(z.string()).readonly(),
     /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
@@ -206,6 +212,42 @@ function whatMachinesDo(deps: MachineApi) {
   return api<{ Variables: Attached }>().openapiRoutes([polling(deps), leaving(deps)])
 }
 
+/**
+ * What this machine is owed right now, waiting for it if there is nothing yet.
+ *
+ * The wait is what makes the whole journey feel like one: without it, everything anybody says
+ * sits until the machine next asks, and that gap is the delay a person feels between pressing
+ * send and the agent starting.
+ *
+ * Started before the first look, never after. A waking that arrives while the tables are being
+ * read is exactly the one this request is waiting for, and looking first would miss it and then
+ * hold for the full time with the answer already written down.
+ */
+async function anythingFor(deps: MachineApi, machineId: string) {
+  return deps.waiting.answerFor(
+    machineId,
+    async () => whatIsThere(deps.db, machineId),
+    (found) => found.asking !== undefined || found.stopping !== undefined,
+  )
+}
+
+/** Everything a machine could be told, asked of the tables once. */
+async function whatIsThere(db: Database, machineId: string) {
+  // The stop first: a machine that is already running a turn has to hear about it, and taking a
+  // new one is only worth doing once nothing else is owed.
+  const wanted = await stopWantedOn(db, machineId)
+  const taken = await takeOne(db, machineId)
+
+  return {
+    // Nothing, because the waiting happened here. A machine that slept as well would report half
+    // as often as this deployment thinks it does, and be counted as gone while it was waiting.
+    pollSeconds: 0,
+    lookFor: AGENT_COMMANDS,
+    ...(taken === undefined ? {} : { asking: asAsking(taken) }),
+    ...(wanted === undefined ? {} : { stopping: wanted }),
+  }
+}
+
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
 function polling(deps: MachineApi) {
   return behindAMachine({
@@ -236,20 +278,7 @@ function polling(deps: MachineApi) {
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 
-      // The stop first: a machine that is already running a turn has to hear about it, and taking
-      // a new one is only worth doing once nothing else is owed.
-      const wanted = await stopWantedOn(deps.db, machineId)
-      const taken = await takeOne(deps.db, machineId)
-
-      return c.json(
-        {
-          pollSeconds: POLL_SECONDS,
-          lookFor: AGENT_COMMANDS,
-          ...(taken === undefined ? {} : { asking: asAsking(taken) }),
-          ...(wanted === undefined ? {} : { stopping: wanted }),
-        },
-        200,
-      )
+      return c.json(await anythingFor(deps, machineId), 200)
     },
   })
 }

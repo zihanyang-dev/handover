@@ -9,6 +9,9 @@
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
 import { handTo, listenForMoments, liveThrough } from './db/live.ts'
+import { listenForWaking } from './db/waking.ts'
+import { POLL_SECONDS } from './machine/presence.ts'
+import { waitingRoom } from './server/waiting.ts'
 import type { Moment } from './conversation/live.ts'
 import { PROVIDER_KEYS, loadEnv } from './env.ts'
 import { codeLetter } from './identity/email-code.ts'
@@ -90,6 +93,18 @@ const listening = listenForMoments(env, log, (happening) => {
   handTo(watching, happening)
 })
 
+/**
+ * The machine questions this instance is holding, and the line that tells it when to answer one.
+ *
+ * A machine cannot be reached, so it asks; holding its question is what turns "the next time it
+ * asks" into "now". The waking crosses instances through Postgres, because the machine may be
+ * held here while the person who has something for it is talking to another instance.
+ */
+const waiting = waitingRoom(POLL_SECONDS)
+const waking = listenForWaking(env, log, (machineId) => {
+  waiting.wake(machineId)
+})
+
 const app = handoverApp({
   db,
   secret: env.AUTH_SECRET,
@@ -99,6 +114,7 @@ const app = handoverApp({
   webOrigin: env.WEB_ORIGIN,
   clients,
   live: liveThrough(db, watching),
+  waiting,
   webRoot: env.WEB_ROOT,
   lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
   trustedProxyHops: env.TRUSTED_PROXY_HOPS,
@@ -116,6 +132,10 @@ async function stop(signal: string): Promise<void> {
   stopping = true
   log.info({ signal }, 'stopping')
 
+  // Before anything is closed: a held question is an open connection, and draining one means
+  // waiting out the hold. Answered now, its machine asks again and lands wherever it lands.
+  waiting.wakeEveryone()
+
   const drained = new Promise<void>((resolve) => {
     server.close(() => {
       resolve()
@@ -124,8 +144,9 @@ async function stop(signal: string): Promise<void> {
   const deadline = new Promise<void>((resolve) => setTimeout(resolve, GRACE_MS).unref())
   await Promise.race([drained, deadline])
 
-  // Its own connection, so it is its own to close.
+  // Their own connections, so they are their own to close.
   await listening.stop()
+  await waking.stop()
 
   // Last, and only once nothing is still using it: closing the pool under a live request would
   // fail it after its transaction had already committed.
