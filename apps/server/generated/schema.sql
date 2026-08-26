@@ -172,6 +172,22 @@ CREATE TABLE public.messages (
 
 
 --
+-- Name: outputs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.outputs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    task_id uuid NOT NULL,
+    title text NOT NULL,
+    body text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT outputs_body_check CHECK (((btrim(body) <> ''::text) AND (octet_length(body) <= 65536))),
+    CONSTRAINT outputs_title_check CHECK (((btrim(title) <> ''::text) AND (octet_length(title) <= 200)))
+);
+
+
+--
 -- Name: spaces; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -184,12 +200,33 @@ CREATE TABLE public.spaces (
 
 
 --
+-- Name: tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tasks (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    parent_id uuid,
+    owner_user_id uuid NOT NULL,
+    goal text NOT NULL,
+    state text NOT NULL,
+    sleep_until timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    ended_at timestamp with time zone,
+    CONSTRAINT tasks_check CHECK (((ended_at IS NULL) = (state <> 'done'::text))),
+    CONSTRAINT tasks_check1 CHECK (((sleep_until IS NULL) = (state <> 'sleep'::text))),
+    CONSTRAINT tasks_goal_check CHECK (((btrim(goal) <> ''::text) AND (octet_length(goal) <= 2000))),
+    CONSTRAINT tasks_state_check CHECK ((state = ANY (ARRAY['working'::text, 'wait'::text, 'sleep'::text, 'done'::text])))
+);
+
+
+--
 -- Name: turns; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.turns (
     conversation_id uuid NOT NULL,
-    asked_seq integer NOT NULL,
+    after_seq integer NOT NULL,
     machine_id uuid NOT NULL,
     claimed_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     ended_at timestamp with time zone
@@ -352,6 +389,22 @@ ALTER TABLE ONLY public.messages
 
 
 --
+-- Name: outputs outputs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outputs
+    ADD CONSTRAINT outputs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: outputs outputs_task_id_title_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outputs
+    ADD CONSTRAINT outputs_task_id_title_key UNIQUE (task_id, title);
+
+
+--
 -- Name: spaces spaces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -368,11 +421,19 @@ ALTER TABLE ONLY public.spaces
 
 
 --
+-- Name: tasks tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: turns turns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.turns
-    ADD CONSTRAINT turns_pkey PRIMARY KEY (conversation_id, asked_seq);
+    ADD CONSTRAINT turns_pkey PRIMARY KEY (conversation_id, after_seq);
 
 
 --
@@ -437,6 +498,34 @@ CREATE INDEX machines_in_space ON public.machines USING btree (space_id) WHERE (
 --
 
 CREATE INDEX messages_asked ON public.messages USING btree (conversation_id, seq) WHERE (role = 'user'::text);
+
+
+--
+-- Name: tasks_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tasks_due ON public.tasks USING btree (sleep_until) WHERE (state = 'sleep'::text);
+
+
+--
+-- Name: tasks_one_open_per_conversation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX tasks_one_open_per_conversation ON public.tasks USING btree (conversation_id) WHERE (ended_at IS NULL);
+
+
+--
+-- Name: tasks_open_children; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tasks_open_children ON public.tasks USING btree (parent_id) WHERE (ended_at IS NULL);
+
+
+--
+-- Name: tasks_waiting_on_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tasks_waiting_on_owner ON public.tasks USING btree (owner_user_id) WHERE ((state = 'wait'::text) AND (parent_id IS NULL));
 
 
 --
@@ -543,11 +632,43 @@ ALTER TABLE ONLY public.messages
 
 
 --
+-- Name: outputs outputs_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.outputs
+    ADD CONSTRAINT outputs_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tasks tasks_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tasks tasks_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: tasks tasks_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.tasks(id);
+
+
+--
 -- Name: turns turns_conversation_id_asked_seq_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.turns
-    ADD CONSTRAINT turns_conversation_id_asked_seq_fkey FOREIGN KEY (conversation_id, asked_seq) REFERENCES public.messages(conversation_id, seq) ON DELETE CASCADE;
+    ADD CONSTRAINT turns_conversation_id_asked_seq_fkey FOREIGN KEY (conversation_id, after_seq) REFERENCES public.messages(conversation_id, seq) ON DELETE CASCADE;
 
 
 --

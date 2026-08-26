@@ -22,7 +22,8 @@ const ASKING: Asking = {
   conversationId: 'c-1',
   agentKind: 'claude-code',
   agentSession: null,
-  askedSeq: 4,
+  goal: null,
+  afterSeq: 4,
   asked: { text: 'read notes.txt' },
 }
 
@@ -69,6 +70,7 @@ function saying(...told: readonly Told[]): Agent {
 async function answered(agent: Agent): Promise<readonly Written[]> {
   const machine = {
     where: '/nowhere',
+    handover: 'handover',
     env: {},
     say: () => undefined,
     until: new AbortController().signal,

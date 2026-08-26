@@ -1859,6 +1859,393 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{slug}/conversations/{id}/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Let it carry on without being spoken to */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HandOver"];
+                };
+            };
+            responses: {
+                /** @description Handed over, or handed over already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, or no such conversation in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Something is already running in this conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        /** Stop it carrying on, and stop whatever it handed off */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TakeBack"];
+                };
+            };
+            responses: {
+                /** @description Taken back, or taken back already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, no such conversation, and nothing handed over in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything waiting on you, across every Space */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Inbox"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/machines/current/conversations/{id}/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Stop working, and say why */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StopWorking"];
+                };
+            };
+            responses: {
+                /** @description Stopped, or stopped already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That is not a live machine credential */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nothing was handed over in that conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/machines/current/conversations/{id}/task/handed-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open a piece of work for another agent */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HandOff"];
+                };
+            };
+            responses: {
+                /** @description Opened, and its machine already knows */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HandedOff"];
+                    };
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That is not a live machine credential */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nothing was handed over in that conversation */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such machine here, or it does not have that agent */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/machines/current/conversations/{id}/task/outputs/{title}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Write something down as a piece of work in its own right */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    title: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WriteOutput"];
+                };
+            };
+            responses: {
+                /** @description Written, or revised */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That is not a live machine credential */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nothing was handed over in that conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2042,17 +2429,18 @@ export interface components {
             /** @enum {string} */
             agentKind: "claude-code" | "codex";
             agentSession: string | null;
-            askedSeq: number;
+            afterSeq: number;
+            goal: string | null;
             asked: {
                 text: string;
                 model?: string;
                 effort?: string;
-            };
+            } | null;
         };
         StopWanted: {
             /** Format: uuid */
             conversationId: string;
-            askedSeq: number;
+            afterSeq: number;
         };
         MachineReport: {
             found: {
@@ -2096,6 +2484,7 @@ export interface components {
             working: components["schemas"]["Working"];
             offers: components["schemas"]["Model"][];
             messages: components["schemas"]["Message"][];
+            underway?: components["schemas"]["Underway"];
         };
         Message: {
             /** @enum {string} */
@@ -2141,6 +2530,33 @@ export interface components {
             seq: number;
             /** Format: date-time */
             at: string;
+        };
+        Underway: {
+            goal: string;
+            /** @enum {string} */
+            state: "working" | "wait" | "sleep" | "done";
+            /** Format: date-time */
+            sleepUntil: string | null;
+            handedOff: {
+                /** Format: uuid */
+                conversationId: string;
+                goal: string;
+                /** @enum {string} */
+                state: "working" | "wait" | "sleep" | "done";
+                machineName: string;
+                agentKind: string;
+            }[];
+            outputs: {
+                title: string;
+                body: string;
+                /** Format: date-time */
+                writtenAt: string;
+            }[];
+            under: {
+                /** Format: uuid */
+                conversationId: string;
+                goal: string;
+            } | null;
         };
         OpenedConversation: {
             /** Format: uuid */
@@ -2221,6 +2637,60 @@ export interface components {
             name: string;
             verb: string;
             arg: string;
+        };
+        HandOver: {
+            key: string;
+            goal: string;
+        };
+        TakeBack: {
+            key: string;
+        };
+        Inbox: {
+            waiting: components["schemas"]["Waiting"][];
+        };
+        Waiting: {
+            /** Format: uuid */
+            conversationId: string;
+            spaceSlug: string;
+            machineName: string;
+            goal: string;
+            asked: string | null;
+            /** Format: date-time */
+            since: string;
+        };
+        StopWorking: {
+            key: string;
+            how: components["schemas"]["HowItStopped"];
+        };
+        HowItStopped: {
+            /** @enum {string} */
+            state: "wait";
+            question: string;
+        } | {
+            /** @enum {string} */
+            state: "sleep";
+            /** Format: date-time */
+            until: string;
+        } | {
+            /** @enum {string} */
+            state: "done";
+            /** @enum {string} */
+            ending: "done" | "cannot";
+            text: string;
+        };
+        HandedOff: {
+            /** Format: uuid */
+            conversationId: string;
+        };
+        HandOff: {
+            key: string;
+            goal: string;
+            machine: string;
+            /** @enum {string} */
+            agentKind: "claude-code" | "codex";
+        };
+        WriteOutput: {
+            text: string;
         };
     };
     responses: never;

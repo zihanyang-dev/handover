@@ -519,3 +519,109 @@ h2 {
 .button-quiet:enabled:hover {
   color: var(--content);
 }
+
+/* ── a piece of work somebody handed over ───────────────────────────────── */
+
+/*
+ * Two columns where there is room, one where there is not.
+ *
+ * What goes in the second one is everything that must not scroll away: the goal, what has
+ * happened so far, what it handed off, what it has written. A conversation somebody handed over
+ * runs for hours, and the details of it bury anything a person would come back to look for.
+ */
+.alongside {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 64rem) {
+  .page:has(.alongside) {
+    max-width: 62rem;
+  }
+
+  .alongside {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+  }
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: sticky;
+  top: 1.5rem;
+}
+
+.rail h3 {
+  margin: 0 0 0.5rem;
+  color: var(--basic);
+  font-size: var(--text-xxs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rail-goal {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
+/* ── what has happened so far ───────────────────────────────────────────── */
+
+.beats {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.beat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.1875rem 0;
+  color: var(--content);
+  font-size: var(--text-xs);
+}
+
+.beat time {
+  margin-left: auto;
+  flex: none;
+  color: var(--basic);
+  font-family: var(--font-mono);
+  font-size: var(--text-xxs);
+}
+
+.beat::before {
+  content: '';
+  flex: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--grey-500);
+}
+
+.beat-you::before {
+  background: var(--primary);
+}
+
+.beat-over::before {
+  background: var(--success);
+}
+
+/* ── a goal put in front of somebody to agree to ────────────────────────── */
+
+.proposal {
+  margin: 0.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--grey-700);
+  border-radius: var(--radius-lg);
+  background: var(--grey-950);
+}
+
+.proposal p {
+  margin: 0 0 0.75rem;
+}

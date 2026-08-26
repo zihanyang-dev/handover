@@ -25,6 +25,7 @@ import { conversationApi } from './conversation-api.ts'
 import { machineApi } from './machine-api.ts'
 import type { Waiting } from './waiting.ts'
 import { liveApi } from './live-api.ts'
+import { taskApi } from './task-api.ts'
 import type { Live } from '../conversation/live.ts'
 
 /** What the whole surface needs. `providers` is read off the clients, so it cannot disagree. */
@@ -107,4 +108,5 @@ export function handoverApp(deps: App) {
     .route('/', machineApi({ db: deps.db, waiting: deps.waiting }))
     .route('/', conversationApi({ db: deps.db }))
     .route('/', liveApi({ db: deps.db, live: deps.live }))
+    .route('/', taskApi({ db: deps.db }))
 }

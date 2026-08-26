@@ -82,6 +82,35 @@ export const ACTIVITY = {
   forgot: 'forgot',
   /** Not something that happened: a line written in a shape this build cannot read. */
   unreadable: 'unreadable',
+
+  /**
+   * The seven a handed-over piece of work leaves behind.
+   *
+   * Every one of them is a **moment** — what happened, and when. What is true *now* is
+   * `tasks.state`, and nothing decides anything by reading these. The two are written in the same
+   * transaction and are not two copies of one fact: one says "at 03:02 it asked you", the other
+   * says "it is still waiting". Without the first, nothing could tell somebody when it got stuck;
+   * without the second, deciding would mean going back through the transcript.
+   *
+   * They are also the whole of what a reader is shown as "what has happened so far" — which is
+   * why none of them needs the agent to write anything beyond the command it was already running.
+   */
+  /** A goal put in front of a person to approve. Nothing has begun until they do. */
+  proposed: 'proposed',
+  /** From here it moves without being spoken to. Carries the goal a person approved. */
+  handedOver: 'handed-over',
+  /** It opened a piece of work for somebody else. Carries which one. */
+  handedOff: 'handed-off',
+  /** Something it handed off came back. Carries what that one said. */
+  handedBack: 'handed-back',
+  /** It stopped to ask its owner something. What it asked is its own message, just before. */
+  asked: 'asked',
+  /** It is waiting out a moment. Carries which. */
+  asleep: 'asleep',
+  /** Over, and how: it finished, or it says it cannot. */
+  finished: 'finished',
+  /** A person took it back. Whatever it had handed off was taken back with it. */
+  takenBack: 'taken-back',
 } as const
 
 /** The activities that close a turn. A conversation is busy until one of these is its last word. */

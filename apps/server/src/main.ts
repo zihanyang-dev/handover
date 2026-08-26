@@ -19,6 +19,7 @@ import { createLog } from './log.ts'
 import { resend, type Mailer } from './mail.ts'
 import { PROVIDERS, type Provider } from './identity/provider.ts'
 import { handoverApp } from './server/app.ts'
+import { keepWaking } from './server/waker.ts'
 import type { SendCode } from './server/email-code.ts'
 import { githubClient } from './server/oauth/github.ts'
 import { googleClient } from './server/oauth/google.ts'
@@ -105,6 +106,14 @@ const waking = listenForWaking(env, log, (machineId) => {
   waiting.wake(machineId)
 })
 
+/**
+ * The one thing on this side that starts on its own.
+ *
+ * Everything else here answers somebody: a browser, a machine, another instance. A moment that
+ * has come has nobody to answer, so something has to look.
+ */
+const waker = keepWaking(db, log)
+
 const app = handoverApp({
   db,
   secret: env.AUTH_SECRET,
@@ -143,6 +152,8 @@ async function stop(signal: string): Promise<void> {
   })
   const deadline = new Promise<void>((resolve) => setTimeout(resolve, GRACE_MS).unref())
   await Promise.race([drained, deadline])
+
+  waker.stop()
 
   // Their own connections, so they are their own to close.
   await listening.stop()

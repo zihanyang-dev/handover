@@ -7,7 +7,7 @@
  */
 
 import type { components } from '../generated/api.ts'
-import type { Agent, Said, Told, Why } from './agents/agent.ts'
+import type { Agent, Asked, Said, Told, Why } from './agents/agent.ts'
 import { shorten } from './agents/agent.ts'
 import { NO_ANSWER, type Api } from './api.ts'
 import { sleep } from './sleeping.ts'
@@ -62,7 +62,7 @@ type Writing = {
 export type Answering = {
   readonly conversationId: string
   /** Which turn of it. A stop names one, and one that names another turn is not about this. */
-  readonly askedSeq: number
+  readonly afterSeq: number
   /** Ask the agent to stop. The turn ends as cancelled, and the conversation stays usable. */
   readonly stop: () => Promise<void>
   /** Settles when there is nothing left to write. Never rejects. */
@@ -78,6 +78,8 @@ export type Answering = {
 export type Machine = {
   /** Where the agent works: this process's own directory, which is where it was connected. */
   readonly where: string
+  /** How to run this program again, so an agent can be told something that works. */
+  readonly handover: string
   readonly env: NodeJS.ProcessEnv
   readonly say: (line: string) => void
   /**
@@ -110,14 +112,60 @@ export function startAnswering(
 
   return {
     conversationId: asking.conversationId,
-    askedSeq: asking.askedSeq,
+    afterSeq: asking.afterSeq,
     stop: talk.stop,
-    done: write(writing, asking, talk.say(asking.asked), machine.say),
+    done: write(writing, asking, talk.say(whatToDo(asking, machine.handover)), machine.say),
+  }
+}
+
+/**
+ * How to stop, which an agent has to be told every time or it will not stop at all.
+ *
+ * The command is spelt out rather than named, because "run `handover`" is an assumption about a
+ * PATH nobody checked. What is handed over is how this very process was started, which is a thing
+ * that is already known to work on this machine.
+ */
+function canSay(handover: string): string {
+  return `When you need something from them, or you are finished, say so by running these:
+
+  ${handover} task wait "<question>"     stop, and wait for them to answer
+  ${handover} task sleep <when>          stop until a moment: 3h, 45m, or an ISO time
+  ${handover} task done "<what came of it>"
+  ${handover} task cannot "<why not>"
+  ${handover} task new "<goal>" --to <agent>@<machine>    hand a piece of it to another agent
+  ${handover} task output "<title>" "<text>"              write something worth keeping
+
+Run \`${handover} task --help\` for the whole list. Until you say one of these, you will be given
+another turn as soon as this one ends, for as long as it takes.`
+}
+
+/**
+ * What this turn is, put to the agent.
+ *
+ * Two kinds of turn. One answers a question somebody asked, and is that question. One carries on
+ * a piece of work nobody is sitting in front of, and has no question at all — so it is told what
+ * the work is for, what it may say back, and whatever the person said if they said anything.
+ *
+ * All three every time. Between two turns the agent's own memory may not have survived (`03`
+ * decision ⑨), and a turn that woke up with nothing still has to know what it is doing and how to
+ * stop — an agent that cannot say "I am waiting on you" carries on for ever instead.
+ */
+function whatToDo(asking: Asking, handover: string): Asked {
+  if (asking.goal === null) return asking.asked ?? { text: '' }
+
+  const said = asking.asked === null ? [] : [`They have just said: ${asking.asked.text}`]
+
+  return {
+    text: [`You are carrying this on by yourself: ${asking.goal}`, ...said, canSay(handover)].join(
+      '\n\n',
+    ),
+    ...(asking.asked?.model === undefined ? {} : { model: asking.asked.model }),
+    ...(asking.asked?.effort === undefined ? {} : { effort: asking.asked.effort }),
   }
 }
 
 async function closing(writing: Writing, asking: Asking, content: Happened): Promise<void> {
-  await writing.message(`${asking.askedSeq}/end`, { role: 'activity', content })
+  await writing.message(`${asking.afterSeq}/end`, { role: 'activity', content })
 }
 
 /**
@@ -186,7 +234,7 @@ async function write(
     wrote += 1
     // Never short-circuited: a turn goes on being written down after one line is lost, because
     // what did land is still worth having. What it changes is only how the turn is allowed to end.
-    whole = (await writing.message(`${asking.askedSeq}/${wrote}`, goes.written)) && whole
+    whole = (await writing.message(`${asking.afterSeq}/${wrote}`, goes.written)) && whole
   }
 
   // It stopped talking without saying how it went. Nobody can say either, and a turn left open is

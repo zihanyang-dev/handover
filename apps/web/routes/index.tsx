@@ -5,6 +5,7 @@ import { DisplayName } from '../features/identity/display-name.tsx'
 import { Credentials } from '../features/identity/credentials.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
 import { SpaceList } from '../features/spaces/space-list.tsx'
+import { Inbox } from '../features/conversations/inbox.tsx'
 import { SignOut } from '../features/identity/sign-out.tsx'
 
 /** What a trip through a provider left behind, if it left anything. */
@@ -55,6 +56,9 @@ function Screen() {
         </p>
       )}
 
+      {/* Before the Spaces, because it is the one thing on this page that is about right now.
+          Everything else here is somewhere to go; this is somebody being asked for something. */}
+      <Inbox />
       <SpaceList />
       <NewSpace />
       <Credentials />

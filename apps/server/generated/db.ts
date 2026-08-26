@@ -115,6 +115,15 @@ export interface Messages {
   seq: number;
 }
 
+export interface Outputs {
+  body: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  task_id: string;
+  title: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Spaces {
   created_at: Generated<Timestamp>;
   display_name: string;
@@ -122,8 +131,20 @@ export interface Spaces {
   slug: string;
 }
 
+export interface Tasks {
+  conversation_id: string;
+  created_at: Generated<Timestamp>;
+  ended_at: Timestamp | null;
+  goal: string;
+  id: Generated<string>;
+  owner_user_id: string;
+  parent_id: string | null;
+  sleep_until: Timestamp | null;
+  state: string;
+}
+
 export interface Turns {
-  asked_seq: number;
+  after_seq: number;
   claimed_at: Generated<Timestamp>;
   conversation_id: string;
   ended_at: Timestamp | null;
@@ -146,7 +167,9 @@ export interface DB {
   machines: Machines;
   memberships: Memberships;
   messages: Messages;
+  outputs: Outputs;
   spaces: Spaces;
+  tasks: Tasks;
   turns: Turns;
   users: Users;
 }

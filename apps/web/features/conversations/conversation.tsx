@@ -12,6 +12,7 @@ import { CheckCircle, ExclamationCircle, Terminal } from 'react-bootstrap-icons'
 import { agentName } from '../agents.ts'
 import {
   useConversation,
+  useHandOver,
   useSay,
   useStop,
   useWatching,
@@ -20,6 +21,7 @@ import {
   type Message,
   type Working,
 } from './talking.ts'
+import { Underway } from './underway.tsx'
 
 /**
  * What an activity says, for the ones this page has words for.
@@ -32,6 +34,9 @@ const ACTIVITIES: Record<string, string> = {
   stop: 'You asked it to stop',
   forgot: 'It does not remember anything said before this',
   unknown: 'Nobody knows how this turn went — its machine was not there to say',
+  'handed-over': 'You handed it over — from here it carries on by itself',
+  'taken-back': 'You took it back',
+  asked: 'It stopped to ask you something',
 }
 
 export function Conversation({ slug, id }: { readonly slug: string; readonly id: string }) {
@@ -63,28 +68,42 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
     )
   }
 
-  const { agentKind, machineName, working, offers, messages } = conversation.data
+  const { agentKind, machineName, working, offers, messages, underway } = conversation.data
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>{agentName(agentKind)}</h2>
-        <span className="note">on {machineName}</span>
-      </div>
+    <div className="alongside">
+      <section className="panel">
+        <div className="panel-head">
+          <h2>{agentName(agentKind)}</h2>
+          <span className="note">on {machineName}</span>
+        </div>
 
-      <ul className="stack">
-        {messages.map((message) => (
-          <Said key={message.seq} message={message} />
-        ))}
-      </ul>
+        <ul className="stack">
+          {messages.map((message) => (
+            <Said key={message.seq} message={message} slug={slug} id={id} />
+          ))}
+        </ul>
 
-      {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
-          screen. Nothing at all while it is idle — a settled turn has nothing to watch. */}
-      {working.state === 'working' && <Watching key={turnOf(messages)} slug={slug} id={id} />}
+        {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
+            screen. Nothing at all while it is idle — a settled turn has nothing to watch. */}
+        {working.state === 'working' && <Watching key={turnOf(messages)} slug={slug} id={id} />}
 
-      <Doing state={working.state} slug={slug} id={id} turn={turnOf(messages)} />
-      <Ask slug={slug} id={id} working={working.state === 'working'} offers={offers} />
-    </section>
+        <Doing state={working.state} />
+        <Ask
+          slug={slug}
+          id={id}
+          working={working.state === 'working'}
+          handedOver={underway !== undefined}
+          turn={turnOf(messages)}
+          offers={offers}
+        />
+      </section>
+
+      {/* Only once somebody has handed it over. Its being here is how the page says so. */}
+      {underway !== undefined && (
+        <Underway slug={slug} id={id} underway={underway} messages={messages} />
+      )}
+    </div>
   )
 }
 
@@ -99,13 +118,66 @@ function turnOf(messages: readonly Message[]): number {
   return messages.findLast((message) => message.role === 'user')?.seq ?? 0
 }
 
-function Said({ message }: { readonly message: Message }) {
+function Said({
+  message,
+  slug,
+  id,
+}: {
+  readonly message: Message
+  readonly slug: string
+  readonly id: string
+}) {
   if (message.role === 'user') return <li className="said">{message.content.text}</li>
   if (message.role === 'assistant')
     return <li className="said said-good">{message.content.text}</li>
   if (message.role === 'tool') return <Used did={message.content} />
+  if (message.content.activityType === 'proposed') {
+    return <Proposal slug={slug} id={id} what={message.content} />
+  }
 
   return <Happened what={message.content} />
+}
+
+/**
+ * A goal the agent put in front of you, and the moment you decide.
+ *
+ * It is a line in the transcript rather than something over the page, because that is what it is:
+ * the agent said it, at that point in the conversation, and the answer belongs beside it.
+ *
+ * What you are agreeing to is not "may it start" but "did you understand me" — which is why the
+ * sentence had to come from the agent, and why there is nothing here to fill in.
+ */
+function Proposal({
+  slug,
+  id,
+  what,
+}: {
+  readonly slug: string
+  readonly id: string
+  readonly what: Activity
+}) {
+  const over = useHandOver(slug, id)
+  const goal = textOf(what) ?? ''
+
+  return (
+    <li className="proposal">
+      <p>{goal}</p>
+      <div className="beside">
+        <span className="note">It will carry on by itself until it says otherwise.</span>
+        <button
+          className="button button-primary"
+          type="button"
+          disabled={over.isPending || goal === ''}
+          onClick={() => {
+            over.mutate(goal)
+          }}
+        >
+          <span className="button-label">Hand it over</span>
+        </button>
+      </div>
+      {over.isError && <p className="note">That did not go through. Try again.</p>}
+    </li>
+  )
 }
 
 /** What a tool call holds is the contract's to say, and it says it — see `Message` there. */
@@ -197,40 +269,13 @@ function said(moment: Moment): string {
   return `${moment.verb === '' ? moment.name : moment.verb} ${moment.arg}`.trim()
 }
 
-function Doing({
-  state,
-  slug,
-  id,
-  turn,
-}: {
-  readonly state: Working['state']
-  readonly slug: string
-  readonly id: string
-  readonly turn: number
-}) {
-  const stop = useStop(slug, id)
-
+/** What it is up to, in a line. Stopping it is a button of its own — see {@link Ask}. */
+function Doing({ state }: { readonly state: Working['state'] }) {
   if (state === 'unknown') {
     return <p className="note">Its machine is not here, so nobody can say what it is doing.</p>
   }
 
-  if (state !== 'working') return null
-
-  return (
-    <div className="beside">
-      <span className="note">Working…</span>
-      <button
-        className="button button-quiet"
-        type="button"
-        disabled={stop.isPending}
-        onClick={() => {
-          stop.mutate(turn)
-        }}
-      >
-        <span className="button-label">Stop</span>
-      </button>
-    </div>
-  )
+  return state === 'working' ? <p className="note">Working…</p> : null
 }
 
 /**
@@ -313,27 +358,53 @@ function Choices({
 }
 
 /**
- * Saying something, which interrupts it if it is in the middle of something.
+ * What "hand it over" actually says to the agent.
  *
- * Nothing here is ever disabled for being busy. Somebody typing "no, leave legacy/ alone" is
- * saying it *because* it is busy, and a field that greys itself out at that moment is the one
- * moment it had a job to do.
+ * A sentence rather than a signal, because there is no signal — an agent is handed a question and
+ * answers it, and this is a question. Asking for one sentence is asking for the thing a person
+ * will read and agree to; asking for a plan would be asking for something nobody has decided how
+ * to show yet.
+ */
+const ASK_IT_TO_TAKE_OVER = {
+  text: `If I left you to carry this on by yourself, what would you be making true? Say it in one
+sentence, and write it down with:
+
+  handover task new "<that sentence>"
+
+Do not start on it — I will read what you wrote and agree to it first.`,
+}
+
+/**
+ * Saying something, and stopping it.
+ *
+ * One button, in one place, meaning one thing at a time: while it works that place says Stop, and
+ * once it has stopped it says Send. Sending is never what ends a turn — somebody who types while
+ * it is working may well be writing something to say *after* it finishes, and a Send that threw
+ * away the last two seconds of a turn would make typing itself risky.
+ *
+ * The field is never disabled for being busy, though. Somebody typing "no, leave legacy/ alone"
+ * is typing it *because* it is busy: the words come first, the stop is one press away.
  */
 function Ask({
   slug,
   id,
   working,
+  handedOver,
+  turn,
   offers,
 }: {
   readonly slug: string
   readonly id: string
   readonly working: boolean
+  readonly handedOver: boolean
+  readonly turn: number
   readonly offers: readonly Model[]
 }) {
   const [text, setText] = useState('')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
   const say = useSay(slug, id)
+  const stop = useStop(slug, id)
 
   return (
     <form
@@ -384,10 +455,40 @@ function Ask({
         onEffort={setEffort}
       />
 
-      <button className="button button-primary" type="submit" disabled={say.isPending}>
-        {/* What pressing it means, said before it is pressed: it stops what it is doing. */}
-        <span className="button-label">{working ? 'Interrupt and send' : 'Send'}</span>
-      </button>
+      {/* The way in. An agent in an ordinary conversation has been told nothing about pieces of
+          work — it answers questions — so somebody who types "take it from here" is talking to
+          something that has never heard of that. This asks it in words it will act on, and what
+          comes back is its own restatement, which is the only sentence with any standing to
+          become the goal. */}
+      {!working && !handedOver && (
+        <button
+          className="button button-secondary"
+          type="button"
+          disabled={say.isPending}
+          onClick={() => {
+            say.mutate(ASK_IT_TO_TAKE_OVER)
+          }}
+        >
+          <span className="button-label">Hand it over…</span>
+        </button>
+      )}
+
+      {working ? (
+        <button
+          className="button button-primary"
+          type="button"
+          disabled={stop.isPending}
+          onClick={() => {
+            stop.mutate(turn)
+          }}
+        >
+          <span className="button-label">Stop</span>
+        </button>
+      ) : (
+        <button className="button button-primary" type="submit" disabled={say.isPending}>
+          <span className="button-label">Send</span>
+        </button>
+      )}
       {/* Said where it happened rather than as a banner: it is about the words still in the
           box, and somebody who has to go and pick another machine wants it beside them. */}
       {say.isError && <p className="note">{whyNot(say.error.message)}</p>}

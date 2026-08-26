@@ -110,6 +110,42 @@ const standingsBody = z
  */
 const spokenBody = Spoken.openapi('Message')
 
+const taskStateBody = z.enum(['working', 'wait', 'sleep', 'done'])
+
+/**
+ * The piece of work underway in a conversation, when somebody handed it over.
+ *
+ * Absent means nobody has — which is what a page shows by showing nothing extra at all. Its
+ * presence *is* the difference between a conversation you are sitting in and one you walked away
+ * from, so a page never has to ask a second question to know which it is looking at.
+ */
+const underwayBody = z
+  .object({
+    goal: z.string(),
+    state: taskStateBody,
+    /** When it will wake by itself. Only ever set while it is asleep. */
+    sleepUntil: z.iso.datetime().nullable(),
+    /** Still open, which is why the one that handed them out is not being given turns. */
+    handedOff: z
+      .array(
+        z.object({
+          conversationId: z.uuid(),
+          goal: z.string(),
+          state: taskStateBody,
+          machineName: z.string(),
+          agentKind: z.string(),
+        }),
+      )
+      .readonly(),
+    /** What it wrote on purpose, newest first. Not what it happened to touch on the way. */
+    outputs: z
+      .array(z.object({ title: z.string(), body: z.string(), writtenAt: z.iso.datetime() }))
+      .readonly(),
+    /** The piece of work that handed this one out, when an agent did. Null when a person did. */
+    under: z.object({ conversationId: z.uuid(), goal: z.string() }).nullable(),
+  })
+  .openapi('Underway')
+
 const readingBody = z
   .object({
     id: z.uuid(),
@@ -125,6 +161,7 @@ const readingBody = z
      */
     offers: modelsBody,
     messages: z.array(spokenBody).readonly(),
+    underway: underwayBody.optional(),
   })
   .openapi('Transcript')
 
@@ -158,11 +195,26 @@ function asTranscript(reading: Reading) {
 
   return {
     ...reading,
+    underway: asUnderway(reading.underway),
     offers: offers.success ? offers.data : [],
     messages: reading.messages.map((one) => {
       const read = Spoken.safeParse({ ...one, at: one.at.toISOString() })
       return read.success ? read.data : unreadable(one.seq, one.at)
     }),
+  }
+}
+
+/** The piece of work underway, flattened for the wire. Undefined when nobody handed one over. */
+function asUnderway(underway: Reading['underway']) {
+  if (underway === undefined) return undefined
+
+  return {
+    goal: underway.task.goal,
+    state: underway.task.state,
+    sleepUntil: underway.task.sleepUntil?.toISOString() ?? null,
+    handedOff: underway.handedOff,
+    outputs: underway.outputs.map((one) => ({ ...one, writtenAt: one.writtenAt.toISOString() })),
+    under: underway.under,
   }
 }
 

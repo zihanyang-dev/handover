@@ -229,10 +229,18 @@ function toldFrom(message: SDKMessage, translate: (message: unknown) => readonly
   return []
 }
 
-function settings(where: string, claude: string, resume: string | null, asked: Asked) {
+function settings(
+  running: { readonly where: string; readonly claude: string; readonly env: NodeJS.ProcessEnv },
+  resume: string | null,
+  asked: Asked,
+) {
   return {
-    cwd: where,
-    pathToClaudeCodeExecutable: claude,
+    cwd: running.where,
+    pathToClaudeCodeExecutable: running.claude,
+    // Handed on rather than left to be inherited, because one variable in it says which
+    // conversation this turn belongs to — which is how `handover task` knows what it is talking
+    // about without anybody typing an id.
+    env: running.env,
     // Nobody is standing at this machine to answer a prompt, so anything that asks would hang
     // there until the turn was given up on. What it may do is bounded by the account it runs as
     // and the directory it was connected in, which is what a person is told up front.
@@ -317,7 +325,10 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
       return false
     }
 
-    running = query({ prompt: asked.text, options: settings(where, claude, resume, asked) })
+    running = query({
+      prompt: asked.text,
+      options: settings({ where, claude, env }, resume, asked),
+    })
 
     try {
       return yield* everythingItSaid(running, resume, () => interrupted)

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -45,7 +45,12 @@ type Message = { seq: number; role: string; content: unknown; at: string }
  *
  * The array is read when it is asked for, so a test can add to it and then say so.
  */
-function transcript(messages: Message[], state = 'idle', offers: Offers = []) {
+function transcript(
+  messages: Message[],
+  state = 'idle',
+  offers: Offers = [],
+  underway?: Transcript['underway'],
+) {
   return [
     signedIn(),
     http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
@@ -59,9 +64,23 @@ function transcript(messages: Message[], state = 'idle', offers: Offers = []) {
         working: { state } as Transcript['working'],
         offers,
         messages: tail as Transcript['messages'],
+        ...(underway === undefined ? {} : { underway }),
       })
     }),
   ]
+}
+
+/** A piece of work underway, with nothing handed out and nothing written unless a test says so. */
+function underway(more: Partial<NonNullable<Transcript['underway']>> = {}) {
+  return {
+    goal: 'Make the hard-coded 30s timeout configurable',
+    state: 'working' as const,
+    sleepUntil: null,
+    handedOff: [],
+    outputs: [],
+    under: null,
+    ...more,
+  }
 }
 
 type Transcript = components['schemas']['Transcript']
@@ -369,15 +388,16 @@ describe('while it is working', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
   })
 
-  it('lets somebody interrupt it, and says that is what pressing send will do', async () => {
+  it('lets somebody type while it works, and offers Stop where Send would be', async () => {
     // Whoever types "no, leave legacy/ alone" is typing it *because* it is busy. A field that
-    // greys itself out at that moment is grey for the one moment it had a job to do.
+    // greys itself out at that moment is grey for the one moment it had a job to do — and a Send
+    // that ended the turn would make typing itself risky.
     server.use(...transcript([say(1, 'user', { text: 'take your time' })], 'working'))
 
     open('/s/acme/c/c-1')
 
-    const send = await screen.findByRole('button', { name: 'Interrupt and send' })
-    expect(send).toHaveProperty('disabled', false)
+    expect(await screen.findByRole('button', { name: 'Stop' })).toHaveProperty('disabled', false)
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
     expect(screen.getByLabelText('Say something')).toHaveProperty('disabled', false)
   })
 
@@ -561,5 +581,203 @@ describe('saying something', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(await screen.findByText(/machine is not here/i)).toBeDefined()
+  })
+})
+
+describe('handing a conversation over', () => {
+  it('asks the agent for the sentence, because it has never heard of a piece of work', async () => {
+    // An agent in an ordinary conversation answers questions. Somebody typing "take it from here"
+    // is talking to something that has no idea what that means — so this asks it in words it will
+    // act on, and what comes back is its own restatement.
+    const sent: { asked: { text: string } }[] = []
+    server.use(
+      ...transcript([say(1, 'user', { text: 'where does the timeout live?' })]),
+      http.post('*/spaces/acme/conversations/c-1/messages', async ({ request }) => {
+        sent.push((await request.json()) as { asked: { text: string } })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/s/acme/c/c-1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Hand it over…' }))
+
+    await waitFor(() => {
+      expect(sent[0]?.asked.text).toContain('handover task new')
+    })
+  })
+
+  it('offers no such thing once it has been handed over', async () => {
+    server.use(...transcript([say(1, 'user', { text: 'go' })], 'idle', [], underway()))
+
+    open('/s/acme/c/c-1')
+
+    await screen.findByLabelText('This piece of work')
+    expect(screen.queryByRole('button', { name: 'Hand it over…' })).toBeNull()
+  })
+
+  it('shows what the agent says it will do, with a way to agree to it', async () => {
+    // Not an approval step — a restatement. What is being confirmed is that it understood, which
+    // is the one thing ten seconds here buys and three hours in the morning does not.
+    server.use(
+      ...transcript([
+        say(1, 'user', { text: 'take it from here' }),
+        say(2, 'activity', { activityType: 'proposed', text: 'Make the timeout configurable' }),
+      ]),
+    )
+
+    open('/s/acme/c/c-1')
+
+    expect(await screen.findByText('Make the timeout configurable')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Hand it over' })).toBeDefined()
+  })
+
+  it('hands over the sentence the agent wrote, not anything the person typed', async () => {
+    const sent: { goal: string }[] = []
+    server.use(
+      ...transcript([
+        say(2, 'activity', { activityType: 'proposed', text: 'Make the timeout configurable' }),
+      ]),
+      http.post('*/spaces/acme/conversations/c-1/task', async ({ request }) => {
+        sent.push((await request.json()) as { goal: string })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/s/acme/c/c-1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Hand it over' }))
+
+    await waitFor(() => {
+      expect(sent).toMatchObject([{ goal: 'Make the timeout configurable' }])
+    })
+  })
+
+  it('shows nothing about a piece of work in a conversation nobody handed over', async () => {
+    server.use(...transcript([say(1, 'user', { text: 'where does the timeout live?' })]))
+
+    open('/s/acme/c/c-1')
+
+    await screen.findByRole('button', { name: 'Send' })
+    expect(screen.queryByLabelText('This piece of work')).toBeNull()
+  })
+})
+
+describe('what a piece of work shows beside the conversation', () => {
+  it('keeps the goal and where it has got to out of the transcript', async () => {
+    // Two hundred lines in, the line that mattered is somewhere above. None of this may be
+    // something a person has to scroll for.
+    server.use(...transcript([say(1, 'user', { text: 'go' })], 'working', [], underway()))
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    expect(rail.textContent).toContain('Make the hard-coded 30s timeout configurable')
+    expect(rail.textContent).toContain('Working')
+  })
+
+  it('says it is waiting on what it handed out, which is counted and not stored', async () => {
+    server.use(
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({
+          handedOff: [
+            {
+              conversationId: 'c-2',
+              goal: 'Add an integration test',
+              state: 'working',
+              machineName: 'build-server-1',
+              agentKind: 'codex',
+            },
+          ],
+        }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    expect(rail.textContent).toContain('Waiting on 1 it handed out')
+    expect(within(rail).getByRole('link', { name: 'Add an integration test' })).toBeDefined()
+  })
+
+  it('says when it will wake by itself', async () => {
+    server.use(
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({ state: 'sleep', sleepUntil: '2030-09-03T12:00:00.000Z' }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    expect((await screen.findByLabelText('This piece of work')).textContent).toContain(
+      'Asleep until',
+    )
+  })
+
+  it('lists what has happened, built from the transcript and asking the agent for nothing', async () => {
+    server.use(
+      ...transcript(
+        [
+          say(1, 'user', { text: 'go' }),
+          say(2, 'activity', { activityType: 'handed-over', text: 'the goal' }),
+          say(3, 'activity', { activityType: 'asked', text: 'A or B?' }),
+        ],
+        'idle',
+        [],
+        underway({ state: 'wait' }),
+      ),
+    )
+
+    open('/s/acme/c/c-1')
+
+    const rail = await screen.findByLabelText('This piece of work')
+    expect(rail.textContent).toContain('You handed it over')
+    expect(rail.textContent).toContain('It asked you something')
+  })
+
+  it('opens what it wrote where it is, rather than on a page of its own', async () => {
+    server.use(
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({
+          outputs: [
+            {
+              title: 'Rollout review',
+              body: 'Error rate flat at 0.02%.',
+              writtenAt: '2026-09-01T00:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    )
+    open('/s/acme/c/c-1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollout review' }))
+
+    expect(screen.getByText('Error rate flat at 0.02%.')).toBeDefined()
+  })
+
+  it('takes it back, and says that takes back what it handed out too', async () => {
+    let asked = false
+    server.use(
+      ...transcript([say(1, 'user', { text: 'go' })], 'idle', [], underway()),
+      http.delete('*/spaces/acme/conversations/c-1/task', () => {
+        asked = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/s/acme/c/c-1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+
+    await waitFor(() => {
+      expect(asked).toBe(true)
+    })
   })
 })

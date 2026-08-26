@@ -50,6 +50,13 @@ export type CheckingIn = {
   readonly env: NodeJS.ProcessEnv
   /** Where an agent works: this process's own directory, which is where it was connected. */
   readonly where: string
+  /**
+   * How to run this program again.
+   *
+   * Handed to the agent so it can say things back. Not named as `handover`, because that is an
+   * assumption about a PATH nobody checked — see {@link howToRunThis}.
+   */
+  readonly handover: string
 }
 
 /**
@@ -206,7 +213,7 @@ export async function stopIfAsked(
   // same conversation, because interrupting is how the next one got there. Matched loosely, the
   // interrupt stops the answer it was making room for.
   if (wanted.conversationId !== answering.conversationId) return undefined
-  if (wanted.askedSeq !== answering.askedSeq) return undefined
+  if (wanted.afterSeq !== answering.afterSeq) return undefined
 
   say(`stopping ${answering.conversationId}`)
   await answering.stop()
@@ -234,7 +241,14 @@ async function taken(answering: Answering | undefined, running: CheckingIn): Pro
  * question that sits unanswered forever with nobody able to explain why.
  */
 function answer(api: Api, asking: Asking, machine: Machine, over: () => void): Answering {
-  const agent = agentFor(asking.agentKind, machine.env)
+  // The agent is found afresh for every turn, and this is where the turn's own name goes into the
+  // environment it will run in. `handover task` reads it, so nothing has to be typed or guessed:
+  // an agent says "I am waiting on you" about *this* conversation because that is the only one it
+  // was told about.
+  const agent = agentFor(asking.agentKind, {
+    ...machine.env,
+    HANDOVER_CONVERSATION: asking.conversationId,
+  })
   machine.say(
     agent === undefined
       ? `cannot run ${asking.agentKind} on this machine`
@@ -254,7 +268,7 @@ function cannot(api: Api, asking: Asking, machine: Machine): Answering {
 
   return {
     conversationId: asking.conversationId,
-    askedSeq: asking.askedSeq,
+    afterSeq: asking.afterSeq,
     stop: async () => {
       // Nothing was ever started, so there is nothing to stop. Saying so is the whole answer.
     },

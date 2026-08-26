@@ -245,7 +245,7 @@ describe('saying something to an agent', () => {
     await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
 
     const taken = await takeOne(db, MACHINE)
-    expect(taken?.askedSeq).toBe(5)
+    expect(taken?.afterSeq).toBe(5)
     await ends(conversation, 'turn-3/end')
 
     const read = await conversationWith(db, { conversationId: conversation, spaceId: SPACE })

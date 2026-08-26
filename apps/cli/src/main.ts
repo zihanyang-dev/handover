@@ -20,14 +20,52 @@ import { promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
-import { VERSION, machineEnvironment, readEnv } from './env.ts'
+import { VERSION, howToRunThis, machineEnvironment, readEnv } from './env.ts'
 import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
 import { forEveryone, handoverFor, type Step } from './service.ts'
 import { sleep } from './sleeping.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
+import { reachableAs } from './reachable.ts'
+import { runTask } from './task.ts'
 
 const run = promisify(execFile)
+
+/**
+ * `handover task …` is taken before anything else is parsed.
+ *
+ * Its words are the agent's, not this launcher's: a goal beginning with a dash, a question with
+ * `--to` in the middle of it, a title that is just `--help`. Handing them to the launcher's own
+ * option parser would mean the agent had to know which words this program has claimed, which is
+ * the sort of thing nobody would remember and nothing would enforce.
+ */
+/** What this program can be asked to do. Two levels, and the second one is `handover task`. */
+const HELP = `handover — hand a piece of work to an agent on a machine you own
+
+  handover connect        put this machine in a Space
+  handover run            stay connected, and answer what comes
+  handover task --help    what an agent says about the work it was handed
+  handover version        which build this is
+
+  --origin <url>          the deployment to connect to
+  --name <name>           what this machine is called in the Space
+  --key <key>             join without opening a browser
+  --system / --user       whose service to hand this over to`
+
+if (process.argv[2] === '--help' || process.argv[2] === 'help') {
+  process.stdout.write(`${HELP}\n`)
+  process.exit(0)
+}
+
+if (process.argv[2] === 'task') {
+  const ran = await runTask({
+    env: machineEnvironment(),
+    where: attachmentPath(readEnv().configHome, forEveryone({}, process.getuid?.() ?? 1)),
+    words: process.argv.slice(3),
+  })
+  process.stdout.write(`${ran.said}\n`)
+  process.exit(ran.kind === 'wrong' || ran.kind === 'no-such-command' ? 1 : 0)
+}
 
 const { values, positionals } = parseArgs({
   options: {
@@ -88,7 +126,7 @@ if (command === 'connect') {
   await stayConnected(attachment)
 } else {
   say(`no such command: ${command}`)
-  say('try: handover connect   ·   handover run   ·   handover version')
+  say(HELP)
   process.exit(1)
 }
 
@@ -325,7 +363,18 @@ async function stayConnected(attachment: Attachment): Promise<void> {
     attachment.lookFor,
     // Where an agent works is where this process is, which the service file set to the directory
     // `connect` was run in. Nobody chooses it, and nothing asks.
-    { sleep, say, env: machineEnvironment(), where: process.cwd() },
+    {
+      sleep,
+      say,
+      // `handover` is put on the front of the PATH an agent is given, so what it is told to run
+      // is a command that exists — on this machine, whatever this machine turns out to be.
+      env: {
+        ...machineEnvironment(),
+        PATH: await reachableAs({ beside: where, howToRun: howToRunThis() }, machineEnvironment()),
+      },
+      where: process.cwd(),
+      handover: 'handover',
+    },
     stopping.signal,
   )
 

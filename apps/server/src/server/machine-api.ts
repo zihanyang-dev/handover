@@ -115,15 +115,29 @@ const askingBody = z
      * remember, and how a turn nobody saw the end of can be read back afterwards.
      */
     agentSession: z.string().nullable(),
-    /** Where the question sits, so the machine can name what it writes after it. */
-    askedSeq: z.number().int(),
-    asked: Asked,
+    /**
+     * Which line of the transcript this turn begins after.
+     *
+     * Not "which question this answers": a conversation somebody handed over runs turns nobody
+     * asked for, and the line before those is the ending of the turn before them.
+     */
+    afterSeq: z.number().int(),
+    /**
+     * What this piece of work is for, when somebody handed the conversation over.
+     *
+     * Null when nobody has, and then `asked` is the whole of the turn. Sent on every turn rather
+     * than once: the agent's memory of the last one may not have survived, and a turn that
+     * forgot everything still has to know what it is doing.
+     */
+    goal: z.string().nullable(),
+    /** What a person said, when the line this turn begins after is one. Null when it is not. */
+    asked: Asked.nullable(),
   })
   .openapi('SomethingToAnswer')
 
 /** Which turn a stop is about. Both halves, so a stop cannot be applied to a later turn. */
 const stoppingBody = z
-  .object({ conversationId: z.uuid(), askedSeq: z.number().int() })
+  .object({ conversationId: z.uuid(), afterSeq: z.number().int() })
   .openapi('StopWanted')
 
 const checkedInBody = z
@@ -197,8 +211,9 @@ function asAsking(taken: Taken) {
     conversationId: taken.conversationId,
     agentKind: taken.agentKind as AgentKind,
     agentSession: taken.agentSession,
-    askedSeq: taken.askedSeq,
-    asked: Asked.parse(taken.asked),
+    afterSeq: taken.afterSeq,
+    goal: taken.goal,
+    asked: taken.asked === null || taken.asked === undefined ? null : Asked.parse(taken.asked),
   }
 }
 

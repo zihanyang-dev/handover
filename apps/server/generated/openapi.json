@@ -724,11 +724,16 @@
             "type": "string",
             "nullable": true
           },
-          "askedSeq": {
+          "afterSeq": {
             "type": "integer"
+          },
+          "goal": {
+            "type": "string",
+            "nullable": true
           },
           "asked": {
             "type": "object",
+            "nullable": true,
             "properties": {
               "text": {
                 "type": "string",
@@ -750,7 +755,8 @@
           "conversationId",
           "agentKind",
           "agentSession",
-          "askedSeq",
+          "afterSeq",
+          "goal",
           "asked"
         ]
       },
@@ -761,13 +767,13 @@
             "type": "string",
             "format": "uuid"
           },
-          "askedSeq": {
+          "afterSeq": {
             "type": "integer"
           }
         },
         "required": [
           "conversationId",
-          "askedSeq"
+          "afterSeq"
         ]
       },
       "MachineReport": {
@@ -943,6 +949,9 @@
             "items": {
               "$ref": "#/components/schemas/Message"
             }
+          },
+          "underway": {
+            "$ref": "#/components/schemas/Underway"
           }
         },
         "required": [
@@ -1121,6 +1130,113 @@
               "at"
             ]
           }
+        ]
+      },
+      "Underway": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "wait",
+              "sleep",
+              "done"
+            ]
+          },
+          "sleepUntil": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "handedOff": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "conversationId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "goal": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "working",
+                    "wait",
+                    "sleep",
+                    "done"
+                  ]
+                },
+                "machineName": {
+                  "type": "string"
+                },
+                "agentKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "conversationId",
+                "goal",
+                "state",
+                "machineName",
+                "agentKind"
+              ]
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "writtenAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "title",
+                "body",
+                "writtenAt"
+              ]
+            }
+          },
+          "under": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "conversationId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "goal": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversationId",
+              "goal"
+            ]
+          }
+        },
+        "required": [
+          "goal",
+          "state",
+          "sleepUntil",
+          "handedOff",
+          "outputs",
+          "under"
         ]
       },
       "OpenedConversation": {
@@ -1452,6 +1568,232 @@
               "arg"
             ]
           }
+        ]
+      },
+      "HandOver": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "key",
+          "goal"
+        ]
+      },
+      "TakeBack": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "Inbox": {
+        "type": "object",
+        "properties": {
+          "waiting": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Waiting"
+            }
+          }
+        },
+        "required": [
+          "waiting"
+        ]
+      },
+      "Waiting": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "spaceSlug": {
+            "type": "string"
+          },
+          "machineName": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "asked": {
+            "type": "string",
+            "nullable": true
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "conversationId",
+          "spaceSlug",
+          "machineName",
+          "goal",
+          "asked",
+          "since"
+        ]
+      },
+      "StopWorking": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "how": {
+            "$ref": "#/components/schemas/HowItStopped"
+          }
+        },
+        "required": [
+          "key",
+          "how"
+        ]
+      },
+      "HowItStopped": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "wait"
+                ]
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "state",
+              "question"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "sleep"
+                ]
+              },
+              "until": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "state",
+              "until"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "done"
+                ]
+              },
+              "ending": {
+                "type": "string",
+                "enum": [
+                  "done",
+                  "cannot"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "state",
+              "ending",
+              "text"
+            ]
+          }
+        ]
+      },
+      "HandedOff": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "conversationId"
+        ]
+      },
+      "HandOff": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "machine": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "agentKind": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "goal",
+          "machine",
+          "agentKind"
+        ]
+      },
+      "WriteOutput": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          }
+        },
+        "required": [
+          "text"
         ]
       }
     },
@@ -3188,6 +3530,419 @@
           },
           "401": {
             "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/task": {
+      "post": {
+        "summary": "Let it carry on without being spoken to",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandOver"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Handed over, or handed over already"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Something is already running in this conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Stop it carrying on, and stop whatever it handed off",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeBack"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Taken back, or taken back already"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, no such conversation, and nothing handed over in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/inbox": {
+      "get": {
+        "summary": "Everything waiting on you, across every Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/task": {
+      "patch": {
+        "summary": "Stop working, and say why",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopWorking"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stopped, or stopped already"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing was handed over in that conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/task/handed-off": {
+      "post": {
+        "summary": "Open a piece of work for another agent",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandOff"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Opened, and its machine already knows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandedOff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing was handed over in that conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No such machine here, or it does not have that agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/current/conversations/{id}/task/outputs/{title}": {
+      "put": {
+        "summary": "Write something down as a piece of work in its own right",
+        "security": [
+          {
+            "machineToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": true,
+            "name": "title",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteOutput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Written, or revised"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing was handed over in that conversation",
             "content": {
               "application/json": {
                 "schema": {

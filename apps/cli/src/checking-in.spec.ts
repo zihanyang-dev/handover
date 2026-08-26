@@ -52,6 +52,7 @@ function runningFor(rounds: number) {
     running: {
       env: { PATH: '/nonexistent' } as NodeJS.ProcessEnv,
       where: '/nowhere',
+      handover: 'handover',
       say: (line: string) => said.push(line),
       sleep: async (seconds: number) => {
         waited.push(seconds)
@@ -184,7 +185,7 @@ describe('staying connected', () => {
               conversationId: 'c-1',
               agentKind: 'claude-code',
               agentSession: null,
-              askedSeq: 1,
+              afterSeq: 1,
               asked: { text: 'take your time' },
             },
           },
@@ -223,10 +224,10 @@ describe('staying connected', () => {
             conversationId: 'c-1',
             agentKind: 'claude-code',
             agentSession: null,
-            askedSeq: 1,
+            afterSeq: 1,
             asked: { text: 'take your time' },
           },
-          stopping: { conversationId: 'c-1', askedSeq: 1 },
+          stopping: { conversationId: 'c-1', afterSeq: 1 },
         }),
       ),
       // The turn never ends: this machine cannot run that agent, and saying so never gets through.
@@ -279,6 +280,7 @@ describe('being asked to stop', () => {
     const running = {
       env: {},
       where: '/nowhere',
+      handover: 'handover',
       say: () => undefined,
       sleep: async (seconds: number, until: AbortSignal) =>
         new Promise<void>((wake) => {
@@ -339,17 +341,17 @@ describe('one report, and what came of it', () => {
 })
 
 describe('acting on a stop', () => {
-  const TURN = { conversationId: 'c-1', askedSeq: 20 }
+  const TURN = { conversationId: 'c-1', afterSeq: 20 }
 
   /** An agent that remembers whether anybody stopped it. */
-  function answering(conversationId: string, askedSeq: number) {
+  function answering(conversationId: string, afterSeq: number) {
     let stopped = false
 
     return {
       was: () => stopped,
       it: {
         conversationId,
-        askedSeq,
+        afterSeq,
         done: Promise.resolve(),
         stop: async () => {
           stopped = true

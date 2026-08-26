@@ -17,6 +17,7 @@ import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/tra
 import type { Database, Tx } from './connection.ts'
 import { append, alreadySaid, held, type Saying, type Said } from './message.ts'
 import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
+import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
 import { wakeMachine } from './waking.ts'
 
 export type { Saying, Said } from './message.ts'
@@ -112,8 +113,9 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     const said = await append(tx, { ...saying, message: { role: 'user', content: asked } })
     // In the same transaction as the message, so it is delivered when that commits: woken any
     // earlier, the machine would look, find nothing, and go back to waiting for the very thing it
-    // was woken for.
-    if (said.kind === 'said') await wakeMachine(tx, conversation.machineId)
+    // was woken for. And a piece of work that was waiting on this person is waiting no longer —
+    // the two are one call, so neither can be done without the other.
+    if (said.kind === 'said') await backToWork(tx, conversation.id, conversation.machineId)
 
     return said
   })
@@ -217,6 +219,9 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
     if (ends(reporting.message)) {
       const running = await openTurn(tx, reporting.conversationId)
       if (running !== undefined) await endTurn(tx, reporting.conversationId, running)
+      // A turn that went wrong stops a piece of work that was handed over: whether it matters is
+      // a person's to say, and an agent that is not handed a turn cannot try again on its own.
+      if (wentWrong(reporting.message)) await waitsForAPerson(tx, reporting.conversationId)
       // This machine has just become free, and whatever it is holding open was answered "nothing"
       // because it was not. Waking it is how the next question starts now rather than in
       // twenty-five seconds.
@@ -230,6 +235,21 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
 /** Whether this is the message that says how a turn went. */
 function ends(message: Message): boolean {
   return message.role === 'activity' && ENDINGS.includes(message.content.activityType)
+}
+
+/**
+ * Whether that ending was trouble, as opposed to a turn that simply finished.
+ *
+ * `cancelled` is not: somebody asked for it, and a conversation somebody handed over carries on
+ * from an interruption the same way it carries on from anything else.
+ */
+function wentWrong(message: Message): boolean {
+  if (message.role !== 'activity') return false
+
+  return (
+    message.content.activityType === ACTIVITY.failed ||
+    message.content.activityType === ACTIVITY.unknown
+  )
 }
 
 /**
@@ -317,6 +337,8 @@ export type Reading = {
   readonly offers: unknown
   /** Everything since what the reader said it had, or the whole of it when they said nothing. */
   readonly messages: readonly Stored[]
+  /** The piece of work running in it, if somebody handed it over. Nothing when it is just talk. */
+  readonly underway: Underway | undefined
 }
 
 /**
@@ -427,5 +449,152 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
       presence(conversation, conversation.asOf),
     ),
     messages,
+    underway: await underwayIn(tx, conversation.id),
   }
+}
+
+export type HandedOff =
+  | { readonly kind: 'handed-off'; readonly conversationId: string; readonly taskId: string }
+  /** No machine by that name in this Space, or it was removed. */
+  | { readonly kind: 'no-machine' }
+  /** That machine is here but does not have that agent. */
+  | { readonly kind: 'no-agent' }
+  /** This machine is not running a piece of work in that conversation. */
+  | { readonly kind: 'nothing-to-hand-off' }
+
+export type HandingOff = {
+  readonly conversationId: string
+  readonly machineId: string
+  readonly key: string
+  /** The machine to hand it to, by the name a person sees in the Space. */
+  readonly machine: string
+  readonly agentKind: AgentKind
+  readonly goal: string
+}
+
+/**
+ * One agent opens a piece of work for another.
+ *
+ * A new conversation, because it is a different agent on a different machine — and `03` settled
+ * that changing the agent means changing the conversation. Nothing about this being a sub-task
+ * makes that so; it is the same rule everything else follows.
+ *
+ * Its owner is the agent that opened it, which is `parent_id` and nothing else. That is why what
+ * it asks never reaches a person's Inbox: it is not asking them.
+ *
+ * Handing off does not stop the one handing off. It is free to open a second, and a third — what
+ * stops it is its own turn ending while any of them are still open, which is counted rather than
+ * declared.
+ */
+export async function handOffTo(db: Database, handing: HandingOff): Promise<HandedOff> {
+  return db.transaction().execute(async (tx) => {
+    const mine = await tx
+      .selectFrom('conversations')
+      .select(['id', 'space_id as spaceId'])
+      .where('id', '=', handing.conversationId)
+      .where('machine_id', '=', handing.machineId)
+      .forUpdate()
+      .executeTakeFirst()
+
+    if (mine === undefined) return { kind: 'nothing-to-hand-off' }
+
+    const parent = await openTaskOn(tx, mine.id)
+    if (parent === undefined) return { kind: 'nothing-to-hand-off' }
+
+    const to = await agentNamed(tx, mine.spaceId, handing)
+    if (typeof to !== 'string') return to
+
+    const opened = await tx
+      .insertInto('conversations')
+      .values({ space_id: mine.spaceId, machine_id: to, agent_kind: handing.agentKind })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+
+    const task = await tx
+      .insertInto('tasks')
+      .values({
+        conversation_id: opened.id,
+        parent_id: parent.id,
+        // The person on the hook is still the person: an agent handing work to an agent does not
+        // change who has to answer for it. What changes is who its questions go to.
+        owner_user_id: parent.ownerUserId,
+        goal: handing.goal,
+        state: 'working',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+
+    await bothSides(tx, handing, { mine: mine.id, theirs: opened.id })
+    await wakeMachine(tx, to)
+
+    return { kind: 'handed-off', conversationId: opened.id, taskId: task.id }
+  })
+}
+
+/**
+ * The machine an agent named, if that agent is on it and it is in this Space.
+ *
+ * Both under the machine's lock rather than read and then decided on, for the same reason opening
+ * a conversation is: a machine removed between the read and the insert would leave a piece of
+ * work pinned to something nobody can reach.
+ */
+async function agentNamed(
+  tx: Tx,
+  spaceId: string,
+  handing: HandingOff,
+): Promise<string | Extract<HandedOff, { kind: 'no-machine' | 'no-agent' }>> {
+  const to = await tx
+    .selectFrom('machines')
+    .select('id')
+    .where('space_id', '=', spaceId)
+    .where('name', '=', handing.machine)
+    .where('removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+
+  if (to === undefined) return { kind: 'no-machine' }
+
+  const agent = await tx
+    .selectFrom('agents')
+    .select('kind')
+    .where('machine_id', '=', to.id)
+    .where('kind', '=', handing.agentKind)
+    .executeTakeFirst()
+
+  return agent === undefined ? { kind: 'no-agent' } : to.id
+}
+
+/**
+ * The two lines a hand-off leaves: one where it came from, one where it landed.
+ *
+ * The one that landed is an activity rather than something said, and nobody said it — a
+ * conversation whose only line is an unanswered question is one this deployment would go on
+ * trying to answer for ever, long after somebody took the work back.
+ */
+async function bothSides(
+  tx: Tx,
+  handing: HandingOff,
+  where: { readonly mine: string; readonly theirs: string },
+): Promise<void> {
+  await append(tx, {
+    conversationId: where.theirs,
+    key: 'handed-over',
+    message: {
+      role: 'activity',
+      content: { activityType: ACTIVITY.handedOver, text: handing.goal },
+    },
+  })
+
+  await append(tx, {
+    conversationId: where.mine,
+    key: handing.key,
+    message: {
+      role: 'activity',
+      content: {
+        activityType: ACTIVITY.handedOff,
+        text: handing.goal,
+        conversationId: where.theirs,
+      },
+    },
+  })
 }

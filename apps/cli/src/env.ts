@@ -66,3 +66,30 @@ export function machineEnvironment(): NodeJS.ProcessEnv {
 function nonEmpty(value: string | undefined): string | undefined {
   return value === undefined || value.trim() === '' ? undefined : value
 }
+
+/**
+ * How to run this program again, exactly as it was run.
+ *
+ * The agent has to be able to say things back — "I am waiting on you", "this is finished" — and
+ * what it is told to run must be a command that actually works on the machine it is on. `handover`
+ * usually is on the PATH, because that is how it got connected in the first place. It is not when
+ * this is running from source, and it is not when somebody put the binary somewhere a service's
+ * PATH does not reach.
+ *
+ * So nothing is assumed. A compiled binary is its own path; source is the runtime and the file.
+ * Either way the agent is handed something it can run without looking for anything.
+ */
+export function howToRunThis(argv: readonly string[] = process.argv): string {
+  const [runtime, file] = argv
+  if (runtime === undefined) return 'handover'
+
+  // A single-file build reports itself as both — there is no script to hand to a runtime.
+  if (file === undefined || runtime === file) return quoted(runtime)
+
+  return `${quoted(runtime)} ${quoted(file)}`
+}
+
+/** A path with a space in it is one word, and somewhere on somebody's machine there is one. */
+function quoted(path: string): string {
+  return path.includes(' ') ? `'${path}'` : path
+}

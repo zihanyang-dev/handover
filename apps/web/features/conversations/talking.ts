@@ -44,6 +44,9 @@ type Transcript = components['schemas']['Transcript']
 /** Whether it is being worked on, in the contract's own words. Three states, and no fourth. */
 export type Working = components['schemas']['Working']
 
+/** The piece of work underway in a conversation. Absent means nobody handed this one over. */
+export type Underway = components['schemas']['Underway']
+
 /**
  * What is happening in this conversation right now, and when to go and read what was written.
  *
@@ -226,5 +229,69 @@ export function useStop(slug: string, id: string) {
       if (error !== undefined) throw new Error(error.reason)
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+  })
+}
+
+/**
+ * Handing it over, which is where a piece of work begins.
+ *
+ * The goal is the agent's own restatement, taken from the card it wrote — not from anything the
+ * person typed. A sentence has the standing to be the name of a piece of work only because the
+ * one that has to make it true wrote it and the one who has to live with it read it.
+ */
+export function useHandOver(slug: string, id: string) {
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (goal: string) => {
+      const intention = `hand-over:${id}:${goal}`
+      const { error } = await api.POST('/spaces/{slug}/conversations/{id}/task', {
+        params: { path: { slug, id } },
+        body: { key: retryKey(intention), goal },
+      })
+      if (error !== undefined) throw new Error(error.reason)
+      retryKeyDone(intention)
+    },
+    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+  })
+}
+
+/**
+ * Taking it back, which takes back whatever it handed out as well.
+ *
+ * A `DELETE`, because that is what it is: what goes away is the piece of work underway. The
+ * conversation and everything said in it stay exactly where they are.
+ *
+ * Named after the conversation rather than after the click, so pressing it twice while the first
+ * one is still going is the same request rather than two — the same rule everything else here
+ * follows.
+ */
+export function useTakeBack(slug: string, id: string) {
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await api.DELETE('/spaces/{slug}/conversations/{id}/task', {
+        params: { path: { slug, id } },
+        body: { key: `take-back/${id}` },
+      })
+      if (error !== undefined) throw new Error(error.reason)
+    },
+    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+  })
+}
+
+/** Everything waiting on you, across every Space. The one read that is not under a Space. */
+export function inbox() {
+  return queryOptions({
+    queryKey: ['inbox'] as const,
+    queryFn: async () => {
+      const { data, error } = await api.GET('/me/inbox', {})
+      if (data === undefined) throw new Error(error.reason)
+      return data.waiting
+    },
+    // Often enough that somebody who leaves this open sees a piece of work stop on them, rarely
+    // enough to be free. Nothing pushes here: an Inbox is read when somebody wonders, not watched.
+    refetchInterval: 15_000,
   })
 }

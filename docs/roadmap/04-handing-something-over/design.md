@@ -36,12 +36,22 @@
 没有任何东西会报错。再加上 Inbox 要跨 Space 查「在等我的」—— 靠往回翻消息推,每一段对话翻一遍,
 建不了索引。
 
-**carry 是同一个结论。** 它的 `Work` 分两样东西:`Lifecycle` 是存的(「还允不允许继续处理」),
-`Activity` 是**派生的投影**(working / offline / failed / ready),在一条 `CASE` 里当场算出来。
+**carry 分得更清楚,而这里跟它一样:**
+
+```
+carry 存的     Lifecycle       「还允不允许继续处理」—— 一句声明,没有别的事实能推出来
+carry 派生的   Activity        working / offline / failed / ready —— 一条 CASE 当场算
+```
+
 而且 carry 的 `lifecycle` 出生时是 `open|paused|closed`,**下一个 migration 就砍成了
 `= 'open'`** —— 一个状态枚举先设计再砍掉,那条路它替我们走过了。
 
-所以这里存的是**没有任何别的事实能推出来的那一件**:agent 自己声明它停下来了。
+这里存的也只有声明那一层:**它自己说它停下来了。** 派生的照旧派生 —— 「它的机器不在了」还是
+从 presence 算(`03` 的三态,一处没动),不进 `state`。
+
+**只有一样是例外,而且它是被逼的:一轮以 `failed` / `unknown` 收尾 → `wait`。** 这本来能派生
+(读最后一轮的收尾),但那要读 transcript,而判断不读 transcript。所以它由写那条收尾的同一个
+事务顺手写下来 —— 一个写入者,和别的转换一样。
 
 ---
 
@@ -68,9 +78,22 @@ done      再也不会
 
 ```
 不派活   state ≠ working  或者  它有没结束的子任务
-Inbox    state = wait
-页面      「它开了 2 件活」← 数一下
+Inbox    state = wait  且  parent_id is null  且  owner 是你
 ```
+
+**页面上看到的比这四个值多,那些多出来的全是派生的** —— 和 `03` 的三态一处不动,同一个做法:
+
+```
+state = working  且有没结束的子任务    → 「在等它开的活」
+state = working  且它的机器不在        → 「它的机器不在了」
+state = working  其余                  → 「在跑」+ 此刻在干什么
+state = wait                           → 「在等你」
+state = sleep                          → 「在睡,还有 14 小时」
+state = done                           → 「完了」,怎么完的看它自己那句话
+```
+
+carry 也是这么分的:存的是声明(`Lifecycle`),给人看的是投影(`Activity`)。**存的那层要小到
+没有第二种解释,看的那层想多细都行 —— 因为它算错了不会让任何东西卡住。**
 
 这样刚好解开一个绕不过去的尴尬:**它问了你一件事,同时还挂着两件子任务。**
 `state=wait`(进你的 Inbox ✓)而且有未结束的子任务(不派活 ✓)—— 两个都为真,不打架,因为
@@ -82,15 +105,19 @@ Inbox    state = wait
 
 ```
 你点「交给它」                  → working    hand-over 端点
-它说「我问你」                  → wait       它调的那个端点
-它说「睡到 T」                  → sleep + sleep_until
+它 `wait "…"`                   → wait       它调的那个端点
+它 `sleep 3h`                   → sleep + sleep_until
 一轮收成 failed / unknown       → wait       machineSays(一轮收尾本来就在这儿)
 一轮收成 done / cancelled       → 不动它      它没说要停
 你说话                          → working    sayTo
 子任务结束                      → working    finish 端点顺手写父的
 到点                            → working    叫醒器
-它 finish / 你收回              → done + ended_at
+它 `done` / `cannot` / 你收回   → done + ended_at
 ```
+
+**每一条都只碰没结束的那一件**(`where ended_at is null`)。你对一件已经完了的事说话,那就是
+`03` 的说话,不会让它复活;一件子任务在父任务被收回之后才结束,它写不动那一行。这条由
+`where` 保证,不靠谁记得。
 
 **「变回 working」和「叫醒那台机器」做成一次调用** —— 和 `wakeMachine` 现在的位置一样。
 **没法只叫醒不改状态,也没法只改状态不叫醒。**
@@ -98,9 +125,12 @@ Inbox    state = wait
 **到点由叫醒器自己写:**
 
 ```sql
-update tasks set state = 'working', sleep_until = null
- where state = 'sleep' and sleep_until <= now()
-returning conversation_id
+with woken as (
+  update tasks set state = 'working', sleep_until = null
+   where state = 'sleep' and sleep_until <= now()
+  returning conversation_id
+)
+select distinct c.machine_id from woken join conversations c on c.id = woken.conversation_id
 ```
 
 一条语句,走部分索引,只碰到点的那几行,然后叫醒那几台机器。这样 **`state` 永远字面为真** ——
@@ -142,10 +172,10 @@ tasks
 outputs
   id
   task_id
-  key               agent 自己给的名字。同一个名字再写一次就是改它
-  title · body      有界
+  title             它自己给的名字,也是它的身份。同名再写一次就是改它
+  body              有界
   created_at · updated_at
-  unique (task_id, key)
+  unique (task_id, title)
 
 turns
   asked_seq → after_seq                                   ← 改名,别的不动
@@ -158,22 +188,33 @@ turns
 做完了再交办一次),那就是两件各有开始和结束的东西。而且「一段对话同时只能有一件没完的」是一条
 conversations 表达不了的并发边界 —— 那条部分唯一索引就是它,由数据库拦着。
 
-**`activityType` 加六个值,而且只记「人要看见的」:**
+**`activityType` 加七个值,而且只记「人要看见的时刻」:**
 
 ```
 handed-over   从这里起它自己走
 handed-off    它开了一件活(带子任务的 id)
 handed-back   一件子任务有结果了(带它说的那句话)
+asked         它在这一刻停下来问你了
 asleep        它要睡到什么时候
-finished      这件事结束了(带 done / cannot)
+finished      这件事结束了(做成了 / 做不了)
 taken-back    你收回了
 ```
 
-**没有 `asked`。** 它问你的那句话就是它说的话(一条 assistant 消息);「它在等你」是
-`tasks.state`,不是 transcript 里的一行。**开放的那个集合不承载判断,承载判断的那个是封闭的** ——
-上一版之所以看着无穷无尽,就是因为我让开放的那个去做判断了。
+**这七条是记录,不是判断。** 两者的关系和 `03` 的「叫停活动」与 `turns` 一模一样:
 
-**大事记不建表。** 它就是这六种活动加上 `tasks` 那一行 —— 系统本来就知道,不用 agent 写一个字。
+```
+活动   这一刻发生了什么     给人看,而且是「大事记」的全部来源
+状态   现在是什么样         给判断用,而且判断只读它
+```
+
+同一个事务里写下,但不是同一个事实的两份拷贝 —— 一个是**时刻**,一个是**当下**。所以
+`asked` 这条活动和 `state = 'wait'` 都要有:没有活动,大事记就说不出「它是几点问的你」;
+没有状态,判断就得回去翻 transcript。
+
+**开放的那个集合不承载判断,承载判断的那个是封闭的。** 上一版之所以看着无穷无尽,就是因为我让
+开放的那个去做判断了。
+
+**大事记不建表**,它就是这七种活动。
 
 **不建**:`state` 之外的第二个枚举 · `wakes` 表 · 子任务计数列 · 预算的任何一列 ·
 「它改过哪些文件」的任何一列(那是从命令行参数里猜的)。
@@ -185,8 +226,8 @@ taken-back    你收回了
 **① 交办是两步,因为目标该由要干活的那个写**
 
 ```
-handover task propose "…"        它写一张卡片进 transcript
-POST .../hand-over               你点「交给它」,这时才建 tasks 那一行
+handover task new "…"     它写一张卡片进 transcript(不带 --to)
+POST .../hand-over        你点「交给它」,这时才建 tasks 那一行
 ```
 
 第一步只是一条活动,没有 task。第二步做三件事,一个事务:
@@ -200,9 +241,46 @@ wakeMachine
 **卡片上的那句话就是 `goal`,一个字不改。** 你点头的是它的复述 —— 那是这句话有资格当身份的
 唯一理由。你按「不对」,什么都没建出来,接着聊。
 
+**①' 「交给它」发出去的是一句话,因为没有第二条通道**
+
+按钮不是一个信号 —— 一个普通对话里的 agent 从来没听说过「一件事」这个概念,它被交给的是问题,
+它回答问题。所以按钮**发一条消息**,内容是「如果我把这件事丢给你,你要做成什么?一句话,用
+`handover task new` 记下来。先别动手。」
+
+那条消息在 transcript 里就是你说的话,因为它就是 —— 你按了按钮,你就是这么问的。
+
+**这条也解释了为什么 PRD 里的「你说『剩下的你自己做』」不是承诺:** 那句话能不能起作用,取决于
+那个 agent 碰巧知不知道有这么个东西。**按钮是唯一保证走得通的入口。**
+
+**①'' `handover` 是被放到 PATH 上的,不是假设它在那儿**
+
+agent 被告知去运行 `handover task …`。「运行 `handover`」是一个**没人验证过的关于 PATH 的假设**:
+这个程序可能是一个装在服务 PATH 够不到的地方的二进制,也可能是在一个 runtime 后面跑源码 ——
+那种时候机器上压根没有一个叫 `handover` 的东西。
+
+所以常驻进程起来的时候写一个 shim(就是 `exec <这个进程是怎么被启动的> "$@"`),放在机器凭据
+文件旁边的 `bin/` 里,并把那个目录放在**它交给 agent 的 PATH 最前面**。
+
+**没有人需要装任何东西**,这和整个产品的那条规矩是同一条。写不进去(只读的 home)就原样返回
+PATH —— 那是一台奇怪的机器,不是一台坏机器,而拒绝启动会让它一句话都答不了。
+
+**①''' 一件在等它父任务的子任务,不算「它还有活没完」**
+
+这是实测撞出来的死锁,而且它有两半:
+
+```
+子任务问了它的负责人一个问题       它的负责人是那个 agent,不是人 —— Inbox 里永远不会出现
+父任务被「有没结束的子任务」挡着   而挡着它的,正是那件在等它回话的子任务
+                                   两边互相等,而且没有任何地方会说一声
+```
+
+所以两半都要:**停下来和「告诉在等它的那个人」是一条规则**(不然三个函数里总有一个忘了叫醒),
+而且**派活那条 `where` 不把「在等我的孩子」算进阻塞** —— 一个孩子的负责人永远是它的父任务,
+所以一件在 `wait` 的子任务问的一定是这一件。
+
 **② 开子任务不用声明「我在等」**
 
-`hand-off` 之后它接着做 —— 不然并行子任务开不出第二件。它这一轮结束时,孩子还没完就自然
+`new --to` 之后它接着做 —— 不然并行子任务开不出第二件。它这一轮结束时,孩子还没完就自然
 不派活(上面那条规则)。所以**没有 `wait --for-subtasks` 这条命令**。
 
 任何一件子任务结束,就往父的 transcript 追一条 `handed-back` 并叫醒父的机器 ——
@@ -227,13 +305,27 @@ wakeMachine
 **⑤ agent 改状态走 CLI,不走 SDK 的工具**
 
 ```
-handover task propose "…"                  写一张卡片给人看
-handover task ask "…"                      问负责人一件事,然后等
-handover task sleep --until <时刻>          睡到那时候
-handover task hand-off "…" --to <agent>    开一件子任务,接着做
-handover task output --key <名> --title …   写一份产出,同名就是改它
-handover task finish --done | --cannot "…"
+它要开一件事   new    "目标"  [--to codex@build-server-1]
+它要停下来     wait   "两种写法,用哪个?"          停到你回话
+               sleep  3h                          停到那个时刻
+它完了         done   "改完了,PR 在 xxx"
+               cannot "这台机器没有数据库权限"
+它写了个东西   output "上线后三天数据复盘" < 正文
 ```
+
+**每一条都是一个动词加一句话,只有一个 flag。**
+
+`new` 一条命令两种用法,因为它们是同一件事 ——「这件事该有人做」,区别只在给谁:不带 `--to`
+是提给人(出一张卡片,人点头才建),带 `--to` 是交给另一个 agent(直接建,因为它自己就是负责人)。
+**交办中的时候 `new` 必须带 `--to`**,而这条不用代码拦 —— 一段对话同时只能有一件没完的事,
+那条部分唯一索引本来就拦着。
+
+**四个动词里有四个就是状态名。** `wait` / `sleep` / `done` / `cannot` —— 命令名就是它要把这件事
+推进的那个状态,所以 agent 看一眼 `--help` 就看到了那张状态图,不用在 prompt 里再解释一遍。
+
+`done` 和 `cannot` 是两个词而不是 `finish` 的两个 flag:它们是**给人看的两种结局**,不是一个
+动作的参数。`output` 用标题当身份 —— 同名就是改同一份,一份三天的报告第一天写开头、第三天补完,
+标题不变就是同一份。
 
 `handover task --help` 列得出来,所以**它自己会用**,不用把命令表塞进 prompt 里再指望它记住。
 一级 `handover --help`、二级 `handover task --help`,后面加东西不用改前面。
@@ -241,8 +333,14 @@ handover task finish --done | --cannot "…"
 **为什么是命令行不是 MCP 工具。** 命令行两家都认,而且不需要在任何机器上装任何东西 —— 它就是
 那台机器上已经跑着的那个二进制。一个只有一家支持的工具协议,等于把这一片绑在一个厂商上。
 
-**它凭什么能调?** 常驻进程起 agent 的时候,把这段对话的 id 和一个只对它有效的凭据放进环境变量。
-命令拿着它调那几个机器端点 —— 和常驻进程自己写消息用的是同一扇门。
+**它凭什么能调?** 常驻进程起 agent 的时候,把这段对话的 id 放进环境变量(`HANDOVER_CONVERSATION`),
+凭据就是这台机器已经存在盘上的那一份 —— **同一个文件 agent 自己也打得开**,所以传给它不多暴露
+任何东西,只是省了它去找。
+
+**而 `handover` 这个命令是被放到 PATH 上的,不是假设它在。** 常驻进程起来时写一个 shim
+(`exec <这个进程是怎么被启动的> "$@"`)放在凭据文件旁边的 `bin/` 里,把那个目录放在它交给 agent
+的 PATH 最前面。**实测第一次就撞上了**:agent 跑 `command -v handover`,没有 —— 因为那台机器上
+跑的是源码,压根没有一个叫 `handover` 的东西。没人需要装任何东西,这和整个产品那条规矩是同一条。
 
 **⑥ 交办中的每一轮都要告诉它它被交办了**
 
@@ -266,16 +364,30 @@ handover task finish --done | --cannot "…"
 `python -c` 更认不出。**猜不准的东西不该占一个固定位置假装权威** —— 这个仓库别处都不这么干
 (没报过版本的机器不编一个版本,工具没说成没成不打勾)。
 
-`key` 让它能改自己写过的那一份:一份三天的报告,它第一天写个开头,第三天补完 —— 同一个 key,
-同一份东西。
+**标题就是身份**,所以它能改自己写过的那一份:一份三天的报告,第一天写个开头,第三天补完 ——
+标题不变就是同一份。少一个 `--key` 的概念,代价是改标题等于换一份东西,而那也说得通。
 
-**⑨ 「完了」是真的完了**
+**⑨ 收回一件事,连它底下的一起收回**
+
+你按「收回」是因为「剩下的我自己来」。它开出去的活还在别的机器上改代码,而**父任务再也不会去读
+那个结果了** —— 让它继续跑,就是一个没人看着、没人要的 agent 在动别人的仓库。
+
+所以 `take-back` 是**整棵子树**:一条递归 CTE,把这件事和它底下所有没结束的一起写成
+`done` + `taken-back`,每一件都写一条活动、叫醒各自的机器(让正在跑的那些停下来)。
+
+反过来的方向不用管:一件子任务自己 `cannot` 了,父任务只是被叫醒,由它自己决定怎么办
+(`prd.md` 那张表)。**只有人收回才级联,agent 说不了别人的事。**
+
+**⑩ 「完了」是真的完了**
 
 `state = 'done'` 且 `ended_at` 有值,这段对话就退回一段普通对话:它不再有活,你说话就是 `03`
 的说话。
 
-想让它再跑,再交办一次 —— **建的是新的一行**,上一件事原样留着。唯一能建出一行 `working` 的
-地方就是 `hand-over` 那个端点,所以**没有任何一条路能让一件结束的事自己又动起来**。
+想让它再跑,再交办一次 —— **建的是新的一行**,上一件事原样留着。
+
+**能建出一行 `working` 的只有两个地方**:`hand-over`(人点了头)和 `new --to`(agent 开一件
+子任务,而它自己是那件的负责人)。两个都要一个活人或一个在跑的 agent 主动发起,所以
+**没有任何一条路能让一件结束的事自己又动起来**。
 
 ---
 
@@ -304,38 +416,46 @@ cannot        它判断这件事做不成,再试没有意义
 
 ## 接口
 
-```
-POST /spaces/{slug}/conversations/{id}/hand-over    你点「交给它」。body: { key, goal }
-POST /spaces/{slug}/conversations/{id}/take-back    收回。body: { key }
-GET  /me/inbox                                      跨 Space,所有在等你的事
-
-POST /machines/current/conversations/{id}/propose   它写一张卡片
-POST /machines/current/conversations/{id}/ask       它问了负责人一件事
-POST /machines/current/conversations/{id}/sleep     它要睡到什么时候
-POST /machines/current/conversations/{id}/hand-off  开一件子任务,回子任务的 id
-POST /machines/current/conversations/{id}/output    写一份产出
-POST /machines/current/conversations/{id}/finish    done | cannot
-```
-
-机器那六个端点各写一条 activity(或一行 outputs)、各改一次状态、各自 `wakeMachine`,
-和 `03` 那两个写入端点同一个形状。`/me/inbox` 是唯一一个不在 Space 下面的读 —— 因为它跨 Space,
-这正是它存在的理由。
-
-**机器问的还是两个问题,一个端点没加:**
+**没有一个路径里有动词。**
 
 ```
-有人要它停吗?     读 turns
-有活给它吗?       读 turns + tasks
-                  ├ 这台机器现在空着吗
-                  ├ 这段对话最后一条还没人领吗
-                  ├ 这段对话有一件 state = 'working' 的事吗   ← 04 加的
-                  └ 它没有没结束的子任务                       ← 04 加的
-                  条件在一条 where 里,不是几次往返
+人这一侧
+POST   /spaces/{slug}/conversations/{id}/task      交办 = 建一件事。body: { key, goal }
+DELETE /spaces/{slug}/conversations/{id}/task      收回 = 结束它,连它底下的一起
+GET    /me/inbox                                   跨 Space,所有在等你的事
+
+机器这一侧
+POST   /machines/current/conversations/{id}/messages          提议 —— 就是一条消息,零行新代码
+PATCH  /machines/current/conversations/{id}/task              停下来。body: { key, how }
+POST   /machines/current/conversations/{id}/task/handed-off   开一件给别人的
+PUT    /machines/current/conversations/{id}/task/outputs/{title}   写下一份东西
 ```
 
-**长轮询、打断、实时流、adapter 一个字不动。**
+**这是照 [AIP-136](https://google.aip.dev/136) 那条来的:自定义动词只留给「标准方法说不出来的事」,
+而这几件全说得出来。** 交办是建一件事,收回是结束它,agent 停下来是改它的状态,交出去一块是再建
+一件,写下一份东西是把它放到它自己的名字上。
 
----
+三处白捡的:
+
+**① `PATCH` 的 body 就是那张状态图。**
+
+```
+{ key, how: { state: 'wait',  question } }
+{ key, how: { state: 'sleep', until } }
+{ key, how: { state: 'done',  ending, text } }
+```
+
+**三个成员,不是四个** —— agent 只能把它从 `working` 挪走,挪回来的永远是别人(你说话 ·
+子任务回话 · 叫醒器)。这条规矩现在长在契约里,不用在别处再解释一遍。
+
+**② `PUT .../outputs/{title}` 让幂等变成结构性的。** 标题就是地址,写第二次就是替换 ——
+不需要一个 `key` 字段来解释「同名就是改它」。
+
+**③ 提议根本不是一个新端点。** 它不改状态、不建东西,只往 transcript 里写一行给人看 ——
+那是一条消息,而机器写消息的路 `03` 就有(`role: activity`,那个槽本来就是开放的)。
+
+**长轮询、打断、实时流、adapter 一个字不动。** `whatIsOwed` 的两个问题也不动,只在
+「有活给它吗」那条 `where` 里多两行。
 
 ## 风险
 
@@ -352,7 +472,7 @@ POST /machines/current/conversations/{id}/finish    done | cannot
 「改状态 = 叫醒机器 = 一次调用」这条来兜。**那一次调用必须是唯一的入口**,否则第七个端点会漏掉
 一半 —— 这是这一片最需要机械化的地方,不是靠评审看出来的。
 
-**「大事记」的六种活动是给人看的,不是给判断用的。** 这条规矩要写在类型旁边,不然下一个人会
+**「大事记」那七种活动是给人看的,不是给判断用的。** 这条规矩要写在类型旁边,不然下一个人会
 顺手从里面推状态,然后我们又回到今天早上那一版。
 
 **「睡到某个时刻」的精度是十秒,而且不承诺。** 机器不在线的时候到点,它回来才动。这和整个产品
@@ -376,7 +496,7 @@ POST /machines/current/conversations/{id}/finish    done | cannot
   一轮 unknown 之后   → 同上
 
 停和醒
-  它 ask       → state=wait;你说一句 → 当场 working 并被派活
+  它 wait "…"  → state=wait;你说一句 → 当场 working 并被派活
   它 sleep(两秒)→ 两秒内没活;叫醒器把它改成 working 并叫醒机器
   它 sleep,然后你说话 → 当场醒,不等那个时刻
   叫醒器跑两遍  → 同一轮不会被领两次(turns 的主键)
@@ -387,14 +507,18 @@ POST /machines/current/conversations/{id}/finish    done | cannot
   子任务 finish             → 父的 transcript 多一条 handed-back,父当场被派活
   子任务 ask                → 进的是父的 transcript,不是你的 Inbox
   两件子任务落在同一台机器   → 排队,不是并行,而且不死锁
+  子任务问它的父任务         → 父任务当场被派活(不然两边互相等,永远)
+  子任务睡着了               → 父任务不动(它等的是「完了」,而它没完)
 
 产出
-  同一个 key 写两次 → 一份,改掉了
-  不同 key         → 两份
+  同一个标题写两次 → 一份,改掉了
+  换个标题         → 两份
 
 结束
-  finish / 收回 → 不再有活;你说话就是普通的说话
-  做完之后再交办 → 新的一行,上一件原样留着
+  done / cannot / 收回 → 不再有活;你说话就是普通的说话
+  做完之后再交办        → 新的一行,上一件原样留着
+  收回一件有两个子任务在跑的事 → 三件都 done,三台机器都被叫醒
+  子任务在父被收回之后才结束    → 它写不动父那一行,父仍然是 taken-back
 
 不碰 03
   没交办的对话,一轮 done 之后 → 没活。这一片一个字都没改到 03

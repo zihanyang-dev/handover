@@ -18,6 +18,7 @@ import { sql, type Expression } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
 import { append } from './message.ts'
+import { STATE } from './task.ts'
 
 /** A question waiting to be answered, as the machine that just took it is told. */
 export type Taken = {
@@ -25,40 +26,36 @@ export type Taken = {
   readonly agentKind: string
   /** What the agent calls this conversation, when it has said so. Absent on a first turn. */
   readonly agentSession: string | null
-  /** Where the question sits, so the machine can name what it writes after it. */
-  readonly askedSeq: number
+  /** Where this turn starts, so the machine can name what it writes after it. */
+  readonly afterSeq: number
+  /**
+   * What it is for, when somebody handed this conversation over. Null when nobody has.
+   *
+   * A turn on a conversation somebody is sitting in front of answers a question. A turn on one
+   * somebody walked away from answers nothing — it carries on, and what it carries on towards is
+   * this. Sent on every turn rather than once, because the agent's own memory of the last turn
+   * may not have survived (`03` decision ⑨) and a turn that forgot everything still has to know
+   * what it is doing.
+   */
+  readonly goal: string | null
+  /** What a person said, when the line this turn begins after is one. Null when it is not. */
   readonly asked: unknown
 }
 
 /**
- * Takes the longest-waiting question on this machine, if there is one nobody has taken.
+ * Takes the longest-waiting turn on this machine, if there is one nobody has taken.
  *
  * The read and the claim are one statement. Split into two, both instances read the same
- * unclaimed question before either writes, and the check protects nothing — which is the whole
+ * unclaimed turn before either writes, and the check protects nothing — which is the whole
  * failure this table exists to make impossible.
- *
- * A question is unanswered when nobody has taken it — which the ledger answers on its own, and
- * nothing else does. Only the last question in a conversation is ever a candidate: saying
- * something is interrupting whatever came before it, so an older question is one somebody has
- * moved on from.
- *
- * Nothing about what was said after it comes into it, and that matters: interrupting writes the
- * new question down while the turn it interrupted is still ending, so the ending lands after the
- * question it has nothing to do with. Read that way round, the machine would never be given the
- * very question the person stopped it to ask.
- *
- * Asked one conversation at a time, which is what keeps it cheap: the machine's conversations are
- * looked up by machine, and each one's last question is a single index seek. Written as one join
- * across the two tables instead, Postgres reads every message and every turn on the deployment
- * and throws away the ones belonging to other machines — measured at 198,000 rows and 2,622
- * buffers to answer one check-in, against 349 buffers this way, and the difference grows with
- * everything anybody has ever said anywhere.
  */
-export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
-  const taken = await sql<Taken>`
-    with waiting as (
+/** Somebody is sitting in front of it: their last question, if nobody took it. */
+function beingAsked(machineId: string) {
+  return sql`
+    asked as (
+      -- Somebody is sitting in front of it: their last question, if nobody took it.
       select c.id as conversation_id, c.agent_kind, c.agent_session_id,
-             last.seq, last.content, last.created_at
+             last.seq, last.content, last.created_at, 'user'::text as role, null::text as goal
         from conversations c
         cross join lateral (
           select m.seq, m.content, m.created_at
@@ -68,26 +65,105 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
            limit 1
         ) last
        where c.machine_id = ${machineId}
-         and not exists (
+         and not exists (select 1 from tasks k
+                          where k.conversation_id = c.id and k.ended_at is null)
+    )`
+}
+
+/**
+ * Somebody handed it over: the last line of it, whatever that line is.
+ *
+ * It is not answering anything — it is carrying on — so the turn begins after whatever came last.
+ */
+function carryingOn(machineId: string) {
+  return sql`    carrying_on as (
+      -- Somebody handed it over: the last line of it, whatever that line is. It is not answering
+      -- anything — it is carrying on — so the turn begins after whatever came last.
+      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
+             last.seq, last.content, last.created_at, last.role, k.goal
+        from conversations c
+        join tasks k on k.conversation_id = c.id and k.ended_at is null
+        cross join lateral (
+          select m.seq, m.content, m.created_at, m.role
+            from messages m
+           where m.conversation_id = c.id
+           order by m.seq desc
+           limit 1
+        ) last
+       where c.machine_id = ${machineId}
+         and k.state = ${STATE.working}
+         -- Waiting on what it handed off is not a state of its own: it is whether its children
+         -- have ended, which is one index seek and cannot go stale.
+         --
+         -- Except a child that is waiting on *it*. A child's owner is the one that handed it out,
+         -- so a child that is waiting is asking this very piece of work a question, and counting
+         -- that as a reason not to run it is the two of them waiting for each other for ever,
+         -- with nothing anywhere to say so.
+         and not exists (select 1 from tasks kid
+                          where kid.parent_id = k.id
+                            and kid.ended_at is null
+                            and kid.state <> ${STATE.wait})
+    )`
+}
+
+/**
+ * The conversations on this machine that are owed a turn, longest-waiting first.
+ *
+ * **Two kinds of conversation, owed a turn for different reasons.** One somebody is sitting in
+ * front of is owed one when they have asked something nobody took. One somebody handed over is
+ * owed one whenever the last line in it has not been picked up — it moves without being spoken
+ * to, and whether it should is `tasks.state`, never anything read out of the transcript.
+ *
+ * Both halves take **the last line and only the last line**, and that matters: interrupting
+ * writes the new question down while the turn it interrupted is still ending, so the ending lands
+ * after the question it has nothing to do with. Older lines are ones somebody has moved on from.
+ *
+ * Written as one lateral with a condition in it, the plain half loses its index — the planner
+ * cannot know per row which rule applies. Two halves, each a single index seek per conversation:
+ * one on the questions, one on the transcript. Written the other way round — one join across the
+ * two tables — Postgres reads every message and every turn on the deployment and throws away the
+ * ones belonging to other machines, measured at 198,000 rows and 2,622 buffers to answer one
+ * check-in against 349 this way.
+ */
+function owedATurn(machineId: string) {
+  return sql`
+    ${beingAsked(machineId)},
+    ${carryingOn(machineId)},
+    waiting as (
+      select * from (select * from asked union all select * from carrying_on) owed
+       -- Not "a turn keyed to this line" but "any turn since it". A turn no longer has to be
+       -- keyed to a question, so a conversation somebody handed over and then took back has
+       -- turns sitting after the last thing the person said — and asking the narrow question
+       -- would hand that person's opening line out all over again, years later.
+       where not exists (
            select 1 from turns t
-            where t.conversation_id = c.id and t.asked_seq = last.seq
+            where t.conversation_id = owed.conversation_id and t.after_seq >= owed.seq
          )
-       order by last.created_at
+       order by created_at
        limit 1
-    ),
+    )`
+}
+
+export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
+  const taken = await sql<Taken>`
+    with ${owedATurn(machineId)},
     claimed as (
-      insert into turns (conversation_id, asked_seq, machine_id)
+      insert into turns (conversation_id, after_seq, machine_id)
       select conversation_id, seq, ${machineId} from waiting
       on conflict do nothing
-      returning conversation_id, asked_seq
+      returning conversation_id, after_seq
     )
     select w.conversation_id  as "conversationId",
            w.agent_kind       as "agentKind",
            w.agent_session_id as "agentSession",
-           w.seq              as "askedSeq",
-           w.content          as asked
+           w.seq              as "afterSeq",
+           w.goal             as goal,
+           -- Only when the line this turn begins after is a person's. On a conversation somebody
+           -- handed over that line is usually the ending of the turn before, and an ending is not
+           -- something anybody said.
+           case when w.role = 'user' then w.content end as asked
       from claimed c
-      join waiting w on w.conversation_id = c.conversation_id and w.seq = c.asked_seq
+      join waiting w on w.conversation_id = c.conversation_id and w.seq = c.after_seq
   `.execute(db)
 
   return taken.rows[0]
@@ -100,12 +176,12 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
  * an ending twice, or one that reports one while another process is closing the same turn on its
  * behalf, must not move the moment it ended.
  */
-export async function endTurn(tx: Tx, conversationId: string, askedSeq: number): Promise<void> {
+export async function endTurn(tx: Tx, conversationId: string, afterSeq: number): Promise<void> {
   await tx
     .updateTable('turns')
     .set({ ended_at: sql<Date>`clock_timestamp()` })
     .where('conversation_id', '=', conversationId)
-    .where('asked_seq', '=', askedSeq)
+    .where('after_seq', '=', afterSeq)
     .where('ended_at', 'is', null)
     .execute()
 }
@@ -114,12 +190,12 @@ export async function endTurn(tx: Tx, conversationId: string, askedSeq: number):
 export async function openTurn(tx: Tx, conversationId: string): Promise<number | undefined> {
   const open = await tx
     .selectFrom('turns')
-    .select('asked_seq as askedSeq')
+    .select('after_seq as afterSeq')
     .where('conversation_id', '=', conversationId)
     .where('ended_at', 'is', null)
     .executeTakeFirst()
 
-  return open?.askedSeq
+  return open?.afterSeq
 }
 
 /**
@@ -143,7 +219,7 @@ export function stillOwed(conversationId: Expression<string>) {
     select not exists (
       select 1 from turns t
        where t.conversation_id = m.conversation_id
-         and t.asked_seq = m.seq
+         and t.after_seq = m.seq
          and t.ended_at is not null
     )
       from messages m
@@ -171,10 +247,10 @@ export async function owedAnAnswer(db: Database | Tx, conversationId: string): P
 export async function openTurnsOn(
   db: Database,
   machineId: string,
-): Promise<readonly { conversationId: string; askedSeq: number }[]> {
+): Promise<readonly { conversationId: string; afterSeq: number }[]> {
   return db
     .selectFrom('turns')
-    .select(['conversation_id as conversationId', 'asked_seq as askedSeq'])
+    .select(['conversation_id as conversationId', 'after_seq as afterSeq'])
     .where('machine_id', '=', machineId)
     .where('ended_at', 'is', null)
     .execute()
@@ -191,7 +267,7 @@ export async function openTurnsOn(
  */
 export type Stopping = {
   readonly conversationId: string
-  readonly askedSeq: number
+  readonly afterSeq: number
 }
 
 /**
@@ -209,7 +285,7 @@ export type Stopping = {
 export async function stopWantedOn(db: Database, machineId: string): Promise<Stopping | undefined> {
   const wanted = await db
     .selectFrom('turns')
-    .select(['turns.conversation_id as conversationId', 'turns.asked_seq as askedSeq'])
+    .select(['turns.conversation_id as conversationId', 'turns.after_seq as afterSeq'])
     .where('turns.machine_id', '=', machineId)
     .where('turns.ended_at', 'is', null)
     // Asked of the turn rather than joined from the messages, which decides which table is read
@@ -222,7 +298,7 @@ export async function stopWantedOn(db: Database, machineId: string): Promise<Sto
           .selectFrom('messages')
           .select('messages.seq')
           .whereRef('messages.conversation_id', '=', 'turns.conversation_id')
-          .whereRef('messages.seq', '>', 'turns.asked_seq')
+          .whereRef('messages.seq', '>', 'turns.after_seq')
           .where('messages.role', '=', 'activity')
           .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`),
       ),
@@ -265,10 +341,10 @@ export async function forgetStranded(db: Database, machineId: string): Promise<n
 
       await append(tx, {
         conversationId: turn.conversationId,
-        key: `${String(turn.askedSeq)}/end`,
+        key: `${String(turn.afterSeq)}/end`,
         message: { role: 'activity', content: { activityType: ACTIVITY.unknown } },
       })
-      await endTurn(tx, turn.conversationId, turn.askedSeq)
+      await endTurn(tx, turn.conversationId, turn.afterSeq)
     }
 
     return stranded.length

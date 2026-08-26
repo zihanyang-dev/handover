@@ -204,9 +204,13 @@ type Stopping = {
  * Nothing here is a preference: nobody is standing at this machine to answer a prompt, so
  * anything that stopped to ask would hang there until the turn was given up on.
  */
-function howToRun(where: string, asked: Asked) {
+function howToRun(where: string, asked: Asked, env: NodeJS.ProcessEnv) {
   return {
     workingDirectory: where,
+    // Handed on rather than left to be inherited, because one variable in it says which
+    // conversation this turn belongs to — which is how `handover task` knows what it is talking
+    // about without anybody typing an id. Codex does not inherit at all unless told to.
+    env: onlyStrings(env),
     skipGitRepoCheck: true,
     sandboxMode: 'workspace-write' as const,
     approvalPolicy: 'never' as const,
@@ -288,7 +292,7 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
       }
 
       const codex = new Codex({ codexPathOverride: binary })
-      const options = howToRun(where, asked)
+      const options = howToRun(where, asked, env)
       running = binary
 
       try {
@@ -465,4 +469,11 @@ export function codex(env: NodeJS.ProcessEnv): Agent {
     offers: async () => offers(env),
     talk: (where, sofar) => talk(where, sofar, env),
   }
+}
+
+/** The SDK takes only set variables; an unset one and one set to nothing are the same thing. */
+function onlyStrings(env: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
+  )
 }
