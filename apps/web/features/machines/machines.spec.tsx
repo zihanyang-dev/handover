@@ -345,4 +345,33 @@ describe('a key for a machine with no browser', () => {
 
     expect(await machines.findByText(/could not make a key/i)).toBeDefined()
   })
+
+  it('really asks again when somebody presses Try again', async () => {
+    // The failure that reads as no failure: a button that now says "Try again" and does nothing,
+    // because the state it sets was already set and the query is held for ever on purpose.
+    let asked = 0
+    server.use(
+      ...theSpace(),
+      http.post('*/me/machine-keys', () => {
+        asked += 1
+
+        return asked === 1
+          ? HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 503 })
+          : HttpResponse.json(
+              { key: 'hk_second', expiresAt: new Date(Date.now() + 900_000).toISOString() },
+              { status: 201 },
+            )
+      }),
+    )
+    open('/s/acme')
+
+    const machines = await panel()
+    await userEvent.click(await machines.findByRole('button', { name: /no browser/i }))
+    await machines.findByText(/could not make a key/i)
+
+    await userEvent.click(machines.getByRole('button', { name: /try again/i }))
+
+    expect(await machines.findByText(/handover connect --key hk_second/u)).toBeDefined()
+    expect(asked).toBe(2)
+  })
 })

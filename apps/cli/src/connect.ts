@@ -53,7 +53,7 @@ export type Why =
  *
  * The same word off the wire means two different things to a person: `spent` at a terminal
  * showing a code is "somebody else typed it, run this again", and `spent` with a key pasted in is
- * "that key is used up, make another in the Space". One is something to redo here, the other is
+ * "that key is used up, make another on the web". One is something to redo here, the other is
  * something to go and do elsewhere, and telling somebody the wrong one sends them to the wrong
  * screen. Written as two lists rather than one, because they really are two.
  *
@@ -69,10 +69,10 @@ export const SAID: Record<'code' | 'key', Record<Why, string>> = {
     unreachable: 'could not reach the server. Check it is up, then run this again.',
   },
   key: {
-    refused: 'that key was turned down. Make a new one in the Space.',
-    expired: 'that key has run out. Make a new one in the Space.',
-    spent: 'that key has already been used. A key works once — make a new one in the Space.',
-    'no-enrolment': 'that key does not work. Make a new one in the Space.',
+    refused: 'that key was turned down. Make a new one on the web.',
+    expired: 'that key has run out. Make a new one on the web.',
+    spent: 'that key has already been used. A key works once — make a new one on the web.',
+    'no-enrolment': 'that key does not work. Make a new one on the web.',
     unreachable: 'could not reach the server. Check it is up, then run this again.',
   },
 }
@@ -86,7 +86,7 @@ export type Waiting = {
 /**
  * Collects a credential with a key somebody already generated.
  *
- * No waiting and no code: generating the key in a Space *was* the approval, so there is nobody
+ * No waiting and no code: making the key *was* the approval, so there is nobody
  * left to ask. For a machine with no browser to open, which is most machines that are not
  * somebody's laptop.
  */

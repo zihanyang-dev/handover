@@ -12,7 +12,7 @@ import { Laptop } from 'react-bootstrap-icons'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
-import { connectWith, machineKey } from './machine-key.ts'
+import { connectWith, machineKey, MACHINE_KEY } from './machine-key.ts'
 import { useOpenConversation } from '../conversations/talking.ts'
 
 function machinesIn(slug: string) {
@@ -202,8 +202,17 @@ function TalkTo({
  * and one more has no browser on it.
  */
 function MachineKey() {
+  const client = useQueryClient()
   const [asked, setAsked] = useState(false)
   const key = useQuery({ ...machineKey(), enabled: asked })
+
+  // Pressing it again has to actually ask again. The query is held for ever on purpose, so once
+  // it has failed, setting the same state a second time changes nothing and the button that now
+  // reads "Try again" does nothing at all — a recovery offered and not delivered.
+  const ask = (): void => {
+    if (key.isError) void client.resetQueries({ queryKey: MACHINE_KEY })
+    setAsked(true)
+  }
 
   if (key.data !== undefined) {
     return (
@@ -226,9 +235,7 @@ function MachineKey() {
       type="button"
       style={{ marginTop: '0.75rem' }}
       disabled={asked && key.isPending}
-      onClick={() => {
-        setAsked(true)
-      }}
+      onClick={ask}
     >
       <span className="button-label">
         {key.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
