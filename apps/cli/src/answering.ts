@@ -25,6 +25,9 @@ const BETWEEN_TRIES_MS = 2000
 /** What the server handed over: one question, and what is needed to answer it. */
 export type Asking = components['schemas']['SomethingToAnswer']
 
+/** Which turn somebody asked this machine to stop. Named by turn, not by conversation. */
+export type Stopping = components['schemas']['StopWanted']
+
 /** One message as the server will accept it. Written down here so a wrong shape cannot compile. */
 type Written = components['schemas']['MachineMessage']['message']
 
@@ -53,6 +56,8 @@ type Writing = {
 
 export type Answering = {
   readonly conversationId: string
+  /** Which turn of it. A stop names one, and one that names another turn is not about this. */
+  readonly askedSeq: number
   /** Ask the agent to stop. The turn ends as cancelled, and the conversation stays usable. */
   readonly stop: () => Promise<void>
   /** Settles when there is nothing left to write. Never rejects. */
@@ -100,6 +105,7 @@ export function startAnswering(
 
   return {
     conversationId: asking.conversationId,
+    askedSeq: asking.askedSeq,
     stop: talk.stop,
     done: write(writing, asking, talk.say(asking.asked), machine.say),
   }

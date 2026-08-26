@@ -7,7 +7,7 @@ import { loadEnv } from '../env.ts'
 import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
-import { forgetStranded, stopWantedOn, takeOne } from './turn.ts'
+import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
 import {
   askToStop,
   conversationWith,
@@ -107,12 +107,16 @@ async function running(conversationId: string, key: string, text: string): Promi
   if (taken?.conversationId !== conversationId) throw new Error('the machine took something else')
 }
 
-async function ends(conversationId: string, key: string): Promise<Said> {
+async function ends(
+  conversationId: string,
+  key: string,
+  how: string = ACTIVITY.done,
+): Promise<Said> {
   return machineSays(db, {
     conversationId,
     machineId: MACHINE,
     key,
-    message: { role: 'activity', content: { activityType: ACTIVITY.done } },
+    message: { role: 'activity', content: { activityType: how } },
   })
 }
 
@@ -155,13 +159,28 @@ describe('saying something to an agent', () => {
     expect(await countMessages(conversation)).toBe(1)
   })
 
-  it('refuses a second question while it is still answering the first', async () => {
+  it('interrupts what it is doing, rather than waiting its turn', async () => {
+    // Queued instead, somebody who says "no, leave legacy/ alone" watches it go on editing
+    // legacy/ until the step it was already on happens to end — the one thing they were trying
+    // to prevent. Both facts are written down: that they asked it to stop, and what they said.
     const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    await running(conversation, 'turn-1', 'hello')
 
-    expect(await asks(conversation, 'turn-2', 'and another thing')).toEqual({
-      kind: 'still-answering',
-    })
+    expect(await asks(conversation, 'turn-2', 'no, leave legacy alone')).toEqual({ kind: 'said' })
+    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
+  })
+
+  it('hands the machine the question somebody stopped it to ask', async () => {
+    // The stopped turn ends after the new question was written, so the ending lands after a
+    // question it has nothing to do with. Read the wrong way round, the machine would never be
+    // given the very thing the person interrupted it for.
+    const conversation = await opened()
+    await running(conversation, 'turn-1', 'hello')
+    await asks(conversation, 'turn-2', 'no, leave legacy alone')
+    await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
+
+    const taken = await takeOne(db, MACHINE)
+    expect(taken?.asked).toEqual({ text: 'no, leave legacy alone' })
   })
 
   it('takes the next question once the turn is closed', async () => {
@@ -172,9 +191,10 @@ describe('saying something to an agent', () => {
     expect(await asks(conversation, 'turn-2', 'and another thing')).toEqual({ kind: 'said' })
   })
 
-  it('lets exactly one of two racing questions through', async () => {
-    // Two tabs, one person, one impatient second click. Reading first and deciding in TypeScript
-    // would let both in, and the agent would be handed two questions as one turn.
+  it('keeps both of two racing questions, and answers the last', async () => {
+    // Two tabs, one person, one impatient second click. Both are written down — losing one would
+    // be losing something somebody said — and the machine is handed the last, because saying
+    // something is interrupting whatever came before it.
     const conversation = await opened()
 
     const both = await Promise.all([
@@ -182,8 +202,8 @@ describe('saying something to an agent', () => {
       asks(conversation, 'turn-2', 'hello again'),
     ])
 
-    expect(both.filter((one) => one.kind === 'said')).toHaveLength(1)
-    expect(both.filter((one) => one.kind === 'still-answering')).toHaveLength(1)
+    expect(both.filter((one) => one.kind === 'said')).toHaveLength(2)
+    expect((await takeOne(db, MACHINE))?.asked).toEqual({ text: 'hello again' })
   })
 
   it('refuses when the machine has said it is leaving', async () => {
@@ -339,7 +359,7 @@ describe('asking an agent to stop', () => {
     await running(conversation, 'turn-1', 'take your time')
     await asksToStop(conversation)
 
-    expect(await stopWantedOn(db, MACHINE)).toBe(conversation)
+    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
   })
 
   it('is still wanted after the agent has said several more things', async () => {
@@ -357,7 +377,7 @@ describe('asking an agent to stop', () => {
       })
     }
 
-    expect(await stopWantedOn(db, MACHINE)).toBe(conversation)
+    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
   })
 
   it('stops being asked for once the agent says it stopped', async () => {
@@ -380,10 +400,10 @@ describe('asking an agent to stop', () => {
     // Asked and stopped are two facts. A turn that was asked to stop and never did is exactly the
     // case somebody needs to be able to see.
     const conversation = await opened()
-    await asks(conversation, 'turn-1', 'take your time')
+    await running(conversation, 'turn-1', 'take your time')
     await asksToStop(conversation)
 
-    expect(await asks(conversation, 'turn-2', 'never mind')).toEqual({ kind: 'still-answering' })
+    expect(await db.transaction().execute(async (tx) => openTurn(tx, conversation))).toBe(1)
   })
 })
 

@@ -1525,7 +1525,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description It is still answering, or its machine is not here */
+                /** @description Its machine is not here */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -2034,8 +2034,7 @@ export interface components {
             pollSeconds: number;
             lookFor: string[];
             asking?: components["schemas"]["SomethingToAnswer"];
-            /** Format: uuid */
-            stopping?: string;
+            stopping?: components["schemas"]["StopWanted"];
         };
         SomethingToAnswer: {
             /** Format: uuid */
@@ -2050,6 +2049,11 @@ export interface components {
                 effort?: string;
             };
         };
+        StopWanted: {
+            /** Format: uuid */
+            conversationId: string;
+            askedSeq: number;
+        };
         MachineReport: {
             found: {
                 command: string;
@@ -2057,8 +2061,6 @@ export interface components {
                 models?: components["schemas"]["Model"][];
             }[];
             restarted?: boolean;
-            /** Format: uuid */
-            answering?: string;
             version?: string;
         };
         Conversations: {

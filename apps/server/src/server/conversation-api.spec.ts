@@ -168,15 +168,22 @@ describe('saying something', () => {
     expect(read.messages).toHaveLength(1)
   })
 
-  it('refuses a second question while the first is unanswered', async () => {
+  it('interrupts what it is doing, rather than being told to wait its turn', async () => {
+    // Saying and stopping are one action for whoever is typing: nobody tells an agent to leave
+    // `legacy/` alone and then waits for it to finish editing `legacy/`.
     const conversation = await opened()
     const path = `/spaces/${SLUG}/conversations/${conversation}/messages`
     await asPerson(path, 'POST', { key: 'turn-1', asked: { text: 'first' } })
+    await asMachine('/machines/current/poll', 'POST', { found: [] })
 
     const response = await asPerson(path, 'POST', { key: 'turn-2', asked: { text: 'second' } })
 
-    expect(response.status).toBe(409)
-    expect(await response.json()).toMatchObject({ recovery: 'wait' })
+    expect(response.status).toBe(204)
+    // And the machine is told to stop, on the very next thing it asks.
+    const told = await asMachine('/machines/current/poll', 'POST', { found: [] })
+    expect(await told.json()).toMatchObject({
+      stopping: { conversationId: conversation },
+    })
   })
 })
 

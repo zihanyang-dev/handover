@@ -29,8 +29,6 @@ export type Said =
   /** The same message again. Nothing was written the second time, and nothing needs to be. */
   | { readonly kind: 'said-already' }
   | { readonly kind: 'no-conversation' }
-  /** It is still working on the last thing. Wait for it rather than stacking another on top. */
-  | { readonly kind: 'still-answering' }
   /** Its machine is not here. Nobody would pick this up, so it is refused rather than queued. */
   | { readonly kind: 'machine-away' }
 

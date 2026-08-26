@@ -82,7 +82,7 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
       {working.state === 'working' && <Watching key={turnOf(messages)} slug={slug} id={id} />}
 
       <Doing state={working.state} slug={slug} id={id} turn={turnOf(messages)} />
-      <Ask slug={slug} id={id} busy={working.state === 'working'} offers={offers} />
+      <Ask slug={slug} id={id} working={working.state === 'working'} offers={offers} />
     </section>
   )
 }
@@ -249,14 +249,12 @@ function Choices({
   effort,
   onModel,
   onEffort,
-  disabled,
 }: {
   readonly offers: readonly Model[]
   readonly model: string
   readonly effort: string
   readonly onModel: (id: string) => void
   readonly onEffort: (level: string) => void
-  readonly disabled: boolean
 }) {
   // An agent that offers nothing gets no control at all. Picking an agent is picking what it can
   // do, and an empty select would be a question with no answers.
@@ -278,7 +276,6 @@ function Choices({
         className="field"
         aria-label="Model"
         value={model}
-        disabled={disabled}
         onChange={(event) => {
           onModel(event.target.value)
         }}
@@ -300,7 +297,6 @@ function Choices({
           className="field"
           aria-label="Thinking"
           value={effort}
-          disabled={disabled}
           onChange={(event) => {
             onEffort(event.target.value)
           }}
@@ -317,15 +313,22 @@ function Choices({
   )
 }
 
+/**
+ * Saying something, which interrupts it if it is in the middle of something.
+ *
+ * Nothing here is ever disabled for being busy. Somebody typing "no, leave legacy/ alone" is
+ * saying it *because* it is busy, and a field that greys itself out at that moment is the one
+ * moment it had a job to do.
+ */
 function Ask({
   slug,
   id,
-  busy,
+  working,
   offers,
 }: {
   readonly slug: string
   readonly id: string
-  readonly busy: boolean
+  readonly working: boolean
   readonly offers: readonly Model[]
 }) {
   const [text, setText] = useState('')
@@ -365,7 +368,6 @@ function Ask({
         className="field"
         rows={3}
         value={text}
-        disabled={busy}
         onChange={(event) => {
           setText(event.target.value)
         }}
@@ -375,7 +377,6 @@ function Ask({
         offers={offers}
         model={model}
         effort={effort}
-        disabled={busy}
         onModel={(id_) => {
           setModel(id_)
           // An effort the new model does not have is not a choice, it is a leftover.
@@ -384,8 +385,9 @@ function Ask({
         onEffort={setEffort}
       />
 
-      <button className="button button-primary" type="submit" disabled={busy || say.isPending}>
-        <span className="button-label">Send</span>
+      <button className="button button-primary" type="submit" disabled={say.isPending}>
+        {/* What pressing it means, said before it is pressed: it stops what it is doing. */}
+        <span className="button-label">{working ? 'Interrupt and send' : 'Send'}</span>
       </button>
       {/* Said where it happened rather than as a banner: what to do next depends on which of
           these it was, and the two are not the same wait. */}
@@ -395,7 +397,6 @@ function Ask({
 }
 
 function whyNot(reason: string): string {
-  if (reason === 'still-answering') return 'It is still answering. Wait for it to finish.'
   if (reason === 'machine-away') return 'Its machine is not here. Wait for it, or use another one.'
 
   return 'That did not go through. Try again.'

@@ -37,16 +37,20 @@ export type Taken = {
  * unclaimed question before either writes, and the check protects nothing — which is the whole
  * failure this table exists to make impossible.
  *
- * A question is unanswered when nothing has been said after it. A request to stop does not count:
- * it is not an answer, and counting it would hide the question from the only machine that could
- * ever end the turn.
+ * A question is unanswered when nobody has taken it — which the ledger answers on its own, and
+ * nothing else does. Only the last question in a conversation is ever a candidate: saying
+ * something is interrupting whatever came before it, so an older question is one somebody has
+ * moved on from.
  *
- * Only the last question in a conversation can be that one, and looking at it alone is not a
- * shortcut — it is the same set arrived at directly. Anything earlier has a later question after
- * it, which is something said after it. Written the other way this read every question a machine
- * had ever been asked and then threw nearly all of them away: measured on a machine with sixty
- * conversations behind it, a full scan of the whole transcript table on every check-in, and it
- * grew with every line anybody ever said.
+ * Nothing about what was said after it comes into it, and that matters: interrupting writes the
+ * new question down while the turn it interrupted is still ending, so the ending lands after the
+ * question it has nothing to do with. Read that way round, the machine would never be given the
+ * very question the person stopped it to ask.
+ *
+ * Taking the last question directly is also what keeps this cheap. Written the other way it read
+ * every question a machine had ever been asked and threw nearly all of them away — measured on a
+ * machine with sixty conversations behind it, a full scan of the whole transcript on every
+ * check-in, growing with every line anybody ever said.
  */
 export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
   const taken = await sql<Taken>`
@@ -61,12 +65,6 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
     waiting as (
       select * from asked a
        where not exists (
-           select 1 from messages later
-            where later.conversation_id = a.conversation_id
-              and later.seq > a.seq
-              and not (later.role = 'activity' and later.content ->> 'activityType' = 'stop')
-         )
-         and not exists (
            select 1 from turns t
             where t.conversation_id = a.conversation_id and t.asked_seq = a.seq
          )
@@ -120,8 +118,13 @@ export async function openTurn(tx: Tx, conversationId: string): Promise<number |
   return open?.askedSeq
 }
 
-/** Every turn this machine left open, with the question each was answering. */
-async function openTurnsOn(
+/**
+ * Every turn this machine left open, with the question each was answering.
+ *
+ * Also the answer to "is this machine busy", which is the ledger's to give rather than the
+ * machine's: asked of the machine, the answer is stale the moment it finishes a turn.
+ */
+export async function openTurnsOn(
   db: Database,
   machineId: string,
 ): Promise<readonly { conversationId: string; askedSeq: number }[]> {
@@ -134,7 +137,21 @@ async function openTurnsOn(
 }
 
 /**
- * The conversation on this machine that somebody has asked it to stop, if there is one.
+ * Which turn somebody asked this machine to stop.
+ *
+ * The turn and not just the conversation, because a stop can be about a turn that has already
+ * ended by the time it is read out: somebody interrupts, the turn they stopped ends, the machine
+ * takes the question they interrupted with, and a stop computed a moment earlier arrives about a
+ * turn that no longer exists. Named by conversation alone it stops the wrong one — measured, and
+ * it left that turn claimed with nobody running it.
+ */
+export type Stopping = {
+  readonly conversationId: string
+  readonly askedSeq: number
+}
+
+/**
+ * The turn on this machine that somebody has asked it to stop, if there is one.
  *
  * Answered by the ledger: a stop matters exactly while the turn it was asked about is still
  * running. Read from the transcript instead, every line the agent wrote after the request would
@@ -145,10 +162,10 @@ async function openTurnsOn(
  * told again on every report — which is also what makes a request that arrived while the machine
  * was between reports arrive on the next one instead of being lost.
  */
-export async function stopWantedOn(db: Database, machineId: string): Promise<string | undefined> {
+export async function stopWantedOn(db: Database, machineId: string): Promise<Stopping | undefined> {
   const wanted = await db
     .selectFrom('turns')
-    .select('turns.conversation_id as conversationId')
+    .select(['turns.conversation_id as conversationId', 'turns.asked_seq as askedSeq'])
     .where('turns.machine_id', '=', machineId)
     .where('turns.ended_at', 'is', null)
     // Asked of the turn rather than joined from the messages, which decides which table is read
@@ -169,7 +186,7 @@ export async function stopWantedOn(db: Database, machineId: string): Promise<str
     .limit(1)
     .executeTakeFirst()
 
-  return wanted?.conversationId
+  return wanted
 }
 
 /**

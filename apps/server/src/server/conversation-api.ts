@@ -45,15 +45,12 @@ const NO_AGENT: Failure<409> = {
   status: 409,
 }
 
-/** It is part way through the last thing. Waiting is the whole recovery. */
-const STILL_ANSWERING: Failure<409> = { reason: 'still-answering', recovery: 'wait', status: 409 }
-
 /**
  * Nobody is there to pick it up, so it is refused now rather than queued for an empty room.
  *
- * Not `wait`, even though waiting is one of the two things that work. Waiting out a closed laptop
- * and waiting out a turn that is nearly done are different amounts of patience, and the page has
- * somewhere else to send this one.
+ * The recovery is another machine rather than waiting: a closed laptop is not something to wait
+ * out at a keyboard, and the only thing this conversation can be picked up by is the machine it
+ * was opened on.
  */
 const MACHINE_AWAY: Failure<409> = {
   reason: 'machine-away',
@@ -299,7 +296,13 @@ function opening(deps: ConversationApi) {
   })
 }
 
-/** Saying something, which only lands when the agent is free to hear it. */
+/**
+ * Saying something, which interrupts the agent if it is in the middle of something.
+ *
+ * Saying and stopping are one action for whoever is typing: you do not tell an agent to leave
+ * `legacy/` alone and then wait for it to finish editing `legacy/`. Both facts are still written
+ * down separately — that you asked it to stop, and what you said.
+ */
 function saying(deps: ConversationApi) {
   return behindAMembership({
     route: createRoute({
@@ -313,7 +316,7 @@ function saying(deps: ConversationApi) {
         ...MALFORMED_BODY,
         204: saysNothing('Said, or said already — either way it is in there once'),
         404: refusal('No such Space, or no such conversation in it'),
-        409: refusal('It is still answering, or its machine is not here'),
+        409: refusal('Its machine is not here'),
       },
     }),
 
@@ -326,9 +329,6 @@ function saying(deps: ConversationApi) {
       )
 
       if (landed.kind === 'no-conversation') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (landed.kind === 'still-answering') {
-        return c.json(body(STILL_ANSWERING), STILL_ANSWERING.status)
-      }
       if (landed.kind === 'machine-away') return c.json(body(MACHINE_AWAY), MACHINE_AWAY.status)
 
       return c.body(null, 204)

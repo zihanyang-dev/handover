@@ -99,8 +99,14 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     const machine = presence(conversation, conversation.asOf)
     if (machine.state === 'gone') return { kind: 'machine-away' }
 
+    // Saying something to an agent that is working is interrupting it, and it is written down as
+    // exactly that: the request to stop, and then the words. Queued instead, somebody who says
+    // "no, leave legacy/ alone" watches it go on editing legacy/ until the step it was already on
+    // happens to end — which is the one thing they were trying to prevent.
     const busy = working(await unfinished(tx, conversation.id), machine)
-    if (busy.state === 'working') return { kind: 'still-answering' }
+    // Under a name of its own, derived from this message's: asking twice is one interruption,
+    // and the message keeps the name its sender gave it.
+    if (busy.state === 'working') await askItToStop(tx, saying, `${saying.key}/stop`)
 
     const said = await append(tx, { ...saying, message: { role: 'user', content: asked } })
     // In the same transaction as the message, so it is delivered when that commits: woken any
@@ -143,10 +149,7 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
     )
     if (busy.state === 'idle') return { kind: 'nothing-to-stop' }
 
-    // What a stop looks like belongs here, not to whoever asked for one: a caller that could hand
-    // in the message could hand in any message, through a route that only takes a name.
-    const stopped = { activityType: ACTIVITY.stopAsked }
-    await append(tx, { ...saying, message: { role: 'activity', content: stopped } })
+    await askItToStop(tx, saying, saying.key)
     // Somebody is watching a turn they want to end, so this is the wake that matters most: told
     // on the next report instead, a stop waits out however long the machine is being held for.
     await wakeMachine(tx, conversation.machineId)
@@ -156,6 +159,21 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
 }
 
 /** A machine reporting something, which is one message it has to be the owner of. */
+/**
+ * Writes down that somebody asked the agent to stop.
+ *
+ * What a stop looks like belongs here, not to whoever asked for one: a caller that could hand in
+ * the message could hand in any message, through a route that only takes a name. Its own name in
+ * the conversation, so that asking twice — or asking by saying something — is one request.
+ */
+async function askItToStop(tx: Tx, saying: Saying, key: string): Promise<void> {
+  await append(tx, {
+    conversationId: saying.conversationId,
+    key,
+    message: { role: 'activity', content: { activityType: ACTIVITY.stopAsked } },
+  })
+}
+
 export type Reporting = {
   readonly conversationId: string
   readonly key: string
@@ -196,6 +214,10 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
     if (ends(reporting.message)) {
       const running = await openTurn(tx, reporting.conversationId)
       if (running !== undefined) await endTurn(tx, reporting.conversationId, running)
+      // This machine has just become free, and whatever it is holding open was answered "nothing"
+      // because it was not. Waking it is how the next question starts now rather than in
+      // twenty-five seconds.
+      await wakeMachine(tx, reporting.machineId)
     }
 
     return written

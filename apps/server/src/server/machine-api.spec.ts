@@ -440,18 +440,17 @@ describe('a machine that is already answering something', () => {
     // ignores anything else it is handed — while the server has already written down that this
     // question was taken. Nobody ever runs it, and the page shows it working until the machine
     // restarts, which is the one outcome `unknown` exists to make rare.
+    //
+    // Whether it is busy is read from the ledger, not asked of the machine: a turn it has taken
+    // and not ended is one it is on, and that stays true while it is winding down.
     const machine = await attached('busy-mbp')
     const one = await conversationOn(machine)
     const two = await conversationOn(machine)
     await said(one, 'the first thing')
     await said(two, 'the second thing')
 
-    const first = await asMachine(machine.token, '/machines/current/poll')
-    const next = await asMachine(machine.token, '/machines/current/poll', 'POST', {
-      found: [],
-      answering: ((await first.json()) as { asking: { conversationId: string } }).asking
-        .conversationId,
-    })
+    await asMachine(machine.token, '/machines/current/poll')
+    const next = await asMachine(machine.token, '/machines/current/poll')
 
     expect(await next.json()).not.toHaveProperty('asking')
   })

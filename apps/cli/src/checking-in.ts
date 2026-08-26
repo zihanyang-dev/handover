@@ -7,7 +7,14 @@
  * in the answer to a report it was already making.
  */
 
-import { endTurn, startAnswering, type Answering, type Asking, type Machine } from './answering.ts'
+import {
+  endTurn,
+  startAnswering,
+  type Answering,
+  type Asking,
+  type Machine,
+  type Stopping,
+} from './answering.ts'
 import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
@@ -59,8 +66,8 @@ export type Reported =
       readonly pollSeconds: number
       /** One question waiting on this machine, when there is one. */
       readonly asking: Asking | undefined
-      /** A conversation somebody asked this machine to stop working on. */
-      readonly stopping: string | undefined
+      /** The turn somebody asked this machine to stop working on. */
+      readonly stopping: Stopping | undefined
     }
   /** The server does not know this credential. Nothing to retry — somebody has to enrol again. */
   | { readonly said: 'not-ours' }
@@ -79,14 +86,6 @@ export async function reportOnce(
   also: {
     /** Said once, on the first report a process makes. Only this machine can know it. */
     readonly restarted?: boolean
-    /**
-     * The conversation this machine is already on, when it is on one.
-     *
-     * Said because only it knows. It answers one turn at a time and ignores anything else it is
-     * handed — and a question handed to it anyway is one the server has written down as taken by
-     * somebody who will never run it.
-     */
-    readonly answering?: string
     /** Adds what each agent offers, the first time this process sees each version. */
     readonly offering?: Offering
   } = {},
@@ -101,7 +100,6 @@ export async function reportOnce(
       found: [...found],
       restarted: also.restarted ?? false,
       version: VERSION,
-      ...(also.answering === undefined ? {} : { answering: also.answering }),
     },
   })
 
@@ -145,11 +143,7 @@ export async function keepCheckingIn(
   let restarted = true
 
   while (!stopping.aborted) {
-    const reported = await reportOnce(api, looking, running.env, {
-      restarted,
-      offering: asks,
-      ...(answering === undefined ? {} : { answering: answering.conversationId }),
-    })
+    const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
 
     if (reported.said === 'not-ours') return taken(answering, running)
 
@@ -193,12 +187,25 @@ export async function keepCheckingIn(
  * between reports arrives on the next one instead of being lost. `stop` is asked more than once
  * and means the same thing each time.
  */
-async function stopIfAsked(
+/**
+ * Stops the agent, if the stop that came back is about the turn it is on.
+ *
+ * Exported for its own tests: what it decides is a race that cannot be staged from outside — a
+ * stop is read out of the tables a moment before it is acted on, and the whole rule is about what
+ * may have changed in that moment.
+ */
+export async function stopIfAsked(
   answering: Answering | undefined,
-  wanted: string | undefined,
+  wanted: Stopping | undefined,
   say: (line: string) => void,
 ): Promise<void> {
-  if (answering === undefined || wanted !== answering.conversationId) return
+  if (answering === undefined || wanted === undefined) return
+  // The turn and not just the conversation. A stop is read out of the tables a moment before it
+  // is acted on, and in that moment the turn it was about can end and the next one begin — on the
+  // same conversation, because interrupting is how the next one got there. Matched loosely, the
+  // interrupt stops the answer it was making room for.
+  if (wanted.conversationId !== answering.conversationId) return
+  if (wanted.askedSeq !== answering.askedSeq) return
 
   say(`stopping ${answering.conversationId}`)
   await answering.stop()
@@ -249,6 +256,7 @@ function cannot(api: Api, asking: Asking, machine: Machine): Answering {
 
   return {
     conversationId: asking.conversationId,
+    askedSeq: asking.askedSeq,
     stop: async () => {
       // Nothing was ever started, so there is nothing to stop. Saying so is the whole answer.
     },

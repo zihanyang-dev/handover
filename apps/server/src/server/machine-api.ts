@@ -8,7 +8,7 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
+import { forgetStranded, openTurnsOn, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
 import { Asked } from '../conversation/transcript.ts'
 import {
@@ -93,14 +93,6 @@ const reporting = z
      */
     restarted: z.boolean().optional(),
     /**
-     * The conversation this machine is already answering, when it is answering one.
-     *
-     * Said because only it knows: it runs one turn at a time and ignores anything else it is
-     * handed, and a question taken for a machine that will never run it is a conversation shown
-     * as working until that machine restarts.
-     */
-    answering: z.uuid().optional(),
-    /**
      * Which build of the CLI this is.
      *
      * Optional so that a machine older than this field can still check in — the same reason a
@@ -129,6 +121,11 @@ const askingBody = z
   })
   .openapi('SomethingToAnswer')
 
+/** Which turn a stop is about. Both halves, so a stop cannot be applied to a later turn. */
+const stoppingBody = z
+  .object({ conversationId: z.uuid(), askedSeq: z.number().int() })
+  .openapi('StopWanted')
+
 const checkedInBody = z
   .object({
     /**
@@ -144,13 +141,17 @@ const checkedInBody = z
     /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
     asking: askingBody.optional(),
     /**
-     * A conversation somebody has asked this machine to stop working on.
+     * The turn somebody has asked this machine to stop working on.
+     *
+     * The turn and not just the conversation: a stop read a moment before the turn it was about
+     * ended would otherwise stop whatever that machine picked up next, and leave that one claimed
+     * with nobody running it.
      *
      * Told rather than pushed, because a machine is reached by nothing but its own asking. It
      * keeps being told until the agent says it stopped, which is what makes a stop that arrived
      * while nothing was listening arrive on the next report instead of being lost.
      */
-    stopping: z.uuid().optional(),
+    stopping: stoppingBody.optional(),
   })
   .openapi('CheckedIn')
 
@@ -227,9 +228,9 @@ function whatMachinesDo(deps: MachineApi) {
  * sits until the machine next asks, and that gap is the delay a person feels between pressing
  * send and the agent starting.
  */
-async function anythingFor(deps: MachineApi, machineId: string, busyWith: string | undefined) {
+async function anythingFor(deps: MachineApi, machineId: string) {
   const owed = await deps.waiting.somethingFor(machineId, async () =>
-    whatIsOwed(deps.db, machineId, busyWith),
+    whatIsOwed(deps.db, machineId),
   )
 
   return {
@@ -245,19 +246,21 @@ async function anythingFor(deps: MachineApi, machineId: string, busyWith: string
 /**
  * Anything this machine has to be told, or nothing.
  *
- * A question is only taken for a machine that says it is free. It answers one at a time and
- * ignores anything else it is handed — so handing it a second one writes down that the question
- * was taken by somebody who will never run it, and the page shows that conversation working until
- * the machine restarts.
+ * A question is only taken for a machine with nothing open, and whether it has is the ledger's to
+ * say rather than the machine's. Asked of the machine, the answer is stale the moment it finishes
+ * — and it answers one at a time and ignores anything else it is handed, so a second question
+ * would be written down as taken by somebody who will never run it, leaving that conversation
+ * working until the machine restarts.
  *
  * The stop is asked either way, and first: a machine that is busy is exactly the one somebody
  * wants to stop.
  */
-async function whatIsOwed(db: Database, machineId: string, busyWith: string | undefined) {
+async function whatIsOwed(db: Database, machineId: string) {
   const wanted = await stopWantedOn(db, machineId)
   if (wanted !== undefined) return { stopping: wanted }
 
-  if (busyWith !== undefined) return undefined
+  const running = await openTurnsOn(db, machineId)
+  if (running.length > 0) return undefined
 
   const taken = await takeOne(db, machineId)
   return taken === undefined ? undefined : { asking: asAsking(taken) }
@@ -293,7 +296,7 @@ function polling(deps: MachineApi) {
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 
-      return c.json(await anythingFor(deps, machineId, reported.answering), 200)
+      return c.json(await anythingFor(deps, machineId), 200)
     },
   })
 }

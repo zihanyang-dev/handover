@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, beforeAll, afterEach, describe, expect, it } from 'vitest'
 import { apiFor } from './api.ts'
-import { keepCheckingIn, reportOnce } from './checking-in.ts'
+import { keepCheckingIn, reportOnce, stopIfAsked } from './checking-in.ts'
 import { VERSION } from './env.ts'
 
 /**
@@ -90,48 +90,6 @@ describe('staying connected', () => {
       expect.objectContaining({ version: VERSION }),
       expect.objectContaining({ version: VERSION }),
     ])
-  })
-
-  it('says which conversation it is on, so it is not handed a second one', async () => {
-    // It answers one at a time and ignores anything else. Not saying so leaves the server writing
-    // down that a question was taken by a machine that will never run it, and the page shows that
-    // conversation working until this process restarts.
-    const reports: { answering?: string }[] = []
-    const conversation = '11111111-2222-4333-8444-555555555555'
-    server.use(
-      http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
-        const said = (await request.json()) as { answering?: string }
-        reports.push(said)
-
-        return HttpResponse.json({
-          pollSeconds: 0,
-          lookFor: [],
-          ...(reports.length === 1
-            ? {
-                asking: {
-                  conversationId: conversation,
-                  agentKind: 'claude-code',
-                  agentSession: null,
-                  askedSeq: 1,
-                  asked: { text: 'take your time' },
-                },
-              }
-            : {}),
-        })
-      }),
-      http.post(`${ORIGIN}/machines/current/conversations/${conversation}/live`, () =>
-        HttpResponse.json(null, { status: 204 }),
-      ),
-      http.post(`${ORIGIN}/machines/current/conversations/${conversation}/messages`, () =>
-        HttpResponse.json(null, { status: 204 }),
-      ),
-    )
-    const { running, signal } = runningFor(3)
-
-    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
-
-    expect(reports[0]?.answering).toBeUndefined()
-    expect(reports.slice(1).some((one) => one.answering === conversation)).toBe(true)
   })
 
   it('follows the list the server tells it, without being restarted', async () => {
@@ -340,5 +298,54 @@ describe('one report, and what came of it', () => {
     expect(await reportOnce(apiFor(ORIGIN, 'hm_t'), [], env)).toMatchObject({
       said: 'unreachable',
     })
+  })
+})
+
+describe('acting on a stop', () => {
+  const TURN = { conversationId: 'c-1', askedSeq: 20 }
+
+  /** An agent that remembers whether anybody stopped it. */
+  function answering(conversationId: string, askedSeq: number) {
+    let stopped = false
+
+    return {
+      was: () => stopped,
+      it: {
+        conversationId,
+        askedSeq,
+        done: Promise.resolve(),
+        stop: async () => {
+          stopped = true
+        },
+      },
+    }
+  }
+
+  it('stops the turn the stop names', async () => {
+    const agent = answering('c-1', 20)
+
+    await stopIfAsked(agent.it, TURN, () => undefined)
+
+    expect(agent.was()).toBe(true)
+  })
+
+  it('leaves another conversation alone', async () => {
+    const agent = answering('c-2', 20)
+
+    await stopIfAsked(agent.it, TURN, () => undefined)
+
+    expect(agent.was()).toBe(false)
+  })
+
+  it('leaves the turn that the stop made room for alone', async () => {
+    // The one that cost a person their answer. Somebody interrupts turn 20 to ask something else;
+    // turn 20 ends, the machine takes the new question as turn 22, and a stop about turn 20 read
+    // a moment earlier arrives. Matched by conversation alone it stops turn 22 — the very answer
+    // they interrupted to get — and leaves it claimed with nobody running it.
+    const agent = answering('c-1', 22)
+
+    await stopIfAsked(agent.it, TURN, () => undefined)
+
+    expect(agent.was()).toBe(false)
   })
 })

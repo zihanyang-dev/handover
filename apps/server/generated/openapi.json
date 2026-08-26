@@ -698,8 +698,7 @@
             "$ref": "#/components/schemas/SomethingToAnswer"
           },
           "stopping": {
-            "type": "string",
-            "format": "uuid"
+            "$ref": "#/components/schemas/StopWanted"
           }
         },
         "required": [
@@ -755,6 +754,22 @@
           "asked"
         ]
       },
+      "StopWanted": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "askedSeq": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversationId",
+          "askedSeq"
+        ]
+      },
       "MachineReport": {
         "type": "object",
         "properties": {
@@ -790,10 +805,6 @@
           },
           "restarted": {
             "type": "boolean"
-          },
-          "answering": {
-            "type": "string",
-            "format": "uuid"
           },
           "version": {
             "type": "string",
@@ -2886,7 +2897,7 @@
             }
           },
           "409": {
-            "description": "It is still answering, or its machine is not here",
+            "description": "Its machine is not here",
             "content": {
               "application/json": {
                 "schema": {

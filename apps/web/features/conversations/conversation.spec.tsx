@@ -314,12 +314,16 @@ describe('while it is working', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
   })
 
-  it('will not take a second question while the first is unanswered', async () => {
+  it('lets somebody interrupt it, and says that is what pressing send will do', async () => {
+    // Whoever types "no, leave legacy/ alone" is typing it *because* it is busy. A field that
+    // greys itself out at that moment is grey for the one moment it had a job to do.
     server.use(...transcript([say(1, 'user', { text: 'take your time' })], 'working'))
 
     open('/s/acme/c/c-1')
 
-    expect(await screen.findByRole('button', { name: 'Send' })).toHaveProperty('disabled', true)
+    const send = await screen.findByRole('button', { name: 'Interrupt and send' })
+    expect(send).toHaveProperty('disabled', false)
+    expect(screen.getByLabelText('Say something')).toHaveProperty('disabled', false)
   })
 
   it('says its machine is not here rather than pretending it is thinking', async () => {
@@ -486,7 +490,7 @@ describe('choosing what to ask with', () => {
 })
 
 describe('saying something', () => {
-  it('tells the two refusals apart, because they are not the same wait', async () => {
+  it('says so when the machine is not there to hear it', async () => {
     server.use(
       ...transcript([say(1, 'activity', { activityType: 'done' })]),
       http.post('*/spaces/acme/conversations/c-1/messages', () =>
