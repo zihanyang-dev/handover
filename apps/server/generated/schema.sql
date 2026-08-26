@@ -433,6 +433,13 @@ CREATE INDEX machines_in_space ON public.machines USING btree (space_id) WHERE (
 
 
 --
+-- Name: messages_asked; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX messages_asked ON public.messages USING btree (conversation_id, seq) WHERE (role = 'user'::text);
+
+
+--
 -- Name: turns_open_on_machine; Type: INDEX; Schema: public; Owner: -
 --
 

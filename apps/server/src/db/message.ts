@@ -10,7 +10,7 @@
 
 import { sql } from 'kysely'
 import type { Message } from '../conversation/transcript.ts'
-import type { Database, Tx } from './connection.ts'
+import type { Tx } from './connection.ts'
 import { noteWritten } from './live.ts'
 
 /**
@@ -75,31 +75,6 @@ export async function alreadySaid(tx: Tx, saying: Saying): Promise<boolean> {
     .executeTakeFirst()
 
   return already !== undefined
-}
-
-/**
- * Whether a question in this conversation is still owed an answer.
- *
- * A question with no turn is one nobody has taken; a question whose turn has not ended is one
- * being run. Both are owed. What was said after it decides nothing — the words are the record, and
- * whether the work is finished is the ledger's to say.
- */
-export async function unfinished(db: Database | Tx, conversationId: string): Promise<boolean> {
-  const owed = await db
-    .selectFrom('messages')
-    .leftJoin('turns', (join) =>
-      join
-        .onRef('turns.conversation_id', '=', 'messages.conversation_id')
-        .onRef('turns.asked_seq', '=', 'messages.seq'),
-    )
-    .select('messages.seq')
-    .where('messages.conversation_id', '=', conversationId)
-    .where('messages.role', '=', 'user')
-    .where('turns.ended_at', 'is', null)
-    .limit(1)
-    .executeTakeFirst()
-
-  return owed !== undefined
 }
 
 /**

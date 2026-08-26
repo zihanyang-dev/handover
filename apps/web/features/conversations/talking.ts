@@ -41,6 +41,9 @@ export type Message = components['schemas']['Message']
 /** One conversation as the server hands it over. The shape this page keeps and adds to. */
 type Transcript = components['schemas']['Transcript']
 
+/** Whether it is being worked on, in the contract's own words. Three states, and no fourth. */
+export type Working = components['schemas']['Working']
+
 /**
  * What is happening in this conversation right now, and when to go and read what was written.
  *

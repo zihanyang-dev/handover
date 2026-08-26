@@ -10,6 +10,7 @@ import type { components } from '../generated/api.ts'
 import type { Agent, Said, Told, Why } from './agents/agent.ts'
 import { shorten } from './agents/agent.ts'
 import { NO_ANSWER, type Api } from './api.ts'
+import { sleep } from './sleeping.ts'
 
 /**
  * How long one write keeps trying before its turn is called `unknown`.
@@ -20,7 +21,7 @@ import { NO_ANSWER, type Api } from './api.ts'
  */
 const KEEP_TRYING_MS = 120_000
 
-const BETWEEN_TRIES_MS = 2000
+const BETWEEN_TRIES_SECONDS = 2
 
 /** What the server handed over: one question, and what is needed to answer it. */
 export type Asking = components['schemas']['SomethingToAnswer']
@@ -267,7 +268,7 @@ function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
       }
 
       if (until.aborted || Date.now() > giveUpAt) return false
-      await new Promise((wake) => setTimeout(wake, BETWEEN_TRIES_MS))
+      await sleep(BETWEEN_TRIES_SECONDS, until)
     }
   }
 

@@ -21,12 +21,12 @@ export type Working =
   | { readonly state: 'unknown' }
 
 /**
- * `unfinished` is a question nobody has answered: one no machine has taken yet, or one a machine
- * took and has not ended. The difference matters to the machine and to nobody else — from here
- * both are "it is still owed an answer".
+ * `owed` is a question with no answer yet: one no machine has taken, or one a machine took and
+ * has not ended. The difference matters to the machine and to nobody else — from here both are
+ * "it is still owed an answer".
  */
-export function working(unfinished: boolean, machine: Presence): Working {
-  if (!unfinished) return { state: 'idle' }
+export function working(owed: boolean, machine: Presence): Working {
+  if (!owed) return { state: 'idle' }
 
   return machine.state === 'here' ? { state: 'working' } : { state: 'unknown' }
 }

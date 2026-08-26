@@ -14,7 +14,7 @@
  * that looks alive to anybody who scrolls it. Both halves go in one transaction.
  */
 
-import { sql } from 'kysely'
+import { sql, type Expression } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
 import { append } from './message.ts'
@@ -47,28 +47,32 @@ export type Taken = {
  * question it has nothing to do with. Read that way round, the machine would never be given the
  * very question the person stopped it to ask.
  *
- * Taking the last question directly is also what keeps this cheap. Written the other way it read
- * every question a machine had ever been asked and threw nearly all of them away — measured on a
- * machine with sixty conversations behind it, a full scan of the whole transcript on every
- * check-in, growing with every line anybody ever said.
+ * Asked one conversation at a time, which is what keeps it cheap: the machine's conversations are
+ * looked up by machine, and each one's last question is a single index seek. Written as one join
+ * across the two tables instead, Postgres reads every message and every turn on the deployment
+ * and throws away the ones belonging to other machines — measured at 198,000 rows and 2,622
+ * buffers to answer one check-in, against 349 buffers this way, and the difference grows with
+ * everything anybody has ever said anywhere.
  */
 export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
   const taken = await sql<Taken>`
-    with asked as (
-      select distinct on (m.conversation_id)
-             m.conversation_id, m.seq, m.content, m.created_at, c.agent_kind, c.agent_session_id
-        from messages m
-        join conversations c on c.id = m.conversation_id
-       where c.machine_id = ${machineId} and m.role = 'user'
-       order by m.conversation_id, m.seq desc
-    ),
-    waiting as (
-      select * from asked a
-       where not exists (
+    with waiting as (
+      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
+             last.seq, last.content, last.created_at
+        from conversations c
+        cross join lateral (
+          select m.seq, m.content, m.created_at
+            from messages m
+           where m.conversation_id = c.id and m.role = 'user'
+           order by m.seq desc
+           limit 1
+        ) last
+       where c.machine_id = ${machineId}
+         and not exists (
            select 1 from turns t
-            where t.conversation_id = a.conversation_id and t.asked_seq = a.seq
+            where t.conversation_id = c.id and t.asked_seq = last.seq
          )
-       order by a.created_at
+       order by last.created_at
        limit 1
     ),
     claimed as (
@@ -77,11 +81,11 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
       on conflict do nothing
       returning conversation_id, asked_seq
     )
-    select w.conversation_id as "conversationId",
-           w.agent_kind      as "agentKind",
+    select w.conversation_id  as "conversationId",
+           w.agent_kind       as "agentKind",
            w.agent_session_id as "agentSession",
-           w.seq             as "askedSeq",
-           w.content         as asked
+           w.seq              as "askedSeq",
+           w.content          as asked
       from claimed c
       join waiting w on w.conversation_id = c.conversation_id and w.seq = c.asked_seq
   `.execute(db)
@@ -116,6 +120,46 @@ export async function openTurn(tx: Tx, conversationId: string): Promise<number |
     .executeTakeFirst()
 
   return open?.askedSeq
+}
+
+/**
+ * Whether a conversation is still owed an answer.
+ *
+ * Its last question, and only that one. Saying something is interrupting whatever came before it,
+ * so an older question is one somebody has moved on from — the same rule {@link takeOne} hands
+ * work out by, written once here so that what is handed out and what is shown as working cannot
+ * come apart.
+ *
+ * A fragment rather than a query, because it is asked in two shapes: on its own about one
+ * conversation, and as a column beside every conversation in a Space. Written twice, the list and
+ * the page would each be answering a slightly different question about the same thing.
+ *
+ * Read one conversation at a time. Expressed as a join over the two tables it comes out as a hash
+ * join across every message and every turn on the deployment, whatever the conversation asking:
+ * measured at 611 buffers against 10, on a Space page that every open browser asks for.
+ */
+export function stillOwed(conversationId: Expression<string>) {
+  return sql<boolean>`coalesce((
+    select not exists (
+      select 1 from turns t
+       where t.conversation_id = m.conversation_id
+         and t.asked_seq = m.seq
+         and t.ended_at is not null
+    )
+      from messages m
+     where m.conversation_id = ${conversationId} and m.role = 'user'
+     order by m.seq desc
+     limit 1
+  ), false)`
+}
+
+/** Whether this one conversation is still owed an answer. */
+export async function owedAnAnswer(db: Database | Tx, conversationId: string): Promise<boolean> {
+  const asked = await db
+    .selectNoFrom(stillOwed(sql.val(conversationId)).as('owed'))
+    .executeTakeFirstOrThrow()
+
+  return asked.owed
 }
 
 /**

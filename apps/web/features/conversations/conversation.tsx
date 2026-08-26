@@ -18,6 +18,7 @@ import {
   type Model,
   type Moment,
   type Message,
+  type Working,
 } from './talking.ts'
 
 /**
@@ -90,9 +91,9 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
 /**
  * Which turn is running, by the question it is answering.
  *
- * A person cannot say anything while the agent is working, so the last thing they said names the
- * turn for as long as there is one to stop. It is what a stop is named after, and being able to
- * name the turn is what makes asking twice one request rather than two.
+ * The last thing a person said, because saying something is how a turn begins and interrupting is
+ * how the next one does. It is what a stop is named after, and being able to name the turn is
+ * what makes pressing Stop twice one request rather than two.
  */
 function turnOf(messages: readonly Message[]): number {
   return messages.findLast((message) => message.role === 'user')?.seq ?? 0
@@ -202,7 +203,7 @@ function Doing({
   id,
   turn,
 }: {
-  readonly state: string
+  readonly state: Working['state']
   readonly slug: string
   readonly id: string
   readonly turn: number
@@ -387,8 +388,8 @@ function Ask({
         {/* What pressing it means, said before it is pressed: it stops what it is doing. */}
         <span className="button-label">{working ? 'Interrupt and send' : 'Send'}</span>
       </button>
-      {/* Said where it happened rather than as a banner: what to do next depends on which of
-          these it was, and the two are not the same wait. */}
+      {/* Said where it happened rather than as a banner: it is about the words still in the
+          box, and somebody who has to go and pick another machine wants it beside them. */}
       {say.isError && <p className="note">{whyNot(say.error.message)}</p>}
     </form>
   )

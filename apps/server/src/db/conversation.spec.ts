@@ -234,6 +234,24 @@ describe('saying something to an agent', () => {
     expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
   })
 
+  it('is finished once the last question is answered, however many were interrupted', async () => {
+    // Interrupt twice and the middle question never gets a turn: the machine is handed the last
+    // one, which is the one the person went on to ask. Counting every question that never got a
+    // turn, this conversation reads as working for ever — a spinner nothing can ever stop.
+    const conversation = await opened()
+    await running(conversation, 'turn-1', 'hello')
+    await asks(conversation, 'turn-2', 'no, wait')
+    await asks(conversation, 'turn-3', 'do this instead')
+    await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
+
+    const taken = await takeOne(db, MACHINE)
+    expect(taken?.askedSeq).toBe(5)
+    await ends(conversation, 'turn-3/end')
+
+    const read = await conversationWith(db, { conversationId: conversation, spaceId: SPACE })
+    expect(read?.working).toEqual({ state: 'idle' })
+  })
+
   it('hands the machine the question somebody stopped it to ask', async () => {
     // The stopped turn ends after the new question was written, so the ending lands after a
     // question it has nothing to do with. Read the wrong way round, the machine would never be

@@ -15,11 +15,11 @@ import { presence } from '../machine/presence.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
-import { append, alreadySaid, held, unfinished, type Saying, type Said } from './message.ts'
+import { append, alreadySaid, held, type Saying, type Said } from './message.ts'
+import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
+import { wakeMachine } from './waking.ts'
 
 export type { Saying, Said } from './message.ts'
-import { endTurn, openTurn } from './turn.ts'
-import { wakeMachine } from './waking.ts'
 
 export type Opening = {
   readonly spaceId: string
@@ -78,10 +78,11 @@ export async function openConversation(db: Database, opening: Opening): Promise<
 }
 
 /**
- * Adds one message a person said, if the agent is free to hear it.
+ * Adds one message a person said, interrupting the agent if it is in the middle of something.
  *
- * The check and the write are one transaction under the conversation's lock, because "is it busy"
- * is answered by the last message and the answer stops being true the moment another one lands.
+ * All of it in one transaction under the conversation's lock: whether it is busy, the request to
+ * stop, and the words. Each of those stops being true the moment anybody else writes, and a stop
+ * written without the message it was written for would be an agent stopped for no reason.
  */
 export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise<Said> {
   return db.transaction().execute(async (tx) => {
@@ -103,7 +104,7 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     // exactly that: the request to stop, and then the words. Queued instead, somebody who says
     // "no, leave legacy/ alone" watches it go on editing legacy/ until the step it was already on
     // happens to end — which is the one thing they were trying to prevent.
-    const busy = working(await unfinished(tx, conversation.id), machine)
+    const busy = working(await owedAnAnswer(tx, conversation.id), machine)
     // Under a name of its own, derived from this message's: asking twice is one interruption,
     // and the message keeps the name its sender gave it.
     if (busy.state === 'working') await askItToStop(tx, saying, `${saying.key}/stop`)
@@ -134,8 +135,10 @@ export type Stopping =
  * two facts, and a turn that was asked to stop and did not is exactly the case worth being able
  * to see.
  *
- * Allowed while the turn is open — which is the only time it means anything — so it deliberately
- * does not go through {@link sayTo}, whose whole job is to refuse things said over a live turn.
+ * Its own path rather than {@link sayTo}'s, though both write the same activity: this one is
+ * refused when nothing is running, and saying something is not. Somebody who presses Stop on a
+ * turn that just ended wants to hear that it already stopped; somebody who types a sentence wants
+ * it said either way.
  */
 export async function askToStop(db: Database, saying: Saying): Promise<Stopping> {
   return db.transaction().execute(async (tx) => {
@@ -144,7 +147,7 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
     if (await alreadySaid(tx, saying)) return { kind: 'asked-already' }
 
     const busy = working(
-      await unfinished(tx, conversation.id),
+      await owedAnAnswer(tx, conversation.id),
       presence(conversation, conversation.asOf),
     )
     if (busy.state === 'idle') return { kind: 'nothing-to-stop' }
@@ -287,23 +290,7 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
         .orderBy('messages.seq')
         .limit(1)
         .as('opening'),
-      // Whether a question here is still owed an answer: one nobody has taken, or one a machine
-      // took and has not ended.
-      eb
-        .exists(
-          eb
-            .selectFrom('messages')
-            .leftJoin('turns', (join) =>
-              join
-                .onRef('turns.conversation_id', '=', 'messages.conversation_id')
-                .onRef('turns.asked_seq', '=', 'messages.seq'),
-            )
-            .select('messages.seq')
-            .whereRef('messages.conversation_id', '=', 'conversations.id')
-            .where('messages.role', '=', 'user')
-            .where('turns.ended_at', 'is', null),
-        )
-        .as('unfinished'),
+      stillOwed(sql.ref('conversations.id')).as('unfinished'),
     ])
     .where('conversations.space_id', '=', spaceId)
     .orderBy('conversations.created_at', 'desc')
@@ -311,8 +298,7 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
 
   return rows.map((row) => ({
     ...row,
-    // `exists` comes back as a boolean from Postgres; the driver's type is wider than the column.
-    working: working(row.unfinished === true, presence(row, row.asOf)),
+    working: working(row.unfinished, presence(row, row.asOf)),
   }))
 }
 
@@ -437,7 +423,7 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
   return {
     ...conversation,
     working: working(
-      await unfinished(tx, conversation.id),
+      await owedAnAnswer(tx, conversation.id),
       presence(conversation, conversation.asOf),
     ),
     messages,
