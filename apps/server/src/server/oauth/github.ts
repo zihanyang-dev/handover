@@ -3,6 +3,7 @@
  * has to be asked for afterwards — and asked for in the one place that says whether it is proved.
  */
 
+import { z } from 'zod'
 import * as oauth from 'openid-client'
 import { normalizeEmail } from '../../identity/email-address.ts'
 import { begin, exchange } from './handshake.ts'
@@ -24,22 +25,42 @@ const SCOPE = 'read:user user:email'
 
 const API = 'https://api.github.com'
 
-export type Account = {
-  readonly id: number
-  readonly login: string
-  readonly name: string | null
-}
+/**
+ * What GitHub sends back, parsed rather than assumed.
+ *
+ * This is somebody else's JSON arriving at the one boundary where being wrong hands over an
+ * account. Asserted instead — which is what this did — a `verified` that came back as the string
+ * "false" is a truthy value, and an account with no `id` becomes the subject `"undefined"`, which
+ * every later sign-in with no id would match.
+ */
+const Account = z.object({
+  id: z.number(),
+  login: z.string(),
+  name: z.string().nullable(),
+})
 
-export type Address = {
-  readonly email: string
-  readonly primary: boolean
-  readonly verified: boolean
-}
+const Address = z.object({
+  email: z.string(),
+  primary: z.boolean(),
+  verified: z.boolean(),
+})
 
+const Addresses = z.array(Address)
+
+export type Account = z.infer<typeof Account>
+export type Address = z.infer<typeof Address>
+
+/**
+ * Asks GitHub for one thing, and comes back with it only if it is what it claims to be.
+ *
+ * Nothing to recover here: a shape that will not read and a request that failed leave the same
+ * caller with the same nothing, and the rule above decides what that means.
+ */
 async function ask<T>(
   config: oauth.Configuration,
   accessToken: string,
   path: string,
+  shape: z.ZodType<T>,
 ): Promise<T | undefined> {
   const response = await oauth.fetchProtectedResource(
     config,
@@ -50,7 +71,9 @@ async function ask<T>(
     new Headers({ accept: 'application/vnd.github+json' }),
   )
   if (!response.ok) return undefined
-  return (await response.json()) as T
+
+  const read = shape.safeParse(await response.json())
+  return read.success ? read.data : undefined
 }
 
 /**
@@ -91,8 +114,8 @@ export function githubClient(clientId: string, clientSecret: string): ProviderCl
       const tokens = await exchange(config, returned)
 
       return identityFrom(
-        await ask<Account>(config, tokens.access_token, '/user'),
-        await ask<Address[]>(config, tokens.access_token, '/user/emails'),
+        await ask(config, tokens.access_token, '/user', Account),
+        await ask(config, tokens.access_token, '/user/emails', Addresses),
       )
     },
   }
