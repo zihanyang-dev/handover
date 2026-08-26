@@ -28,6 +28,9 @@ export type Asking = components['schemas']['SomethingToAnswer']
 /** Which turn somebody asked this machine to stop. Named by turn, not by conversation. */
 export type Stopping = components['schemas']['StopWanted']
 
+/** The two an agent reports that are never written down. The contract's own name for them. */
+type Unkept = components['schemas']['Unkept']
+
 /** One message as the server will accept it. Written down here so a wrong shape cannot compile. */
 type Written = components['schemas']['MachineMessage']['message']
 
@@ -46,12 +49,13 @@ type Writing = {
   /** What the agent calls this conversation, so a later turn can ask it to remember. */
   readonly session: (id: string) => Promise<void>
   /**
-   * One moment, to whoever is watching right now.
+   * One thing that is never written down, to whoever is watching right now.
    *
    * Not awaited by the turn and never retried: it is worth something for about a second, and a
-   * turn that stopped to make sure somebody saw it would be a turn held up by a browser.
+   * turn that stopped to make sure somebody saw it would be a turn held up by a browser. What is
+   * written down needs neither — the write announces itself.
    */
-  readonly moment: (said: Said) => void
+  readonly moment: (said: Unkept) => void
 }
 
 export type Answering = {
@@ -171,17 +175,17 @@ async function write(
       return
     }
 
-    // Everything goes to whoever is watching, including the two kinds nothing keeps: what it is
-    // thinking, and that it has started something. That is the whole of what live adds.
-    if (one.told === 'said') writing.moment(one.said)
+    const goes = one.told === 'forgot' ? { written: FORGOT } : where(one.said)
 
-    const message = one.told === 'forgot' ? FORGOT : keep(one.said)
-    if (message === undefined) continue
+    if ('now' in goes) {
+      writing.moment(goes.now)
+      continue
+    }
 
     wrote += 1
     // Never short-circuited: a turn goes on being written down after one line is lost, because
     // what did land is still worth having. What it changes is only how the turn is allowed to end.
-    whole = (await writing.message(`${asking.askedSeq}/${wrote}`, message)) && whole
+    whole = (await writing.message(`${asking.askedSeq}/${wrote}`, goes.written)) && whole
   }
 
   // It stopped talking without saying how it went. Nobody can say either, and a turn left open is
@@ -206,23 +210,24 @@ function ending(why: Why): Happened {
 }
 
 /**
- * What is worth keeping out of everything the agent said.
+ * Where one thing the agent said goes: into the transcript, or only to whoever is watching now.
  *
- * Two kinds are not: what it was thinking, and that it had started something. Both exist to show
- * a turn in motion to somebody watching it, and neither is worth anything once it is over.
+ * One function and not two, because it is one question. Two kinds are never written down — what
+ * it was thinking, and that it had started something — and both exist only to show a turn in
+ * motion. Everything else is written, and nothing is both: a sentence sent down the live stream
+ * *and* written into the transcript is the same sentence crossing the network twice, arriving
+ * twice on the screen, and in two orders whenever a write is retried.
  */
-function keep(said: Said): Written | undefined {
-  if (said.said === 'text') return { role: 'assistant', content: { text: said.text } } as const
+function where(said: Said): { written: Written } | { now: Unkept } {
+  if (said.said === 'thinking' || said.said === 'doing') return { now: said }
+  if (said.said === 'text') return { written: { role: 'assistant', content: { text: said.text } } }
   if (said.said === 'trouble') {
-    return { role: 'activity', content: { activityType: 'trouble', text: said.text } } as const
-  }
-  if (said.said === 'did') {
-    // Everything but the tag, so a tool that never said how it went stays a tool that never said.
-    const { said: _kind, ...what } = said
-    return { role: 'tool', content: what } as const
+    return { written: { role: 'activity', content: { activityType: 'trouble', text: said.text } } }
   }
 
-  return undefined
+  // Everything but the tag, so a tool that never said how it went stays a tool that never said.
+  const { said: _kind, ...what } = said
+  return { written: { role: 'tool', content: what } }
 }
 
 /**

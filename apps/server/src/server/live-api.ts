@@ -8,7 +8,7 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import { streamSSE } from 'hono/streaming'
-import { Moment, type Live } from '../conversation/live.ts'
+import { Unkept, Watched, type Live } from '../conversation/live.ts'
 import { conversationInSpace } from '../db/conversation.ts'
 import type { Database } from '../db/connection.ts'
 import { SHOWS, api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
@@ -57,7 +57,7 @@ function watching(deps: LiveApi) {
       request: { params: z.object({ slug: z.string(), id: rowId }) },
       responses: {
         ...BEHIND_A_SESSION,
-        200: streams(Moment, 'One moment per event, until the browser goes away'),
+        200: streams(Watched, 'One thing per event, until the browser goes away'),
         404: refusal('No such Space, or no such conversation in it'),
       },
     }),
@@ -75,8 +75,8 @@ function watching(deps: LiveApi) {
 
       return streamSSE(c, async (stream) => {
         const sending: Promise<unknown>[] = []
-        const stop = deps.live.watch(conversationId, (moment) => {
-          sending.push(stream.writeSSE({ data: JSON.stringify(moment) }))
+        const stop = deps.live.watch(conversationId, (watched) => {
+          sending.push(stream.writeSSE({ data: JSON.stringify(watched) }))
         })
 
         stream.onAbort(stop)
@@ -95,7 +95,13 @@ function watching(deps: LiveApi) {
   })
 }
 
-/** What the machine running a turn is seeing, as it sees it. */
+/**
+ * What the machine running a turn is seeing, as it sees it.
+ *
+ * Only the two that are never kept. Everything else it has to say goes into the transcript, and
+ * the transcript announces itself when it is written — sending it here as well would be the same
+ * sentence crossing the network twice and arriving in two orders.
+ */
 function reporting(deps: LiveApi) {
   return behindAMachine({
     route: createRoute({
@@ -103,7 +109,7 @@ function reporting(deps: LiveApi) {
       path: '/machines/current/conversations/{id}/live',
       summary: 'Say what is happening right now, which is kept nowhere',
       middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(Moment) },
+      request: { params: z.object({ id: rowId }), body: takes(Unkept) },
       responses: {
         ...BEHIND_A_MACHINE,
         ...MALFORMED_BODY,
@@ -117,7 +123,10 @@ function reporting(deps: LiveApi) {
       // do is say something to a screen its own machine is not driving — and only a live machine
       // credential can say anything at all. Checking would put a query in front of every fragment
       // of every turn, to guard nothing that lasts.
-      await deps.live.say({ conversationId: c.req.valid('param').id, moment: c.req.valid('json') })
+      await deps.live.say({
+        conversationId: c.req.valid('param').id,
+        watched: { seen: 'moment', moment: c.req.valid('json') },
+      })
 
       return c.body(null, 204)
     },

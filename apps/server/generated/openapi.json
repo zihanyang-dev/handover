@@ -1360,27 +1360,50 @@
           "session"
         ]
       },
-      "Moment": {
+      "Watched": {
         "oneOf": [
           {
             "type": "object",
             "properties": {
-              "said": {
+              "seen": {
                 "type": "string",
                 "enum": [
-                  "text"
+                  "moment"
                 ]
               },
-              "text": {
-                "type": "string",
-                "maxLength": 20000
+              "moment": {
+                "$ref": "#/components/schemas/Unkept"
               }
             },
             "required": [
-              "said",
-              "text"
+              "seen",
+              "moment"
             ]
           },
+          {
+            "type": "object",
+            "properties": {
+              "seen": {
+                "type": "string",
+                "enum": [
+                  "written"
+                ]
+              },
+              "upTo": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              }
+            },
+            "required": [
+              "seen",
+              "upTo"
+            ]
+          }
+        ]
+      },
+      "Unkept": {
+        "oneOf": [
           {
             "type": "object",
             "properties": {
@@ -1427,62 +1450,6 @@
               "name",
               "verb",
               "arg"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "said": {
-                "type": "string",
-                "enum": [
-                  "trouble"
-                ]
-              },
-              "text": {
-                "type": "string",
-                "maxLength": 20000
-              }
-            },
-            "required": [
-              "said",
-              "text"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "said": {
-                "type": "string",
-                "enum": [
-                  "did"
-                ]
-              },
-              "name": {
-                "type": "string",
-                "maxLength": 200
-              },
-              "verb": {
-                "type": "string",
-                "maxLength": 50
-              },
-              "arg": {
-                "type": "string",
-                "maxLength": 2000
-              },
-              "ok": {
-                "type": "boolean"
-              },
-              "excerpt": {
-                "type": "string",
-                "maxLength": 4000
-              }
-            },
-            "required": [
-              "said",
-              "name",
-              "verb",
-              "arg",
-              "excerpt"
             ]
           }
         ]
@@ -3144,11 +3111,11 @@
         ],
         "responses": {
           "200": {
-            "description": "One moment per event, until the browser goes away",
+            "description": "One thing per event, until the browser goes away",
             "content": {
               "text/event-stream": {
                 "schema": {
-                  "$ref": "#/components/schemas/Moment"
+                  "$ref": "#/components/schemas/Watched"
                 }
               }
             }
@@ -3200,7 +3167,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Moment"
+                "$ref": "#/components/schemas/Unkept"
               }
             }
           }

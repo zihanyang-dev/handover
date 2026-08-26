@@ -183,7 +183,7 @@ function Watching({ slug, id }: { readonly slug: string; readonly id: string }) 
 }
 
 /**
- * One live moment, in a line.
+ * One live moment, in a line. Two kinds, and both of them are gone as soon as they are over.
  *
  * Thinking with nothing in it is still worth a line: Claude Code's own record keeps a signature
  * and no readable text, so "it is thinking" is all there is to say and all anybody needs.
@@ -192,8 +192,6 @@ function said(moment: Moment): string {
   if (moment.said === 'thinking') {
     return moment.text.trim() === '' ? 'Thinking…' : `Thinking — ${moment.text}`
   }
-  if (moment.said === 'text') return moment.text
-  if (moment.said === 'trouble') return moment.text
 
   return `${moment.verb === '' ? moment.name : moment.verb} ${moment.arg}`.trim()
 }

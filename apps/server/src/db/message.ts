@@ -11,6 +11,7 @@
 import { sql } from 'kysely'
 import type { Message } from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
+import { noteWritten } from './live.ts'
 
 /**
  * Where a person is writing, and under what name.
@@ -107,6 +108,11 @@ export async function unfinished(db: Database | Tx, conversationId: string): Pro
  * `seq` is read and written inside the caller's lock, so two writers cannot both believe they are
  * next. A repeat of a key that is already there is not an error: the first write is what the
  * caller wanted, and the only reason they are asking again is that they never heard so.
+ *
+ * Writing is also what tells whoever is watching, in this same transaction. Two places writing
+ * the same fact — one into the table and one down a stream — is the mistake with a name, and the
+ * name is a dual write: nothing joins the two, so they can disagree about what happened and about
+ * what order it happened in. Here there is one write, and it announces itself when it commits.
  */
 export async function append(tx: Tx, appending: Appending): Promise<Said> {
   const next = await tx
@@ -128,5 +134,9 @@ export async function append(tx: Tx, appending: Appending): Promise<Said> {
     .returning('id')
     .executeTakeFirst()
 
-  return written === undefined ? { kind: 'said-already' } : { kind: 'said' }
+  if (written === undefined) return { kind: 'said-already' }
+
+  await noteWritten(tx, appending.conversationId, next.seq)
+
+  return { kind: 'said' }
 }

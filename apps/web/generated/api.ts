@@ -1764,13 +1764,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description One moment per event, until the browser goes away */
+                /** @description One thing per event, until the browser goes away */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/event-stream": components["schemas"]["Moment"];
+                        "text/event-stream": components["schemas"]["Watched"];
                     };
                 };
                 /** @description Nobody is signed in here */
@@ -1822,7 +1822,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["Moment"];
+                    "application/json": components["schemas"]["Unkept"];
                 };
             };
             responses: {
@@ -2202,11 +2202,16 @@ export interface components {
         AgentSession: {
             session: string;
         };
-        Moment: {
+        Watched: {
             /** @enum {string} */
-            said: "text";
-            text: string;
+            seen: "moment";
+            moment: components["schemas"]["Unkept"];
         } | {
+            /** @enum {string} */
+            seen: "written";
+            upTo: number;
+        };
+        Unkept: {
             /** @enum {string} */
             said: "thinking";
             text: string;
@@ -2216,18 +2221,6 @@ export interface components {
             name: string;
             verb: string;
             arg: string;
-        } | {
-            /** @enum {string} */
-            said: "trouble";
-            text: string;
-        } | {
-            /** @enum {string} */
-            said: "did";
-            name: string;
-            verb: string;
-            arg: string;
-            ok?: boolean;
-            excerpt: string;
         };
     };
     responses: never;

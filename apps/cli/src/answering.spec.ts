@@ -203,9 +203,10 @@ describe('what a turn leaves behind', () => {
     expect(kept.map((one) => one.key)).toEqual(['4/1', '4/2', '4/end'])
   })
 
-  it('shows somebody watching the two kinds nothing keeps', async () => {
-    // What it is thinking and that it has started something: both are worth watching and worth
-    // nothing afterwards, which is the whole of what the live stream adds over the transcript.
+  it('pushes the two kinds nothing keeps, and only those', async () => {
+    // Everything else is written down, and writing it is what tells whoever is watching. Pushed
+    // as well, the same sentence would cross the network twice, land on the screen twice, and
+    // land in two different orders whenever one of the two had to be retried.
     await answered(
       saying(
         said({ said: 'thinking', text: 'let me look at the file' }),
@@ -215,7 +216,9 @@ describe('what a turn leaves behind', () => {
       ),
     )
 
-    expect(watched.map((one) => one.said)).toEqual(['thinking', 'doing', 'text'])
+    expect(watched.map((one) => one.said)).toEqual(['thinking', 'doing'])
+    // And the one that is kept is kept, rather than being lost between the two paths.
+    expect(JSON.stringify(written)).toContain('done')
     expect(JSON.stringify(written)).not.toContain('let me look at the file')
   })
 

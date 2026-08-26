@@ -1,12 +1,14 @@
 /**
  * Reading and writing one conversation.
  *
- * A conversation being worked on is read again every second, and one that is idle is left alone.
- * The transcript comes from asking rather than from the live stream, and that is the split: the
- * stream carries what is happening and keeps nothing, this carries what happened and is the only
- * thing that survives. Two sources for one fact would be two facts that could disagree.
+ * The transcript comes from asking, never from the live stream, and that is the split: the stream
+ * carries what is happening and keeps nothing, this carries what happened and is the only thing
+ * that survives. Two sources for one fact would be two facts that could disagree.
  *
- * Asking again does not mean asking for all of it again — see {@link useConversation}.
+ * What the stream does carry about the transcript is that it has grown. So asking is driven by
+ * being told rather than by a clock — see {@link useWatching} — with a slow beat underneath it in
+ * case the stream itself has quietly died. Asking again does not mean asking for all of it again;
+ * see {@link useConversation}.
  */
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -14,11 +16,24 @@ import { useEffect, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
-/** Often enough that a person watching sees it move, rarely enough to be free at rest. */
+/** Often enough that a person watching the list sees it move, rarely enough to be free at rest. */
 const WHILE_WORKING_MS = 1000
 
+/**
+ * How often to ask for a conversation anyway, while something is happening in it.
+ *
+ * Not how a person sees the agent move — the stream says when there is something new, and that
+ * arrives in milliseconds. This is only the beat underneath it: a stream can be closed by
+ * something in the middle without either end noticing, and a transcript frozen at the last thing
+ * that arrived would be this page quietly showing yesterday's news.
+ */
+const IN_CASE_THE_STREAM_DIED_MS = 5000
+
 /** One thing happening right now. Shown while it happens and kept nowhere — see the server's. */
-export type Moment = components['schemas']['Moment']
+export type Moment = components['schemas']['Unkept']
+
+/** One thing the stream carries: something happening now, or that the transcript has grown. */
+type Watched = components['schemas']['Watched']
 
 /** One line of a transcript, per role. The contract's own name for it, and its own shape. */
 export type Message = components['schemas']['Message']
@@ -27,12 +42,12 @@ export type Message = components['schemas']['Message']
 type Transcript = components['schemas']['Transcript']
 
 /**
- * What is happening in this conversation right now.
+ * What is happening in this conversation right now, and when to go and read what was written.
  *
- * A stream rather than the poll, because these are the parts that never reach the transcript: what
- * it is thinking, and that it has started something. Held only while the browser is open, and
- * cleared whenever the turn settles — the transcript is what survives, and showing a finished
- * turn's live lines beside it would be showing the same words twice.
+ * Both come down one stream because they are one thing to a person: the agent moved. Only the
+ * first is shown from here — what it is thinking, and that it has started something, neither of
+ * which ever reaches the transcript. The second carries no words, only that there are some, and
+ * the answer to it is to ask for the tail of the transcript.
  *
  * Nothing is ever cleared here. What starts a fresh list is the caller mounting a fresh component
  * for a fresh turn, which is what a key is for — clearing it from inside would be a state change
@@ -40,22 +55,36 @@ type Transcript = components['schemas']['Transcript']
  */
 export function useWatching(slug: string, id: string): readonly Moment[] {
   const [moments, setMoments] = useState<readonly Moment[]>([])
+  const client = useQueryClient()
 
   useEffect(() => {
     const live = new EventSource(`/spaces/${slug}/conversations/${id}/live`, {
       withCredentials: true,
     })
 
+    const read = async (): Promise<void> =>
+      client.invalidateQueries({ queryKey: ['conversation', slug, id] })
+
+    // Whatever arrived while this browser was not connected arrived while it was not connected.
+    // A stream that reconnects without catching up is a page that stays behind by however long it
+    // was away, and neither end can tell that from an agent that went quiet.
+    live.onopen = () => {
+      void read()
+    }
+
     live.onmessage = (event: MessageEvent<string>) => {
       // The heartbeat, which says only that the connection is still there.
       if (event.data === '') return
-      setMoments((sofar) => [...sofar, JSON.parse(event.data) as Moment])
+
+      const watched = JSON.parse(event.data) as Watched
+      if (watched.seen === 'written') void read()
+      else setMoments((sofar) => [...sofar, watched.moment])
     }
 
     return () => {
       live.close()
     }
-  }, [slug, id])
+  }, [slug, id, client])
 
   return moments
 }
@@ -119,7 +148,7 @@ export function useConversation(slug: string, id: string) {
     // comes back it says how the turn went. Stopping there would leave the page on "nobody knows"
     // until somebody reloaded it, long after the answer had arrived.
     refetchInterval: (query) =>
-      query.state.data?.working.state === 'idle' ? false : WHILE_WORKING_MS,
+      query.state.data?.working.state === 'idle' ? false : IN_CASE_THE_STREAM_DIED_MS,
   })
 }
 

@@ -12,10 +12,10 @@
  */
 
 import { sql } from 'kysely'
-import { Happening, type Live, type Moment } from '../conversation/live.ts'
+import { Happening, type Live, type Watched } from '../conversation/live.ts'
 import type { Env } from '../env.ts'
 import type { Log } from '../log.ts'
-import type { Database } from './connection.ts'
+import type { Database, Tx } from './connection.ts'
 import { listenOn, type Listening } from './notifications.ts'
 
 /** One name for everything live, and each instance sorts its own watchers out. */
@@ -23,39 +23,50 @@ const CHANNEL = 'handover_live'
 
 /**
  * Postgres refuses a payload over 8000 bytes, and a refused one would answer a machine that was
- * only saying what it is doing with a fault. Long text is cut rather than dropped: what is
- * watched is a turn in motion, and the settled version of the same words is on its way to the
- * transcript regardless.
+ * only saying what it is doing with a fault. Only what an agent is thinking can come near that,
+ * and cutting it costs nothing: it is worth something for a second and is kept nowhere. A mark
+ * saying the transcript has grown is a number.
  */
 const ROOM = 6000
 
 function shortened(happening: Happening): Happening {
-  const said = JSON.stringify(happening)
-  if (said.length <= ROOM) return happening
+  if (JSON.stringify(happening).length <= ROOM) return happening
+  if (happening.watched.seen !== 'moment') return happening
 
-  const moment = happening.moment
-  const cut = (text: string) => `${text.slice(0, 1000)}…`
-  const shorter =
-    moment.said === 'did' ? { ...moment, excerpt: cut(moment.excerpt) } : { ...moment }
+  const moment = happening.watched.moment
+  const cut = (text: string): string => `${text.slice(0, 1000)}…`
+  const shorter = moment.said === 'thinking' ? { ...moment, text: cut(moment.text) } : moment
 
-  return {
-    conversationId: happening.conversationId,
-    moment: 'text' in shorter ? { ...shorter, text: cut(shorter.text) } : shorter,
-  }
+  return { conversationId: happening.conversationId, watched: { seen: 'moment', moment: shorter } }
 }
 
-/** Says one moment to every instance, including this one. */
-async function announce(db: Database, happening: Happening): Promise<void> {
+/** Says one thing to every instance, including this one. */
+async function announce(db: Database | Tx, happening: Happening): Promise<void> {
   await sql`select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})`.execute(db)
 }
 
 /**
- * Hears every moment.
+ * Says that a conversation has been written to, in the transaction that wrote it.
  *
- * A moment this build cannot read is one nobody can act on, and it is gone in a second either
- * way — said in the log once rather than thrown at whoever is watching.
+ * Takes the transaction rather than the pool, which is the whole of why this is reliable:
+ * Postgres delivers a notification when its transaction commits, so nobody can be sent to read a
+ * message that is not there yet, and nobody is told about one that rolled back.
+ *
+ * The write is what says it. Left to the callers, the one that forgot would be a conversation
+ * that sat still on somebody's screen while the agent worked, and nothing would say which caller
+ * it was.
  */
-export function listenForMoments(
+export async function noteWritten(tx: Tx, conversationId: string, upTo: number): Promise<void> {
+  await announce(tx, { conversationId, watched: { seen: 'written', upTo } })
+}
+
+/**
+ * Hears everything anybody said about a conversation on this deployment.
+ *
+ * Something this build cannot read is something nobody can act on, and it is gone either way —
+ * said in the log once rather than thrown at whoever is watching.
+ */
+export function listenForLive(
   env: Env,
   log: Log,
   heard: (happening: Happening) => void,
@@ -63,7 +74,7 @@ export function listenForMoments(
   return listenOn(env, log, CHANNEL, (payload) => {
     const read = Happening.safeParse(JSON.parse(payload === '' ? 'null' : payload))
     if (read.success) heard(read.data)
-    else log.warn('a live moment arrived in a shape this build does not know')
+    else log.warn('something live arrived in a shape this build does not know')
   })
 }
 
@@ -73,11 +84,11 @@ export function listenForMoments(
  * A plain map, because that is all it is: the fan-out across instances is the notification, and
  * what is left here is handing one moment to the browsers this process is holding open.
  */
-export function liveThrough(db: Database, watching: Map<string, Set<(moment: Moment) => void>>) {
+export function liveThrough(db: Database, watching: Map<string, Set<(watched: Watched) => void>>) {
   return {
     say: async (happening: Happening) => announce(db, happening),
 
-    watch: (conversationId: string, see: (moment: Moment) => void) => {
+    watch: (conversationId: string, see: (watched: Watched) => void) => {
       const here = watching.get(conversationId) ?? new Set()
       here.add(see)
       watching.set(conversationId, here)
@@ -92,10 +103,10 @@ export function liveThrough(db: Database, watching: Map<string, Set<(moment: Mom
   } satisfies Live
 }
 
-/** Hands one moment to the browsers this instance is holding open. */
+/** Hands one thing to the browsers this instance is holding open. */
 export function handTo(
-  watching: Map<string, Set<(moment: Moment) => void>>,
+  watching: Map<string, Set<(watched: Watched) => void>>,
   happening: Happening,
 ): void {
-  for (const see of watching.get(happening.conversationId) ?? []) see(happening.moment)
+  for (const see of watching.get(happening.conversationId) ?? []) see(happening.watched)
 }

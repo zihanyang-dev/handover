@@ -7,6 +7,9 @@ import { loadEnv } from '../env.ts'
 import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
+import { createLog } from '../log.ts'
+import type { Watched } from '../conversation/live.ts'
+import { handTo, listenForLive } from './live.ts'
 import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
 import {
   askToStop,
@@ -25,7 +28,38 @@ import { arrive } from './user.ts'
 const env = loadEnv()
 const db: Database = connect(env)
 
+/**
+ * Somebody watching, on a second connection.
+ *
+ * A second connection because that is the case worth proving: the browser is held open by one
+ * instance and the write happens on another, and what has to cross between them is Postgres.
+ */
+const watching = new Map<string, Set<(watched: Watched) => void>>()
+const listening = listenForLive(env, createLog({ ...env, LOG_LEVEL: 'fatal' }), (happening) => {
+  handTo(watching, happening)
+})
+
+/** What a watcher of this conversation is told, or nothing if nothing arrives. */
+async function told(conversationId: string, within = 3000): Promise<Watched | undefined> {
+  return new Promise((settle) => {
+    const here = watching.get(conversationId) ?? new Set()
+    watching.set(conversationId, here)
+
+    const see = (watched: Watched): void => {
+      here.delete(see)
+      settle(watched)
+    }
+    here.add(see)
+
+    setTimeout(() => {
+      here.delete(see)
+      settle(undefined)
+    }, within).unref()
+  })
+}
+
 afterAll(async () => {
+  await listening.stop()
   await db.destroy()
 })
 
@@ -149,6 +183,36 @@ describe('opening a conversation', () => {
 describe('saying something to an agent', () => {
   it('takes the first thing said', async () => {
     expect(await asks(await opened(), 'turn-1', 'hello')).toEqual({ kind: 'said' })
+  })
+
+  it('tells whoever is watching that there is something to read, and how far', async () => {
+    // Writing is what says it, in the transaction that wrote it. Said by the callers instead, the
+    // one that forgot would be a conversation sitting still on somebody's screen while the agent
+    // worked, and nothing would say which caller it was.
+    await listening.listening
+    const conversation = await opened()
+    const arriving = told(conversation)
+
+    await asks(conversation, 'turn-1', 'hello')
+
+    expect(await arriving).toEqual({ seen: 'written', upTo: 1 })
+  })
+
+  it('says nothing to them when the same thing is said twice', async () => {
+    // Nothing was written the second time. A watcher told to go and read would find what they
+    // already had, which is a round trip for nothing on every retry anybody makes.
+    await listening.listening
+    const conversation = await opened()
+    // Waited for rather than assumed: the first mark arrives on its own connection, and a watcher
+    // that started listening after it would be a test that passed by missing it.
+    const first = told(conversation)
+    await asks(conversation, 'turn-1', 'hello')
+    await first
+
+    const again = told(conversation, 500)
+    await asks(conversation, 'turn-1', 'hello')
+
+    expect(await again).toBeUndefined()
   })
 
   it('does not say it twice when the answer to the first attempt was lost', async () => {

@@ -85,19 +85,33 @@ export type Told =
   | { readonly told: 'said'; readonly said: Said }
   | { readonly told: 'ended'; readonly why: Why }
 
+/** One message as the server will accept it, and the shape of a tool line inside it. */
+type Message = components['schemas']['MachineMessage']['message']
+type Tool = Extract<Message, { role: 'tool' }>['content']
+
 /**
- * One thing said or done, in our words.
+ * The two an adapter reports that are never written down.
  *
- * The wire's shape, not a second one beside it. What an adapter reports is exactly what is pushed
- * to whoever is watching and, for the kinds that settle, exactly what is written down — so a copy
- * written out here would be a copy that could disagree with both.
- *
- * Two of the five never reach the transcript: what it was thinking, and that it had started
- * something. Both exist to show a turn in motion, and a message is written once and never revised
- * — a row per streamed fragment would be an update per fragment, and Postgres keeps every version
- * of a row it updates.
+ * The contract's own name for them, because these two are pushed as themselves — what it is
+ * thinking, and that it has started something. Both exist to show a turn in motion, and a message
+ * is written once and never revised: a row per streamed fragment would be an update per fragment,
+ * and Postgres keeps every version of a row it updates.
  */
-export type Said = components['schemas']['Moment']
+export type Unkept = components['schemas']['Unkept']
+
+/**
+ * One thing said or done, in our words. Every adapter produces exactly this.
+ *
+ * Each half is the wire's own shape rather than a copy beside it: the two that are never kept are
+ * the shape they are pushed as, and the three that are kept are the shape they are written as. A
+ * vocabulary written out on its own here would be one that could drift from both, and nothing
+ * would say which of the two was right.
+ */
+export type Said =
+  | Unkept
+  | { readonly said: 'text'; readonly text: string }
+  | { readonly said: 'trouble'; readonly text: string }
+  | ({ readonly said: 'did' } & Tool)
 
 /**
  * Why a turn ended.

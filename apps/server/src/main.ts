@@ -8,11 +8,11 @@
 
 import { serve } from '@hono/node-server'
 import { connect } from './db/connection.ts'
-import { handTo, listenForMoments, liveThrough } from './db/live.ts'
+import { handTo, listenForLive, liveThrough } from './db/live.ts'
 import { listenForWaking } from './db/waking.ts'
 import { POLL_SECONDS } from './machine/presence.ts'
 import { waitingRoom } from './server/waiting.ts'
-import type { Moment } from './conversation/live.ts'
+import type { Watched } from './conversation/live.ts'
 import { PROVIDER_KEYS, loadEnv } from './env.ts'
 import { codeLetter } from './identity/email-code.ts'
 import { createLog } from './log.ts'
@@ -88,8 +88,8 @@ const db = connect(env)
  * Everyone watching a turn on this instance, and the connection that hears about turns running on
  * the others. A moment is worth nothing a second later, so none of this is kept anywhere.
  */
-const watching = new Map<string, Set<(moment: Moment) => void>>()
-const listening = listenForMoments(env, log, (happening) => {
+const watching = new Map<string, Set<(watched: Watched) => void>>()
+const listening = listenForLive(env, log, (happening) => {
   handTo(watching, happening)
 })
 

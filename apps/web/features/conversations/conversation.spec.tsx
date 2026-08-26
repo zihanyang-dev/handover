@@ -36,19 +36,31 @@ function open(at: string) {
 
 type Message = { seq: number; role: string; content: unknown; at: string }
 
+/**
+ * A conversation the server hands over, tail and all.
+ *
+ * `after` is honoured rather than ignored, because the page joins what comes back onto what it
+ * already has: a handler that answered every ask with the whole thing would put every message on
+ * screen once more per ask, and the tests would be measuring that instead of the page.
+ *
+ * The array is read when it is asked for, so a test can add to it and then say so.
+ */
 function transcript(messages: Message[], state = 'idle', offers: Offers = []) {
   return [
     signedIn(),
-    http.get('*/spaces/acme/conversations/c-1', () =>
-      HttpResponse.json<Transcript>({
+    http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
+      const after = new URL(request.url).searchParams.get('after')
+      const tail = after === null ? messages : messages.filter((one) => one.seq > Number(after))
+
+      return HttpResponse.json<Transcript>({
         id: 'c-1',
         agentKind: 'claude-code',
         machineName: 'mina-mbp',
         working: { state } as Transcript['working'],
         offers,
-        messages: messages as Transcript['messages'],
-      }),
-    ),
+        messages: tail as Transcript['messages'],
+      })
+    }),
   ]
 }
 
@@ -226,7 +238,10 @@ describe('watching it work', () => {
     open('/s/acme/c/c-1')
     await screen.findByRole('button', { name: 'Stop' })
 
-    serverSends(LIVE, { said: 'thinking', text: 'let me look at the file' })
+    serverSends(LIVE, {
+      seen: 'moment',
+      moment: { said: 'thinking', text: 'let me look at the file' },
+    })
 
     expect(await screen.findByText(/let me look at the file/i)).toBeDefined()
   })
@@ -236,7 +251,10 @@ describe('watching it work', () => {
     open('/s/acme/c/c-1')
     await screen.findByRole('button', { name: 'Stop' })
 
-    serverSends(LIVE, { said: 'doing', name: 'Bash', verb: 'ran', arg: 'rg timeout src/' })
+    serverSends(LIVE, {
+      seen: 'moment',
+      moment: { said: 'doing', name: 'Bash', verb: 'ran', arg: 'rg timeout src/' },
+    })
 
     expect(await screen.findByText(/ran rg timeout src\//i)).toBeDefined()
   })
@@ -248,7 +266,7 @@ describe('watching it work', () => {
     open('/s/acme/c/c-1')
     await screen.findByRole('button', { name: 'Stop' })
 
-    serverSends(LIVE, { said: 'thinking', text: '' })
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'thinking', text: '' } })
 
     expect(await screen.findByText('Thinking…')).toBeDefined()
   })
@@ -260,9 +278,46 @@ describe('watching it work', () => {
     open('/s/acme/c/c-1')
     await screen.findByRole('button', { name: 'Stop' })
 
-    serverSends(LIVE, { said: 'thinking', text: 'hm' })
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'thinking', text: 'hm' } })
 
     expect(await screen.findByText(/never kept/i)).toBeDefined()
+  })
+
+  it('reads the transcript when the stream says it has grown, rather than on a clock', async () => {
+    // The stream carries that there is something new, never the something. So this is the whole
+    // of how a person sees what the agent said: told, then read. On a clock it would be however
+    // long that clock is late by, every time.
+    const sofar = [say(1, 'user', { text: 'take your time' })]
+    server.use(...transcript(sofar, 'working'))
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    sofar.push(say(2, 'assistant', { text: 'the timeout is 30 seconds' }))
+    serverSends(LIVE, { seen: 'written', upTo: 2 })
+
+    expect(await screen.findByText('the timeout is 30 seconds')).toBeDefined()
+  })
+
+  it('shows what it said once, in the transcript, and not twice', async () => {
+    // What is written down is never also pushed down the stream. Sent both ways it would arrive
+    // twice — under "Happening now" and again in the transcript — and in two orders whenever a
+    // write had to be retried.
+    server.use(
+      ...transcript(
+        [
+          say(1, 'user', { text: 'take your time' }),
+          say(2, 'assistant', { text: 'the timeout is 30 seconds' }),
+        ],
+        'working',
+      ),
+    )
+    open('/s/acme/c/c-1')
+    await screen.findByText('the timeout is 30 seconds')
+
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'thinking', text: 'hm' } })
+    await screen.findByText(/hm/i)
+
+    expect(screen.queryAllByText('the timeout is 30 seconds')).toHaveLength(1)
   })
 
   it('watches nothing at all once the turn has settled', async () => {
