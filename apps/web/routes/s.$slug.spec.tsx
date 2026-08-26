@@ -84,6 +84,22 @@ describe('entering a Space', () => {
   it('does not call a Space it could not read a Space you do not have', async () => {
     // A read that failed is not a Space that is missing. Told "not available", somebody goes
     // looking for a Space that is theirs and is there, over a moment of no network.
+    // A server that answered with a refusal body, which is the shape this took in production and
+    // the one the query treated as success: `data` is undefined either way, and `?? null` turned
+    // "could not read" into "not yours".
+    server.use(
+      signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'retry-later' }, { status: 503 }),
+      ),
+    )
+    open('/s/acme')
+
+    expect(await screen.findByText(/could not read this space/i)).toBeDefined()
+    expect(screen.queryByText(/not available/i)).toBeNull()
+  })
+
+  it('says the same about a connection that never landed', async () => {
     server.use(
       signedIn(),
       http.get('*/spaces/acme', () => HttpResponse.error()),
@@ -91,7 +107,35 @@ describe('entering a Space', () => {
     open('/s/acme')
 
     expect(await screen.findByText(/could not read this space/i)).toBeDefined()
-    expect(screen.queryByText(/not available/i)).toBeNull()
+  })
+
+  it('keeps the frame across screens, so a sidebar somebody moved stays moved', async () => {
+    // The frame is a layout, mounted once. Mounted per screen, opening a conversation puts a new
+    // one in its place and the sidebar somebody collapsed is open again.
+    server.use(
+      ...theSpace({ conversations: [] }),
+      http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
+      http.get('*/spaces/acme/conversations/c-1', () =>
+        HttpResponse.json({
+          id: 'c-1',
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [],
+          messages: [],
+        }),
+      ),
+    )
+    const router = open('/s/acme')
+
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    await userEvent.click(within(sidebar).getByRole('button', { name: /close sidebar/i }))
+    await screen.findByRole('button', { name: /open sidebar/i })
+
+    await router.navigate({ to: '/s/$slug/c/$id', params: { slug: 'acme', id: 'c-1' } })
+
+    // Still collapsed: the same frame, with something else inside it.
+    expect(await screen.findByRole('button', { name: /open sidebar/i })).toBeDefined()
   })
 
   it('asks somebody whose session ran out to sign in, and remembers where they were', async () => {

@@ -9,7 +9,7 @@
  * the frame and nothing that lives inside it.
  */
 
-import { Link } from '@tanstack/react-router'
+import { Link, useMatches } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Mark } from '../../mark.tsx'
@@ -21,6 +21,20 @@ type Space = Me['spaces'][number]
 const DEFAULT_SIDEBAR_WIDTH = 270
 const MIN_SIDEBAR_WIDTH = 220
 const MAX_SIDEBAR_WIDTH = 480
+
+/**
+ * What the open screen calls itself, for the line at the top.
+ *
+ * Read from the deepest match that says, so a screen names itself rather than being named by a
+ * parent that would have to keep a list of its children.
+ */
+function useDeepest(): string {
+  const said = useMatches()
+    .map((match) => (match.staticData as { where?: string }).where)
+    .filter((one) => one !== undefined)
+
+  return said.at(-1) ?? 'Home'
+}
 
 function resizedWidth(width: number) {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
@@ -116,17 +130,17 @@ function ResizeRail({
 
 export function Home({
   space,
-  where,
   aside,
   children,
 }: {
   readonly space: Space
-  /** Where in this Space somebody is, said after its name at the top. */
-  readonly where: string
   /** Under the tabs. The list of what is in this Space, whatever that is on this screen. */
   readonly aside?: ReactNode
   readonly children: ReactNode
 }) {
+  // Where somebody is comes from the screen that is open, not from the frame: the frame is
+  // mounted once and outlives every screen shown in it, so it cannot be the thing that knows.
+  const where = useDeepest()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
