@@ -11,7 +11,7 @@
  */
 
 import { http, HttpResponse } from 'msw'
-import type { Me } from './features/identity/me.ts'
+import type { Me } from '../features/identity/me.ts'
 
 export function signedIn(who: Partial<Me> = {}) {
   return http.get('*/me', () =>

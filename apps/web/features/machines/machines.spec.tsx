@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
-import { theSpace } from '../../a-space.ts'
+import { theSpace } from '../../pretend/a-space.ts'
 
 const server = setupServer()
 

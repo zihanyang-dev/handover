@@ -309,6 +309,28 @@ type Spoken = {
 }
 
 /**
+ * Whether this conversation is one this Space can reach.
+ *
+ * The same question {@link conversationWith} answers on its way to reading a transcript, asked on
+ * its own by whoever only needs the answer. Watching a turn is the case: holding a stream open
+ * begins by asking whether there is anything to watch, and asking it by reading the whole
+ * conversation would load an hour of somebody's history to throw all of it away.
+ */
+export async function conversationInSpace(
+  db: Database,
+  reading: { readonly conversationId: string; readonly spaceId: string },
+): Promise<boolean> {
+  const found = await db
+    .selectFrom('conversations')
+    .select('id')
+    .where('id', '=', reading.conversationId)
+    .where('space_id', '=', reading.spaceId)
+    .executeTakeFirst()
+
+  return found !== undefined
+}
+
+/**
  * One conversation and everything said in it, in order.
  *
  * All of it in one transaction, for the same reason the machines list is: three statements are

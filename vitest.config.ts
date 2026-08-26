@@ -28,7 +28,7 @@ export default defineConfig({
           environment: 'happy-dom',
           // The one browser API happy-dom does not have, and the live half of a conversation is
           // exactly what a screen test should be able to see.
-          setupFiles: ['./apps/web/event-source.ts'],
+          setupFiles: ['./apps/web/pretend/event-source.ts'],
         },
       },
       {

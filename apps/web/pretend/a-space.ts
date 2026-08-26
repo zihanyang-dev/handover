@@ -11,8 +11,8 @@
  */
 
 import { http, HttpResponse } from 'msw'
-import type { components } from './generated/api.ts'
-import { signedIn } from './signed-in.ts'
+import type { components } from '../generated/api.ts'
+import { signedIn } from '../pretend/signed-in.ts'
 
 type Space = components['schemas']['Space']
 type Machines = components['schemas']['Machines']

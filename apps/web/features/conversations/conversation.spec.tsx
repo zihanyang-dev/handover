@@ -6,8 +6,8 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
-import { signedIn } from '../../signed-in.ts'
-import { isWatching, serverSends } from '../../event-source.ts'
+import { signedIn } from '../../pretend/signed-in.ts'
+import { isWatching, serverSends } from '../../pretend/event-source.ts'
 import type { components } from '../../generated/api.ts'
 
 const server = setupServer()

@@ -12,7 +12,7 @@ import type { paths } from '../generated/api.ts'
 export type Api = ReturnType<typeof createClient<paths>>
 
 /** Not 503 by coincidence: to everything upstream, no answer and "no answer for you" are one thing. */
-const NO_ANSWER = 503
+export const NO_ANSWER = 503
 
 /**
  * A `fetch` that answers instead of rejecting.

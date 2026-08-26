@@ -9,7 +9,7 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import { streamSSE } from 'hono/streaming'
 import { Moment, type Live } from '../conversation/live.ts'
-import { conversationWith } from '../db/conversation.ts'
+import { conversationInSpace } from '../db/conversation.ts'
 import type { Database } from '../db/connection.ts'
 import { SHOWS, api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
 import {
@@ -63,15 +63,15 @@ function watching(deps: LiveApi) {
     }),
 
     handler: async (c) => {
-      // Read once, before anything is opened: a stream is a reachable conversation held open, and
-      // whether it is reachable is the same question every other route here asks.
-      const reachable = await conversationWith(deps.db, {
-        conversationId: c.req.valid('param').id,
+      // Asked once, before anything is opened: a stream is a reachable conversation held open,
+      // and whether it is reachable is the same question every other route here asks. Only that,
+      // though — what has been said in it is the transcript's to answer, and this never shows it.
+      const conversationId = c.req.valid('param').id
+      const reachable = await conversationInSpace(deps.db, {
+        conversationId,
         spaceId: c.get('space').id,
       })
-      if (reachable === undefined) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-
-      const conversationId = reachable.id
+      if (!reachable) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
 
       return streamSSE(c, async (stream) => {
         const sending: Promise<unknown>[] = []

@@ -14,6 +14,9 @@ apps/server/        API
   migrations/       已提交的永不修改
   generated/        生成物,永不手改
 apps/web/           浏览器应用
+  features/         一块屏幕上的一件事
+  routes/           地址到屏幕
+  pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
   scripts/build.ts  四个平台的单文件,bun 交叉编译

@@ -9,10 +9,7 @@
 import type { components } from '../generated/api.ts'
 import type { Agent, Said, Told, Why } from './agents/agent.ts'
 import { shorten } from './agents/agent.ts'
-import type { Api } from './api.ts'
-
-/** What a call that reached nobody comes back as. Not a refusal, and not worth saying twice. */
-const NO_ANSWER = 503
+import { NO_ANSWER, type Api } from './api.ts'
 
 /**
  * How long one write keeps trying before its turn is called `unknown`.
