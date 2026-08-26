@@ -12,6 +12,7 @@ import { Laptop } from 'react-bootstrap-icons'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
+import { connectWith, machineKey } from './machine-key.ts'
 import { useOpenConversation } from '../conversations/talking.ts'
 
 function machinesIn(slug: string) {
@@ -194,28 +195,21 @@ function TalkTo({
 }
 
 /**
- * A key for a machine with no browser to open.
+ * A key for a machine with no browser to open, asked for from here.
  *
- * Generating one *is* the approving: whoever made it has already decided what the code path asks
- * a person to decide later — that the machine will be theirs. Nothing else about it differs.
+ * The same key onboarding hands out, from the same place — see `machine-key.ts`. What differs is
+ * only when somebody is offered it: there, on the way in; here, when a Space already has machines
+ * and one more has no browser on it.
  */
 function MachineKey() {
-  const [key, setKey] = useState<string>()
+  const [asked, setAsked] = useState(false)
+  const key = useQuery({ ...machineKey(), enabled: asked })
 
-  const make = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await api.POST('/me/machine-keys', {})
-      if (data === undefined) throw new Error(error.reason)
-      return data.key
-    },
-    onSuccess: setKey,
-  })
-
-  if (key !== undefined) {
+  if (key.data !== undefined) {
     return (
       <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
         <p className="label">Run this on that machine, within 15 minutes</p>
-        <code className="command">handover connect --key {key}</code>
+        <code className="command">{connectWith(key.data.key)}</code>
         {/*
           Said because it is true and cannot be undone: only the hash is kept, so this is the one
           moment it can be read. Somebody who closes this without copying it needs another key,
@@ -231,13 +225,13 @@ function MachineKey() {
       className="button button-quiet"
       type="button"
       style={{ marginTop: '0.75rem' }}
-      disabled={make.isPending}
+      disabled={asked && key.isPending}
       onClick={() => {
-        make.mutate()
+        setAsked(true)
       }}
     >
       <span className="button-label">
-        {make.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
+        {key.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
       </span>
     </button>
   )

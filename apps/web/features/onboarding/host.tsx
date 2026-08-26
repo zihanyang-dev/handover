@@ -15,24 +15,8 @@ import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { meQuery } from '../identity/me.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
 import { agentName } from '../agents.ts'
+import { connectWith, machineKey, MACHINE_KEY } from '../machines/machine-key.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
-
-function keyFor(slug: string) {
-  return {
-    // A query rather than an effect-fired mutation: the key is made once per arrival, and the
-    // cache is what keeps a strict-mode double mount from minting two.
-    queryKey: ['machine-key', slug] as const,
-    retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
-    queryFn: async () => {
-      // A key names nobody but whoever made it: a machine belongs to a person, and where it can
-      // be reached from follows from where they are a member.
-      const { data, error } = await api.POST('/me/machine-keys', {})
-      if (data === undefined) throw new Error(error.reason)
-      return data
-    },
-  }
-}
 
 function machinesIn(slug: string) {
   return {
@@ -121,7 +105,7 @@ function KeyCommand({
   readonly onSkip: () => void
 }) {
   const client = useQueryClient()
-  const key = useQuery({ ...keyFor(slug), enabled: active })
+  const key = useQuery({ ...machineKey(), enabled: active })
   /** Kept in state so time is read by a timer, not as an impure calculation during render. */
   const [remaining, setRemaining] = useState<number>()
   useEffect(() => {
@@ -142,7 +126,7 @@ function KeyCommand({
   if (key.isError || expired) {
     const makeAnother = () => {
       setRemaining(undefined)
-      void client.resetQueries({ queryKey: ['machine-key', slug] })
+      void client.resetQueries({ queryKey: MACHINE_KEY })
     }
     return (
       <div className="host-setup">
@@ -180,7 +164,7 @@ function KeyCommand({
     )
   }
 
-  const command = `handover connect --key ${key.data.key}`
+  const command = connectWith(key.data.key)
   return (
     <div className="host-setup">
       <div className="host-setup-body">
