@@ -40,17 +40,21 @@ afterAll(() => {
 /** Stops after a fixed number of check-ins: what is under test is the loop, not the clock. */
 function runningFor(rounds: number) {
   const said: string[] = []
+  /** How long the loop asked to wait each round, which is how it paces itself. */
+  const waited: number[] = []
   const stopping = new AbortController()
   let left = rounds
 
   return {
     said,
+    waited,
     signal: stopping.signal,
     running: {
       env: { PATH: '/nonexistent' } as NodeJS.ProcessEnv,
       where: '/nowhere',
       say: (line: string) => said.push(line),
-      sleep: async () => {
+      sleep: async (seconds: number) => {
+        waited.push(seconds)
         left -= 1
         if (left <= 0) stopping.abort()
       },
@@ -203,6 +207,39 @@ describe('staying connected', () => {
     expect(over).toEqual({ kind: 'removed' })
     // Whatever the turn ended as, it ended: the record was closed before this process left.
     expect(stopped).toBe(true)
+  })
+
+  it('waits for a stopped turn to end rather than asking again as fast as it can', async () => {
+    // A stop is the one thing the server answers at once instead of holding, and it goes on
+    // answering it until the turn ends. Asking again straight away is one request per round trip
+    // for as long as the agent takes to wind down — which, on an agent that does not go quietly,
+    // is thousands of them.
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, () =>
+        HttpResponse.json({
+          pollSeconds: 0,
+          lookFor: [],
+          asking: {
+            conversationId: 'c-1',
+            agentKind: 'claude-code',
+            agentSession: null,
+            askedSeq: 1,
+            asked: { text: 'take your time' },
+          },
+          stopping: { conversationId: 'c-1', askedSeq: 1 },
+        }),
+      ),
+      // The turn never ends: this machine cannot run that agent, and saying so never gets through.
+      http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, () =>
+        HttpResponse.error(),
+      ),
+    )
+    const { running, signal, waited } = runningFor(4)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    // Every round after the one that took the turn waits, rather than coming straight back round.
+    expect(waited.slice(1).every((seconds) => seconds > 0)).toBe(true)
   })
 
   it('keeps trying through a server that is gone, and says so once it is back', async () => {

@@ -24,6 +24,7 @@ import { VERSION, machineEnvironment, readEnv } from './env.ts'
 import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
 import { forEveryone, handoverFor, type Step } from './service.ts'
+import { sleep } from './sleeping.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 
 const run = promisify(execFile)
@@ -66,20 +67,6 @@ function entryPoint(): string {
 function say(line: string): void {
   process.stderr.write(`${line}\n`)
 }
-
-/** Cut short when asked to stop, and the timer cleared with it so nothing is left holding on. */
-const sleep = async (seconds: number, until?: AbortSignal): Promise<void> =>
-  new Promise((wake) => {
-    const timer = setTimeout(wake, seconds * 1000)
-    until?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer)
-        wake()
-      },
-      { once: true },
-    )
-  })
 
 if (values.version === true || command === 'version') {
   // The one thing this program says on stdout: asking for the version is asking for a value, and

@@ -158,7 +158,6 @@ export async function askToStop(db: Database, saying: Saying): Promise<Stopping>
   })
 }
 
-/** A machine reporting something, which is one message it has to be the owner of. */
 /**
  * Writes down that somebody asked the agent to stop.
  *
@@ -174,6 +173,7 @@ async function askItToStop(tx: Tx, saying: Saying, key: string): Promise<void> {
   })
 }
 
+/** A machine reporting something, which is one message it has to be the owner of. */
 export type Reporting = {
   readonly conversationId: string
   readonly key: string

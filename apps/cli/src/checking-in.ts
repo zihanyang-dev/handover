@@ -25,14 +25,15 @@ import { offering, type Offering } from './offering.ts'
 const RETRY_SECONDS = 5
 
 /**
- * How often to report while an agent is working.
+ * How long to wait for a turn that was asked to stop, before reporting again anyway.
  *
- * The deployment sets the resting rate, and this is a floor under it for the one time a machine
- * has something to hear: somebody who asks an agent to stop is watching it, and the answer to
- * "why is it still going" cannot be "it will find out in twenty-five seconds". Reporting costs
- * nothing here — the machine is already awake, holding a running agent.
+ * A stop is the one thing the server answers at once instead of holding, and it goes on
+ * answering it until the turn ends — so this loop has to pace itself, or it asks again as fast as
+ * the network can answer for as long as the agent takes to wind down. What it waits on is the
+ * turn itself, which costs nothing when the agent stops quickly; this is the floor under one that
+ * does not, so a machine winding down still reports often enough to be counted as here.
  */
-const WHILE_WORKING_SECONDS = 3
+const WHILE_STOPPING_SECONDS = 3
 
 export type CheckingIn = {
   /**
@@ -159,7 +160,7 @@ export async function keepCheckingIn(
     restarted = false
     looking = reported.lookFor
 
-    await stopIfAsked(answering, reported.stopping, running.say)
+    const stopped = await stopIfAsked(answering, reported.stopping, running.say)
 
     // One at a time. Reporting carries on either way: a turn can take ten minutes, and a machine
     // that goes quiet for ten minutes is one its Space shows as gone.
@@ -169,7 +170,10 @@ export async function keepCheckingIn(
       })
     }
 
-    await running.sleep(waitFor(reported.pollSeconds, answering !== undefined), stopping)
+    // Nothing more can be learnt from asking again until the turn that was stopped actually
+    // ends, so that is what is waited on. The next question is picked up the moment it does.
+    if (stopped === undefined) await running.sleep(reported.pollSeconds, stopping)
+    else await Promise.race([stopped.done, running.sleep(WHILE_STOPPING_SECONDS, stopping)])
   }
 
   // Stopping on purpose stops the agent too, and waits for the last of what it said to be written
@@ -181,14 +185,11 @@ export async function keepCheckingIn(
 }
 
 /**
- * Passes on a request to stop, when it is about the turn this machine is on.
+ * Passes on a request to stop, when it is about the turn this machine is on, and says which turn.
  *
  * Told on every report until the agent says it stopped, so a request made while this machine was
  * between reports arrives on the next one instead of being lost. `stop` is asked more than once
  * and means the same thing each time.
- */
-/**
- * Stops the agent, if the stop that came back is about the turn it is on.
  *
  * Exported for its own tests: what it decides is a race that cannot be staged from outside — a
  * stop is read out of the tables a moment before it is acted on, and the whole rule is about what
@@ -198,17 +199,19 @@ export async function stopIfAsked(
   answering: Answering | undefined,
   wanted: Stopping | undefined,
   say: (line: string) => void,
-): Promise<void> {
-  if (answering === undefined || wanted === undefined) return
+): Promise<Answering | undefined> {
+  if (answering === undefined || wanted === undefined) return undefined
   // The turn and not just the conversation. A stop is read out of the tables a moment before it
   // is acted on, and in that moment the turn it was about can end and the next one begin — on the
   // same conversation, because interrupting is how the next one got there. Matched loosely, the
   // interrupt stops the answer it was making room for.
-  if (wanted.conversationId !== answering.conversationId) return
-  if (wanted.askedSeq !== answering.askedSeq) return
+  if (wanted.conversationId !== answering.conversationId) return undefined
+  if (wanted.askedSeq !== answering.askedSeq) return undefined
 
   say(`stopping ${answering.conversationId}`)
   await answering.stop()
+
+  return answering
 }
 
 /**
@@ -221,11 +224,6 @@ async function taken(answering: Answering | undefined, running: CheckingIn): Pro
   await settle(answering, running)
 
   return { kind: 'removed' }
-}
-
-/** Never slower than the deployment asked, and never slower than the floor while working. */
-function waitFor(pollSeconds: number, busy: boolean): number {
-  return busy ? Math.min(pollSeconds, WHILE_WORKING_SECONDS) : pollSeconds
 }
 
 /**
