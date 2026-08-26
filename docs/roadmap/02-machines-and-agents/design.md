@@ -315,8 +315,10 @@ POST   /spaces/{slug}/enrolments/{userCode}/approve   放它进这个 Space
 POST   /enrolments/{userCode}/refuse     回绝。不带 Space:拒绝不是对某个 Space 做的事
 POST   /spaces/{slug}/machine-keys       生成一条已经批过的接入请求,明文只回一次
 
-POST   /machines/current/poll            机器报到,带上扫到的东西和自己的版本
-                                         → { pollSeconds, lookFor }
+POST   /machines/current/poll            机器报到,带上扫到的东西、自己的版本,以及
+                                         它正在答哪段对话(在答的话)
+                                         没活就挂住,最多 25 秒
+                                         → { pollSeconds: 0, lookFor, asking?, stopping? }
 DELETE /machines/current/session         说再见,立刻转离线
 GET    /spaces/{slug}/machines           Space 页面读这个
 DELETE /spaces/{slug}/machines/{id}      移除
