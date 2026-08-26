@@ -115,7 +115,9 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       style={{ marginTop: '0.75rem' }}
       onSubmit={(event) => {
         event.preventDefault()
-        answer.mutate(code)
+        // Enter, with the code half typed. All of them go by themselves, so this can only ever be
+        // an incomplete one — and sending it spends an attempt on a code nobody finished.
+        if (code.length === sent.digits) answer.mutate(code)
       }}
     >
       {answer.isError && (

@@ -86,6 +86,31 @@ describe('handing the code back', () => {
     expect(await screen.findByRole('heading', { name: /name your workspace/i })).toBeDefined()
   })
 
+  it('will not send five of them, however somebody asks it to', async () => {
+    // The sixth digit sends it, so anything else that can send is a way to spend an attempt on a
+    // code nobody finished typing — and to be told it is wrong when it was only unfinished.
+    let handed = false
+    server.use(
+      http.post('*/browser/sessions', () => {
+        handed = true
+        return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
+      }),
+    )
+    open(codeScreen())
+
+    await typeCode('49301')
+    await userEvent.keyboard('{Enter}')
+
+    // Asserted before anything else is looked at, so a failure here says "it sent five" rather
+    // than "a button had different words on it".
+    expect(handed).toBe(false)
+
+    const press = await screen.findByRole('button', { name: /continue|signing in/i })
+    expect(press.hasAttribute('disabled')).toBe(true)
+    await userEvent.click(press)
+    expect(handed).toBe(false)
+  })
+
   it('does not submit before there are six', async () => {
     let handed = false
     server.use(

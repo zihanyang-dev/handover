@@ -155,7 +155,10 @@ export function EmailCode({
         className="auth-stack"
         onSubmit={(event) => {
           event.preventDefault()
-          handBack.mutate(code)
+          // Never an incomplete code. The sixth digit sends it by itself, so what this button is
+          // for is the second attempt after one came back wrong — and pressing it with five
+          // digits in the box would spend an attempt on a code nobody finished typing.
+          if (code.length === DIGITS) handBack.mutate(code)
         }}
       >
         <div className="auth-head">
@@ -183,9 +186,9 @@ export function EmailCode({
                 setCode(digits)
                 // A wrong answer's red lifts as they retype; it described the code they sent.
                 handBack.reset()
-                // Six digits and nothing left to decide, so there is nothing to press. The digits go
-                // straight in: submitting the form here would read a `code` this keystroke has not
-                // reached yet, and hand back five.
+                // Six digits and nothing left to decide, so nobody has to press anything. The
+                // digits go straight in rather than through the form: submitting here would read a
+                // `code` this keystroke has not reached yet, and hand back five.
                 if (digits.length === DIGITS) handBack.mutate(digits)
               }}
             />
@@ -198,7 +201,11 @@ export function EmailCode({
               : null}
           </p>
 
-          <button className="button button-primary" type="submit" disabled={handBack.isPending}>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={handBack.isPending || code.length !== DIGITS}
+          >
             <span className="button-label">{handBack.isPending ? 'Signing in…' : 'Continue'}</span>
           </button>
         </div>
