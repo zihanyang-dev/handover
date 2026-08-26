@@ -162,7 +162,7 @@ async function askAndWait(origin: string): Promise<Connected> {
 
 /** The way in for a machine with no browser: the approving already happened, in a Space. */
 async function useKey(origin: string, key: string): Promise<Connected> {
-  return connectWithKey(apiFor(origin), origin, key, machineName)
+  return connectWithKey(apiFor(origin), origin, { key, machineName })
 }
 
 /**

@@ -176,7 +176,10 @@ describe('coming in with a key', () => {
   it('does not wait, because generating the key was the approving', async () => {
     server.use(answers('granted'))
 
-    const connected = await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
+    const connected = await connectWithKey(apiFor(ORIGIN), ORIGIN, {
+      key: 'hk_key',
+      machineName: 'build-server-1',
+    })
 
     expect(connected).toMatchObject({ kind: 'connected', attachment: { lookFor: ['claude'] } })
   })
@@ -190,7 +193,7 @@ describe('coming in with a key', () => {
       }),
     )
 
-    await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')
+    await connectWithKey(apiFor(ORIGIN), ORIGIN, { key: 'hk_key', machineName: 'build-server-1' })
 
     expect(sent).toMatchObject({ secret: 'hk_key', machineName: 'build-server-1' })
     expect((sent as { token: string }).token).toMatch(/^hm_/u)
@@ -200,7 +203,12 @@ describe('coming in with a key', () => {
     // There is nobody to wait for. A key that is spent will not become unspent.
     server.use(answers('spent'))
 
-    expect(await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')).toEqual({
+    expect(
+      await connectWithKey(apiFor(ORIGIN), ORIGIN, {
+        key: 'hk_key',
+        machineName: 'build-server-1',
+      }),
+    ).toEqual({
       kind: 'gave-up',
       why: 'spent',
     })
@@ -209,7 +217,12 @@ describe('coming in with a key', () => {
   it('gives up when the server cannot be reached at all', async () => {
     server.use(http.post(`${ORIGIN}/enrolments/collect`, () => HttpResponse.error()))
 
-    expect(await connectWithKey(apiFor(ORIGIN), ORIGIN, 'hk_key', 'build-server-1')).toEqual({
+    expect(
+      await connectWithKey(apiFor(ORIGIN), ORIGIN, {
+        key: 'hk_key',
+        machineName: 'build-server-1',
+      }),
+    ).toEqual({
       kind: 'gave-up',
       why: 'unreachable',
     })

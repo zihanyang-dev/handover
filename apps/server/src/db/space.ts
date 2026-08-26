@@ -47,15 +47,16 @@ export type SpaceCreation =
  */
 async function spaceFor(
   db: Database,
-  requestKey: string,
-  userId: string,
+  // Named rather than ordered: a request key is the caller's own opaque string and a user id is
+  // ours, and swapped they match no row at all — which reads as "you never made that one".
+  whose: { readonly requestKey: string; readonly userId: string },
 ): Promise<Space | undefined> {
   const row = await db
     .selectFrom('memberships')
     .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
     .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
-    .where('memberships.request_key', '=', requestKey)
-    .where('memberships.user_id', '=', userId)
+    .where('memberships.request_key', '=', whose.requestKey)
+    .where('memberships.user_id', '=', whose.userId)
     .executeTakeFirst()
   return row
 }
@@ -78,7 +79,7 @@ export async function createSpace(db: Database, request: SpaceRequest): Promise<
   return db.transaction().execute(async (tx) => {
     await sql`select pg_advisory_xact_lock(hashtext(${request.requestKey}))`.execute(tx)
 
-    const already = await spaceFor(tx, request.requestKey, request.userId)
+    const already = await spaceFor(tx, { requestKey: request.requestKey, userId: request.userId })
     if (already !== undefined) return { kind: 'replayed', space: already }
 
     const created = await tx

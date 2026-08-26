@@ -29,10 +29,16 @@ function numbered(version: string): readonly number[] | undefined {
   return read === null ? undefined : read.slice(1).map(Number)
 }
 
-/** Whether the second is a later release than the first. The first difference decides. */
-export function isNewer(than: string, other: string): boolean {
-  const ours = numbered(than)
-  const theirs = numbered(other)
+/**
+ * Whether theirs is a later release than ours. The first difference decides.
+ *
+ * Named rather than ordered, because these two are the same shape and the answer to swapping them
+ * is not an error — it is the opposite answer, given quietly: a machine on the newest build told
+ * there is a newer one, every time somebody connects it.
+ */
+export function isNewer(between: { readonly ours: string; readonly theirs: string }): boolean {
+  const ours = numbered(between.ours)
+  const theirs = numbered(between.theirs)
   if (ours === undefined || theirs === undefined) return false
 
   for (const [at, part] of theirs.entries()) {
@@ -74,5 +80,5 @@ export async function newerRelease(
   if (numbered(version) === undefined) return undefined
 
   const latest = await latestRelease(asking)
-  return latest !== undefined && isNewer(version, latest) ? latest : undefined
+  return latest !== undefined && isNewer({ ours: version, theirs: latest }) ? latest : undefined
 }

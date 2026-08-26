@@ -11,17 +11,17 @@ describe('which of two releases is later', () => {
   it('reads the numbers rather than the string', () => {
     // `v0.10.0` sorts before `v0.9.0` as text, and a machine told it was up to date because of
     // that would stay on the older build forever.
-    expect(isNewer('v0.9.0', 'v0.10.0')).toBe(true)
-    expect(isNewer('v0.10.0', 'v0.9.0')).toBe(false)
+    expect(isNewer({ ours: 'v0.9.0', theirs: 'v0.10.0' })).toBe(true)
+    expect(isNewer({ ours: 'v0.10.0', theirs: 'v0.9.0' })).toBe(false)
   })
 
   it('says no to the one it already is', () => {
-    expect(isNewer('v1.2.3', 'v1.2.3')).toBe(false)
+    expect(isNewer({ ours: 'v1.2.3', theirs: 'v1.2.3' })).toBe(false)
   })
 
   it('says no about anything it cannot read as a release', () => {
-    expect(isNewer('from source', 'v1.0.0')).toBe(false)
-    expect(isNewer('v1.0.0', 'nightly')).toBe(false)
+    expect(isNewer({ ours: 'from source', theirs: 'v1.0.0' })).toBe(false)
+    expect(isNewer({ ours: 'v1.0.0', theirs: 'nightly' })).toBe(false)
   })
 })
 

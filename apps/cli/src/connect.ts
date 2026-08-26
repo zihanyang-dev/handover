@@ -93,13 +93,16 @@ export type Waiting = {
 export async function connectWithKey(
   api: Api,
   origin: string,
-  key: string,
-  machineName: string,
+  // Named rather than ordered: swapped, this machine would offer its own name as the key and call
+  // itself `hk_…`, and what came back would be an ordinary refusal to let it in.
+  showing: { readonly key: string; readonly machineName: string },
 ): Promise<Connected> {
   const token = newMachineToken()
   // Unlike the waiting path there is nothing to sit through: a key that does not work now will
   // not start working, so a failure here ends the attempt rather than becoming a retry.
-  const came = await api.POST('/enrolments/collect', { body: { secret: key, machineName, token } })
+  const came = await api.POST('/enrolments/collect', {
+    body: { secret: showing.key, machineName: showing.machineName, token },
+  })
 
   if (came.data === undefined) return { kind: 'gave-up', why: 'unreachable' }
 
