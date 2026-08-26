@@ -25,6 +25,8 @@ export function writeContract(env: Env): void {
     clients: {},
     // Nothing is ever called: a spec is read off the routes, not produced by serving anything.
     live: { say: async () => undefined, watch: () => () => undefined },
+    // A contract is read off the routes, and pages are not routes.
+    webRoot: undefined,
     lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
   })

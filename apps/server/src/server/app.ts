@@ -10,6 +10,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { Provider } from '../identity/provider.ts'
 import type { Log } from '../log.ts'
 import { signInApi, type SignInApi } from './sign-in-api.ts'
+import { HASHED, hashedFiles, thePage, wantsAPage } from './browser-app.ts'
 import { api, SHOWS } from './contract.ts'
 import { body, BROKEN, NOT_A_ROUTE } from './failure.ts'
 import { SESSION_COOKIE } from './session.ts'
@@ -31,6 +32,14 @@ export type App = Omit<SignInApi, 'providers'> &
     readonly log: Log
     /** Where moments go while a turn runs. Nothing here is kept; see `conversation/live.ts`. */
     readonly live: Live
+    /**
+     * Where the built browser app is, when this process serves it too.
+     *
+     * Said rather than optional, so every composition root decides: a deployment that leaves it
+     * out has put the pages somewhere else on the same origin, and that is a choice somebody made
+     * rather than a line they forgot.
+     */
+    readonly webRoot: string | undefined
   }
 
 /** The document a client is generated from, built from the routes and nothing else. */
@@ -58,9 +67,20 @@ export function handoverApp(deps: App) {
     description: 'The credential a machine mints for itself when it is let into a Space.',
   })
 
+  // Before the routes, and only these: a name under here is a built file, and a request for one
+  // that does not exist falls through to the same answer everything else gets.
+  if (deps.webRoot !== undefined) app.use(HASHED, hashedFiles(deps.webRoot))
+
   // Stated rather than chained: `notFound` and `onError` answer for the whole app, not for the
   // route before them, and chaining would also drop what the routes said about themselves.
-  app.notFound((c) => c.json(body(NOT_A_ROUTE), NOT_A_ROUTE.status))
+  const page = deps.webRoot === undefined ? undefined : thePage(deps.webRoot)
+  app.notFound(async (c) => {
+    // A person's address bar gets the app, which knows its own addresses; everything else gets a
+    // refusal it can read. An API answering a navigation with JSON is a blank screen.
+    const shown = page !== undefined && wantsAPage(c) ? await page(c) : undefined
+
+    return shown ?? c.json(body(NOT_A_ROUTE), NOT_A_ROUTE.status)
+  })
   app.onError((error, c) => {
     // Hono throws these for things it refuses on our behalf — a payload too large, a malformed
     // request line. They already carry a status a caller can act on, and calling that a fault of

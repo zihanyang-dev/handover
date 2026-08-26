@@ -59,27 +59,43 @@ function migrationCount(): number {
 }
 
 /**
- * Returns the URL of a database that is up and holds every committed migration.
+ * Applies every committed migration to whatever `DATABASE_URL` names, and nothing else.
+ *
+ * The whole of what a release has to do, and the only part of this file that runs anywhere but a
+ * developer's machine: no container to start, and no schema to dump — a dump is a review artifact
+ * and there is nobody reviewing during a deploy.
  *
  * Holding none of them is a state this has to support: before the first migration is written, and
  * dbmate calls that an error rather than a no-op.
+ */
+export function applyMigrations(url: string): void {
+  if (migrationCount() === 0) return
+
+  run(binary('dbmate'), [
+    '--url',
+    url,
+    '--migrations-dir',
+    MIGRATIONS,
+    '--no-dump-schema',
+    // A database that is still starting is the ordinary case in a deploy, where this and the
+    // server come up together.
+    '--wait',
+    'up',
+  ])
+}
+
+/**
+ * Returns the URL of a development database that is up and holds every committed migration.
+ *
+ * The container and the schema dump are what make this the developer's version: `pnpm check`
+ * fails on any drift under generated/, and that file is written here.
  */
 export function migrate(): string {
   const { DATABASE_URL } = loadEnv()
   mkdirSync(join(ROOT, 'generated'), { recursive: true })
 
   run('docker', ['compose', 'up', '--detach', '--wait', SERVICE])
-  if (migrationCount() > 0) {
-    run(binary('dbmate'), [
-      '--url',
-      DATABASE_URL,
-      '--migrations-dir',
-      MIGRATIONS,
-      '--no-dump-schema',
-      '--wait',
-      'up',
-    ])
-  }
+  applyMigrations(DATABASE_URL)
   dumpSchema(DATABASE_URL)
   return DATABASE_URL
 }

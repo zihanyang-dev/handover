@@ -99,6 +99,7 @@ const app = handoverApp({
   webOrigin: env.WEB_ORIGIN,
   clients,
   live: liveThrough(db, watching),
+  webRoot: env.WEB_ROOT,
   lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
   trustedProxyHops: env.TRUSTED_PROXY_HOPS,
 })

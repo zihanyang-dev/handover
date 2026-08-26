@@ -1,0 +1,9 @@
+# Everything the image builds for itself, and everything it has no business seeing.
+node_modules
+**/node_modules
+apps/web/dist
+apps/cli/dist
+coverage
+.git
+.env
+*.log

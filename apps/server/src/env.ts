@@ -49,6 +49,16 @@ const SHAPE = z.object({
    */
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
 
+  /**
+   * Where the built browser app is, when this process serves it itself.
+   *
+   * Unset, this is an API and nothing else — which is what a deployment with a proxy or a CDN in
+   * front of the pages wants. Set, one origin answers for both, and that is not a preference: the
+   * page's calls carry no origin of their own and its session cookie is `SameSite=Lax`, so a page
+   * served from somewhere else would be a page that cannot stay signed in.
+   */
+  WEB_ROOT: z.string().min(1).optional(),
+
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   /**
    * What this process is. No default, on purpose.

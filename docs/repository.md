@@ -5,6 +5,7 @@
 ## 1. 根目录
 
 ```
+Dockerfile          服务器 + 它托管的那些页面,一个镜像
 apps/server/        API
   src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
   src/db/           持久化边界
@@ -89,6 +90,8 @@ pnpm test:db      把测试库迁到最新
 pnpm dev          API
 pnpm web          浏览器应用
 pnpm build        打包浏览器应用
+
+pnpm --filter @handover/server release   一次发布对数据库做的事:把迁移应用上去,别的什么都不做
 pnpm --filter @handover/cli build   四个平台的可执行文件,进 apps/cli/dist
 
 pnpm generate     迁移测试库 → schema.sql → db.ts → openapi.json → 浏览器的类型 → 路由树
@@ -111,6 +114,42 @@ pnpm check        以上全部 + generate 无 diff
 
 `.env` 不进版本库,`.env.example` 进;`.env.test` 也进 —— 它只指向 `compose.yml` 里那个
 测试库,没有秘密,少一步本地配置。真实环境变量优先于文件,所以 CI 和生产注入同名变量即可。
+
+## 4.1 部署这台服务器需要什么
+
+**还没有部署过任何地方。** 下面是镜像里已经做完的部分,以及必须由外面提供的部分 —— 分开写,
+是因为前者验过,后者没有。
+
+```
+镜像做完的     装依赖 · 打包网页 · 起进程 · WEB_ROOT 指向打包出来的页面
+一次发布做的   pnpm --filter @handover/server release —— 只把迁移应用上去
+```
+
+**迁移是发布的一步,不是启动的一步。** 两个实例同时启动就会同时迁移,而失败一半的部署没有人
+能说清楚它停在哪。所以:先跑 release,再让新实例起来。
+
+**网页和 API 同源,这是被逼的不是选的。** 页面的调用不带自己的 origin,会话 cookie 是
+`SameSite=Lax` —— 页面放在另一个 origin 上,每一次调用都会以未登录的身份到达。要用 CDN 或
+反向代理伺候页面就把 `WEB_ROOT` 留空,那时这个进程只是 API。**不允许的是两个 origin。**
+
+必须由外面给的,一个都不能少:
+
+```
+DATABASE_URL          托管的 postgres
+AUTH_SECRET           32 位以上随机
+PUBLIC_ORIGIN         浏览器怎么找到这台服务器;OAuth 回调地址由它拼出来
+RESEND_API_KEY        没有它且 NODE_ENV≠development 时进程拒绝启动
+MAIL_FROM             发信域名要先在 Resend 那边过 DNS 验证
+TRUSTED_PROXY_HOPS    真实代理层数。这是唯一一个填错了不报错、只是静默失效的:
+                      填 0 而前面有代理,发信限流就能被 X-Forwarded-For 绕过
+GOOGLE / GITHUB 的     可选,但要成对;回调地址填 <PUBLIC_ORIGIN>/auth/<provider>/callback
+CLIENT_ID / SECRET
+```
+
+**健康检查用 `GET /auth/credentials`** —— 它公开、便宜、不碰数据库。不为此单开一个 `/health`:
+一个只有平台在读的路由,是一个没有人负责的用户可见名词。
+
+---
 
 ## 5. 检查边界
 
