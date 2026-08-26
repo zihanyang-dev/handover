@@ -34,7 +34,7 @@ const one: Database = connect(env)
 const two: Database = connect(env)
 
 /** A fresh address per test, so no test depends on the database being empty when it starts. */
-/** Request keys are unique across the whole table, so they have to be fresh per test too. */
+/** A request key is unique per asker, so a fresh one per test keeps them out of each other's way. */
 let RUN = ''
 let EMAIL = ''
 

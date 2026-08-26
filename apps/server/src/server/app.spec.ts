@@ -12,7 +12,7 @@ import type { SendCode } from './sign-in-api.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 
-/** Fresh per test: a request key is unique across the whole table. */
+/** Fresh per test: a request key is unique per asker, and these tests share an asker. */
 let RUN = ''
 
 beforeEach(() => {

@@ -23,7 +23,7 @@ const CODE = '493018'
  * A fresh address per test. Nothing one test does is visible to another, so none of them needs
  * the database emptied first, and they can run alongside each other.
  */
-/** Request keys are unique across the whole table, so they have to be fresh per test too. */
+/** A request key is unique per asker, so a fresh one per test keeps them out of each other's way. */
 let RUN = ''
 let EMAIL = ''
 let HASH = ''

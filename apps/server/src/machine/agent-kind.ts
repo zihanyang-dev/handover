@@ -3,7 +3,8 @@
  *
  * A fixed list, not a plugin protocol and not something an agent registers itself as. Finding one
  * means looking for its command on the machine's PATH, so the whole of "discovery" is this table
- * plus a lookup — and adding an agent is a line here, a line in the migration, and nothing else.
+ * plus a lookup. This is one of the five places adding an agent touches; the list of all five is
+ * in `docs/roadmap/03-talking-to-an-agent/design.md` and is deliberately not repeated here.
  *
  * A command and nothing more. What an agent is called on a screen is the page's, next to how every
  * other name is spelled to a person; a copy kept here would be one nothing ever read.
