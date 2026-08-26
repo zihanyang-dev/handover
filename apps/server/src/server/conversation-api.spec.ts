@@ -179,6 +179,51 @@ describe('saying something', () => {
   })
 })
 
+describe('reading it again while it works', () => {
+  it('hands back only what the reader does not have yet', async () => {
+    // A transcript is only appended to, so everything past what somebody holds is everything they
+    // are missing. Asked for whole every second — which is how often a page watching an agent
+    // asks — an hour of somebody's own work is downloaded back to them thousands of times.
+    const conversation = await opened()
+    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
+      key: 'turn-1',
+      asked: { text: 'read notes.txt' },
+    })
+    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
+      key: 'turn-1/1',
+      message: { role: 'assistant', content: { text: 'it says hello' } },
+    })
+
+    const whole = (await (
+      await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
+    ).json()) as { messages: readonly { seq: number }[] }
+    const tail = (await (
+      await asPerson(`/spaces/${SLUG}/conversations/${conversation}?after=1`)
+    ).json()) as { messages: readonly { seq: number }[]; working: unknown }
+
+    expect(whole.messages.map((one) => one.seq)).toEqual([1, 2])
+    expect(tail.messages.map((one) => one.seq)).toEqual([2])
+    // Everything else comes back whole every time, because those are the parts that change.
+    expect(tail.working).toEqual({ state: 'working' })
+  })
+
+  it('says there is nothing new, rather than saying the conversation is empty', async () => {
+    const conversation = await opened()
+    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
+      key: 'turn-1',
+      asked: { text: 'read notes.txt' },
+    })
+
+    const nothing = (await (
+      await asPerson(`/spaces/${SLUG}/conversations/${conversation}?after=99`)
+    ).json()) as { messages: readonly unknown[]; agentKind: string }
+
+    expect(nothing.messages).toEqual([])
+    expect(nothing.agentKind).toBe('claude-code')
+  })
+})
+
 describe('a line this build cannot read', () => {
   it('is still a line, rather than a conversation that will not open', async () => {
     // A transcript is an account of what happened, and a gap in it is worse than a line saying it

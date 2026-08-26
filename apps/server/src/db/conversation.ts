@@ -297,6 +297,7 @@ export type Reading = {
    * unread, like a message's content — the layer that puts it on the wire answers for its shape.
    */
   readonly offers: unknown
+  /** Everything since what the reader said it had, or the whole of it when they said nothing. */
   readonly messages: readonly Spoken[]
 }
 
@@ -317,15 +318,26 @@ type Spoken = {
  */
 export async function conversationWith(
   db: Database,
-  reading: { readonly conversationId: string; readonly spaceId: string },
+  reading: Asking,
 ): Promise<Reading | undefined> {
   return db.transaction().execute(async (tx) => oneReading(tx, reading))
 }
 
-async function oneReading(
-  tx: Tx,
-  reading: { readonly conversationId: string; readonly spaceId: string },
-): Promise<Reading | undefined> {
+/**
+ * Which conversation, and how much of it is already known.
+ *
+ * `after` is what a reader already has, by the number of the last line it holds. A transcript is
+ * only ever appended to, so everything past that number is everything it is missing — and asking
+ * again for what it already has would be this page downloading an hour of somebody's work every
+ * second for as long as they watch it.
+ */
+export type Asking = {
+  readonly conversationId: string
+  readonly spaceId: string
+  readonly after?: number | undefined
+}
+
+async function oneReading(tx: Tx, reading: Asking): Promise<Reading | undefined> {
   const conversation = await tx
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
@@ -351,12 +363,15 @@ async function oneReading(
 
   if (conversation === undefined) return undefined
 
-  const messages = await tx
+  const from = tx
     .selectFrom('messages')
     .select(['seq', 'role', 'content', 'created_at as at'])
     .where('conversation_id', '=', conversation.id)
     .orderBy('seq')
-    .execute()
+
+  const messages = await (
+    reading.after === undefined ? from : from.where('seq', '>', reading.after)
+  ).execute()
 
   return {
     ...conversation,

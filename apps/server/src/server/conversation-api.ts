@@ -231,7 +231,19 @@ function reading(deps: ConversationApi) {
       path: '/spaces/{slug}/conversations/{id}',
       summary: 'Everything said in one conversation',
       middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }) },
+      request: {
+        params: z.object({ slug: z.string(), id: rowId }),
+        query: z.object({
+          /**
+           * The last line the reader already has.
+           *
+           * Everything past it is everything they are missing, because a transcript is only
+           * appended to. Left out, they get all of it — which is what somebody opening a
+           * conversation for the first time wants, and what asking again every second is not.
+           */
+          after: z.coerce.number().int().min(0).optional(),
+        }),
+      },
       responses: {
         ...BEHIND_A_SESSION,
         200: sends(readingBody, 'In order, oldest first'),
@@ -243,6 +255,7 @@ function reading(deps: ConversationApi) {
       const transcript = await conversationWith(deps.db, {
         conversationId: c.req.valid('param').id,
         spaceId: c.get('space').id,
+        after: c.req.valid('query').after,
       })
 
       return transcript === undefined

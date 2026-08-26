@@ -2,9 +2,11 @@
  * Reading and writing one conversation.
  *
  * A conversation being worked on is read again every second, and one that is idle is left alone.
- * Polling and not a stream, for now: what a page needs is the transcript as the server has it,
- * and a stream would be a second way of learning the same thing that could disagree with the
- * first. When latency starts to matter, only how these queries are woken changes.
+ * The transcript comes from asking rather than from the live stream, and that is the split: the
+ * stream carries what is happening and keeps nothing, this carries what happened and is the only
+ * thing that survives. Two sources for one fact would be two facts that could disagree.
+ *
+ * Asking again does not mean asking for all of it again — see {@link useConversation}.
  */
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,6 +22,9 @@ export type Moment = components['schemas']['Moment']
 
 /** One line of a transcript, per role. Taken from the contract, which now says what each holds. */
 export type Said = components['schemas']['Message']
+
+/** One conversation as the server hands it over. The shape this page keeps and adds to. */
+type Transcript = components['schemas']['Transcript']
 
 /**
  * What is happening in this conversation right now.
@@ -75,12 +80,28 @@ export function conversationsIn(slug: string) {
   })
 }
 
+/**
+ * One conversation, asked for from where this page had got to.
+ *
+ * A transcript is only ever appended to, so what is already on screen can never be revised — and
+ * asking for it again every second while somebody watches an agent work is downloading an hour of
+ * their own history over and over. What comes back is the tail; what is shown is the two joined.
+ *
+ * Everything else in the answer — whether it is working, what there is to choose — is small and
+ * comes back whole every time, because those are the parts that do change.
+ */
 export function useConversation(slug: string, id: string) {
   return useQuery({
     queryKey: ['conversation', slug, id] as const,
-    queryFn: async () => {
+    queryFn: async ({ client, queryKey }) => {
+      // The client running this query, not the module's: a component may be under another one,
+      // and reading the wrong cache would ask for a tail of something this screen never had.
+      const sofar = client.getQueryData<Transcript | null>(queryKey)
+      const held = sofar?.messages ?? []
+      const last = held.at(-1)?.seq
+
       const { data, response } = await api.GET('/spaces/{slug}/conversations/{id}', {
-        params: { path: { slug, id } },
+        params: { path: { slug, id }, ...(last === undefined ? {} : { query: { after: last } }) },
       })
       // Null is "there is no such conversation here", and only a 404 means that. Everything else —
       // a session that ran out, a server that broke, a network that went — is this page failing to
@@ -89,7 +110,7 @@ export function useConversation(slug: string, id: string) {
       if (data === undefined)
         throw new Error(`could not read the conversation (${response.status})`)
 
-      return data
+      return { ...data, messages: [...held, ...data.messages] }
     },
     // Only while something is happening. A finished conversation is finished, and asking again
     // every second would be this page pretending it might not be.

@@ -2765,6 +2765,16 @@
             "required": true,
             "name": "id",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "after",
+            "in": "query"
           }
         ],
         "responses": {

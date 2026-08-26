@@ -80,6 +80,47 @@ const OFFERS: Offers = [
   },
 ]
 
+describe('reading a conversation again while it works', () => {
+  it('asks only for what it does not have, and shows both halves as one', async () => {
+    // A transcript is only appended to, so what is on screen can never be revised. Asked for
+    // whole every second — which is how often this page asks while an agent works — somebody
+    // watching an hour of work downloads that hour back to themselves thousands of times.
+    const asked: (string | null)[] = []
+    server.use(
+      signedIn(),
+      http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
+        const after = new URL(request.url).searchParams.get('after')
+        asked.push(after)
+
+        return HttpResponse.json<Transcript>({
+          id: 'c-1',
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'working' } as Transcript['working'],
+          offers: [],
+          messages: (after === null
+            ? [say(1, 'user', { text: 'read notes.txt' })]
+            : [
+                say(2, 'assistant', { text: 'The timeout is 30 seconds.' }),
+              ]) as Transcript['messages'],
+        })
+      }),
+    )
+
+    open('/s/acme/c/c-1')
+
+    // Past the one-second refetch, which is the whole subject: the second ask is the one that
+    // carries `after`.
+    expect(
+      await screen.findByText('The timeout is 30 seconds.', {}, { timeout: 4000 }),
+    ).toBeDefined()
+    // The first line is still there, and it was never sent twice.
+    expect(screen.getByText('read notes.txt')).toBeDefined()
+    expect(asked[0]).toBeNull()
+    expect(asked[1]).toBe('1')
+  })
+})
+
 describe('reading a conversation', () => {
   it('shows what was said, in order', async () => {
     server.use(

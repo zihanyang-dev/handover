@@ -1416,7 +1416,9 @@ export interface paths {
         /** Everything said in one conversation */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    after?: number | null;
+                };
                 header?: never;
                 path: {
                     slug: string;

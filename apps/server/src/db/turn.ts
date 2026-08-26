@@ -40,26 +40,37 @@ export type Taken = {
  * A question is unanswered when nothing has been said after it. A request to stop does not count:
  * it is not an answer, and counting it would hide the question from the only machine that could
  * ever end the turn.
+ *
+ * Only the last question in a conversation can be that one, and looking at it alone is not a
+ * shortcut — it is the same set arrived at directly. Anything earlier has a later question after
+ * it, which is something said after it. Written the other way this read every question a machine
+ * had ever been asked and then threw nearly all of them away: measured on a machine with sixty
+ * conversations behind it, a full scan of the whole transcript table on every check-in, and it
+ * grew with every line anybody ever said.
  */
 export async function takeOne(db: Database, machineId: string): Promise<Taken | undefined> {
   const taken = await sql<Taken>`
-    with waiting as (
-      select m.conversation_id, m.seq, m.content, c.agent_kind, c.agent_session_id
+    with asked as (
+      select distinct on (m.conversation_id)
+             m.conversation_id, m.seq, m.content, m.created_at, c.agent_kind, c.agent_session_id
         from messages m
         join conversations c on c.id = m.conversation_id
-       where c.machine_id = ${machineId}
-         and m.role = 'user'
-         and not exists (
+       where c.machine_id = ${machineId} and m.role = 'user'
+       order by m.conversation_id, m.seq desc
+    ),
+    waiting as (
+      select * from asked a
+       where not exists (
            select 1 from messages later
-            where later.conversation_id = m.conversation_id
-              and later.seq > m.seq
+            where later.conversation_id = a.conversation_id
+              and later.seq > a.seq
               and not (later.role = 'activity' and later.content ->> 'activityType' = 'stop')
          )
          and not exists (
            select 1 from turns t
-            where t.conversation_id = m.conversation_id and t.asked_seq = m.seq
+            where t.conversation_id = a.conversation_id and t.asked_seq = a.seq
          )
-       order by m.created_at
+       order by a.created_at
        limit 1
     ),
     claimed as (
@@ -137,16 +148,24 @@ async function openTurnsOn(
 export async function stopWantedOn(db: Database, machineId: string): Promise<string | undefined> {
   const wanted = await db
     .selectFrom('turns')
-    .innerJoin('messages', (join) =>
-      join
-        .onRef('messages.conversation_id', '=', 'turns.conversation_id')
-        .on('messages.role', '=', 'activity'),
-    )
     .select('turns.conversation_id as conversationId')
     .where('turns.machine_id', '=', machineId)
     .where('turns.ended_at', 'is', null)
-    .whereRef('messages.seq', '>', 'turns.asked_seq')
-    .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`)
+    // Asked of the turn rather than joined from the messages, which decides which table is read
+    // first: there is at most one turn running on a machine, and there is no bound at all on how
+    // many things have been said to it. Joined the other way this read every activity ever
+    // written on this deployment to find the one that mattered.
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom('messages')
+          .select('messages.seq')
+          .whereRef('messages.conversation_id', '=', 'turns.conversation_id')
+          .whereRef('messages.seq', '>', 'turns.asked_seq')
+          .where('messages.role', '=', 'activity')
+          .where(sql<boolean>`messages.content ->> 'activityType' = ${ACTIVITY.stopAsked}`),
+      ),
+    )
     .limit(1)
     .executeTakeFirst()
 
