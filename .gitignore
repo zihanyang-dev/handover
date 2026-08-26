@@ -1,4 +1,9 @@
 node_modules
+
+# pnpm's own content-addressed cache. Not a build product of this repository and not something
+# anybody reads: a SQLite file with a write-ahead log, which every install and every test run
+# rewrites. Committed, a read-only verification leaves a binary diff nobody can review.
+.pnpm-store
 *.log
 .env
 .DS_Store

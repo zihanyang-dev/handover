@@ -315,6 +315,14 @@ ALTER TABLE ONLY public.email_codes
 
 
 --
+-- Name: enrolments enrolments_id_approved_by_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_id_approved_by_key UNIQUE (id, approved_by);
+
+
+--
 -- Name: enrolments enrolments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -590,11 +598,11 @@ ALTER TABLE ONLY public.enrolments
 
 
 --
--- Name: machines machines_enrolled_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: machines machines_owned_by_whoever_approved_it; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.machines
-    ADD CONSTRAINT machines_enrolled_from_fkey FOREIGN KEY (enrolled_from) REFERENCES public.enrolments(id);
+    ADD CONSTRAINT machines_owned_by_whoever_approved_it FOREIGN KEY (enrolled_from, owner_user_id) REFERENCES public.enrolments(id, approved_by);
 
 
 --
