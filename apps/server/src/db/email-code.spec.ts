@@ -199,11 +199,20 @@ describe('issueCode', () => {
   it('takes its expiry from the database clock, not from the caller', async () => {
     const opened = await ask(`${RUN}-k1`)
 
-    const row = await codeRow((opened as { id: string }).id)
-    const minutesAway = (row.expires_at.getTime() - Date.now()) / 60_000
+    // Measured against the database's own `now()`, in one statement with the row. Against
+    // `Date.now()` this test is judging one clock with another: it goes red when the two drift by
+    // a couple of minutes, and it stays green on a CI box where they agree even if the expiry had
+    // been worked out here in TypeScript — which is the thing it exists to forbid.
+    const measured = await db
+      .selectFrom('email_codes')
+      .select(
+        sql<number>`(extract(epoch from (expires_at - now())) / 60)::float8`.as('minutesAway'),
+      )
+      .where('id', '=', (opened as { id: string }).id)
+      .executeTakeFirstOrThrow()
 
-    expect(minutesAway).toBeGreaterThan(4)
-    expect(minutesAway).toBeLessThan(6)
+    expect(measured.minutesAway).toBeGreaterThan(4)
+    expect(measured.minutesAway).toBeLessThan(6)
   })
 
   it('says when it expires and when another may be asked for, so no page has to guess', async () => {

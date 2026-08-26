@@ -170,9 +170,14 @@ describe('staying connected', () => {
     expect(stopped).toEqual({ kind: 'removed' })
   })
 
-  it('stops the agent it was running before it goes, rather than leaving an orphan', async () => {
-    // A machine taken out of its Space exits for good. The agent it was driving is a separate
-    // process: left alone it goes on changing files in somebody's project with nobody watching.
+  it('closes the turn it was on before it goes, rather than leaving it open for ever', async () => {
+    // A machine its owner disconnected exits for good, and the turn it held has to be closed on
+    // the way out or that conversation reads as running until somebody looks at the machine.
+    //
+    // What this does *not* prove is that the agent process was stopped: adapters are looked up by
+    // kind rather than handed in, so nothing here can watch one being asked. That promise is
+    // tested against the real binaries — see `agent-check/journey.agents.spec.ts`, "stops when
+    // asked, calls it cancelled, and the work really stops".
     let stopped = false
     let asked = 0
     server.use(
