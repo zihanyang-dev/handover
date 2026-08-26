@@ -31,11 +31,12 @@ function Screen() {
   // somebody looking for a Space that is theirs and is there, over a moment of no network.
   if (space.isError) {
     return (
-      <div className="page">
-        <section className="panel">
-          <p className="empty">Could not read this Space. Try again.</p>
-        </section>
-      </div>
+      <main className="home-state">
+        <div>
+          <h1>Could not read this Space</h1>
+          <p className="empty">Try again in a moment.</p>
+        </div>
+      </main>
     )
   }
 
