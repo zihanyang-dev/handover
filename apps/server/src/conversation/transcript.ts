@@ -4,8 +4,13 @@
  * One flat list, discriminated by who a message is from. Not our invention: AG-UI stores a
  * conversation as `Message[]` keyed on role, Vercel's reference chat app stores one row per
  * message with a role column and its body as JSON, and OpenAI's Responses API stores a
- * conversation as items. Turn boundaries are messages here rather than a second table, because
- * every one of those keeps a single ordered list and nothing else.
+ * conversation as items.
+ *
+ * How a turn *looked* is written here; who is running it is not. That is `turns`, and the split
+ * is the point: this list is the record, open to whatever an agent has to say, and the ledger is
+ * the truth, closed and decided by the database. Judgement never reads this file's shape — read
+ * from here, "is it still answering" reports a question nobody has picked up yet as answered, and
+ * two processes can run the same one.
  */
 
 import { z } from 'zod'
