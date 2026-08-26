@@ -81,6 +81,18 @@ describe('entering a Space', () => {
     expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
+  it('offers a way out from inside, not only from the Spaces list', async () => {
+    // Somebody who came straight to a Space by its address should not have to go somewhere else
+    // to reach their account or leave.
+    server.use(...theSpace())
+    open('/s/acme')
+
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    const out = within(sidebar).getByRole('tab', { name: /account/i })
+
+    expect(out.getAttribute('href')).toBe('/settings')
+  })
+
   it('answers one that is not yours the same as one that is not there', async () => {
     server.use(
       // First, so it answers instead of the one the Space double carries.

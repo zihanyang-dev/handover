@@ -29,3 +29,12 @@ export function MenuIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+/** The account. Traced the same way as the others, so it sits at the same weight beside them. */
+export function PersonIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" aria-hidden>
+      <path d="M10 3.25a3.375 3.375 0 1 0 0 6.75 3.375 3.375 0 0 0 0-6.75M7.875 6.625a2.125 2.125 0 1 1 4.25 0 2.125 2.125 0 0 1-4.25 0M10 11.25c-1.72 0-3.166.4-4.19 1.05-1.017.646-1.685 1.596-1.685 2.7 0 .621.504 1.125 1.125 1.125h9.5c.621 0 1.125-.504 1.125-1.125 0-1.104-.668-2.054-1.686-2.7-1.023-.65-2.469-1.05-4.189-1.05m-4.62 3.625c.043-.57.39-1.13 1.101-1.582.79-.502 1.99-.856 3.519-.856s2.728.354 3.518.856c.712.452 1.059 1.011 1.102 1.582z" />
+    </svg>
+  )
+}

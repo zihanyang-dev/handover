@@ -155,6 +155,28 @@ describe('the first step — a Space', () => {
     expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
+  it('shows each Space at the address it is at, in the order they were made', async () => {
+    // Two promises from `prd.md` 01 that moved here when the Spaces list did: the address is what
+    // a Space *is*, and there is no notion of recent — a list that reorders itself is one nobody
+    // can learn the shape of.
+    server.use(signedIn({ spaces: [ACME, BETA] }))
+    open('/onboarding')
+
+    // Spread, because stacked they are a deck and only the top one is readable.
+    await userEvent.click(await screen.findByRole('button', { name: /spread 2 spaces/i }))
+    const shown = [
+      screen.getByRole('button', { name: /open acme/i }),
+      screen.getByRole('button', { name: /open beta/i }),
+    ]
+
+    expect(shown[0]?.textContent).toContain('/s/acme')
+    expect(shown[1]?.textContent).toContain('/s/beta')
+    // Made first, shown first. Nothing here has a notion of recent.
+    expect(shown[0]?.compareDocumentPosition(shown[1] as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
   it('with exactly one Space, still asks rather than going in', async () => {
     // `prd.md` 01 promise ⑤: the URL is the only fact about which Space somebody is in. No
     // default, and not one just because it is the only one — a product that walks you somewhere
