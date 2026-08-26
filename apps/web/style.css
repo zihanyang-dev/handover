@@ -607,6 +607,89 @@ textarea.field {
   opacity: 1;
 }
 
+/* ── how far along the way in ───────────────────────────────────────────
+   Measured from Notion's setup bar: a 6px pill, the track a tint of the fill rather than a
+   grey, and the mark riding the leading edge so progress reads as movement. */
+
+.steps {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+/* Said outright for a reader; the bar says it for the eye. */
+.steps-said {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.steps-track {
+  position: relative;
+  height: 6px;
+  border-radius: 1000px;
+  background: rgba(0, 117, 222, 0.1);
+}
+
+.steps-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--at);
+  border-radius: 1000px;
+  background: var(--primary);
+  transition: width 350ms ease-out;
+}
+
+.steps-rider {
+  position: absolute;
+  top: 50%;
+  left: var(--at);
+  transform: translate(-50%, -50%);
+  transition: left 350ms ease-out;
+}
+
+/* Two legs, each label centered under where the rider rests for it. */
+.steps-labels {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 0.5rem;
+  color: var(--basic);
+  font-size: var(--text-xxs);
+  text-align: center;
+}
+
+.steps-labels [data-here] {
+  color: var(--content);
+  font-weight: 500;
+}
+
+.auth-command-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.auth-command {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xxs);
+  text-align: left;
+  word-break: break-all;
+}
+
+.auth-skip {
+  align-self: center;
+}
+
+.auth .preview {
+  margin: 0;
+  color: var(--basic);
+  font-size: var(--text-xxs);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

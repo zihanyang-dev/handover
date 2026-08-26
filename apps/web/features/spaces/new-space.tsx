@@ -13,23 +13,7 @@ import { ExclamationCircleFill } from 'react-bootstrap-icons'
 import { normalizeSlug } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { ME } from '../identity/me.ts'
-
-/**
- * A refusal, carried out of the call that was refused.
- *
- * Its own error rather than the refusal folded into a message string: this is the one call whose
- * refusal has a second field, and a message that has to be parsed back would be parsed for every
- * failure — including the ones that are not refusals at all. A dropped connection rejects with
- * something nobody wrote, and reading that as a refusal turned this screen blank.
- */
-class Refused extends Error {
-  readonly suggestion: string | undefined
-
-  constructor(suggestion: string | undefined) {
-    super('refused')
-    this.suggestion = suggestion
-  }
-}
+import { spaceRefusal } from './refusal.ts'
 
 export function NewSpace() {
   const navigate = useNavigate()
@@ -55,9 +39,7 @@ export function NewSpace() {
     },
   })
 
-  const refused = make.error instanceof Refused ? make.error : undefined
-  // Anything else is not the server saying no — it is nobody answering at all.
-  const broke = make.error !== null && refused === undefined
+  const refused = spaceRefusal(make.error)
 
   return (
     <form
@@ -111,9 +93,7 @@ export function NewSpace() {
         {refused !== undefined && (
           <p className="said said-bad" role="alert">
             <ExclamationCircleFill aria-hidden />
-            {refused.suggestion === undefined
-              ? 'That name cannot be used. Try another.'
-              : `Somebody holds that address. ${refused.suggestion} is free — for now.`}
+            {refused}
           </p>
         )}
 

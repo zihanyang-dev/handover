@@ -48,9 +48,7 @@ function OtherWays() {
     mutationFn: async (provider: string) => {
       const { data } = await api.POST('/auth/{provider}/start', {
         params: { path: { provider } },
-        // The server puts it through `returnPath` again on the way back. Both sides check it,
-        // because by then it has been through a site neither of them controls.
-        body: { next: next ?? '/' },
+        body: { next: '/onboarding' },
       })
       // The browser goes; a page cannot read where a redirect points.
       if (data !== undefined) globalThis.location.href = data.url

@@ -142,9 +142,7 @@ export function EmailCode({
       retryKeyDone(`code:${email}`)
       return data
     },
-    // Where they were going, not the front door. Through `returnPath` because it arrived in this
-    // page's own address bar, and what is done with it next is a navigation.
-    onSuccess: async () => navigate({ to: returnPath(next, globalThis.location.origin) }),
+    onSuccess: async () => navigate({ to: '/onboarding' }),
   })
 
   return (

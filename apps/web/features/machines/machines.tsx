@@ -11,8 +11,12 @@ import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
-import { agentName, type AgentKind } from '../agents.ts'
-import { useOpenConversation } from '../conversations/talking.ts'
+
+export const AGENT_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  'cursor-agent': 'Cursor Agent',
+}
 
 function machinesIn(slug: string) {
   return {
@@ -104,20 +108,13 @@ export function Machines({ slug }: { readonly slug: string }) {
                 with something to install, and calling it "no machines" would send somebody to
                 connect one that is already connected.
               */}
-              {machine.agents.length === 0 ? (
-                <span className="note">No agents found on it yet</span>
-              ) : (
-                machine.agents.map((agent) => (
-                  <TalkTo
-                    key={agent.kind}
-                    slug={slug}
-                    machineId={machine.id}
-                    kind={agent.kind}
-                    version={agent.version}
-                    here={machine.presence.state === 'here'}
-                  />
-                ))
-              )}
+              <span className="note">
+                {machine.agents.length === 0
+                  ? 'No agents found on it yet'
+                  : machine.agents
+                      .map((agent) => `${AGENT_NAMES[agent.kind] ?? agent.kind} ${agent.version}`)
+                      .join(' · ')}
+              </span>
             </span>
             {/* Only on your own. A machine belongs to whoever connected it, so a button here on
                 somebody else's would be a button that always fails — and offering one is worse

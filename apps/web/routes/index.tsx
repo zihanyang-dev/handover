@@ -1,6 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { onlySignedIn } from '../features/identity/only-signed-in.ts'
-import { CheckCircleFill, ExclamationCircleFill } from 'react-bootstrap-icons'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { api } from '../api.ts'
+import { Arrival } from '../features/identity/arrival.tsx'
 import { DisplayName } from '../features/identity/display-name.tsx'
 import { Credentials } from '../features/identity/credentials.tsx'
 import { NewSpace } from '../features/spaces/new-space.tsx'
@@ -15,46 +15,15 @@ function arrived(search: Record<string, unknown>): { handover_result?: string } 
 }
 
 /**
- * Every way a trip can end badly, in words about what to do next.
- *
- * Announced as well as shown — every one of these appears after something was clicked, and a
- * message that only exists on screen is a button that did nothing to anybody not looking at it.
- *
- * A trip that failed and said nothing looks exactly like a button that does nothing. Every one of
- * these was silent once, and the silence was indistinguishable from the feature being broken.
+ * A trip through a provider ends back here with a word about how it went. The words live in
+ * arrival.tsx: onboarding hears them too, when sign-in was the trip.
  */
-const WENT_WRONG: Record<string, string> = {
-  cancelled: 'Nothing was connected, and nothing changed.',
-  expired: 'That took too long. Try connecting it again.',
-  'no-verified-email': 'That account has no confirmed address, so it cannot be used here.',
-  'linked-elsewhere': 'That account is already connected to a different Handover account.',
-  'already-connected': 'You already have one of those connected.',
-}
-
 function Screen() {
   const { handover_result: result } = Route.useSearch()
-  const wentWrong = result === undefined ? undefined : WENT_WRONG[result]
 
   return (
     <div className="page">
-      {/*
-        Said once, on the answer that caused it. The key goes on exactly once, so the response
-        that put it there is the one time to mention it — nothing has to remember having said it,
-        and a reload does not say it again.
-      */}
-      {result === 'merged' && (
-        <p className="said said-good" role="status">
-          <CheckCircleFill aria-hidden />
-          You already had an account here. This way of signing in now reaches the same one.
-        </p>
-      )}
-
-      {wentWrong !== undefined && (
-        <p className="said said-bad" role="alert">
-          <ExclamationCircleFill aria-hidden />
-          {wentWrong}
-        </p>
-      )}
+      <Arrival result={result} />
 
       {/* Before the Spaces, because it is the one thing on this page that is about right now.
           Everything else here is somewhere to go; this is somebody being asked for something. */}
