@@ -18,7 +18,7 @@ import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
 import { handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
 import { approveEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment } from './machine.ts'
+import { checkIn, collectEnrolment, removeMachine } from './machine.ts'
 import { createSpace } from './space.ts'
 import {
   handOver,
@@ -30,7 +30,7 @@ import {
   wakeWhoseTimeHasCome,
   writesOutput,
 } from './task.ts'
-import { takeOne } from './turn.ts'
+import { forgetStranded, openTurn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
 
 const env = loadEnv()
@@ -509,6 +509,79 @@ describe('handing a piece of it to somebody else', () => {
     })
 
     expect(nowhere).toEqual({ kind: 'no-machine' })
+  })
+})
+
+describe('a report that arrives twice', () => {
+  it('does not undo the answer a person gave between the two', async () => {
+    // The response to the first was lost, so the agent sends it again. In between, a person read
+    // the question in their Inbox and answered it. Replayed, the work goes back to waiting with
+    // the answer already given and nobody holding it — and nothing anywhere says so.
+    const conversation = await handedOver()
+    await nextTurn()
+    const asked = { conversationId: conversation, machineId: MACHINE, key: 'turn-1/ask' }
+    await stopsWorking(db, asked, { state: 'wait', question: 'which database?' })
+    await asks(conversation, 'answer-1', 'the staging one')
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+
+    await stopsWorking(db, asked, { state: 'wait', question: 'which database?' })
+
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+  })
+
+  it('does not end the turn that is running now with an ending meant for an older one', async () => {
+    // Same lost response, on the plainest path there is. The key names the turn it was written
+    // for; what `openTurn` finds is whichever turn is open — by then, a different question that
+    // is still being answered.
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'where does the timeout live?')
+    await nextTurn()
+    await ends(conversation, 'turn-1/end')
+    await asks(conversation, 'turn-2', 'and the retry count?')
+    const second = await nextTurn()
+    expect(second).toBe(conversation)
+
+    await ends(conversation, 'turn-1/end')
+
+    // Still open: the machine is answering it, and nothing about the retry says otherwise.
+    expect(
+      await db.transaction().execute(async (tx) => openTurn(tx, conversation)),
+    ).not.toBeUndefined()
+  })
+})
+
+describe('a machine that was taken away mid-flight', () => {
+  it('cannot move the work, however far into the request it had got', async () => {
+    // Its credential is refused at the door from the next call on. This is the call already
+    // inside: the middleware let it through before the removal committed, and what it does next
+    // is a write with a credential its owner has just taken away.
+    const conversation = await handedOver()
+    await nextTurn()
+    await removeMachine(db, { machine: MACHINE, owner: PERSON })
+
+    const said = await stopsWorking(
+      db,
+      { conversationId: conversation, machineId: MACHINE, key: 'gone/done' },
+      { state: 'done', ending: 'done', said: 'all finished' },
+    )
+
+    expect(said).toEqual({ kind: 'nothing-to-report' })
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+  })
+})
+
+describe('a turn nobody was watching', () => {
+  it('stops the work as well, or the next look hands it straight back out', async () => {
+    // `unknown` means the turn may already have done everything it was asked. Left `working`, the
+    // very next look gives the agent another turn and it does that work again — the one thing
+    // this state exists to prevent.
+    const conversation = await handedOver()
+    await nextTurn()
+
+    await forgetStranded(db, MACHINE)
+
+    expect((await underwayIn(db, conversation))?.task.state).toBe('wait')
+    expect(await nextTurn()).toBeUndefined()
   })
 })
 

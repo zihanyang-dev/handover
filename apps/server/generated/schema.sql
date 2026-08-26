@@ -535,10 +535,10 @@ CREATE INDEX tasks_waiting_on_owner ON public.tasks USING btree (owner_user_id) 
 
 
 --
--- Name: turns_open_on_machine; Type: INDEX; Schema: public; Owner: -
+-- Name: turns_one_open_per_machine; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX turns_open_on_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
+CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
 
 
 --

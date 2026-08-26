@@ -19,7 +19,7 @@ import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
 import { append } from './message.ts'
-import { STATE } from './task.ts'
+import { STATE, waitsForAPerson } from './task.ts'
 
 /** A question waiting to be answered, as the machine that just took it is told. */
 export type Taken = {
@@ -371,6 +371,11 @@ export async function forgetStranded(db: Database, machineId: string): Promise<n
         message: { role: 'activity', content: { activityType: ACTIVITY.unknown } },
       })
       await endTurn(tx, turn.conversationId, turn.afterSeq)
+      // And the piece of work stops, exactly as it does when a machine reports a turn that went
+      // wrong. Without this the task stays `working`, the very next look hands it another turn,
+      // and an agent quietly does again whatever the abandoned turn may already have done — which
+      // is the one thing `unknown` exists to prevent.
+      await waitsForAPerson(tx, turn.conversationId)
     }
 
     return stranded.length

@@ -220,6 +220,12 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
 
     const written = await append(tx, reporting)
 
+    // A line that was already here is a retry, and everything below already happened in the
+    // transaction that wrote it. Carried on regardless, an ending retried under an old name ends
+    // whichever turn is running *now* — which by then is a different question, still being
+    // answered.
+    if (written.kind === 'said-already') return written
+
     // The record and the ledger move together. An ending in the transcript with the turn still
     // open would leave a conversation that reads as finished and is still owed an answer — and
     // the machine would be handed the same question again on its next report.
