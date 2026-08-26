@@ -47,10 +47,10 @@ async function signedIn(address: string): Promise<string> {
   })
   const { codeId } = (await opened.json()) as { codeId: string }
 
-  const answered = await auth.request(`/auth/email-codes/${codeId}/answer`, {
+  const answered = await auth.request('/browser/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code: lastCode }),
+    body: JSON.stringify({ codeId, code: lastCode }),
   })
   const cookie = answered.headers.getSetCookie().join(';')
   return `${SESSION_COOKIE}=${cookie.split(`${SESSION_COOKIE}=`)[1]?.split(';')[0] ?? ''}`
@@ -68,13 +68,13 @@ async function ask(address: string, cookie?: string): Promise<Response> {
 }
 
 async function answer(id: string, code: string, cookie?: string): Promise<Response> {
-  return app.request(`/me/credentials/email-codes/${id}/answer`, {
+  return app.request('/me/credentials', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(cookie === undefined ? {} : { cookie }),
     },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ codeId: id, code }),
   })
 }
 

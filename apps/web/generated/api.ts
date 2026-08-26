@@ -98,7 +98,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/email-codes/{id}/answer": {
+    "/browser/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -107,14 +107,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Answer a code, which signs you in */
+        /** Sign in with a code, which starts a session */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    id: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody: {
@@ -672,7 +670,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/credentials/email-codes/{id}/answer": {
+    "/me/credentials": {
         parameters: {
             query?: never;
             header?: never;
@@ -681,14 +679,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Answer the code, which adds the address to this account */
+        /** Add an address to this account, by answering the code sent to it */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    id: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody: {
@@ -965,7 +961,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/spaces/{slug}/enrolments/{userCode}/approve": {
+    "/me/machines": {
         parameters: {
             query?: never;
             header?: never;
@@ -974,20 +970,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Let that machine into this Space */
+        /** Say that machine is yours */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    slug: string;
-                    userCode: string;
-                };
+                path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LetItIn"];
+                };
+            };
             responses: {
-                /** @description It may come in */
+                /** @description It is yours */
                 204: {
                     headers: {
                         [name: string]: unknown;
@@ -1003,7 +1000,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Nothing is waiting under that code, or no such Space */
+                /** @description Nothing is waiting under that code */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1020,7 +1017,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/spaces/{slug}/machine-keys": {
+    "/me/machine-keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -1034,9 +1031,7 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: never;
-                path: {
-                    slug: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -1059,15 +1054,6 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description No such Space */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
             };
         };
         delete?: never;
@@ -1083,7 +1069,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The machines in this Space */
+        /** The machines this Space can reach */
         get: {
             parameters: {
                 query?: never;
@@ -1095,7 +1081,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Everything attached, here or not */
+                /** @description Every member’s machines, here or not */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1132,7 +1118,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/spaces/{slug}/machines/{id}": {
+    "/me/machines/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1142,20 +1128,19 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Take a machine out of this Space */
+        /** Disconnect one of your machines */
         delete: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    slug: string;
                     id: string;
                 };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Out, and its credential stops working */
+                /** @description Disconnected, and its credential stops working */
                 204: {
                     headers: {
                         [name: string]: unknown;
@@ -1171,7 +1156,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description No such Space, or no such machine in it */
+                /** @description You have no machine with that id */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2283,6 +2268,7 @@ export interface components {
             userId: string;
         };
         SubmitCode: {
+            codeId: string;
             /** @example 493018 */
             code: string;
         };
@@ -2379,6 +2365,9 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
+        LetItIn: {
+            userCode: string;
+        };
         MachineKey: {
             key: string;
             /** Format: date-time */
@@ -2391,6 +2380,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            ownerName: string;
+            yours: boolean;
             version?: string;
             presence: {
                 /** @enum {string} */

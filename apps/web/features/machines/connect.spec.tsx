@@ -63,46 +63,66 @@ describe('answering a machine', () => {
     expect(await screen.findByText('mina-mbp')).toBeDefined()
   })
 
-  it('asks which Space, rather than assuming one', async () => {
-    // The machine does not name one — it has no standing to choose — so this is the only place
-    // the question gets answered.
+  it('asks one question, because a machine is not let into anything', async () => {
+    // It is a laptop, and a laptop belongs to whoever owns it. Asking "into which Space" would be
+    // asking somebody to decide something that follows from where they already are.
     server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect/WDJB-MJHT')
 
     await screen.findByText('mina-mbp')
 
-    expect(screen.getByRole('button', { name: 'Acme' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Beta' })).toBeDefined()
+    expect(screen.getByRole('button', { name: /that is mine/i })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Acme' })).toBeNull()
   })
 
-  it('says what to do when there is no Space to let it into', async () => {
-    // How somebody lands here: signing in with a way in that turns out to have its own account.
-    // The heading with nothing under it reads as a screen that did not work, and the next thing
-    // they would try is the button that turns their own machine away.
+  it('names the account it would be attached to, before anybody agrees', async () => {
+    // How somebody lands on the wrong one: signing in with a way in that turns out to have its
+    // own account. They are sure they are on the other one, because on the other one they are.
     server.use(signedIn({ displayName: 'zane', spaces: [] }), waiting())
     open('/connect/WDJB-MJHT')
 
-    expect(await screen.findByText(/not in any Space yet/i)).toBeDefined()
-    expect(screen.getByRole('link', { name: /make one/i })).toBeDefined()
-    // Named, because somebody with two accounts is sure they have a Space — on the other one.
+    await screen.findByText('mina-mbp')
+
     expect(screen.getByText('zane')).toBeDefined()
+    expect(screen.getByRole('button', { name: /that is mine/i })).toBeDefined()
   })
 
-  it('lets it in, into the Space that was picked', async () => {
+  it('says so when there is nowhere for it to run yet', async () => {
+    // Connecting still works — the machine is theirs either way — but nothing can run on it
+    // until they are in a Space, and finding that out afterwards looks like a broken machine.
+    server.use(signedIn({ spaces: [] }), waiting())
+    open('/connect/WDJB-MJHT')
+
+    await screen.findByText('mina-mbp')
+
+    expect(screen.getByText(/make a Space and it will be there/i)).toBeDefined()
+  })
+
+  it('says nothing of the sort when there is somewhere', async () => {
+    server.use(signedIn({ spaces: SPACES }), waiting())
+    open('/connect/WDJB-MJHT')
+
+    await screen.findByText('mina-mbp')
+
+    expect(screen.queryByText(/make a Space/i)).toBeNull()
+  })
+
+  it('takes it, and it is reachable from wherever that person is', async () => {
     const approved: string[] = []
     server.use(
       signedIn({ spaces: SPACES }),
       waiting(),
-      http.post('*/spaces/:slug/enrolments/:code/approve', ({ params }) => {
-        approved.push(`${String(params['slug'])}/${String(params['code'])}`)
+      http.post('*/me/machines', async ({ request }) => {
+        const body = (await request.json()) as { userCode: string }
+        approved.push(body.userCode)
         return new HttpResponse(null, { status: 204 })
       }),
     )
     open('/connect/WDJB-MJHT')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Beta' }))
+    await userEvent.click(await screen.findByRole('button', { name: /that is mine/i }))
 
-    expect(approved).toEqual(['beta/WDJB-MJHT'])
+    expect(approved).toEqual(['WDJB-MJHT'])
     expect(await screen.findByText(/that machine is in/i)).toBeDefined()
   })
 
@@ -128,13 +148,13 @@ describe('answering a machine', () => {
     server.use(
       signedIn({ spaces: SPACES }),
       waiting(),
-      http.post('*/spaces/:slug/enrolments/:code/approve', () =>
+      http.post('*/me/machines', () =>
         HttpResponse.json({ reason: 'no-enrolment', recovery: 'start-over' }, { status: 404 }),
       ),
     )
     open('/connect/WDJB-MJHT')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Acme' }))
+    await userEvent.click(await screen.findByRole('button', { name: /that is mine/i }))
 
     expect(await screen.findByText(/nothing is waiting under that code/i)).toBeDefined()
   })
@@ -166,11 +186,11 @@ describe('answering a machine', () => {
     server.use(
       signedIn({ spaces: SPACES }),
       waiting(),
-      http.post('*/spaces/:slug/enrolments/:code/approve', () => answer.clone()),
+      http.post('*/me/machines', () => answer.clone()),
     )
     open('/connect/WDJB-MJHT')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Acme' }))
+    await userEvent.click(await screen.findByRole('button', { name: /that is mine/i }))
 
     expect(await screen.findByText(/could not be done/i)).toBeDefined()
   })

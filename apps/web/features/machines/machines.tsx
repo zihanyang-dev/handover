@@ -39,9 +39,7 @@ export function Machines({ slug }: { readonly slug: string }) {
 
   const detach = useMutation({
     mutationFn: async (id: string) => {
-      const { response } = await api.DELETE('/spaces/{slug}/machines/{id}', {
-        params: { path: { slug, id } },
-      })
+      const { response } = await api.DELETE('/me/machines/{id}', { params: { path: { id } } })
       // A row that stays put with no explanation is a button that did nothing.
       if (!response.ok) throw new Error('still-here')
     },
@@ -79,6 +77,10 @@ export function Machines({ slug }: { readonly slug: string }) {
             <span className="row-name">
               <Laptop aria-hidden />
               <strong>{machine.name}</strong>
+              {/* Whose it is, on every row that is not yours. A Space with two people in it has
+                  two people's laptops in it, and what an agent does on one of them happens in
+                  that person's files — which a name on its own does not say. */}
+              {!machine.yours && <span className="note">{machine.ownerName}&rsquo;s</span>}
               {machine.presence.state === 'here' ? (
                 <span className="chip chip-ready">Online</span>
               ) : (
@@ -117,23 +119,28 @@ export function Machines({ slug }: { readonly slug: string }) {
                 ))
               )}
             </span>
-            <button
-              className="button button-quiet"
-              type="button"
-              disabled={detach.isPending}
-              onClick={() => {
-                detach.mutate(machine.id)
-              }}
-            >
-              <span className="button-label">
-                {detach.isError ? 'Could not remove it' : 'Remove'}
-              </span>
-            </button>
+            {/* Only on your own. A machine belongs to whoever connected it, so a button here on
+                somebody else's would be a button that always fails — and offering one is worse
+                than not having one, because it reads as something you may do. */}
+            {machine.yours && (
+              <button
+                className="button button-quiet"
+                type="button"
+                disabled={detach.isPending}
+                onClick={() => {
+                  detach.mutate(machine.id)
+                }}
+              >
+                <span className="button-label">
+                  {detach.isError ? 'Could not disconnect it' : 'Disconnect'}
+                </span>
+              </button>
+            )}
           </li>
         ))}
       </ul>
 
-      <MachineKey slug={slug} />
+      <MachineKey />
     </section>
   )
 }
@@ -189,17 +196,15 @@ function TalkTo({
 /**
  * A key for a machine with no browser to open.
  *
- * Generating one here *is* the approving: somebody standing in this Space made the decision that
- * the code path asks a person to make later. Nothing about the mechanism differs after that.
+ * Generating one *is* the approving: whoever made it has already decided what the code path asks
+ * a person to decide later — that the machine will be theirs. Nothing else about it differs.
  */
-function MachineKey({ slug }: { readonly slug: string }) {
+function MachineKey() {
   const [key, setKey] = useState<string>()
 
   const make = useMutation({
     mutationFn: async () => {
-      const { data, error } = await api.POST('/spaces/{slug}/machine-keys', {
-        params: { path: { slug } },
-      })
+      const { data, error } = await api.POST('/me/machine-keys', {})
       if (data === undefined) throw new Error(error.reason)
       return data.key
     },

@@ -130,7 +130,16 @@ function askingToConnect(deps: EnrolmentApi) {
   })
 }
 
-/** Collecting the credential, which is also how a machine asks whether it has been approved yet. */
+/**
+ * Collecting the credential, which is also how a machine asks whether it has been approved yet.
+ *
+ * The one verb left in this API, and it stays. What it does is exchange one secret for another,
+ * which is the shape every token endpoint has — and the noun-ish alternative, a session under
+ * `/machines/current/…`, would put a route there that nothing can hold a machine credential for
+ * yet. That path means "a machine talking about itself" and every route under it is behind a
+ * machine's own credential, with a test that says so and no exceptions. A rule with an exception
+ * in it is worth less than this name is worth.
+ */
 function collecting_(deps: EnrolmentApi) {
   return openToAnyone({
     route: createRoute({

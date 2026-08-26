@@ -74,9 +74,10 @@ async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: 
     })
   ).json()) as { secret: string; userCode: string }
 
-  await enrolments.request(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, {
+  await enrolments.request('/me/machines', {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: COOKIE },
+    body: JSON.stringify({ userCode: asked.userCode }),
   })
 
   const collected = (await (

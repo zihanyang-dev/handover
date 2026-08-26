@@ -7,7 +7,6 @@
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { CheckCircleFill, ExclamationCircleFill, Laptop } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
@@ -36,21 +35,22 @@ function waitingFor(code: string) {
 /**
  * The half that is answered, once there is something to answer about.
  *
- * Which Space is asked, never assumed: the machine does not name one — it has no standing to
- * choose — so this is the only place the question gets put.
+ * One question and one answer: is that your machine. Not "into which Space" — a machine belongs
+ * to whoever connected it, and it is reachable from wherever they are a member. Asking which
+ * Space would be asking somebody to decide something that follows from where they already are.
  */
 function Answer({
   machineName,
   who,
-  spaces,
+  anySpace,
   pending,
   onAnswer,
 }: {
   readonly machineName: string
   readonly who: string
-  readonly spaces: readonly { id: string; slug: string; displayName: string }[]
+  readonly anySpace: boolean
   readonly pending: boolean
-  readonly onAnswer: (slug: string, yes: boolean) => void
+  readonly onAnswer: (yes: boolean) => void
 }) {
   return (
     <div className="stack-tight">
@@ -60,40 +60,33 @@ function Answer({
         command on?
       </p>
 
-      <p className="label">Let it into</p>
-      {spaces.length === 0 ? (
-        // Not a Space that went missing — a person who is in none. Arriving here that way is
-        // ordinary: signing in with a way in that turns out to have its own account is exactly
-        // how somebody lands with nothing to approve into, and they will be sure they have a
-        // Space, because on their other account they do. So the account is named. Without the
-        // name this reads as a broken screen, and the next thing tried is the button that turns
-        // your own machine away.
-        <p className="empty">
-          Signed in as <strong>{who}</strong>, who is not in any Space yet.{' '}
-          <Link to="/">Make one</Link>, then come back to this code.
-        </p>
-      ) : (
-        spaces.map((space) => (
-          <button
-            key={space.id}
-            className="button button-primary"
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              onAnswer(space.slug, true)
-            }}
-          >
-            <span className="button-label">{space.displayName}</span>
-          </button>
-        ))
-      )}
+      <button
+        className="button button-primary"
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          onAnswer(true)
+        }}
+      >
+        <span className="button-label">Yes, that is mine</span>
+      </button>
+
+      {/* Whose it will be, said before it is agreed to. Somebody signing in with a way in that
+          turns out to have its own account would otherwise attach their laptop to an account
+          they did not mean — and be sure they had, because on their other one they do. */}
+      <p className="note">
+        It will be yours, as <strong>{who}</strong>, and reachable from every Space you are in.
+        {/* Said plainly rather than left to be discovered: connecting works, and then nothing can
+            run on it, and the machine is not what is wrong. */}
+        {!anySpace && ' You are not in one yet — make a Space and it will be there.'}
+      </p>
 
       <button
         className="button button-quiet"
         type="button"
         disabled={pending}
         onClick={() => {
-          onAnswer('', false)
+          onAnswer(false)
         }}
       >
         <span className="button-label">That is not mine — turn it away</span>
@@ -135,13 +128,11 @@ export function Connect({ typed }: { readonly typed: string }) {
 
   const waiting = useQuery(waitingFor(asked))
   const me = useQuery(meQuery)
-  const spaces = me.data?.spaces ?? []
 
   const answer = useMutation({
-    mutationFn: async (into: { slug: string; yes: boolean }) => {
-      const path = { slug: into.slug, userCode: asked }
-      const { error, response } = into.yes
-        ? await api.POST('/spaces/{slug}/enrolments/{userCode}/approve', { params: { path } })
+    mutationFn: async (yes: boolean) => {
+      const { error, response } = yes
+        ? await api.POST('/me/machines', { body: { userCode: asked } })
         : await api.POST('/enrolments/{userCode}/refuse', {
             params: { path: { userCode: asked } },
           })
@@ -149,7 +140,7 @@ export function Connect({ typed }: { readonly typed: string }) {
       // proxy, a gateway. Calling that "unavailable" would say the Space is gone, which is a
       // different thing and one somebody would go and look for.
       if (!response.ok) throw new Error(error?.reason ?? 'unknown')
-      return into.yes
+      return yes
     },
   })
 
@@ -196,19 +187,18 @@ export function Connect({ typed }: { readonly typed: string }) {
         {/* Only while the box still says what was looked up. Editing it and pressing approve
             would let go of a machine somebody is no longer looking at: the screen says code B and
             the button answers for code A. */}
-        {/* Not until the Spaces are really known: "who is not in any Space yet" is what this
-          screen tells somebody when there is nothing to let a machine into, and saying it while
-          the answer is still coming sends them away from a machine that is waiting. */}
+        {/* Not until it is known whose it would be: the answer says so, and saying the wrong
+          name is how somebody attaches their laptop to an account they did not mean. */}
         {me.isSuccess &&
           waiting.data !== undefined &&
           code.trim().toUpperCase() === asked.trim().toUpperCase() && (
             <Answer
               machineName={waiting.data.machineName}
               who={me.data.displayName}
-              spaces={spaces}
+              anySpace={me.data.spaces.length > 0}
               pending={answer.isPending}
-              onAnswer={(slug, yes) => {
-                answer.mutate({ slug, yes })
+              onAnswer={(yes) => {
+                answer.mutate(yes)
               }}
             />
           )}

@@ -92,7 +92,7 @@ describe('adding another address', () => {
     server.use(
       holding(),
       sends(),
-      http.post('*/me/credentials/email-codes/:id/answer', async ({ request }) => {
+      http.post('*/me/credentials', async ({ request }) => {
         answered = await request.json()
         return new HttpResponse(null, { status: 204 })
       }),
@@ -107,7 +107,7 @@ describe('adding another address', () => {
 
     // All six, not five. The last keystroke is the one it is easy to leave behind.
     await waitFor(() => {
-      expect(answered).toEqual({ code: '493018' })
+      expect(answered).toEqual({ codeId: CHALLENGE, code: '493018' })
     })
   })
 
@@ -115,7 +115,7 @@ describe('adding another address', () => {
     server.use(
       holding(),
       sends(),
-      http.post('*/me/credentials/email-codes/:id/answer', () =>
+      http.post('*/me/credentials', () =>
         HttpResponse.json({ reason: 'address-elsewhere', recovery: 'retype' }, { status: 409 }),
       ),
     )

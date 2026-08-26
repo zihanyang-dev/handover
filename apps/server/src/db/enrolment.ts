@@ -1,5 +1,5 @@
 /**
- * One attempt to bring a machine into a Space: opening it, answering it, and collecting it.
+ * One attempt to connect a machine to somebody: opening it, answering it, and collecting it.
  *
  * Both ways in are this table. A person at a browser opens one that is already approved and pastes
  * its secret onto a server; a machine opens one that is not and waits for somebody to say yes. An
@@ -41,16 +41,15 @@ export type MachineAsking = {
 }
 
 /**
- * A key generated inside a Space, which is an enrolment that arrives approved.
+ * A key somebody made for themselves, which is an enrolment that arrives approved.
  *
  * No code, because nobody will read one and a code nobody reads can only leak. No machine name,
- * because it is made before anybody knows which machine will use it. A Space and an approver,
- * because generating it in a Space *was* the approving.
+ * because it is made before anybody knows which machine will use it. Only who made it, because
+ * making one *was* the approving — and what they were agreeing to is that the machine is theirs.
  */
 export type KeyMade = {
   readonly kind: 'key'
   readonly secretHash: string
-  readonly spaceId: string
   readonly approvedBy: string
 }
 
@@ -69,14 +68,12 @@ export async function openEnrolment(db: Database, opening: OpeningEnrolment): Pr
         ? {
             machine_name: opening.machineName,
             user_code: opening.userCode,
-            space_id: null,
             approved_by: null,
             approved_at: null,
           }
         : {
             machine_name: null,
             user_code: null,
-            space_id: opening.spaceId,
             approved_by: opening.approvedBy,
             approved_at: sql<Date>`clock_timestamp()`,
           }),
@@ -126,15 +123,17 @@ export type Answered =
  *
  * The guard is the `where`, not a read before it: two people answering at once both run this, and
  * the second updates nothing. Reading first and deciding in TypeScript would let both through.
+ *
+ * No Space in it: what somebody agrees to is that this machine is theirs. Where it can be reached
+ * from follows from where they are a member, which is not a decision anybody makes here.
  */
 export async function approveEnrolment(
   db: Database,
   userCode: UserCode,
-  into: { readonly userId: string; readonly spaceId: string },
+  by: { readonly userId: string },
 ): Promise<Answered> {
   return answer(db, userCode, {
-    approved_by: into.userId,
-    space_id: into.spaceId,
+    approved_by: by.userId,
     approved_at: sql`clock_timestamp()`,
   })
 }

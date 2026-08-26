@@ -97,9 +97,8 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
 
   const answer = useMutation({
     mutationFn: async (digits: string) => {
-      const { error, response } = await api.POST('/me/credentials/email-codes/{id}/answer', {
-        params: { path: { id: sent.id } },
-        body: { code: digits },
+      const { error, response } = await api.POST('/me/credentials', {
+        body: { codeId: sent.id, code: digits },
       })
       if (!response.ok) throw new Error(error?.reason ?? 'unavailable')
       retryKeyDone(`attach:${sent.address}`)

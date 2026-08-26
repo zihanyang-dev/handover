@@ -108,7 +108,6 @@ CREATE TABLE public.email_codes (
 
 CREATE TABLE public.enrolments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    space_id uuid,
     machine_name text,
     secret_hash text NOT NULL,
     user_code text,
@@ -118,7 +117,6 @@ CREATE TABLE public.enrolments (
     claimed_at timestamp with time zone,
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT enrolments_approved_into_a_space CHECK (((approved_at IS NULL) OR (space_id IS NOT NULL))),
     CONSTRAINT enrolments_approved_together CHECK (((approved_at IS NULL) = (approved_by IS NULL))),
     CONSTRAINT enrolments_claimed_after_approval CHECK (((claimed_at IS NULL) OR (approved_at IS NOT NULL))),
     CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL)))
@@ -131,7 +129,6 @@ CREATE TABLE public.enrolments (
 
 CREATE TABLE public.machines (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    space_id uuid NOT NULL,
     name text NOT NULL,
     token_hash text NOT NULL,
     enrolled_from uuid NOT NULL,
@@ -139,7 +136,8 @@ CREATE TABLE public.machines (
     left_at timestamp with time zone,
     removed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    version text
+    version text,
+    owner_user_id uuid NOT NULL
 );
 
 
@@ -487,10 +485,10 @@ CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (us
 
 
 --
--- Name: machines_in_space; Type: INDEX; Schema: public; Owner: -
+-- Name: machines_of_owner; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX machines_in_space ON public.machines USING btree (space_id) WHERE (removed_at IS NULL);
+CREATE INDEX machines_of_owner ON public.machines USING btree (owner_user_id) WHERE (removed_at IS NULL);
 
 
 --
@@ -584,14 +582,6 @@ ALTER TABLE ONLY public.enrolments
 
 
 --
--- Name: enrolments enrolments_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.enrolments
-    ADD CONSTRAINT enrolments_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
-
-
---
 -- Name: machines machines_enrolled_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -600,11 +590,11 @@ ALTER TABLE ONLY public.machines
 
 
 --
--- Name: machines machines_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: machines machines_owner_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.machines
-    ADD CONSTRAINT machines_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
+    ADD CONSTRAINT machines_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES public.users(id);
 
 
 --

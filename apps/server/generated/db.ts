@@ -81,7 +81,6 @@ export interface Enrolments {
   machine_name: string | null;
   refused_at: Timestamp | null;
   secret_hash: string;
-  space_id: string | null;
   user_code: string | null;
 }
 
@@ -92,8 +91,8 @@ export interface Machines {
   last_seen_at: Generated<Timestamp>;
   left_at: Timestamp | null;
   name: string;
+  owner_user_id: string;
   removed_at: Timestamp | null;
-  space_id: string;
   token_hash: string;
   version: string | null;
 }

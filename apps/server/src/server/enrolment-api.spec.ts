@@ -84,9 +84,9 @@ async function collect(
   return (await answered.json()) as { kind: string; machineId?: string }
 }
 
-/** A key generated in a Space: an enrolment that arrived approved. */
-async function makeKey(slug = SLUG): Promise<string> {
-  const made = await as(`/spaces/${slug}/machine-keys`, 'POST')
+/** A key somebody made for themselves: an enrolment that arrives approved. */
+async function makeKey(): Promise<string> {
+  const made = await as('/me/machine-keys', 'POST')
   return ((await made.json()) as { key: string }).key
 }
 
@@ -142,7 +142,7 @@ describe('answering', () => {
   it('lets the machine in once somebody says yes', async () => {
     const asked = await ask()
 
-    await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')
+    await as('/me/machines', 'POST', { userCode: asked.userCode })
 
     expect(await collect(asked.secret)).toMatchObject({ kind: 'granted' })
   })
@@ -152,7 +152,7 @@ describe('answering', () => {
     // existed once — in one response — and a machine that never received it could only ask again
     // and be told the enrolment was spent, leaving a machine in the Space nobody could recover.
     const asked = await ask()
-    await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')
+    await as('/me/machines', 'POST', { userCode: asked.userCode })
     const token = `hm_${randomUUID()}`
     const first = await collect(asked.secret, 'mina-mbp', token)
 
@@ -165,24 +165,21 @@ describe('answering', () => {
     // A single-use key really can be taken by somebody else, and that is worth being told rather
     // than being handed a second credential for a Space that agreed to one machine.
     const asked = await ask()
-    await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')
+    await as('/me/machines', 'POST', { userCode: asked.userCode })
     await collect(asked.secret)
 
     expect(await collect(asked.secret)).toEqual({ kind: 'spent' })
   })
 
-  it('refuses to approve into a Space the person is not in', async () => {
-    // The same answer a missing Space gets. Otherwise a code plus a guessed slug would say which
-    // Spaces exist.
+  it('needs nobody to pick a Space, because a machine is not in one', async () => {
+    // What somebody agrees to is that the machine is theirs. Where it can be reached from
+    // follows from where they are a member, and is not a decision anybody makes here.
     const asked = await ask()
 
-    const answered = await as(
-      `/spaces/not-mine-${RUN.slice(0, 8)}/enrolments/${asked.userCode}/approve`,
-      'POST',
-    )
+    const answered = await as('/me/machines', 'POST', { userCode: asked.userCode })
 
-    expect(answered.status).toBe(404)
-    expect(await collect(asked.secret)).toEqual({ kind: 'waiting' })
+    expect(answered.status).toBe(204)
+    expect(await collect(asked.secret)).toMatchObject({ kind: 'granted' })
   })
 
   it('stays refused once somebody says no', async () => {
@@ -191,13 +188,13 @@ describe('answering', () => {
     await as(`/enrolments/${asked.userCode}/refuse`, 'POST')
 
     expect(await collect(asked.secret)).toEqual({ kind: 'refused' })
-    expect((await as(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, 'POST')).status).toBe(
-      404,
-    )
+    expect((await as('/me/machines', 'POST', { userCode: asked.userCode })).status).toBe(404)
   })
 
   it('approves nothing when the code is not a code, even in a Space you are in', async () => {
-    expect((await as(`/spaces/${SLUG}/enrolments/hello-there/approve`, 'POST')).status).toBe(404)
+    const answered = await as('/me/machines', 'POST', { userCode: 'hello-there' })
+
+    expect(answered.status).toBe(404)
   })
 
   it('refuses nothing when the code is not a code, rather than pretending it did', async () => {
@@ -227,9 +224,10 @@ describe('without a session', () => {
   it('will not approve', async () => {
     const asked = await ask()
 
-    const answered = await app.request(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, {
+    const answered = await app.request('/me/machines', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userCode: asked.userCode }),
     })
 
     expect(answered.status).toBe(401)
@@ -268,12 +266,8 @@ describe('a key for a machine with no browser', () => {
     expect(await collect(key, 'build-server-2')).toEqual({ kind: 'spent' })
   })
 
-  it('is not made for a Space this person is not in', async () => {
-    expect((await as(`/spaces/not-mine-${RUN.slice(0, 8)}/machine-keys`, 'POST')).status).toBe(404)
-  })
-
   it('is not made by nobody', async () => {
-    const answered = await app.request(`/spaces/${SLUG}/machine-keys`, { method: 'POST' })
+    const answered = await app.request('/me/machine-keys', { method: 'POST' })
 
     expect(answered.status).toBe(401)
   })

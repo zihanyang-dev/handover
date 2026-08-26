@@ -147,6 +147,10 @@
       "SubmitCode": {
         "type": "object",
         "properties": {
+          "codeId": {
+            "type": "string",
+            "maxLength": 64
+          },
           "code": {
             "type": "string",
             "minLength": 1,
@@ -155,6 +159,7 @@
           }
         },
         "required": [
+          "codeId",
           "code"
         ]
       },
@@ -520,6 +525,18 @@
           "expiresAt"
         ]
       },
+      "LetItIn": {
+        "type": "object",
+        "properties": {
+          "userCode": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "userCode"
+        ]
+      },
       "MachineKey": {
         "type": "object",
         "properties": {
@@ -559,6 +576,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "yours": {
+            "type": "boolean"
           },
           "version": {
             "type": "string"
@@ -610,6 +633,8 @@
         "required": [
           "id",
           "name",
+          "ownerName",
+          "yours",
           "presence",
           "agents"
         ]
@@ -1864,19 +1889,9 @@
         }
       }
     },
-    "/auth/email-codes/{id}/answer": {
+    "/browser/sessions": {
       "post": {
-        "summary": "Answer a code, which signs you in",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
+        "summary": "Sign in with a code, which starts a session",
         "requestBody": {
           "required": true,
           "content": {
@@ -2386,23 +2401,12 @@
         }
       }
     },
-    "/me/credentials/email-codes/{id}/answer": {
+    "/me/credentials": {
       "post": {
-        "summary": "Answer the code, which adds the address to this account",
+        "summary": "Add an address to this account, by answering the code sent to it",
         "security": [
           {
             "browserSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
           }
         ],
         "requestBody": {
@@ -2643,35 +2647,27 @@
         }
       }
     },
-    "/spaces/{slug}/enrolments/{userCode}/approve": {
+    "/me/machines": {
       "post": {
-        "summary": "Let that machine into this Space",
+        "summary": "Say that machine is yours",
         "security": [
           {
             "browserSession": []
           }
         ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "slug",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "userCode",
-            "in": "path"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LetItIn"
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "204": {
-            "description": "It may come in"
+            "description": "It is yours"
           },
           "401": {
             "description": "Nobody is signed in here",
@@ -2684,7 +2680,7 @@
             }
           },
           "404": {
-            "description": "Nothing is waiting under that code, or no such Space",
+            "description": "Nothing is waiting under that code",
             "content": {
               "application/json": {
                 "schema": {
@@ -2696,22 +2692,12 @@
         }
       }
     },
-    "/spaces/{slug}/machine-keys": {
+    "/me/machine-keys": {
       "post": {
         "summary": "Make a key a machine can come in with, without anybody approving it later",
         "security": [
           {
             "browserSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "slug",
-            "in": "path"
           }
         ],
         "responses": {
@@ -2734,23 +2720,13 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "No such Space",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
           }
         }
       }
     },
     "/spaces/{slug}/machines": {
       "get": {
-        "summary": "The machines in this Space",
+        "summary": "The machines this Space can reach",
         "security": [
           {
             "browserSession": []
@@ -2768,7 +2744,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Everything attached, here or not",
+            "description": "Every member’s machines, here or not",
             "content": {
               "application/json": {
                 "schema": {
@@ -2800,23 +2776,15 @@
         }
       }
     },
-    "/spaces/{slug}/machines/{id}": {
+    "/me/machines/{id}": {
       "delete": {
-        "summary": "Take a machine out of this Space",
+        "summary": "Disconnect one of your machines",
         "security": [
           {
             "browserSession": []
           }
         ],
         "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "slug",
-            "in": "path"
-          },
           {
             "schema": {
               "type": "string",
@@ -2829,7 +2797,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Out, and its credential stops working"
+            "description": "Disconnected, and its credential stops working"
           },
           "401": {
             "description": "Nobody is signed in here",
@@ -2842,7 +2810,7 @@
             }
           },
           "404": {
-            "description": "No such Space, or no such machine in it",
+            "description": "You have no machine with that id",
             "content": {
               "application/json": {
                 "schema": {

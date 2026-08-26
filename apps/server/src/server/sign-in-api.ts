@@ -13,7 +13,13 @@ import { signInWithCode } from '../db/sign-in.ts'
 import { newSessionToken } from '../identity/session.ts'
 import type { Provider } from '../identity/provider.ts'
 import { offeredKinds, CREDENTIAL_KINDS } from '../identity/credential.ts'
-import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
+import {
+  explainRejection,
+  sendsACode,
+  submittedCode,
+  whichCode,
+  type SendCode,
+} from './email-code.ts'
 import { body, refusal } from './failure.ts'
 import { startSession } from './session.ts'
 
@@ -78,14 +84,19 @@ function offering(deps: SignInApi) {
   })
 }
 
-/** Handing a code back, which is the step that signs somebody in. */
+/**
+ * Signing in, which is creating a session.
+ *
+ * Not "answering a code": what a code buys is a session, and that is the thing that comes into
+ * existence. Its opposite is `DELETE /browser/sessions/current`, and now the pair reads as one.
+ */
 function answering(deps: SignInApi) {
   return openToAnyone({
     route: createRoute({
       method: 'post',
-      path: '/auth/email-codes/{id}/answer',
-      summary: 'Answer a code, which signs you in',
-      request: { params: z.object({ id: z.string() }), body: takes(submittedCode) },
+      path: '/browser/sessions',
+      summary: 'Sign in with a code, which starts a session',
+      request: { body: takes(submittedCode) },
       responses: {
         200: sends(signedInBody, 'Signed in; the session is in a cookie the page cannot read'),
         400: refusal('Wrong digits, or a body that was not the shape it claims'),
@@ -96,18 +107,15 @@ function answering(deps: SignInApi) {
     }),
 
     handler: async (c) => {
-      const id = c.req.valid('param').id
-
-      // An id that is not an id names no code, which is the situation a gone one is in, and gets
-      // the answer that situation gets.
-      if (!z.uuid().safeParse(id).success) {
+      const codeId = whichCode(c.req.valid('json').codeId)
+      if (codeId === undefined) {
         const failure = explainRejection('no-code')
         return c.json(body(failure), failure.status)
       }
 
       const session = newSessionToken()
       const result = await signInWithCode(deps.db, deps.secret, {
-        codeId: id,
+        codeId,
         submittedCode: c.req.valid('json').code,
         sessionTokenHash: session.hash,
       })

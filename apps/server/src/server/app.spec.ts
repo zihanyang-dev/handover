@@ -234,8 +234,8 @@ describe('what the contract says about who may call what', () => {
       'GET /auth/credentials',
       'GET /auth/{provider}/callback',
       'POST /auth/email-codes',
-      'POST /auth/email-codes/{id}/answer',
       'POST /auth/{provider}/start',
+      'POST /browser/sessions',
       'POST /enrolments',
       'POST /enrolments/collect',
     ])

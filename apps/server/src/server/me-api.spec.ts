@@ -54,10 +54,10 @@ async function signedIn(email: string): Promise<string> {
   })
   const { codeId } = (await opened.json()) as { codeId: string }
 
-  const verified = await auth.request(`/auth/email-codes/${codeId}/answer`, {
+  const verified = await auth.request('/browser/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code: lastCode }),
+    body: JSON.stringify({ codeId, code: lastCode }),
   })
   return (verified.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
 }

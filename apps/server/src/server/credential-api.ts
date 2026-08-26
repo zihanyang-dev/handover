@@ -6,19 +6,17 @@
  * same two steps as signing in, and none of the same consequences.
  */
 
-import { createRoute, z } from '@hono/zod-openapi'
+import { createRoute } from '@hono/zod-openapi'
 import { addAddress } from '../db/credential.ts'
 import type { Database } from '../db/connection.ts'
+import { SHOWS, api, endpointsBehind, insteadOfMalformed, saysNothing, takes } from './contract.ts'
 import {
-  SHOWS,
-  api,
-  endpointsBehind,
-  insteadOfMalformed,
-  rowId,
-  saysNothing,
-  takes,
-} from './contract.ts'
-import { explainRejection, sendsACode, submittedCode, type SendCode } from './email-code.ts'
+  explainRejection,
+  sendsACode,
+  submittedCode,
+  whichCode,
+  type SendCode,
+} from './email-code.ts'
 import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
 import { requireSession, type Signed } from './session.ts'
 
@@ -57,15 +55,21 @@ function asking(deps: CredentialApi) {
   })
 }
 
-/** Answering it, which is the step that actually adds the address. */
+/**
+ * Adding the address, which is what answering the code is for.
+ *
+ * A credential comes into existence, so this is creating one — the code is how somebody proves
+ * the address is theirs, not the thing being made. Its siblings read the same way:
+ * `GET /me` lists them, and this puts one there.
+ */
 function answering(deps: CredentialApi) {
   return behindASession({
     route: createRoute({
       method: 'post',
-      path: '/me/credentials/email-codes/{id}/answer',
-      summary: 'Answer the code, which adds the address to this account',
+      path: '/me/credentials',
+      summary: 'Add an address to this account, by answering the code sent to it',
       middleware: [requireSession(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(submittedCode) },
+      request: { body: takes(submittedCode) },
       responses: {
         ...BEHIND_A_SESSION,
         204: saysNothing('The address now opens this account, or already did'),
@@ -77,10 +81,17 @@ function answering(deps: CredentialApi) {
     }),
 
     handler: async (c) => {
+      const said = c.req.valid('json')
+      const codeId = whichCode(said.codeId)
+      if (codeId === undefined) {
+        const gone = explainRejection('no-code')
+        return c.json(body(gone), gone.status)
+      }
+
       const added = await addAddress(deps.db, {
         secret: deps.secret,
         user: c.get('userId'),
-        answer: { codeId: c.req.valid('param').id, code: c.req.valid('json').code },
+        answer: { codeId, code: said.code },
       })
 
       // Already this account's comes back attached: what was asked for is true either way.

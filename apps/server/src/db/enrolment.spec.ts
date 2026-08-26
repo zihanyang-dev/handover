@@ -27,7 +27,6 @@ afterAll(async () => {
 
 /** A fresh Space and person per test, so no test depends on the database being empty. */
 let RUN = ''
-let SPACE = ''
 let PERSON = ''
 
 beforeEach(async () => {
@@ -40,6 +39,8 @@ beforeEach(async () => {
     )
   PERSON = arrived.userId
 
+  // A Space, though nothing here names one: enrolling is about whose machine it is, not about
+  // where it may be used. It is made so that a person who has one is the ordinary case under test.
   const name = `Acme ${RUN.slice(0, 8)}`
   const made = await createSpace(db, {
     requestKey: `space-${RUN}`,
@@ -48,7 +49,6 @@ beforeEach(async () => {
     slug: normalizeSlug(name) as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
-  SPACE = made.space.id
 })
 
 /** A machine that showed a code and is waiting for somebody to answer it. */
@@ -88,11 +88,11 @@ describe('opening one', () => {
 
     const row = await db
       .selectFrom('enrolments')
-      .select('space_id')
+      .select('approved_by')
       .where('secret_hash', '=', asked.secretHash)
       .executeTakeFirstOrThrow()
 
-    expect(row.space_id).toBeNull()
+    expect(row.approved_by).toBeNull()
   })
 
   it('is already answered when a person generated it, so nothing waits on a code', async () => {
@@ -102,7 +102,6 @@ describe('opening one', () => {
     await openEnrolment(db, {
       kind: 'key',
       secretHash: secret.hash,
-      spaceId: SPACE,
       approvedBy: PERSON,
     })
 
@@ -122,7 +121,7 @@ describe('answering one', () => {
     await openEnrolment(db, asked)
     const code = asked.userCode
 
-    expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({
+    expect(await approveEnrolment(db, code, { userId: PERSON })).toEqual({
       kind: 'answered',
     })
     expect(await refuseEnrolment(db, code)).toEqual({ kind: 'not-waiting' })
@@ -136,9 +135,7 @@ describe('answering one', () => {
     const code = asked.userCode
 
     const answers = await Promise.all(
-      Array.from({ length: 10 }, async () =>
-        approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE }),
-      ),
+      Array.from({ length: 10 }, async () => approveEnrolment(db, code, { userId: PERSON })),
     )
 
     expect(answers.filter((answer) => answer.kind === 'answered')).toHaveLength(1)
@@ -150,7 +147,7 @@ describe('answering one', () => {
     const code = asked.userCode
     await ageOut(code)
 
-    expect(await approveEnrolment(db, code, { userId: PERSON, spaceId: SPACE })).toEqual({
+    expect(await approveEnrolment(db, code, { userId: PERSON })).toEqual({
       kind: 'not-waiting',
     })
     expect(await enrolmentWaiting(db, code)).toBeUndefined()

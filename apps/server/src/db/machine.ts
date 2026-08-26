@@ -1,5 +1,5 @@
 /**
- * The machines in a Space: turning an approved enrolment into one, and what one reports.
+ * Somebody's machines: turning an approved enrolment into one, and what one reports.
  *
  * Locks, in the order every path here takes them:
  *   1. the `enrolments` row, by a conditional update only a first collection matches
@@ -7,7 +7,8 @@
  *   3. the `agents` rows it reported
  */
 
-import { sql } from 'kysely'
+import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kysely'
+import type { DB } from '../../generated/db.ts'
 import type { AgentKind, FoundAgent, Installed } from '../machine/agent-kind.ts'
 import type { Enrolment } from '../machine/enrolment.ts'
 import type { Whereabouts } from '../machine/presence.ts'
@@ -40,10 +41,10 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
       .where('refused_at', 'is', null)
       .where('claimed_at', 'is', null)
       .where('expires_at', '>', sql<Date>`now()`)
-      .returning(['id', 'space_id', 'machine_name'])
-      // `enrolments_approved_into_a_space` says an approved row has one, and only approved rows
-      // reach here. The column is nullable because an unapproved enrolment has no Space yet.
-      .$narrowType<{ space_id: string }>()
+      .returning(['id', 'approved_by', 'machine_name'])
+      // `enrolments_approved_together` says an approved row names who approved it, and only
+      // approved rows reach here. The column is nullable because nobody has said yes yet.
+      .$narrowType<{ approved_by: string }>()
       .executeTakeFirst()
 
     if (won === undefined) return whyNot(tx, collecting)
@@ -51,7 +52,9 @@ export async function collectEnrolment(db: Database, collecting: Collecting): Pr
     const machine = await tx
       .insertInto('machines')
       .values({
-        space_id: won.space_id,
+        // Whoever said yes owns it. Not the Space they were looking at when they did: a laptop
+        // belongs to a person, and that person is in as many Spaces as they are in.
+        owner_user_id: won.approved_by,
         // What was approved wins: somebody looked at a name and said yes to it, and a machine
         // that arrived calling itself something else is not the one they agreed to.
         name: won.machine_name ?? collecting.machineName,
@@ -230,6 +233,14 @@ export type Machine = {
   readonly name: string
   /** Which build of the CLI it is running, or nothing when it has never said. */
   readonly version: string | undefined
+  /**
+   * Whose it is.
+   *
+   * Carried because a Space with two people in it has two people's laptops in it, and what runs
+   * on one of them runs in that person's files. A name on its own does not say that.
+   */
+  readonly ownerName: string
+  readonly ownerUserId: string
   readonly whereabouts: Whereabouts
   readonly agents: readonly Installed[]
 }
@@ -248,6 +259,31 @@ export type Seen = {
   readonly machines: readonly Machine[]
 }
 
+/**
+ * Whether a machine can be reached from this Space: its owner is a member here.
+ *
+ * A condition and not a join, so that a read taking `for update` locks the machine and nothing
+ * else. Joined, `for update` would lock the membership row too — and then opening a conversation
+ * would queue behind anything touching who is in what.
+ */
+export function reachableFrom(spaceId: string) {
+  return (eb: ExpressionBuilder<DB, 'machines'>): Expression<SqlBool> =>
+    eb.exists(
+      eb
+        .selectFrom('memberships')
+        .select('memberships.user_id')
+        .whereRef('memberships.user_id', '=', 'machines.owner_user_id')
+        .where('memberships.space_id', '=', spaceId),
+    )
+}
+
+/**
+ * Every machine a Space can reach.
+ *
+ * Not "the machines in this Space" — a machine is not in a Space. It is somebody's, and it can be
+ * reached from wherever they are a member. Joined rather than stored: a stored list would be a
+ * second copy of who is in what, and the day it disagreed nobody would find out.
+ */
 export async function machinesIn(db: Database, spaceId: string): Promise<Seen> {
   // One transaction, so `now()` and every row it is compared against are the same instant.
   return db.transaction().execute(async (tx) => attachedIn(tx, spaceId))
@@ -258,10 +294,21 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
 
   const rows = await tx
     .selectFrom('machines')
-    .select(['id', 'name', 'version', 'last_seen_at as lastSeenAt', 'left_at as leftAt'])
-    .where('space_id', '=', spaceId)
-    .where('removed_at', 'is', null)
-    .orderBy('created_at')
+    .innerJoin('users', 'users.id', 'machines.owner_user_id')
+    .select([
+      'machines.id',
+      'machines.name',
+      'machines.version',
+      'machines.last_seen_at as lastSeenAt',
+      'machines.left_at as leftAt',
+      // Whose it is, because in a Space with two people in it a name is not enough: one of these
+      // is somebody else's laptop, and what runs on it runs in their files.
+      'users.display_name as ownerName',
+      'machines.owner_user_id as ownerUserId',
+    ])
+    .where('machines.removed_at', 'is', null)
+    .where(reachableFrom(spaceId))
+    .orderBy('machines.created_at')
     .execute()
 
   if (rows.length === 0) return { asOf, machines: [] }
@@ -287,6 +334,8 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       id: row.id,
       name: row.name,
       version: row.version ?? undefined,
+      ownerName: row.ownerName,
+      ownerUserId: row.ownerUserId,
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: found
         .filter((agent) => agent.machineId === row.id)
@@ -303,15 +352,15 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
  */
 export async function removeMachine(
   db: Database,
-  which: { readonly machine: string; readonly space: string },
+  which: { readonly machine: string; readonly owner: string },
 ): Promise<boolean> {
   const removed = await db
     .updateTable('machines')
     .set({ removed_at: sql<Date>`clock_timestamp()` })
     .where('id', '=', which.machine)
-    // Named by the Space it is in, so an id from another Space removes nothing rather than
-    // removing somebody else's machine.
-    .where('space_id', '=', which.space)
+    // Named by whose it is, so an id belonging to somebody else removes nothing rather than
+    // disconnecting their laptop. Only its owner can, which is the point of it being theirs.
+    .where('owner_user_id', '=', which.owner)
     .where('removed_at', 'is', null)
     .returning('id')
     .executeTakeFirst()

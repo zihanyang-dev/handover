@@ -69,7 +69,7 @@ async function attached(machineName: string): Promise<string> {
   const secret = newEnrolmentSecret()
   const userCode = newUserCode()
   await openEnrolment(db, { kind: 'asking', machineName, secretHash: secret.hash, userCode })
-  await approveEnrolment(db, userCode, { userId: PERSON, spaceId: SPACE })
+  await approveEnrolment(db, userCode, { userId: PERSON })
 
   const collected = await collectEnrolment(db, {
     secretHash: secret.hash,
@@ -290,6 +290,20 @@ describe('handing a piece of it to somebody else', () => {
 
     expect(off.conversationId).not.toBe(conversation)
     expect(await nextTurn(other)).toBe(off.conversationId)
+  })
+
+  it('means the same machine every time when two of them share a name', async () => {
+    // Names are not identities — two laptops can both be called `mbp`, and in a Space with two
+    // people in it they easily are. Whichever one it means, it has to mean that one every time,
+    // rather than whichever row the database happened to return first.
+    const conversation = await handedOver()
+    await nextTurn()
+    const first = await attached('mbp')
+    await attached('mbp')
+
+    const off = await handedOff(conversation, 'mbp')
+
+    expect(await nextTurn(first)).toBe(off.conversationId)
   })
 
   it('does not stop the one handing off, so it can open a second', async () => {

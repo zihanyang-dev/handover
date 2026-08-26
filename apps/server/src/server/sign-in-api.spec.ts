@@ -72,10 +72,10 @@ async function age(email: string): Promise<void> {
 }
 
 async function submit(id: string, code: string): Promise<Response> {
-  return app.request(`/auth/email-codes/${id}/answer`, {
+  return app.request('/browser/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ codeId: id, code }),
   })
 }
 

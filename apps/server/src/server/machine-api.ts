@@ -183,6 +183,15 @@ const machineBody = z
     id: z.uuid(),
     name: z.string(),
     /**
+     * Whose it is, and whether that is you.
+     *
+     * A Space with two people in it has two people's laptops in it, and what an agent does on one
+     * of them happens in that person's files. Only its owner can disconnect it, and a page that
+     * did not say which was which would be offering everybody a button that only works on one.
+     */
+    ownerName: z.string(),
+    yours: z.boolean(),
+    /**
      * Which build of the CLI it is running.
      *
      * Absent when it has never said, which is a build older than the field itself. Shown as such
@@ -218,12 +227,18 @@ function asAsking(taken: Taken) {
 }
 
 const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
+const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
 const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
 
 export function machineApi(deps: MachineApi) {
-  return api<{ Variables: Signed & InSpace }>()
-    .openapiRoutes([listing(deps), detaching(deps)])
-    .route('/', whatMachinesDo(deps))
+  return (
+    api<{ Variables: Signed & InSpace }>()
+      .openapiRoutes([listing(deps)])
+      // Disconnecting is about a machine and not about a Space, so it is mounted on its own with
+      // nothing but a session behind it. Reading a Space's machines still needs membership of it.
+      .route('/', api<{ Variables: Signed }>().openapiRoutes([detaching(deps)]))
+      .route('/', whatMachinesDo(deps))
+  )
 }
 
 /**
@@ -337,18 +352,18 @@ function leaving(deps: MachineApi) {
   })
 }
 
-/** Everything attached to this Space, here or not. */
+/** Every machine this Space can reach — its members' — here or not. */
 function listing(deps: MachineApi) {
   return behindAMembership({
     route: createRoute({
       method: 'get',
       path: '/spaces/{slug}/machines',
-      summary: 'The machines in this Space',
+      summary: 'The machines this Space can reach',
       middleware: [requireSession(deps.db), requireMember(deps.db)],
       request: { params: z.object({ slug: z.string() }) },
       responses: {
         ...BEHIND_A_SESSION,
-        200: sends(machinesBody, 'Everything attached, here or not'),
+        200: sends(machinesBody, 'Every member\u2019s machines, here or not'),
         404: refusal('No such Space'),
       },
     }),
@@ -361,6 +376,8 @@ function listing(deps: MachineApi) {
         id: machine.id,
         name: machine.name,
         ...(machine.version === undefined ? {} : { version: machine.version }),
+        ownerName: machine.ownerName,
+        yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(presence(machine.whereabouts, seen.asOf)),
         agents: machine.agents.map(asOffered),
       }))
@@ -370,19 +387,25 @@ function listing(deps: MachineApi) {
   })
 }
 
-/** Taking one out, which is also what stops its credential working. */
+/**
+ * Disconnecting one, which is also what stops its credential working.
+ *
+ * Yours, not a Space's. A machine belongs to whoever connected it, so nobody else can take it
+ * away — and there is nothing to take it out *of*: where it can be reached from follows from
+ * where its owner is a member.
+ */
 function detaching(deps: MachineApi) {
-  return behindAMembership({
+  return behindASession({
     route: createRoute({
       method: 'delete',
-      path: '/spaces/{slug}/machines/{id}',
-      summary: 'Take a machine out of this Space',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }) },
+      path: '/me/machines/{id}',
+      summary: 'Disconnect one of your machines',
+      middleware: [requireSession(deps.db)],
+      request: { params: z.object({ id: rowId }) },
       responses: {
         ...BEHIND_A_SESSION,
-        204: saysNothing('Out, and its credential stops working'),
-        404: refusal('No such Space, or no such machine in it'),
+        204: saysNothing('Disconnected, and its credential stops working'),
+        404: refusal('You have no machine with that id'),
       },
     }),
 
@@ -391,10 +414,10 @@ function detaching(deps: MachineApi) {
     handler: async (c) => {
       const removed = await removeMachine(deps.db, {
         machine: c.req.valid('param').id,
-        space: c.get('space').id,
+        owner: c.get('userId'),
       })
 
-      // An id from another Space removes nothing, and says the same thing a missing Space says.
+      // Somebody else's id disconnects nothing, and says what a machine you do not have says.
       if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
 
       return c.body(null, 204)

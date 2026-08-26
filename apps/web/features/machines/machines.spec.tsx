@@ -66,6 +66,8 @@ describe('the machines in a Space', () => {
           {
             id: 'm-1',
             name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
             presence: HERE,
             agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
           },
@@ -81,10 +83,44 @@ describe('the machines in a Space', () => {
     expect(machines.getByText(/Claude Code 2\.1\.4/u)).toBeDefined()
   })
 
+  it('says whose a machine is when it is not yours, and offers no button on it', async () => {
+    // A Space with two people in it has two people's laptops in it. A Disconnect that always
+    // fails is worse than none, because it reads as something you may do.
+    server.use(
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-2',
+            name: 'rui-mbp',
+            ownerName: 'rui',
+            yours: false,
+            presence: HERE,
+            agents: [],
+          },
+        ],
+      }),
+    )
+
+    open('/s/acme')
+
+    expect(await screen.findByText(/rui\u2019s/u)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /disconnect/i })).toBeNull()
+  })
+
   it('says which build of handover is on it, since nobody here can go and look', async () => {
     server.use(
       ...theSpace({
-        machines: [{ id: 'm-1', name: 'mina-mbp', version: 'v0.4.0', presence: HERE, agents: [] }],
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
+            version: 'v0.4.0',
+            presence: HERE,
+            agents: [],
+          },
+        ],
       }),
     )
     open('/s/acme')
@@ -99,7 +135,16 @@ describe('the machines in a Space', () => {
     // exactly the machine somebody is trying to work out what is wrong with.
     server.use(
       ...theSpace({
-        machines: [{ id: 'm-1', name: 'old-one', presence: HERE, agents: [] }],
+        machines: [
+          {
+            id: 'm-1',
+            name: 'old-one',
+            ownerName: 'mina',
+            yours: true,
+            presence: HERE,
+            agents: [],
+          },
+        ],
       }),
     )
     open('/s/acme')
@@ -114,7 +159,16 @@ describe('the machines in a Space', () => {
     // to see it sitting there, offline.
     server.use(
       ...theSpace({
-        machines: [{ id: 'm-1', name: 'mina-mbp', presence: goneHalfAnHourAgo(), agents: [] }],
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
+            presence: goneHalfAnHourAgo(),
+            agents: [],
+          },
+        ],
       }),
     )
     open('/s/acme')
@@ -130,7 +184,18 @@ describe('the machines in a Space', () => {
     // Two different things to do next: install an agent, or connect a machine. Merging them sends
     // somebody to reconnect one that is already connected, while its terminal says it is online.
     server.use(
-      ...theSpace({ machines: [{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }] }),
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
+            presence: HERE,
+            agents: [],
+          },
+        ],
+      }),
     )
     open('/s/acme')
 
@@ -165,6 +230,8 @@ describe('the machines in a Space', () => {
           {
             id: 'm-1',
             name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
             presence: HERE,
             // The one place the double is allowed to answer outside the contract, and the whole
             // point of the test: this is what a newer server sends, and this build cannot have a
@@ -200,8 +267,19 @@ describe('the machines in a Space', () => {
   it('takes one away when asked', async () => {
     const removed: string[] = []
     server.use(
-      ...theSpace({ machines: [{ id: 'm-1', name: 'mina-mbp', presence: HERE, agents: [] }] }),
-      http.delete('*/spaces/acme/machines/:id', ({ params }) => {
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'mina',
+            yours: true,
+            presence: HERE,
+            agents: [],
+          },
+        ],
+      }),
+      http.delete('*/me/machines/:id', ({ params }) => {
         removed.push(String(params['id']))
         return new HttpResponse(null, { status: 204 })
       }),
@@ -209,7 +287,7 @@ describe('the machines in a Space', () => {
     open('/s/acme')
 
     const machines = await panel()
-    await userEvent.click(await machines.findByRole('button', { name: /remove/i }))
+    await userEvent.click(await machines.findByRole('button', { name: /disconnect/i }))
 
     expect(removed).toEqual(['m-1'])
   })
@@ -219,7 +297,7 @@ describe('a key for a machine with no browser', () => {
   it('is offered right where the machines are', async () => {
     server.use(
       ...theSpace(),
-      http.post('*/spaces/acme/machine-keys', () =>
+      http.post('*/me/machine-keys', () =>
         HttpResponse.json(
           { key: 'hk_secret', expiresAt: new Date().toISOString() },
           { status: 201 },
@@ -238,7 +316,7 @@ describe('a key for a machine with no browser', () => {
     // Somebody who closes this without copying it needs another key, not a way to look it up.
     server.use(
       ...theSpace(),
-      http.post('*/spaces/acme/machine-keys', () =>
+      http.post('*/me/machine-keys', () =>
         HttpResponse.json(
           { key: 'hk_secret', expiresAt: new Date().toISOString() },
           { status: 201 },
@@ -256,7 +334,7 @@ describe('a key for a machine with no browser', () => {
   it('says it could not make one, rather than looking like a button that does nothing', async () => {
     server.use(
       ...theSpace(),
-      http.post('*/spaces/acme/machine-keys', () =>
+      http.post('*/me/machine-keys', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
     )

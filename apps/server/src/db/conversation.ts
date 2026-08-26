@@ -18,6 +18,7 @@ import type { Database, Tx } from './connection.ts'
 import { append, alreadySaid, held, type Saying, type Said } from './message.ts'
 import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
 import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
+import { reachableFrom } from './machine.ts'
 import { wakeMachine } from './waking.ts'
 
 export type { Saying, Said } from './message.ts'
@@ -30,7 +31,7 @@ export type Opening = {
 
 export type Opened =
   | { readonly kind: 'opened'; readonly conversationId: string }
-  /** No such machine in this Space, or it was removed. Pick another one. */
+  /** No machine by that id can be reached from this Space, or it was removed. Pick another. */
   | { readonly kind: 'no-machine' }
   /** The machine is here but that agent is not on it any more. Install it, or pick another. */
   | { readonly kind: 'no-agent' }
@@ -46,10 +47,10 @@ export async function openConversation(db: Database, opening: Opening): Promise<
   return db.transaction().execute(async (tx) => {
     const machine = await tx
       .selectFrom('machines')
-      .select(['id'])
-      .where('id', '=', opening.machineId)
-      .where('space_id', '=', opening.spaceId)
-      .where('removed_at', 'is', null)
+      .select(['machines.id'])
+      .where('machines.id', '=', opening.machineId)
+      .where('machines.removed_at', 'is', null)
+      .where(reachableFrom(opening.spaceId))
       .forUpdate()
       .executeTakeFirst()
 
@@ -455,7 +456,7 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
 
 export type HandedOff =
   | { readonly kind: 'handed-off'; readonly conversationId: string; readonly taskId: string }
-  /** No machine by that name in this Space, or it was removed. */
+  /** No machine by that name can be reached from this Space, or it was removed. */
   | { readonly kind: 'no-machine' }
   /** That machine is here but does not have that agent. */
   | { readonly kind: 'no-agent' }
@@ -532,7 +533,7 @@ export async function handOffTo(db: Database, handing: HandingOff): Promise<Hand
 }
 
 /**
- * The machine an agent named, if that agent is on it and it is in this Space.
+ * The machine an agent named, if that agent is on it and this Space can reach it.
  *
  * Both under the machine's lock rather than read and then decided on, for the same reason opening
  * a conversation is: a machine removed between the read and the insert would leave a piece of
@@ -545,10 +546,13 @@ async function agentNamed(
 ): Promise<string | Extract<HandedOff, { kind: 'no-machine' | 'no-agent' }>> {
   const to = await tx
     .selectFrom('machines')
-    .select('id')
-    .where('space_id', '=', spaceId)
-    .where('name', '=', handing.machine)
-    .where('removed_at', 'is', null)
+    .select('machines.id')
+    .where('machines.name', '=', handing.machine)
+    .where('machines.removed_at', 'is', null)
+    .where(reachableFrom(spaceId))
+    // Two people in one Space can both have a laptop called `mbp`. Oldest wins, so the same name
+    // means the same machine every time rather than whichever row came back first.
+    .orderBy('machines.created_at')
     .forUpdate()
     .executeTakeFirst()
 

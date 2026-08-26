@@ -61,7 +61,7 @@ async function approved(name = 'mina-mbp'): Promise<string> {
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(db, userCode, { userId: PERSON, spaceId: SPACE })
+  await approveEnrolment(db, userCode, { userId: PERSON })
   return secret.hash
 }
 
@@ -350,7 +350,7 @@ describe('taking one away', () => {
     if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
 
     expect(await machineHolding(db, hashSecret(token))).toBe(collected.machineId)
-    await removeMachine(db, { machine: collected.machineId, space: SPACE })
+    await removeMachine(db, { machine: collected.machineId, owner: PERSON })
     expect(await machineHolding(db, hashSecret(token))).toBeUndefined()
   })
 
@@ -372,7 +372,7 @@ describe('taking one away', () => {
   it('takes it off the Space screen', async () => {
     const machineId = await attached()
 
-    await removeMachine(db, { machine: machineId, space: SPACE })
+    await removeMachine(db, { machine: machineId, owner: PERSON })
 
     expect((await machinesIn(db, SPACE)).machines).toEqual([])
   })
@@ -382,15 +382,15 @@ describe('taking one away', () => {
     // a Space they have nothing to do with.
     const machineId = await attached()
 
-    expect(await removeMachine(db, { machine: machineId, space: randomUUID() })).toBe(false)
+    expect(await removeMachine(db, { machine: machineId, owner: randomUUID() })).toBe(false)
     expect((await machinesIn(db, SPACE)).machines).toHaveLength(1)
   })
 
   it('says so when it was already taken away', async () => {
     const machineId = await attached()
-    await removeMachine(db, { machine: machineId, space: SPACE })
+    await removeMachine(db, { machine: machineId, owner: PERSON })
 
-    expect(await removeMachine(db, { machine: machineId, space: SPACE })).toBe(false)
+    expect(await removeMachine(db, { machine: machineId, owner: PERSON })).toBe(false)
   })
 })
 

@@ -142,9 +142,8 @@ export function EmailCode({
 
   const handBack = useMutation({
     mutationFn: async (digits: string) => {
-      const { data, error } = await api.POST('/auth/email-codes/{id}/answer', {
-        params: { path: { id: codeId } },
-        body: { code: digits },
+      const { data, error } = await api.POST('/browser/sessions', {
+        body: { codeId, code: digits },
       })
       if (data === undefined) throw new Error(error.reason)
       retryKeyDone(`code:${email}`)

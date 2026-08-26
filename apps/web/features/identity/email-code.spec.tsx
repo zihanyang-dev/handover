@@ -53,7 +53,9 @@ function codeScreen(resendAfterSeconds = '30'): string {
 }
 
 function refusing(reason: string, status: number) {
-  return http.post('*/answer', () => HttpResponse.json({ reason, recovery: 'retype' }, { status }))
+  return http.post('*/browser/sessions', () =>
+    HttpResponse.json({ reason, recovery: 'retype' }, { status }),
+  )
 }
 
 async function typeCode(digits: string): Promise<void> {
@@ -64,7 +66,7 @@ describe('handing the code back', () => {
   it('submits all six on the sixth digit, with nothing to press', async () => {
     let handed: unknown
     server.use(
-      http.post('*/answer', async ({ request }) => {
+      http.post('*/browser/sessions', async ({ request }) => {
         handed = await request.json()
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
@@ -77,7 +79,7 @@ describe('handing the code back', () => {
     // Whether a request went out is not the question. The last keystroke is the one that is
     // easy to leave behind, and a code missing it is the code somebody is told is wrong.
     await waitFor(() => {
-      expect(handed).toEqual({ code: '493018' })
+      expect(handed).toEqual({ codeId: CHALLENGE, code: '493018' })
     })
     // The real route tree, so this is where somebody actually ends up.
     expect(await screen.findByText(/your spaces/i)).toBeDefined()
@@ -86,7 +88,7 @@ describe('handing the code back', () => {
   it('does not submit before there are six', async () => {
     let handed = false
     server.use(
-      http.post('*/answer', () => {
+      http.post('*/browser/sessions', () => {
         handed = true
         return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
       }),
@@ -172,7 +174,9 @@ describe('each way it can fail', () => {
     // came for. Journey 01 says so, and it is the difference between an interruption and a loss.
     server.use(
       signedIn(),
-      http.post('*/answer', () => HttpResponse.json({ userId: CHALLENGE }, { status: 200 })),
+      http.post('*/browser/sessions', () =>
+        HttpResponse.json({ userId: CHALLENGE }, { status: 200 }),
+      ),
       http.get('*/spaces/acme', () =>
         HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
       ),
@@ -189,7 +193,7 @@ describe('each way it can fail', () => {
   it('refuses to be sent to somebody else s site by its own address bar', async () => {
     server.use(
       signedIn(),
-      http.post('*/answer', () => HttpResponse.json({ userId: CHALLENGE })),
+      http.post('*/browser/sessions', () => HttpResponse.json({ userId: CHALLENGE })),
     )
     open(`${codeScreen()}&next=https%3A%2F%2Fevil.example.com%2Fphish`)
 

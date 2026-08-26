@@ -104,7 +104,7 @@ async function attached(): Promise<string> {
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(db, userCode, { userId: PERSON, spaceId: SPACE })
+  await approveEnrolment(db, userCode, { userId: PERSON })
 
   const collected = await collectEnrolment(db, {
     secretHash: secret.hash,

@@ -28,9 +28,37 @@ const askedForCode = z
   })
   .openapi('AskForCode')
 
+/**
+ * A code handed back, and which code it is.
+ *
+ * The id is in the body rather than the path, because the code is not the thing being made: what
+ * comes into existence is a session on one route and a credential on the other, and the code is
+ * only how somebody proves they may have it.
+ */
 export const submittedCode = z
-  .object({ code: z.string().min(1).max(20).openapi({ example: '493018' }) })
+  .object({
+    /**
+     * Which code.
+     *
+     * Not `uuid` here: one that is not an id names no code, which is the situation a gone one is
+     * in, and it gets that situation's answer rather than "your browser sent something
+     * malformed". Each route that takes this says so its own way — a hook, or a look.
+     */
+    codeId: z.string().max(64),
+    code: z.string().min(1).max(20).openapi({ example: '493018' }),
+  })
   .openapi('SubmitCode')
+
+/**
+ * Which code somebody means, or nothing when what arrived was not an id at all.
+ *
+ * Nothing, rather than a refusal: a string that is not an id names no code, which is exactly the
+ * situation an expired one is in. Told "that sign-in is no longer here" a person starts again;
+ * told their browser sent something malformed they have no idea what to do.
+ */
+export function whichCode(said: string): string | undefined {
+  return z.uuid().safeParse(said).success ? said : undefined
+}
 
 const issuedBody = z
   .object({

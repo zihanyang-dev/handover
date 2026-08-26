@@ -237,7 +237,7 @@ async function aQuestion(): Promise<{ machineId: string; conversationId: string 
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(one, userCode, { userId, spaceId: made.space.id })
+  await approveEnrolment(one, userCode, { userId })
   const collected = await collectEnrolment(one, {
     secretHash: secret.hash,
     tokenHash: hashSecret(`hm_${randomUUID()}`),

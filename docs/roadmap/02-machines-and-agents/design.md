@@ -14,7 +14,7 @@
 
 ```
 enrolments
-  id · space_id(批准前为空) · machine_name(钥匙那条路上为空,由机器自报)
+  id · machine_name(钥匙那条路上为空,由机器自报)
   secret_hash 唯一          ← 命令行轮询时出示的东西,只存哈希
   user_code   唯一(可空)     ← 给人看的短码;网页生成的那条路没有
   approved_by → users(可空) · approved_at(可空)
@@ -24,7 +24,7 @@ enrolments
   一行 = 一次接入请求。批没批,看 approved_at
 
 machines
-  id · space_id · name
+  id · owner_user_id · name      ← 它属于连它的那个人,不属于 Space
   token_hash 唯一           ← 长期凭据,同样只存哈希
   enrolled_from → enrolments
   last_seen_at              ← 在线与否读的时候算,不存状态
@@ -56,9 +56,29 @@ agents
 要进哪个 Space:那会让一个没登录的人拿 slug 挨个试,从 201 还是 404 里读出哪个 Space 存在,而
 `prd.md` 01 的承诺 ⑥ 说的是**不存在和不是成员,同一个回答**。
 
-Space 在批准的那一刻由人给出。Tailscale 就是这样:设备不选网络,授权的账号选。
+**批准的时候也不问 Space,只问「这是不是你的」。** 一台笔记本属于它的主人;它在哪些 Space 里能用,
+是从那个人的成员资格跟着走的,`machines` 上没有那一列。
 
-`space_id` 因此在批准前为空,并由一条约束钉住:**批过的行一定有 Space**。
+```sql
+-- 「这个 Space 能用哪些机器」 —— 一个 join,不是一列
+from machines join memberships on memberships.user_id = machines.owner_user_id
+where memberships.space_id = $1
+```
+
+**存下来那份名单就是「谁在哪个 Space」的第二份拷贝**,而它和真的那份不一致的那天,没有任何东西
+会说一声。派生的那份不会。
+
+`approved_by` 因此就是主人,而 `enrolments` 上那条「批过的行一定有 Space」的约束没了 —— 换成
+本来就有的那条:**批过的行一定有人**(`enrolments_approved_together`)。
+
+[Multica](https://github.com/multica-ai/multica/blob/main/CLI_AND_DAEMON.md) 是同一个结论:
+`multica login` **自己去发现你所属的每一个 workspace**,一个 daemon 全服务。它给 daemon 的是
+**个人访问令牌**,我们给的还是**机器凭据** —— 同样的方便,小一个数量级的爆炸半径:那台笔记本丢了,
+拿到的东西建不了 Space、读不了 Inbox、登不了录。
+
+(CI 的 runner 是另一回事:[GitHub](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
+和 [GitLab](https://docs.gitlab.com/ci/runners/runners_scope/) 都是一次注册一个作用域 —— 因为那是
+**组织买的机器**,不是谁的笔记本。照那个抄,就是把归属关系搞反。)
 
 名字走的是相反的方向。**代码那条路**上它在发起时就有,批准的人看着它点的同意 —— 来的机器叫别的,就
 不是他同意的那台。**钥匙那条路**上没有人可看也没什么可看:钥匙生成的时候还不存在哪台机器,所以名字
@@ -311,22 +331,22 @@ POST   /enrolments/collect               机器轮询,出示 secret 和自己的
                                            / refused / expired / spent / no-enrolment
 
 GET    /enrolments/{userCode}            网页给人看:哪台机器在等
-POST   /spaces/{slug}/enrolments/{userCode}/approve   放它进这个 Space
-POST   /enrolments/{userCode}/refuse     回绝。不带 Space:拒绝不是对某个 Space 做的事
-POST   /spaces/{slug}/machine-keys       生成一条已经批过的接入请求,明文只回一次
+POST   /me/machines                      认领:带上 userCode,这台机器归你
+POST   /me/machine-keys                  生成一条已经批过的接入请求,明文只回一次
+POST   /enrolments/{userCode}/refuse     回绝
 
 POST   /machines/current/poll            机器报到,带上扫到的东西、自己的版本,以及
                                          它正在答哪段对话(在答的话)
                                          没活就挂住,最多 25 秒
                                          → { pollSeconds: 0, lookFor, asking?, stopping? }
 DELETE /machines/current/session         说再见,立刻转离线
-GET    /spaces/{slug}/machines           Space 页面读这个
-DELETE /spaces/{slug}/machines/{id}      移除
+GET    /spaces/{slug}/machines           Space 页面读这个:成员的机器,连出来的,不是存的
+DELETE /me/machines/{id}                 移除自己的机器
 ```
 
 `/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验「这个 id 是不是你」,而凭据本来就说明了你是谁。
 
-**批准在路径里带 Space,回绝不带。** 放进来是对某个 Space 做的事,由那道成员门管;回绝只是把这次请求作废,和任何 Space 无关。
+**认领和回绝都不带 Space。** 机器不在某个 Space 里,它是某个人的;它能从哪些 Space 看到,是这个人的成员身份连出来的。所以这一整套只要一个活着的会话。
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
 

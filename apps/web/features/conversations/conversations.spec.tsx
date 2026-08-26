@@ -39,6 +39,8 @@ const AWAY = { state: 'gone', since: new Date(Date.now() - 1_770_000).toISOStrin
 const MINA: components['schemas']['Machine'] = {
   id: 'm-1',
   name: 'mina-mbp',
+  ownerName: 'mina',
+  yours: true,
   presence: HERE,
   agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
 }

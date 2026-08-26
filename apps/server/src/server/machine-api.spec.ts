@@ -65,8 +65,11 @@ beforeEach(async () => {
   SPACE = made.space.id
 })
 
-/** A machine that got in, and the credential it holds. */
-async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: string }> {
+/** A machine that got in, and the credential it holds. Whoever answered it owns it. */
+async function attached(
+  machineName = 'mina-mbp',
+  cookie = COOKIE,
+): Promise<{ token: string; id: string }> {
   // Minted here because a machine mints its own: the server only ever sees the hash.
   const token = `hm_${randomUUID()}`
   const asked = (await (
@@ -77,9 +80,10 @@ async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: 
     })
   ).json()) as { secret: string; userCode: string }
 
-  await enrolments.request(`/spaces/${SLUG}/enrolments/${asked.userCode}/approve`, {
+  await enrolments.request('/me/machines', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: COOKIE },
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ userCode: asked.userCode }),
   })
 
   const collected = (await (
@@ -139,6 +143,36 @@ type Seen = {
 async function seenInSpace(): Promise<Seen> {
   const answered = await app.request(`/spaces/${SLUG}/machines`, { headers: { cookie: COOKIE } })
   return (await answered.json()) as Seen
+}
+
+/** Somebody else, signed in. Their session reaches their own things and nothing of yours. */
+async function signedInStranger(): Promise<{ cookie: string; userId: string }> {
+  const address = `rui-${RUN}@example.com`
+  const arrived = await db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
+
+  const token = newSessionToken()
+  await openSession(db, { user: arrived.userId, tokenHash: token.hash })
+  return { cookie: `${SESSION_COOKIE}=${token.token}`, userId: arrived.userId }
+}
+
+/**
+ * Somebody else in this Space, with a laptop of their own.
+ *
+ * The membership is written here rather than joined through the product, because nothing shipped
+ * yet lets anybody join a Space — and what these tests are about is what a second member sees.
+ */
+async function alsoHere(): Promise<{ cookie: string; userId: string }> {
+  const stranger = await signedInStranger()
+  await db
+    .insertInto('memberships')
+    .values({ space_id: SPACE, user_id: stranger.userId, request_key: `joined-${RUN}` })
+    .execute()
+
+  return stranger
 }
 
 /** Another Space belonging to the same person, for testing what an id alone must not do. */
@@ -239,11 +273,11 @@ describe('whether it is here', () => {
   })
 })
 
-describe('taking one away', () => {
+describe('disconnecting one', () => {
   it('stops its credential working', async () => {
     const machine = await attached()
 
-    await app.request(`/spaces/${SLUG}/machines/${machine.id}`, {
+    await app.request(`/me/machines/${machine.id}`, {
       method: 'DELETE',
       headers: { cookie: COOKIE },
     })
@@ -252,25 +286,13 @@ describe('taking one away', () => {
     expect((await seenInSpace()).machines).toEqual([])
   })
 
-  it('will not take one out of a Space the person is not in', async () => {
-    const machine = await attached()
-
-    const answered = await app.request(
-      `/spaces/somebody-elses-${RUN.slice(0, 8)}/machines/${machine.id}`,
-      { method: 'DELETE', headers: { cookie: COOKIE } },
-    )
-
-    expect(answered.status).toBe(404)
-    expect((await seenInSpace()).machines).toHaveLength(1)
-  })
-
   it('answers an id that is not an id the way it answers one that names nothing', async () => {
     // It used to reach a uuid column and come back a database error: a 500 for something the
     // caller did. Telling "not a uuid" apart from "not yours" would make the URL a way to find
     // out, which is the same reason a missing Space and one you are not in read alike.
     await attached()
 
-    const answered = await app.request(`/spaces/${SLUG}/machines/not-a-uuid`, {
+    const answered = await app.request('/me/machines/not-a-uuid', {
       method: 'DELETE',
       headers: { cookie: COOKIE },
     })
@@ -280,20 +302,53 @@ describe('taking one away', () => {
     expect((await seenInSpace()).machines).toHaveLength(1)
   })
 
-  it('needs the Space it is in, not just its id', async () => {
+  it('is only its owner who can, whoever else can see it', async () => {
+    // Somebody sharing a Space with you can reach your laptop — that is what a Space is for — but
+    // it is still your laptop. Being able to disconnect it would be being able to take it.
     const machine = await attached()
+    const stranger = await alsoHere()
 
-    // A second Space this person really is in. The id is real and the membership is real, and it
-    // still removes nothing, because the machine is not in *that* Space.
-    const other = await anotherSpace()
-
-    const answered = await app.request(`/spaces/${other}/machines/${machine.id}`, {
+    const answered = await app.request(`/me/machines/${machine.id}`, {
       method: 'DELETE',
-      headers: { cookie: COOKIE },
+      headers: { cookie: stranger.cookie },
     })
 
     expect(answered.status).toBe(404)
     expect((await seenInSpace()).machines).toHaveLength(1)
+  })
+})
+
+describe('which Spaces can reach it', () => {
+  it('is every Space its owner is in, without connecting it again', async () => {
+    // The whole of it. A laptop belongs to a person, and that person is in as many Spaces as
+    // they are in — so a second Space is not a second enrolment.
+    const machine = await attached()
+    const other = await anotherSpace()
+
+    const answered = await app.request(`/spaces/${other}/machines`, { headers: { cookie: COOKIE } })
+
+    expect(answered.status).toBe(200)
+    expect(((await answered.json()) as { machines: { id: string }[] }).machines).toMatchObject([
+      { id: machine.id },
+    ])
+  })
+
+  it('says whose each one is, because one of them is somebody else\u2019s laptop', async () => {
+    // What an agent does on a machine happens in its owner's files. Two rows called `mbp` with
+    // nothing else on them would be a page that cannot say which one that is.
+    await attached()
+    const stranger = await alsoHere()
+    await attached('rui-mbp', stranger.cookie)
+
+    const answered = await app.request(`/spaces/${SLUG}/machines`, { headers: { cookie: COOKIE } })
+    const seen = (await answered.json()) as {
+      machines: { name: string; ownerName: string; yours: boolean }[]
+    }
+
+    expect(seen.machines).toMatchObject([
+      { name: 'mina-mbp', yours: true },
+      { name: 'rui-mbp', yours: false, ownerName: `rui-${RUN}@example.com` },
+    ])
   })
 })
 
