@@ -49,11 +49,16 @@ function machinesAre(machines: unknown[]) {
 }
 
 describe('the second step — a machine', () => {
-  it('shows one command, with the key in it', async () => {
+  it('starts with the regular command and keeps the key behind a choice', async () => {
     server.use(signedIn({ spaces: [ACME] }), keyIs('WDJB-MJHT'), machinesAre([]))
     open('/onboarding/host?s=acme')
 
-    expect(await screen.findByText(/handover connect --key WDJB-MJHT/)).toBeDefined()
+    expect(await screen.findByText(/^handover connect$/u)).toBeDefined()
+    expect(screen.queryByText(/--key/u)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /use a key instead/i }))
+
+    expect(await screen.findByText(/handover connect --key WDJB-MJHT/u)).toBeDefined()
   })
 
   it('says how far along this is', async () => {
@@ -129,7 +134,9 @@ describe('the second step — a machine', () => {
     )
     open('/onboarding/host')
 
-    expect(await screen.findByText(/handover connect --key/)).toBeDefined()
+    expect(await screen.findByText(/^handover connect$/u)).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: /use a key instead/i }))
+    expect(await screen.findByText(/handover connect --key/u)).toBeDefined()
     expect(asked).toBe('acme')
   })
 

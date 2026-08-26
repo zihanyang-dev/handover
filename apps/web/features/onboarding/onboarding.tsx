@@ -14,7 +14,7 @@ import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Arrival } from '../identity/arrival.tsx'
 import { ME, meQuery, type Me } from '../identity/me.ts'
 import { spaceRefusal } from '../spaces/refusal.ts'
-import { Steps } from './steps.tsx'
+import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 /** The name and the Space, one decision. The address appears as the name is typed. */
 function NameAndSpace({
@@ -27,9 +27,11 @@ function NameAndSpace({
   const client = useQueryClient()
   const nameField = useId()
   const spaceField = useId()
+  const urlField = useId()
   const [name, setName] = useState(me.displayName)
   const [space, setSpace] = useState('')
   const slug = normalizeSlug(space)
+  const spaceUrl = slug === null ? '' : new URL(`/s/${slug}`, globalThis.location.origin).href
 
   const begin = useMutation({
     mutationFn: async () => {
@@ -92,18 +94,17 @@ function NameAndSpace({
             begin.reset()
           }}
         />
-        <p className="preview">
-          {space.trim() === '' ? (
-            'Its address appears here as you type.'
-          ) : slug === null ? (
-            'That name has no address in it.'
-          ) : (
-            <>
-              <span>/s/</span>
-              <strong>{slug}</strong>
-            </>
-          )}
-        </p>
+        <label className="label" htmlFor={urlField}>
+          Space URL
+        </label>
+        <input
+          id={urlField}
+          className="field space-url"
+          type="url"
+          readOnly
+          placeholder="Its URL appears here as you type."
+          value={spaceUrl}
+        />
 
         <p className="auth-error" data-shown={refused !== undefined ? '' : undefined}>
           {refused ?? null}
@@ -184,7 +185,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
       void (leave.to === 'space'
         ? navigate({ to: '/s/$slug', params: { slug: leave.slug } })
         : navigate({ to: '/onboarding/host', search: { s: leave.slug } }))
-    }, 520)
+    }, STEP_EXIT_MS)
   }, [leave, navigate])
 
   return (

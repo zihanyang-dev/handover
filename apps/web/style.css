@@ -490,19 +490,6 @@ textarea.field {
      spent days at 245px while the token said otherwise. Manus's column is 360px. */
   width: 22.5rem;
   max-width: 100%;
-  animation: auth-in 180ms ease-out both;
-}
-
-/* Arriving and moving on both get one short rise; the mark carries the continuity. */
-@keyframes auth-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* The code and asking again share one row, exactly the width of the Continue below it. */
@@ -638,7 +625,7 @@ textarea.field {
   width: var(--at);
   border-radius: 1000px;
   background: var(--primary);
-  transition: width 350ms ease-out;
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .steps-rider {
@@ -646,7 +633,7 @@ textarea.field {
   top: 50%;
   left: var(--at);
   transform: translate(-50%, -50%);
-  transition: left 350ms ease-out;
+  transition: left 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Two legs, each label centered under where the rider rests for it. */
@@ -664,28 +651,76 @@ textarea.field {
   font-weight: 500;
 }
 
-.auth-command-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.5rem;
-  align-items: stretch;
-}
-
-.auth-command {
-  display: flex;
-  align-items: center;
+.space-url {
+  background: #f7f7f5;
+  color: var(--basic);
   font-family: var(--font-mono);
   font-size: var(--text-xxs);
-  text-align: left;
-  word-break: break-all;
 }
 
+.shell-snippet {
+  overflow: hidden;
+  border: 1px solid #3d3a3b;
+  border-radius: 0.75rem;
+  background: #2b292a;
+  box-shadow: 0 1px 2px #16191d14;
+  color: #f7f6f3;
+}
+
+.shell-snippet-head {
+  display: flex;
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #ffffff14;
+  color: #b9b6b4;
+  font-size: var(--text-xxs);
+}
+
+.shell-copy {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #dedbd8;
+  cursor: pointer;
+  font: inherit;
+}
+
+.shell-copy:hover {
+  color: #ffffff;
+}
+
+.shell-copy:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+.shell-snippet pre {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xxs);
+  line-height: 1.55;
+  white-space: nowrap;
+}
+
+.shell-prompt {
+  color: #8fc98a;
+  user-select: none;
+}
+
+.auth-disclosure,
 .auth-skip {
   align-self: center;
 }
 
-.auth .preview {
-  margin: 0;
+.auth-disclosure {
+  min-height: auto;
+  padding-block: 0;
   color: var(--basic);
   font-size: var(--text-xxs);
 }

@@ -6,10 +6,13 @@
  * has a number.
  */
 
-import type { CSSProperties } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import { Mark, type MarkState } from '../../mark.tsx'
 
 const LEGS = ['Space', 'Machine'] as const
+
+/** Long enough for one leg to move, short enough that Continue still feels immediate. */
+export const STEP_EXIT_MS = 260
 
 export function Steps({
   step,
@@ -20,10 +23,21 @@ export function Steps({
   readonly done?: boolean
   readonly mark?: MarkState
 }) {
-  // The rider rests mid-leg of where things stand: a quarter in for the first, three for the
-  // second, all the way once there is nothing left.
-  const at = done ? 100 : step === 1 ? 25 : 75
-  const leg = done ? 'Done' : `Step ${String(step)} of 2`
+  // A completed first step ends at the midpoint. The second mounts there, then advances on its
+  // next paint: the rider only moves forward instead of sweeping to 100% and snapping back.
+  const [entered, setEntered] = useState(step === 1)
+  useEffect(() => {
+    if (step === 1) return
+    const timer = setTimeout(() => {
+      setEntered(true)
+    }, 20)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [step])
+
+  const at = done ? (step === 1 ? 50 : 100) : step === 1 ? 25 : entered ? 75 : 50
+  const leg = done && step === 2 ? 'Done' : `Step ${String(step)} of 2`
 
   return (
     <div className="steps" role="img" aria-label={leg}>

@@ -53,9 +53,9 @@ function quietMachineStep() {
   ]
 }
 
-/** Let TanStack's fade between routes finish pretending; a test does not wait out a transition. */
+/** Let the progress rider finish its leg before the route follows. */
 async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 400))
 }
 
 describe('the first step — a Space', () => {
@@ -75,13 +75,15 @@ describe('the first step — a Space', () => {
     expect(await screen.findByText(/step 1 of 2/i)).toBeDefined()
   })
 
-  it('shows the address the server will give the Space, while the name is typed', async () => {
+  it('shows the address as a read-only URL while the name is typed', async () => {
     server.use(signedIn())
     open('/onboarding')
 
     await userEvent.type(await screen.findByLabelText(/^space$/i), 'Acme Corp')
 
-    expect(await screen.findByText('acme-corp')).toBeDefined()
+    const address = await screen.findByLabelText(/space url/i)
+    expect(address).toHaveProperty('readOnly', true)
+    expect(address).toHaveProperty('value', expect.stringMatching(/\/s\/acme-corp$/u))
   })
 
   it('saves a changed name first, then makes the Space, then moves to the machine', async () => {

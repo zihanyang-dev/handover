@@ -2,8 +2,8 @@
  * The second step: a machine of one's own.
  *
  * Agents run on somebody's machine, not on ours, so nothing in a Space can do anything until one
- * is here. The command carries a key instead of a code to type: making the key here *is* the
- * approving, and the page notices the machine on its own once the command runs.
+ * is here. The regular command asks through the terminal and opens the existing approval page;
+ * a direct key is the fallback for a machine where that link cannot be opened.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ import { CheckCircleFill } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
 import { meQuery } from '../identity/me.ts'
 import { AGENT_NAMES } from '../machines/machines.tsx'
-import { Steps } from './steps.tsx'
+import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 function keyFor(slug: string) {
   return {
@@ -47,55 +47,110 @@ function machinesIn(slug: string) {
   }
 }
 
-/** The command, its key, and the two ways a key stops being usable. */
-function KeyCommand({ slug, arrived }: { readonly slug: string; readonly arrived: boolean }) {
+/** A terminal-shaped command, with copying kept inside the snippet instead of beside it. */
+function ShellCommand({ command }: { readonly command: string }) {
+  return (
+    <div className="shell-snippet">
+      <div className="shell-snippet-head">
+        <span>Terminal</span>
+        <Copy text={command} />
+      </div>
+      <pre>
+        <code>
+          <span className="shell-prompt" aria-hidden>
+            $
+          </span>{' '}
+          <span>{command}</span>
+        </code>
+      </pre>
+    </div>
+  )
+}
+
+/** The direct way in, disclosed only when somebody asks for the fallback. */
+function KeyCommand({ slug, onBack }: { readonly slug: string; readonly onBack: () => void }) {
   const client = useQueryClient()
   const key = useQuery(keyFor(slug))
   /** Set by a timer aimed at the key's own expiry; a clock read mid-render is impure. */
   const [expired, setExpired] = useState(false)
   useEffect(() => {
     if (key.data === undefined) return
-    const t = setTimeout(
+    const timer = setTimeout(
       () => {
         setExpired(true)
       },
       Math.max(new Date(key.data.expiresAt).getTime() - Date.now(), 0),
     )
     return () => {
-      clearTimeout(t)
+      clearTimeout(timer)
     }
   }, [key.data])
 
-  if (key.isPending) return <p className="empty">Preparing the command…</p>
+  if (key.isPending) return <p className="empty">Preparing a one-time key…</p>
 
-  if (key.isError || (expired && !arrived)) {
+  if (key.isError || expired) {
     return (
-      <>
+      <div className="stack-tight">
         <p className="note">
           {expired ? 'That key expired; they live fifteen minutes.' : 'Could not make a key.'}
         </p>
         <button
-          className="button button-secondary"
+          className="button button-quiet auth-disclosure"
           type="button"
           onClick={() => {
+            setExpired(false)
             void client.resetQueries({ queryKey: ['machine-key', slug] })
           }}
         >
           <span className="button-label">Make another</span>
         </button>
-      </>
+        <button className="button button-quiet auth-disclosure" type="button" onClick={onBack}>
+          <span className="button-label">Use the regular command</span>
+        </button>
+      </div>
+    )
+  }
+
+  const command = `handover connect --key ${key.data.key}`
+  return (
+    <>
+      <ShellCommand command={command} />
+      <p className="note">This one-time key connects directly and expires in fifteen minutes.</p>
+      <button className="button button-quiet auth-disclosure" type="button" onClick={onBack}>
+        <span className="button-label">Use the regular command</span>
+      </button>
+    </>
+  )
+}
+
+/** The normal code-and-approval path first; a key is an explicit fallback. */
+function ConnectionCommand({ slug }: { readonly slug: string }) {
+  const [usingKey, setUsingKey] = useState(false)
+
+  if (usingKey) {
+    return (
+      <KeyCommand
+        slug={slug}
+        onBack={() => {
+          setUsingKey(false)
+        }}
+      />
     )
   }
 
   return (
     <>
-      <div className="auth-command-row">
-        <code className="field auth-command">handover connect --key {key.data.key}</code>
-        <Copy text={`handover connect --key ${key.data.key}`} />
-      </div>
-      {!arrived && (
-        <p className="note">Waiting for it to check in — this page notices on its own.</p>
-      )}
+      <ShellCommand command="handover connect" />
+      <p className="note">It prints a link and a code. Open either one to approve this machine.</p>
+      <button
+        className="button button-quiet auth-disclosure"
+        type="button"
+        onClick={() => {
+          setUsingKey(true)
+        }}
+      >
+        <span className="button-label">Use a key instead</span>
+      </button>
     </>
   )
 }
@@ -112,7 +167,7 @@ function Copy({ text }: { readonly text: string }) {
 
   return (
     <button
-      className="button button-secondary"
+      className="shell-copy"
       type="button"
       onClick={() => {
         void navigator.clipboard.writeText(text)
@@ -122,7 +177,7 @@ function Copy({ text }: { readonly text: string }) {
         }, 1600)
       }}
     >
-      <span className="button-label">{copied ? 'Copied' : 'Copy'}</span>
+      {copied ? 'Copied' : 'Copy'}
     </button>
   )
 }
@@ -182,7 +237,6 @@ function Leave({
   onGo,
 }: {
   readonly arrived: boolean
-  readonly name: string | undefined
   readonly spaceName: string | undefined
   readonly onGo: () => void
 }) {
@@ -220,7 +274,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
     setLeaving(true)
     timer.current = setTimeout(() => {
       void navigate({ to: '/s/$slug', params: { slug } })
-    }, 520)
+    }, STEP_EXIT_MS)
   }
 
   return (
@@ -230,19 +284,17 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
 
         <div className="auth-head">
           <h1>Connect a machine</h1>
-          <p className="lede">
-            Agents run on <strong>your</strong> machine, not on ours. Run this in its terminal:
-          </p>
+          <p className="lede">Run this in the terminal on the machine you want to connect.</p>
         </div>
 
         {slug !== undefined && (
           <div className="stack-tight">
-            <KeyCommand slug={slug} arrived={arrived} />
+            {!arrived && <ConnectionCommand slug={slug} />}
             <Arrived slug={slug} />
           </div>
         )}
 
-        <Leave arrived={arrived} name={name} spaceName={name} onGo={goIn} />
+        <Leave arrived={arrived} spaceName={name} onGo={goIn} />
       </div>
     </main>
   )
