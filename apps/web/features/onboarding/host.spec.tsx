@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
-import { signedIn } from '../../signed-in.ts'
+import { signedIn } from '../../pretend/signed-in.ts'
 
 const { burstConfetti } = vi.hoisted(() => ({ burstConfetti: vi.fn() }))
 vi.mock('../../components/ui/confetti-burst.ts', () => ({ burstConfetti }))
@@ -70,7 +70,7 @@ describe('the second step — a machine', () => {
     server.use(
       signedIn({ spaces: [ACME] }),
       machinesAre([]),
-      http.post('*/spaces/:slug/machine-keys', () => {
+      http.post('*/me/machine-keys', () => {
         made += 1
         return HttpResponse.json(
           {
@@ -160,12 +160,15 @@ describe('the second step — a machine', () => {
     expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
   })
 
-  it('with exactly one Space, the Space need not be named in the address', async () => {
+  it('asks for a key that names nobody but the person making it', async () => {
+    // A machine belongs to whoever connected it, and where it can be reached from follows from
+    // where they are a member. A key that named a Space would be asking somebody to decide
+    // something that follows from where they already are.
     let asked = ''
     server.use(
       signedIn({ spaces: [ACME] }),
-      http.post('*/spaces/:slug/machine-keys', ({ params }) => {
-        asked = String(params['slug'])
+      http.post('*/me/machine-keys', ({ request }) => {
+        asked = new URL(request.url).pathname
         return HttpResponse.json(
           { key: 'WDJB-MJHT', expiresAt: new Date(Date.now() + 900_000).toISOString() },
           { status: 201 },
@@ -178,7 +181,7 @@ describe('the second step — a machine', () => {
     expect(await screen.findByText(/^handover connect$/u)).toBeDefined()
     await userEvent.click(screen.getByRole('button', { name: /use a key instead/i }))
     expect(await screen.findByText(/handover connect --key/u)).toBeDefined()
-    expect(asked).toBe('acme')
+    expect(asked).toBe('/me/machine-keys')
   })
 
   it('with no Spaces there is nothing to connect to, and it says so by going back', async () => {

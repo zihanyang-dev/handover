@@ -35,49 +35,59 @@ function open(at: string) {
 }
 
 async function type(name: string): Promise<void> {
-  const field = await screen.findByLabelText(/^name$/i)
+  const field = await screen.findByLabelText(/workspace name/i)
   await userEvent.type(field, name)
+}
+
+/** The address as the form shows it: a whole URL, in a field nobody can type into. */
+async function shownAddress(): Promise<string> {
+  return (await screen.findByLabelText(/workspace url/i)).getAttribute('value') ?? ''
+}
+
+function makeIt() {
+  return screen.getByRole('button', { name: /continue/i })
 }
 
 describe('making a Space', () => {
   it('shows the address while the name is typed, not after it is submitted', async () => {
     server.use(signedIn())
-    open('/')
+    open('/onboarding')
 
     await type('Acme Corp')
 
-    expect(await screen.findByText('acme-corp')).toBeDefined()
+    expect(await shownAddress()).toContain('/s/acme-corp')
   })
 
   it('shows exactly what the server would decide, because it is the same function', async () => {
     server.use(signedIn())
-    open('/')
+    open('/onboarding')
 
     await type('Ａcme   Corp!!')
 
     // If these two ever disagreed, the preview would be a promise the server does not keep.
     const shown = normalizeSlug('Ａcme   Corp!!')
     expect(shown).not.toBeNull()
-    expect(await screen.findByText(String(shown))).toBeDefined()
+    expect(await shownAddress()).toContain(`/s/${String(shown)}`)
   })
 
   it('keeps a non-ASCII name as its own characters', async () => {
     server.use(signedIn())
-    open('/')
+    open('/onboarding')
 
     await type('徐悦泰 Studio')
 
-    expect(await screen.findByText('徐悦泰-studio')).toBeDefined()
+    // Its own characters, not percent-encoded noise: this is for somebody to read.
+    expect(await shownAddress()).toContain('/s/徐悦泰-studio')
   })
 
-  it('says when a name has no address in it, and will not submit', async () => {
+  it('will not submit a name with no address in it, and shows none', async () => {
     server.use(signedIn())
-    open('/')
+    open('/onboarding')
 
     await type('!!!')
 
-    expect(await screen.findByText(/no address in it/i)).toBeDefined()
-    expect(screen.getByRole('button', { name: /make it/i }).hasAttribute('disabled')).toBe(true)
+    expect(await shownAddress()).toBe('')
+    expect(makeIt().hasAttribute('disabled')).toBe(true)
   })
 
   it('offers the address that is free when the one asked for is held', async () => {
@@ -90,10 +100,10 @@ describe('making a Space', () => {
         ),
       ),
     )
-    open('/')
+    open('/onboarding')
 
     await type('Acme')
-    await userEvent.click(screen.getByRole('button', { name: /make it/i }))
+    await userEvent.click(makeIt())
 
     expect(await screen.findByText(/acme-2 is free/i)).toBeDefined()
   })
@@ -105,10 +115,10 @@ describe('making a Space', () => {
       signedIn(),
       http.post('*/spaces', () => HttpResponse.error()),
     )
-    open('/')
+    open('/onboarding')
 
     await type('Acme')
-    await userEvent.click(screen.getByRole('button', { name: /make it/i }))
+    await userEvent.click(makeIt())
 
     expect(await screen.findByText(/could not be sent/i)).toBeDefined()
   })

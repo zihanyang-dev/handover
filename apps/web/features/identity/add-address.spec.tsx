@@ -77,7 +77,7 @@ describe('adding another address', () => {
   it('sends a code to the address that was typed', async () => {
     const bodies: Record<string, unknown>[] = []
     server.use(holding(), sends(bodies))
-    open('/')
+    open('/settings')
 
     await ask(SECOND)
 
@@ -97,7 +97,7 @@ describe('adding another address', () => {
         return new HttpResponse(null, { status: 204 })
       }),
     )
-    open('/')
+    open('/settings')
     await ask(SECOND)
 
     await userEvent.type(
@@ -119,7 +119,7 @@ describe('adding another address', () => {
         HttpResponse.json({ reason: 'address-elsewhere', recovery: 'retype' }, { status: 409 }),
       ),
     )
-    open('/')
+    open('/settings')
     await ask(SECOND)
 
     await userEvent.type(
@@ -137,7 +137,7 @@ describe('adding another address', () => {
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
     )
-    open('/')
+    open('/settings')
 
     await ask(SECOND)
 
@@ -146,7 +146,7 @@ describe('adding another address', () => {
 
   it('goes back to asking for an address, so a wrong one is not a dead end', async () => {
     server.use(holding(), sends())
-    open('/')
+    open('/settings')
     await ask(SECOND)
 
     await userEvent.click(await screen.findByRole('button', { name: /cancel/i }))

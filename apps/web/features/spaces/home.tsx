@@ -1,13 +1,17 @@
 /**
- * The quiet frame inside a Space.
+ * The frame everything inside a Space is shown in.
  *
- * Its sidebar structure, states, and motion come from Notion's live app. Handover supplies the
- * identity without exposing unfinished Space-switching behavior.
+ * Its sidebar structure, states and motion come from Notion's live app; Handover supplies the
+ * identity. One frame rather than one per page: the sidebar, its width, and whether it is open
+ * are the same thing on every screen, and a second copy of them is a second answer.
+ *
+ * What goes in it is the caller's — the sidebar under the tabs, and the main area. This file owns
+ * the frame and nothing that lives inside it.
  */
 
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Mark } from '../../mark.tsx'
 import type { Me } from '../identity/me.ts'
 import { CollapseIcon, HomeIcon, MenuIcon } from './sidebar-icons.tsx'
@@ -110,7 +114,19 @@ function ResizeRail({
   )
 }
 
-export function Home({ space }: { readonly space: Space }) {
+export function Home({
+  space,
+  where,
+  aside,
+  children,
+}: {
+  readonly space: Space
+  /** Where in this Space somebody is, said after its name at the top. */
+  readonly where: string
+  /** Under the tabs. The list of what is in this Space, whatever that is on this screen. */
+  readonly aside?: ReactNode
+  readonly children: ReactNode
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
@@ -143,7 +159,9 @@ export function Home({ space }: { readonly space: Space }) {
               <span>Home</span>
             </Link>
           </nav>
-          <div className="home-sidebar-panel" role="tabpanel" aria-label="Home" />
+          <div className="home-sidebar-panel" role="tabpanel" aria-label="Home">
+            {aside}
+          </div>
         </aside>
 
         <ResizeRail width={sidebarWidth} setWidth={setSidebarWidth} setResizing={setResizing} />
@@ -166,12 +184,13 @@ export function Home({ space }: { readonly space: Space }) {
           <p className="home-breadcrumb">
             <span>{space.displayName}</span>
             <span aria-hidden>/</span>
-            <strong>Home</strong>
+            <strong>{where}</strong>
           </p>
         </header>
 
         <section className="home-content" aria-labelledby="home-title">
-          <h1 id="home-title">Home</h1>
+          <h1 id="home-title">{where}</h1>
+          {children}
         </section>
       </main>
     </div>

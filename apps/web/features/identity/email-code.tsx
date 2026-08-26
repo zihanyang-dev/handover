@@ -9,6 +9,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { returnPath } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 
 /** Rounded up, so "1 minute" never means "any moment now". */
@@ -142,7 +143,10 @@ export function EmailCode({
       retryKeyDone(`code:${email}`)
       return data
     },
-    onSuccess: async () => navigate({ to: '/onboarding' }),
+    // Where they were going, not the front door. Being asked to sign in must not cost somebody
+    // the address they came for — `prd.md` 01 says so, and it is the difference between an
+    // interruption and a loss. `returnPath` is what refuses somebody else's site.
+    onSuccess: async () => navigate({ to: returnPath(next, globalThis.location.origin) }),
   })
 
   return (
@@ -185,7 +189,7 @@ export function EmailCode({
                 if (digits.length === DIGITS) handBack.mutate(digits)
               }}
             />
-            <Resend email={email} after={resendAfterSeconds} />
+            <Resend email={email} after={resendAfterSeconds} answering={codeId} next={next} />
           </div>
 
           <p className="auth-error" data-shown={handBack.isError ? '' : undefined}>

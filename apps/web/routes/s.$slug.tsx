@@ -3,6 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { api } from '../api.ts'
 import { Home } from '../features/spaces/home.tsx'
+import { Conversations } from '../features/conversations/conversations.tsx'
+import { Inbox } from '../features/conversations/inbox.tsx'
+import { Machines } from '../features/machines/machines.tsx'
 
 function Screen() {
   const { slug } = Route.useParams()
@@ -37,7 +40,7 @@ function Screen() {
   }
 
   // Not there and not yours are the same answer, so this page cannot tell them apart either.
-  if (space.data === null || space.data === undefined) {
+  if (space.data === null) {
     return (
       <main className="home-state">
         <div>
@@ -48,7 +51,14 @@ function Screen() {
     )
   }
 
-  return <Home space={space.data} />
+  return (
+    <Home space={space.data} where="Home" aside={<Conversations slug={slug} />}>
+      {/* What is asking for you, before what you could go and do: everything else on this screen
+          is somewhere to go, and this is somebody waiting on an answer. */}
+      <Inbox />
+      <Machines slug={slug} />
+    </Home>
+  )
 }
 
 export const Route = createFileRoute('/s/$slug')({

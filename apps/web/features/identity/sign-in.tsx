@@ -7,28 +7,13 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useId, useState, type ReactElement } from 'react'
+import { useId, useState } from 'react'
 import { api, retryKey } from '../../api.ts'
 import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
 import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
 import { Mark } from '../../mark.tsx'
 import { HANDOVER_WORDMARK } from './handover-wordmark.ts'
-import { GitHubMark, GoogleMark } from './provider-marks.tsx'
-
-/**
- * Required, one entry per provider: a name added without a label and a mark is a compile error,
- * not a button that reads `undefined`.
- */
-type Provider = 'google' | 'github'
-
-const LOOKS: Record<Provider, { readonly label: string; readonly icon: ReactElement }> = {
-  google: { label: 'Google', icon: <GoogleMark /> },
-  github: { label: 'GitHub', icon: <GitHubMark /> },
-}
-
-function known(kind: string): kind is Provider {
-  return kind in LOOKS
-}
+import { isProvider, PROVIDERS } from './providers.tsx'
 
 const SAID: Record<string, string> = {
   'too-soon': 'A code just went out. Give it a moment.',
@@ -71,8 +56,8 @@ function OtherWays() {
               leaveFor.mutate(provider)
             }}
           >
-            {LOOKS[provider].icon}
-            <span className="button-label">Continue with {LOOKS[provider].label}</span>
+            {PROVIDERS[provider].icon}
+            <span className="button-label">Continue with {PROVIDERS[provider].label}</span>
           </button>
         ))}
       </div>

@@ -14,7 +14,7 @@ import { api } from '../../api.ts'
 import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { meQuery } from '../identity/me.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
-import { AGENT_NAMES } from '../machines/machines.tsx'
+import { agentName } from '../agents.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 function keyFor(slug: string) {
@@ -25,9 +25,9 @@ function keyFor(slug: string) {
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: async () => {
-      const { data, error } = await api.POST('/spaces/{slug}/machine-keys', {
-        params: { path: { slug } },
-      })
+      // A key names nobody but whoever made it: a machine belongs to a person, and where it can
+      // be reached from follows from where they are a member.
+      const { data, error } = await api.POST('/me/machine-keys', {})
       if (data === undefined) throw new Error(error.reason)
       return data
     },
@@ -332,7 +332,7 @@ function Arrived({ slug }: { readonly slug: string }) {
                       <AgentMark kind={agent.kind} />
                     </span>
                     <span className="host-agent-copy">
-                      <strong>{AGENT_NAMES[agent.kind] ?? agent.kind}</strong>
+                      <strong>{agentName(agent.kind)}</strong>
                       <small>{agent.version}</small>
                     </span>
                   </li>

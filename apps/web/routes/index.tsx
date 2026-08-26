@@ -1,12 +1,4 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { api } from '../api.ts'
-import { Arrival } from '../features/identity/arrival.tsx'
-import { DisplayName } from '../features/identity/display-name.tsx'
-import { Credentials } from '../features/identity/credentials.tsx'
-import { NewSpace } from '../features/spaces/new-space.tsx'
-import { SpaceList } from '../features/spaces/space-list.tsx'
-import { Inbox } from '../features/conversations/inbox.tsx'
-import { SignOut } from '../features/identity/sign-out.tsx'
 
 /** What a trip through a provider left behind, if it left anything. */
 function arrived(search: Record<string, unknown>): { handover_result?: string } {
@@ -15,33 +7,16 @@ function arrived(search: Record<string, unknown>): { handover_result?: string } 
 }
 
 /**
- * A trip through a provider ends back here with a word about how it went. The words live in
- * arrival.tsx: onboarding hears them too, when sign-in was the trip.
+ * The front door is where somebody picks a Space, so this address only points at it.
+ *
+ * Nothing is rendered here. A page that listed Spaces *and* offered to make one *and* held the
+ * account settings was three screens stacked on one address, and onboarding already asks the one
+ * question this moment has: which Space. Whatever a trip through a provider left behind travels
+ * with the redirect, because that word is about the person and not about this address.
  */
-function Screen() {
-  const { handover_result: result } = Route.useSearch()
-
-  return (
-    <div className="page">
-      <Arrival result={result} />
-
-      {/* Before the Spaces, because it is the one thing on this page that is about right now.
-          Everything else here is somewhere to go; this is somebody being asked for something. */}
-      <Inbox />
-      <SpaceList />
-      <NewSpace />
-      <Credentials />
-      <DisplayName />
-      <SignOut />
-    </div>
-  )
-}
-
 export const Route = createFileRoute('/')({
   validateSearch: arrived,
-  beforeLoad: async ({ context, location }) => {
-    await onlySignedIn(location)
-    return context
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/onboarding', search })
   },
-  component: Screen,
 })

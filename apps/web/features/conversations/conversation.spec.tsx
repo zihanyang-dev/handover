@@ -53,6 +53,11 @@ function transcript(
 ) {
   return [
     signedIn(),
+    // The conversation is shown in the Space's frame, so the frame's own read is answered too.
+    http.get('*/spaces/acme', () =>
+      HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+    ),
+    http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
     http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
       const after = new URL(request.url).searchParams.get('after')
       const tail = after === null ? messages : messages.filter((one) => one.seq > Number(after))
@@ -120,6 +125,10 @@ describe('reading a conversation again while it works', () => {
     const asked: (string | null)[] = []
     server.use(
       signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
       http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
         const after = new URL(request.url).searchParams.get('after')
         asked.push(after)
@@ -279,6 +288,10 @@ describe('reading a conversation', () => {
   it('says the same thing about a conversation that is not there as about one that is not yours', async () => {
     server.use(
       signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
       http.get('*/spaces/acme/conversations/c-1', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),

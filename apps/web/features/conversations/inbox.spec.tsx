@@ -13,7 +13,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { routeTree } from '../../routeTree.gen.ts'
-import { signedIn } from '../../pretend/signed-in.ts'
+import { theSpace } from '../../pretend/a-space.ts'
 import type { components } from '../../generated/api.ts'
 
 const server = setupServer()
@@ -34,7 +34,7 @@ type Waiting = components['schemas']['Waiting']
 function open() {
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: ['/s/acme'] }),
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -44,8 +44,14 @@ function open() {
   )
 }
 
+/**
+ * The Inbox as it is actually met: on the Home of whichever Space somebody is in.
+ *
+ * It is not a Space's — the rows cross all of them — but it is shown where somebody lands, which
+ * is the only place `prd.md` 04 asks for it to be.
+ */
 function waiting(rows: Waiting[]) {
-  return [signedIn(), http.get('*/me/inbox', () => HttpResponse.json({ waiting: rows }))]
+  return [...theSpace(), http.get('*/me/inbox', () => HttpResponse.json({ waiting: rows }))]
 }
 
 const ONE: Waiting = {
@@ -88,7 +94,7 @@ describe('what is waiting on you', () => {
     // The one thing this page must not do. "Nothing needs you" is somebody being told they can go
     // to bed, and a failed read is not that.
     server.use(
-      signedIn(),
+      ...theSpace(),
       http.get('*/me/inbox', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'retry-later' }, { status: 500 }),
       ),

@@ -183,12 +183,15 @@ describe('each way it can fail', () => {
       ),
       http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
       http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
+      http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
     )
     open(`${codeScreen()}&next=%2Fs%2Facme`)
 
     await typeCode('493018')
 
-    expect(await screen.findByText('Acme')).toBeDefined()
+    // Named in the frame twice — the workspace pill and the breadcrumb — which is the Space
+    // page and not the front door, and that is the whole of what this test is about.
+    expect(await screen.findAllByText('Acme')).not.toHaveLength(0)
   })
 
   it('refuses to be sent to somebody else s site by its own address bar', async () => {
@@ -200,7 +203,8 @@ describe('each way it can fail', () => {
 
     await typeCode('493018')
 
-    expect(await screen.findByText(/your spaces/i)).toBeDefined()
+    // The front door, which is where somebody picks a Space — not the address they were sent to.
+    expect(await screen.findByText(/name your workspace/i)).toBeDefined()
   })
 
   it('sends a half-written address back to where codes come from', async () => {
@@ -209,6 +213,6 @@ describe('each way it can fail', () => {
     server.use(signedIn())
     open('/sign-in/code?email=mina%40example.com')
 
-    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    expect(await screen.findByRole('form', { name: /sign in/i })).toBeDefined()
   })
 })

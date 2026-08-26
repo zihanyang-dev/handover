@@ -77,6 +77,9 @@ function MakeSpace({
   })
 
   const refused = spaceRefusal(begin.error)
+  // Two different things to say. A refusal has words of its own; a call that never arrived has
+  // none, and saying nothing at all would leave a button that looks like it did nothing.
+  const said = refused ?? (begin.isError ? 'That could not be sent. Try again shortly.' : undefined)
 
   return (
     <>
@@ -116,8 +119,14 @@ function MakeSpace({
           value={spaceUrl}
         />
 
-        <p className="auth-error" data-shown={refused !== undefined ? '' : undefined}>
-          {refused ?? null}
+        {/* Always here so an error arriving does not shift the form, but only an alert when it
+            actually says something — an empty alert is a screen reader announcing nothing. */}
+        <p
+          className="auth-error"
+          role={said === undefined ? undefined : 'alert'}
+          data-shown={said !== undefined ? '' : undefined}
+        >
+          {said ?? null}
         </p>
 
         <button
@@ -351,7 +360,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
 
           {me.isSuccess && choosing && (
             <PickSpace
-              me={me.data as Me}
+              me={me.data}
               making={making}
               onPick={(slug) => {
                 setLeave({ to: 'space', slug })
@@ -367,8 +376,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
 
           {me.isSuccess && !choosing && (
             <MakeSpace
-              // isSuccess guards this; the type does not learn that through the JSX.
-              me={me.data as Me}
+              me={me.data}
               onMade={(slug) => {
                 setLeave({ to: 'host', slug })
               }}

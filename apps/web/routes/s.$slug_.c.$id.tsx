@@ -1,29 +1,40 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { onlySignedIn } from '../features/identity/only-signed-in.ts'
+import { api } from '../api.ts'
 import { Conversation } from '../features/conversations/conversation.tsx'
-import { SignOut } from '../features/identity/sign-out.tsx'
+import { Conversations } from '../features/conversations/conversations.tsx'
+import { onlySignedIn } from '../features/identity/only-signed-in.ts'
+import { Home } from '../features/spaces/home.tsx'
 
 function Screen() {
   const { slug, id } = Route.useParams()
+  const space = useQuery({
+    queryKey: ['space', slug],
+    queryFn: async () => {
+      const { data } = await api.GET('/spaces/{slug}', { params: { path: { slug } } })
+      return data ?? null
+    },
+  })
+
+  // Not there and not yours are the same answer, so this page cannot tell them apart either.
+  // Said rather than left blank: a screen that renders nothing is one nobody can act on.
+  if (space.data === null) {
+    return (
+      <main className="home-state">
+        <div>
+          <h1>This Space is not available</h1>
+          <Link to="/onboarding">Back to your Spaces</Link>
+        </div>
+      </main>
+    )
+  }
+
+  if (space.data === undefined) return null
 
   return (
-    <div className="page">
-      {/* Which Space this is, and both ways out of it. A screen inside a Space that cannot say
-          which one, or let somebody leave it, is one they have to use the browser's back button
-          on — and `prd.md` asks for neither. */}
-      <div className="row">
-        <span className="row-name">
-          <Link to="/s/$slug" params={{ slug }}>
-            <strong>{slug}</strong>
-          </Link>
-        </span>
-        <Link className="row-where" to="/">
-          All Spaces
-        </Link>
-      </div>
+    <Home space={space.data} where="Conversation" aside={<Conversations slug={slug} />}>
       <Conversation slug={slug} id={id} />
-      <SignOut />
-    </div>
+    </Home>
   )
 }
 
