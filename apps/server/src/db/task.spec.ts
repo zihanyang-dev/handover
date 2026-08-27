@@ -17,7 +17,7 @@ import { newEnrolmentSecret } from '../machine/secret.ts'
 import { hashSecret } from '../secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
-import { handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
+import { conversationsIn, handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
 import { approveEnrolment, openEnrolment } from './enrolment.ts'
 import { checkIn, collectEnrolment, removeMachine } from './machine.ts'
 import { createSpace } from './space.ts'
@@ -871,6 +871,24 @@ describe('a machine taken out between the door and the claim', () => {
     await removeMachine(db, { machine: MACHINE, owner: PERSON })
 
     expect(await takeOne(db, MACHINE)).toBeUndefined()
+  })
+})
+
+describe('what the second person in a Space can see', () => {
+  it('is the same conversation and the same piece of work, not only their own', async () => {
+    // `prd.md` 05 ② — what somebody who joins sees is what you see. A Space is where these people
+    // and these machines work together; work that only its owner could read would make a Space of
+    // five people five Spaces of one.
+    const rui = await alsoHere()
+    const conversation = await handedOver('make the timeout configurable')
+
+    const theirs = await underwayIn(db, conversation)
+    const seen = await conversationsIn(db, SPACE)
+
+    expect(theirs?.task.goal).toBe('make the timeout configurable')
+    expect(seen.map((one) => one.id)).toContain(conversation)
+    // And it is not because they own it: it is still the person who handed it over.
+    expect(await waitingOn(db, rui)).toEqual([])
   })
 })
 
