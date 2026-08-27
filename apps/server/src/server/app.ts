@@ -18,6 +18,7 @@ import { oauthApi, type OAuthApi } from './oauth-api.ts'
 import { requestLog, type Logged } from './request-log.ts'
 import { meApi } from './me-api.ts'
 import { spaceApi } from './space-api.ts'
+import { joiningApi } from './joining-api.ts'
 import { credentialApi } from './credential-api.ts'
 import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
@@ -102,6 +103,7 @@ export function handoverApp(deps: App) {
     .route('/', oauthApi(deps))
     .route('/', meApi({ db: deps.db, providers }))
     .route('/', spaceApi(deps.db))
+    .route('/', joiningApi({ db: deps.db, webOrigin: deps.webOrigin }))
     .route('/', credentialApi(deps))
     .route('/', enrolmentApi({ db: deps.db, webOrigin: deps.webOrigin }))
     .route('/', approvalApi({ db: deps.db }))

@@ -2,11 +2,19 @@
 
 import { createMiddleware } from 'hono/factory'
 import type { Database } from '../db/connection.ts'
+import { isOwner } from '../db/membership.ts'
 import { spaceForMember, type Space } from '../db/space.ts'
-import { body, UNAVAILABLE } from './failure.ts'
+import { body, UNAVAILABLE, type Failure } from './failure.ts'
 import type { Signed } from './session.ts'
 
 export type InSpace = { space: Space }
+
+/** Standing in the room, but this one is not theirs to do. */
+const NOT_YOURS: Failure<403> = {
+  reason: 'not-an-owner',
+  recovery: 'ask-an-owner',
+  status: 403,
+}
 
 /**
  * Refuses anything about a Space this person is not in.
@@ -29,6 +37,28 @@ export function requireMember(db: Database) {
     if (space === undefined) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
 
     c.set('space', space)
+    await next()
+    return undefined
+  })
+}
+
+/**
+ * The same door, and then one more question: may this person do an owner's job.
+ *
+ * Mounted rather than asked inside a handler, for the same reason membership is: a check written
+ * out per route is a check one route is written without, and that one is a member quietly able to
+ * take somebody else out.
+ *
+ * The answer to "you are not an owner" is 403 and not 404. Membership already hid whether the
+ * Space exists; by here that is known, and somebody standing in the room can be told plainly that
+ * this one is not theirs to do.
+ */
+export function requireOwner(db: Database) {
+  return createMiddleware<{ Variables: Signed & InSpace }>(async (c, next) => {
+    if (!(await isOwner(db, c.get('space').id, c.get('userId')))) {
+      return c.json(body(NOT_YOURS), NOT_YOURS.status)
+    }
+
     await next()
     return undefined
   })

@@ -28,9 +28,11 @@ export type Recovery =
   | 'wait'
   /** Nothing the person did caused this, and nothing they do fixes it. */
   | 'retry-later'
+  /** Standing in the room, but this one is not theirs to do. Somebody who can, can. */
+  | 'ask-an-owner'
 
 /** Every status a refusal is allowed to carry. A route narrows this to the ones it can answer. */
-export type Status = 400 | 401 | 404 | 409 | 429 | 500
+export type Status = 400 | 401 | 403 | 404 | 409 | 429 | 500
 
 export type Failure<S extends Status = Status> = {
   readonly reason: string
@@ -48,6 +50,7 @@ const RECOVERIES = [
   'choose-another-machine',
   'wait',
   'retry-later',
+  'ask-an-owner',
 ] as const satisfies readonly Recovery[]
 
 /** What every refusal looks like on the wire, and what a generated client branches on. */
