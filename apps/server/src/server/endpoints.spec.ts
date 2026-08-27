@@ -19,6 +19,16 @@ const DOCS = 'docs/roadmap'
 /** A line in a design that is offering a method and a path, rather than talking about one. */
 const OFFERED = /^\s*(GET|POST|PUT|PATCH|DELETE)\s+(\/\S*)/u
 
+/**
+ * A slice that has been frozen and not built yet says so in its first lines.
+ *
+ * Those documents describe what is *going* to exist — that is the order the work happens in, and
+ * holding them to what exists today would mean either not writing a design before the code or
+ * writing one that lies by omission. What the rule is really about is a *delivered* slice whose
+ * document drifted away from it.
+ */
+const NOT_BUILT = '还没实现'
+
 function everyDesign(from = DOCS): readonly string[] {
   return readdirSync(from).flatMap((entry) => {
     const path = join(from, entry)
@@ -32,7 +42,8 @@ function written(): readonly { readonly at: string; readonly said: string }[] {
   return everyDesign().flatMap((path) =>
     readFileSync(path, 'utf8')
       .split('\n')
-      .flatMap((line) => {
+      .flatMap((line, at, lines) => {
+        if (lines.slice(0, 5).some((one) => one.includes(NOT_BUILT))) return []
         const found = OFFERED.exec(line)
         if (found === null) return []
 

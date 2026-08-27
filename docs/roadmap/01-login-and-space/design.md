@@ -69,7 +69,11 @@ memberships
 而那是错的:key 是客户端生成的,两个人同时用 `retry-1`,后来的那个会撞上前一个的行 —— 建 Space
 那次会直接读到别人的 Space。所以它总是和「谁问的」一起构成键。
 
-**不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `credentials.is_primary`
+**不建**:最近访问 · 断开的记录 · `credentials.is_primary`
+
+**权限字段**这一条改过:最早写的是「没有消费者」,而 `05` 给了它消费者(谁能邀请、谁能移除、
+谁能改 Space 的名字)。它长成的样子是 `memberships.role`,**只有 owner 和 member 两个值,
+而且不会再多** —— 理由和参照见 `roadmap/05-more-than-one-person/design.md`。
 (按 `verified_at` 取最早的就够,一个能和事实不一致的状态没有理由存)。
 
 ## 决定
