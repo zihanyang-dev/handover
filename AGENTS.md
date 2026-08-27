@@ -70,4 +70,6 @@
 ```
 pnpm generate · typecheck · lint · format · test · test:db · check
 pnpm test:agents   不在 check 里:要两个 agent 都装着、登录着,而且花真的模型调用
+pnpm test:e2e      不在 check 里:要 docker 里的库,而且它自己 build 一次前端
+                   真浏览器走完整旅程 —— 关闭一条旅程时的「真实旅程跑一遍」就是它
 ```

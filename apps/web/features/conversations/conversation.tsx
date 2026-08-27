@@ -22,6 +22,7 @@ import {
   type Working,
 } from './talking.ts'
 import { Underway } from './underway.tsx'
+import type { Underway as What } from './talking.ts'
 
 /**
  * What an activity says, for the ones this page has words for.
@@ -89,8 +90,14 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
         </ul>
 
         {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
-            screen. Nothing at all while it is idle — a settled turn has nothing to watch. */}
-        {working.state === 'working' && <Watching key={turnOf(messages)} slug={slug} id={id} />}
+            screen.
+            
+            Open while a turn is running, and also while a piece of work is still open — because
+            that one moves on its own, and the stream is how the page hears about it. It shows
+            nothing when there is nothing happening, so the cost of holding it is one connection. */}
+        {(working.state === 'working' || stillOpen(underway)) && (
+          <Watching key={turnOf(messages)} slug={slug} id={id} />
+        )}
 
         <Doing state={working.state} />
         <Ask
@@ -194,6 +201,11 @@ function Run({ did }: { readonly did: readonly Did[] }) {
       )}
     </li>
   )
+}
+
+/** Whether a piece of work handed over here could still move without anybody doing anything. */
+function stillOpen(underway: What | undefined): boolean {
+  return underway !== undefined && underway.state !== 'done'
 }
 
 /**
@@ -580,7 +592,11 @@ function Ask({
             say.mutate(ASK_IT_TO_TAKE_OVER)
           }}
         >
-          <span className="button-label">Hand it over…</span>
+          {/* Not "Hand it over": that is what the card says, and pressing this is not that. This
+              asks it to write down what it thinks it is being handed — the card comes back, and
+              the handing over happens there. Two buttons a word apart are two buttons somebody
+              presses the wrong one of. */}
+          <span className="button-label">Ask it to take over</span>
         </button>
       )}
 

@@ -150,6 +150,18 @@ describe('entering a Space', () => {
     expect(router.state.location.search).toMatchObject({ next: '/s/acme' })
   })
 
+  it('reaches the Inbox from inside any Space, because it belongs to none of them', async () => {
+    // Work handed out is answered for wherever it lives, so the one thing that must never be hard
+    // to find is found from wherever somebody happens to be.
+    server.use(...theSpace())
+    open('/s/acme')
+
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    const inbox = within(sidebar).getByRole('tab', { name: /inbox/i })
+
+    expect(inbox.getAttribute('href')).toBe('/s/acme/inbox')
+  })
+
   it('offers a way out from inside, not only from the Spaces list', async () => {
     // Somebody who came straight to a Space by its address should not have to go somewhere else
     // to reach their account or leave.

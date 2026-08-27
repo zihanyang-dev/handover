@@ -14,7 +14,7 @@ import { useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Mark } from '../../mark.tsx'
 import type { Me } from '../identity/me.ts'
-import { CollapseIcon, HomeIcon, MenuIcon, PersonIcon } from './sidebar-icons.tsx'
+import { CollapseIcon, HomeIcon, InboxIcon, MenuIcon, PersonIcon } from './sidebar-icons.tsx'
 
 type Space = Me['spaces'][number]
 
@@ -165,18 +165,38 @@ export function Home({
             <Link
               className="home-tab"
               role="tab"
-              aria-selected="true"
+              aria-selected={where === 'Home'}
               to="/s/$slug"
               params={{ slug: space.slug }}
             >
               <HomeIcon />
               <span>Home</span>
             </Link>
+            {/* Not a Space's, and shown in every Space's sidebar anyway — it is the same one from
+                each of them. Work you handed out is answered for wherever it happens to live, so
+                the thing that must never be hard to reach is reachable from wherever you are. */}
+            <Link
+              className="home-tab"
+              role="tab"
+              aria-selected={where === 'Inbox'}
+              aria-label="Inbox"
+              title="Inbox"
+              to="/s/$slug/inbox"
+              params={{ slug: space.slug }}
+            >
+              <InboxIcon />
+            </Link>
             {/* The way out, from in here rather than only from the Spaces list: somebody who came
                 straight to a Space by its address should not have to go somewhere else to leave. */}
-            <Link className="home-tab" role="tab" aria-selected="false" to="/settings">
+            <Link
+              className="home-tab"
+              role="tab"
+              aria-selected="false"
+              aria-label="Account"
+              title="Account"
+              to="/settings"
+            >
               <PersonIcon />
-              <span>Account</span>
             </Link>
           </nav>
           <div className="home-sidebar-panel" role="tabpanel" aria-label="Home">

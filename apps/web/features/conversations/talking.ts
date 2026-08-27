@@ -153,8 +153,16 @@ export function useConversation(slug: string, id: string) {
     // `unknown` keeps asking too: the machine that owes an answer is not here *yet*, and when it
     // comes back it says how the turn went. Stopping there would leave the page on "nobody knows"
     // until somebody reloaded it, long after the answer had arrived.
+    //
+    // And a piece of work that is still working keeps asking even between its turns. A
+    // conversation somebody is sitting in is idle because they have not typed; one they handed
+    // over is idle for the instant between one turn ending and the next beginning, and it moves
+    // again without anybody doing anything. Stopping there is a page that says "Working" all
+    // night about an agent that asked a question an hour ago.
     refetchInterval: (query) =>
-      query.state.data?.working.state === 'idle' ? false : IN_CASE_THE_STREAM_DIED_MS,
+      query.state.data?.working.state !== 'idle' || query.state.data.underway?.state === 'working'
+        ? IN_CASE_THE_STREAM_DIED_MS
+        : false,
   })
 }
 

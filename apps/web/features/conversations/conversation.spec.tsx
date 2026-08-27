@@ -673,7 +673,7 @@ describe('handing a conversation over', () => {
     )
     open('/s/acme/c/c-1')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Hand it over…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask it to take over' }))
 
     await waitFor(() => {
       expect(sent[0]?.asked.text).toContain('handover task new')
@@ -686,7 +686,7 @@ describe('handing a conversation over', () => {
     open('/s/acme/c/c-1')
 
     await screen.findByLabelText('This piece of work')
-    expect(screen.queryByRole('button', { name: 'Hand it over…' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Ask it to take over' })).toBeNull()
   })
 
   it('shows what the agent says it will do, with a way to agree to it', async () => {
@@ -869,6 +869,48 @@ describe('what a piece of work shows beside the conversation', () => {
 
     expect(await screen.findByText(/nothing has started/i)).toBeDefined()
   })
+
+  it('keeps asking between the turns of work that moves without anybody', async () => {
+    // A conversation somebody is sitting in is idle because they have not typed. One they handed
+    // over is idle for the instant between one turn ending and the next beginning — and it moves
+    // again on its own. Stopping there is a page that says "Working" all night about an agent
+    // that asked a question an hour ago.
+    let asked = 0
+    server.use(
+      signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
+      http.get('*/spaces/acme/conversations/c-1', () => {
+        asked += 1
+
+        return HttpResponse.json<Transcript>({
+          id: 'c-1',
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          // Idle: no turn is running this instant. The work is not finished.
+          working: { state: 'idle' } as Transcript['working'],
+          offers: [],
+          messages: [say(1, 'user', { text: 'go' })] as Transcript['messages'],
+          underway: underway({ state: 'working' }),
+        })
+      }),
+    )
+
+    open('/s/acme/c/c-1')
+    await screen.findByLabelText('This piece of work')
+    const sofar = asked
+
+    // The floor under the stream is five seconds, so this waits past one beat of it rather than
+    // guessing at a shorter one.
+    await waitFor(
+      () => {
+        expect(asked).toBeGreaterThan(sofar)
+      },
+      { timeout: 8000 },
+    )
+  }, 12_000)
 
   it('points each one at the line it happened on, so a beat is a way back into the transcript', async () => {
     // The rail is the summary; the line is the detail. Without a way from one to the other,

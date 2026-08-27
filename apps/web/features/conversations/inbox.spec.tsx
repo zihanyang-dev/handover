@@ -34,7 +34,7 @@ type Waiting = components['schemas']['Waiting']
 function open() {
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/s/acme'] }),
+    history: createMemoryHistory({ initialEntries: ['/s/acme/inbox'] }),
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -45,10 +45,10 @@ function open() {
 }
 
 /**
- * The Inbox as it is actually met: on the Home of whichever Space somebody is in.
+ * The Inbox as it is actually met: a tab in the sidebar of whichever Space somebody is in.
  *
- * It is not a Space's — the rows cross all of them — but it is shown where somebody lands, which
- * is the only place `prd.md` 04 asks for it to be.
+ * It is not a Space's — the rows cross all of them — and it is reachable from every one of them
+ * for exactly that reason: what must never be hard to find is found from wherever you are.
  */
 function waiting(rows: Waiting[]) {
   return [...theSpace(), http.get('*/me/inbox', () => HttpResponse.json({ waiting: rows }))]

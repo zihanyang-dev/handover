@@ -31,6 +31,8 @@ apps/cli/           装在机器上的那个命令
   generated/        生成物,永不手改
 packages/universal/ 两边必须算出同一个答案的东西
 
+e2e/                真浏览器走一遍整条旅程。跑的是构建产物 + 真 server + 真库,
+                    一个 origin,和线上同一个形状。唯一的替身是 agent 进程 —— 见 a-machine.ts
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
 .21st/              视觉简报,给设计工具读的。**是输入,不是产物** —— 界面照它做,
                     它不照界面生成。和 prd 重叠的部分以 prd 为准:prd 说做什么,
