@@ -10,10 +10,20 @@
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { inviteInto, invitationsInto, revokeInvitation, whatItOpens } from '../db/invitation.ts'
-import { becomes, joins, membersOf, removes, ROLE, whatTheyHold } from '../db/membership.ts'
+import {
+  becomes,
+  type Handed,
+  handMachineTo,
+  handWorkTo,
+  joins,
+  membersOf,
+  removes,
+  ROLE,
+  whatTheyHold,
+} from '../db/membership.ts'
 import { SHOWS, api, endpointsBehind, saysNothing, sends, takes } from './contract.ts'
 import { BEHIND_A_SESSION, body, refusal, type Failure } from './failure.ts'
-import { requireMember, requireOwner, type InSpace } from './membership.ts'
+import { requireMember, requireOwner, requireOwnerOrYourself, type InSpace } from './membership.ts'
 import { requireSession, type Signed } from './session.ts'
 
 export type JoiningApi = {
@@ -31,6 +41,22 @@ const NO_INVITATION: Failure<404> = {
 
 /** They are not in this Space, so there is nothing here to change. */
 const NOT_A_MEMBER: Failure<404> = { reason: 'not-a-member', recovery: 'start-over', status: 404 }
+
+/**
+ * Whoever it was handed to is not here, or the thing is not there to hand over.
+ *
+ * One answer for both, because a handover is written in the statement that checks — and by the
+ * time it comes back, "no rows" cannot say which. What to do about either is the same: look at
+ * the screen again, which is showing what is actually true.
+ */
+const NOT_HANDED_OVER: Failure<404> = {
+  reason: 'not-handed-over',
+  recovery: 'start-over',
+  status: 404,
+}
+
+/** Who something is being handed to. */
+const toBody = z.object({ ownerUserId: z.uuid() }).openapi('HandTo')
 
 /** It would leave the Space with nobody able to let anybody in. */
 const THE_LAST_OWNER: Failure<409> = {
@@ -80,6 +106,36 @@ const heldBody = z
 const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
 const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
 
+/**
+ * The two routes about one named person in a Space: what is still theirs, and taking them out.
+ *
+ * Said once because the pair has already drifted apart once. Softening the gate on one of them
+ * and not the other leaves a member able to see what is theirs and unable to act on it — or, the
+ * way round it happened here, able to change their own role. One decision, one place.
+ */
+function aboutOnePerson(deps: JoiningApi) {
+  return {
+    middleware: [requireSession(deps.db), requireMember(deps.db), requireOwnerOrYourself(deps.db)],
+    request: { params: z.object({ slug: z.string(), userId: z.uuid() }) },
+  }
+}
+
+/**
+ * The two routes that hand a thing to somebody else here.
+ *
+ * A piece of work and a machine differ in which table moves and in nothing else a caller can see:
+ * the same owner's gate, the same `{slug}` and `{id}`, the same one field in the body.
+ */
+function handingOver(deps: JoiningApi) {
+  return {
+    middleware: [requireSession(deps.db), requireMember(deps.db), requireOwner(deps.db)],
+    request: {
+      params: z.object({ slug: z.string(), id: z.uuid() }),
+      body: takes(toBody),
+    },
+  }
+}
+
 export function joiningApi(deps: JoiningApi) {
   return (
     api<{ Variables: Signed & InSpace }>()
@@ -91,6 +147,8 @@ export function joiningApi(deps: JoiningApi) {
           moving(deps),
           taking(deps),
           stillTheirs(deps),
+          handingWork(deps),
+          handingAMachine(deps),
         ]),
       )
       // Following a link is nobody's but the holder's, and it names no Space in its path.
@@ -348,12 +406,11 @@ function taking(deps: JoiningApi) {
       method: 'delete',
       path: '/spaces/{slug}/members/{userId}',
       summary: 'Take somebody out of this Space, or leave it yourself',
-      middleware: [requireSession(deps.db), requireMember(deps.db), requireOwner(deps.db)],
-      request: { params: z.object({ slug: z.string(), userId: z.uuid() }) },
+      ...aboutOnePerson(deps),
       responses: {
         ...BEHIND_A_SESSION,
         204: saysNothing('Out, and their credentials stop reaching this Space'),
-        403: refusal('Only an owner can take somebody out'),
+        403: refusal('Only an owner can take somebody else out'),
         404: refusal('No such Space, or nobody here by that name'),
         409: refusal('It would leave the Space with no owner'),
       },
@@ -384,12 +441,11 @@ function stillTheirs(deps: JoiningApi) {
       method: 'get',
       path: '/spaces/{slug}/members/{userId}/held',
       summary: 'What is still theirs here, before anybody is taken out',
-      middleware: [requireSession(deps.db), requireMember(deps.db), requireOwner(deps.db)],
-      request: { params: z.object({ slug: z.string(), userId: z.uuid() }) },
+      ...aboutOnePerson(deps),
       responses: {
         ...BEHIND_A_SESSION,
         200: sends(heldBody, 'Their open work, and their machines'),
-        403: refusal('Only an owner can see this'),
+        403: refusal('Only an owner can see what is somebody else’s'),
         404: refusal('No such Space'),
       },
     }),
@@ -402,5 +458,88 @@ function stillTheirs(deps: JoiningApi) {
 
       return c.json(held, 200)
     },
+  })
+}
+
+/**
+ * Handing one thing here to one person here.
+ *
+ * Written once and called twice, because a piece of work and a machine differ in exactly one
+ * thing a caller can see — which table moves — and in nothing else. Two copies of this would be
+ * two places to remember that handing something to somebody who is not here is a 404 and not a
+ * 403, and the second copy is the one that would eventually say something else.
+ *
+ * `PATCH` and not a `POST` to some transfer: nothing is created. One field of a thing that
+ * already exists says somebody else's name now.
+ */
+function handingOverOne(
+  deps: JoiningApi,
+  what: {
+    readonly path: '/spaces/{slug}/conversations/{id}/task' | '/spaces/{slug}/machines/{id}'
+    readonly summary: string
+    readonly moved: string
+    readonly missing: string
+    readonly move: (
+      db: Database,
+      to: { readonly spaceId: string; readonly id: string; readonly userId: string },
+    ) => Promise<Handed>
+  },
+) {
+  return behindAMembership({
+    route: createRoute({
+      method: 'patch',
+      path: what.path,
+      summary: what.summary,
+      ...handingOver(deps),
+      responses: {
+        ...BEHIND_A_SESSION,
+        204: saysNothing(what.moved),
+        403: refusal('Only an owner can hand something over'),
+        404: refusal(what.missing),
+      },
+    }),
+
+    handler: async (c) => {
+      const handed = await what.move(deps.db, {
+        spaceId: c.get('space').id,
+        id: c.req.valid('param').id,
+        userId: c.req.valid('json').ownerUserId,
+      })
+      if (handed.kind === 'not-a-member')
+        return c.json(body(NOT_HANDED_OVER), NOT_HANDED_OVER.status)
+
+      return c.body(null, 204)
+    },
+  })
+}
+
+/** Whose piece of work it is — which is also who the Inbox tells, because it is one column. */
+function handingWork(deps: JoiningApi) {
+  return handingOverOne(deps, {
+    path: '/spaces/{slug}/conversations/{id}/task',
+    summary: 'Hand a piece of work to somebody else here',
+    moved: 'It is theirs, and it is in their Inbox',
+    missing: 'No such Space, nothing running there, or nobody here by that name',
+    // Named at the boundary: in a path it is `{id}`, and by the time it reaches the tables it
+    // is a conversation. Three opaque ids in one call is where they get swapped.
+    move: async (db, to) =>
+      handWorkTo(db, { spaceId: to.spaceId, conversationId: to.id, userId: to.userId }),
+  })
+}
+
+/**
+ * Whose machine it is.
+ *
+ * Whoever approved it still approved it — that is history and does not move. What moves is which
+ * Spaces it can be reached from and who may disconnect it.
+ */
+function handingAMachine(deps: JoiningApi) {
+  return handingOverOne(deps, {
+    path: '/spaces/{slug}/machines/{id}',
+    summary: 'Hand a machine to somebody else here',
+    moved: 'It is theirs',
+    missing: 'No such Space, no such machine, or nobody here by that name',
+    move: async (db, to) =>
+      handMachineTo(db, { spaceId: to.spaceId, machineId: to.id, userId: to.userId }),
   })
 }

@@ -23,6 +23,12 @@ export default defineConfig({
   fullyParallel: false,
   // A failing journey that passes on a second try is a journey that fails.
   retries: 0,
+
+  // A journey here is a journey — two people signing in for real, a machine connecting, work
+  // moving between them. Playwright's default of 30 seconds is sized for a test that presses one
+  // button, and a suite that fails on the length of what it walks fails for a reason that has
+  // nothing to do with the product.
+  timeout: 90_000,
   reporter: [['list']],
   use: {
     baseURL: ORIGIN,

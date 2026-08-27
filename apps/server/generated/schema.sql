@@ -20,6 +20,28 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: a_machine_is_born_to_its_approver(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.a_machine_is_born_to_its_approver() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+begin
+  if not exists (
+    select 1 from enrolments
+     where enrolments.id = new.enrolled_from
+       and enrolments.approved_by = new.owner_user_id
+  ) then
+    raise exception 'a machine belongs to whoever approved it'
+      using constraint = 'machines_born_to_their_approver';
+  end if;
+
+  return null;
+end;
+$$;
+
+
+--
 -- Name: a_space_keeps_an_owner(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -621,6 +643,13 @@ CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (mach
 
 
 --
+-- Name: machines machines_born_to_their_approver; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER machines_born_to_their_approver AFTER INSERT ON public.machines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.a_machine_is_born_to_its_approver();
+
+
+--
 -- Name: memberships memberships_keep_an_owner; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -692,11 +721,11 @@ ALTER TABLE ONLY public.invitations
 
 
 --
--- Name: machines machines_owned_by_whoever_approved_it; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: machines machines_enrolled_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.machines
-    ADD CONSTRAINT machines_owned_by_whoever_approved_it FOREIGN KEY (enrolled_from, owner_user_id) REFERENCES public.enrolments(id, approved_by);
+    ADD CONSTRAINT machines_enrolled_from_fkey FOREIGN KEY (enrolled_from) REFERENCES public.enrolments(id);
 
 
 --

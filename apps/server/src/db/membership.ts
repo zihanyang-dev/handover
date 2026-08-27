@@ -11,7 +11,8 @@
  * means inviting the same person back puts them where they were, with no window that expires.
  */
 
-import { sql } from 'kysely'
+import { expressionBuilder, sql, type Expression, type SqlBool } from 'kysely'
+import type { DB } from '../../generated/db.ts'
 import type { Database, Tx } from './connection.ts'
 
 export const ROLE = {
@@ -217,6 +218,82 @@ export type Held = {
     readonly name: string
     readonly inUse: number
   }[]
+}
+
+/**
+ * That the person being handed something is still in the Space it is in.
+ *
+ * A condition rather than a read, so it is checked in the statement that writes. Asked first and
+ * written second, "hand it over" is a way to move a thing out of the Space it belongs to, into
+ * the hands of somebody who cannot reach it — and nothing downstream would ever question it.
+ */
+function stillAMember(spaceId: string, userId: string): Expression<SqlBool> {
+  // Its own builder rather than the outer query's: nothing in here refers to the table being
+  // written, so it is the same condition whichever one that is.
+  const eb = expressionBuilder<DB>()
+
+  return eb.exists(
+    eb
+      .selectFrom('memberships')
+      .select('memberships.user_id')
+      .where('memberships.space_id', '=', spaceId)
+      .where('memberships.user_id', '=', userId)
+      .where('memberships.revoked_at', 'is', null),
+  )
+}
+
+/**
+ * What happened to a handover: it moved, or the person it was aimed at is not here.
+ *
+ * Not "no such thing" — the thing is on the screen the request came from. What can be wrong is
+ * who it was aimed at, and that has one recovery: pick somebody else.
+ */
+export type Handed = { kind: 'moved' } | { kind: 'not-a-member' }
+
+/**
+ * Hands one piece of work to somebody else in this Space.
+ *
+ * One column, because the Inbox reads that column: whose it is and who is told about it are the
+ * same fact, so there is nothing to keep in step.
+ *
+ * The new owner has to be a member here, checked in the same statement that writes rather than
+ * before it — otherwise "transfer" is a way to move a piece of work out of the Space it is in,
+ * and nothing downstream would ever question it.
+ */
+export async function handWorkTo(
+  db: Database,
+  moving: { readonly spaceId: string; readonly conversationId: string; readonly userId: string },
+): Promise<Handed> {
+  const moved = await db
+    .updateTable('tasks')
+    .set({ owner_user_id: moving.userId })
+    .where('conversation_id', '=', moving.conversationId)
+    .where('ended_at', 'is', null)
+    .where(stillAMember(moving.spaceId, moving.userId))
+    .executeTakeFirst()
+
+  return Number(moved.numUpdatedRows) === 0 ? { kind: 'not-a-member' } : { kind: 'moved' }
+}
+
+/**
+ * Hands one machine to somebody else in this Space.
+ *
+ * The same shape and the same reason, one table along. Since `20260909` the row may move: who
+ * approved a machine and whose it is are two questions, and only the first is history.
+ */
+export async function handMachineTo(
+  db: Database,
+  moving: { readonly spaceId: string; readonly machineId: string; readonly userId: string },
+): Promise<Handed> {
+  const moved = await db
+    .updateTable('machines')
+    .set({ owner_user_id: moving.userId })
+    .where('id', '=', moving.machineId)
+    .where('removed_at', 'is', null)
+    .where(stillAMember(moving.spaceId, moving.userId))
+    .executeTakeFirst()
+
+  return Number(moved.numUpdatedRows) === 0 ? { kind: 'not-a-member' } : { kind: 'moved' }
 }
 
 export async function whatTheyHold(

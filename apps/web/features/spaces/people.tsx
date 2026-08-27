@@ -72,7 +72,12 @@ export function People({ slug }: { readonly slug: string }) {
               </span>
 
               {yours?.role === 'owner' && (
-                <Aboutlate slug={slug} member={one} alone={here.length === 1} />
+                <Aboutlate
+                  slug={slug}
+                  member={one}
+                  others={here.filter((other) => other.userId !== one.userId)}
+                  alone={here.length === 1}
+                />
               )}
             </li>
           ))}
@@ -92,10 +97,13 @@ export function People({ slug }: { readonly slug: string }) {
 function Aboutlate({
   slug,
   member,
+  others,
   alone,
 }: {
   readonly slug: string
   readonly member: Member
+  /** Everybody else here, for the rows on the checklist that can be handed to somebody. */
+  readonly others: readonly Member[]
   readonly alone: boolean
 }) {
   const client = useQueryClient()
@@ -143,6 +151,7 @@ function Aboutlate({
         <Held
           slug={slug}
           member={member}
+          others={others}
           close={() => {
             setLeaving(false)
           }}

@@ -170,6 +170,37 @@ describe('taking somebody out', () => {
     expect(screen.getByText(/Nothing here stops or moves/)).toBeDefined()
   })
 
+  it('offers each row to somebody else here, and hands it over on the spot', async () => {
+    // Tailscale writes this into its offboarding: move the devices you need *before* deleting the
+    // person, or the connections go with them. The list is where that happens, one row at a time.
+    let handed: unknown
+    server.use(
+      ...theSpace(),
+      people(KAI, MINA),
+      held({ working: [], machines: [{ id: 'm-1', name: 'build-server-1', inUse: 2 }] }),
+      http.patch('*/spaces/acme/machines/m-1', async ({ request }) => {
+        handed = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+    await userEvent.selectOptions(await screen.findByLabelText('Hand it to'), 'u-kai')
+
+    expect(handed).toEqual({ ownerUserId: 'u-kai' })
+  })
+
+  it('offers nowhere to hand it when there is nobody else here', async () => {
+    server.use(...theSpace(), people(KAI), held({ working: [], machines: [] }))
+    open()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Leave' }))
+
+    expect(await screen.findByText('Nothing here is yours.')).toBeDefined()
+    expect(screen.queryByLabelText('Hand it to')).toBeNull()
+  })
+
   it('tells the only owner what to do instead, rather than what went wrong', async () => {
     // A refusal that says "409" is a dead end. This one is the one refusal with a next step, and
     // the next step is the whole reason the rule exists. `prd.md` 05 ⑤.

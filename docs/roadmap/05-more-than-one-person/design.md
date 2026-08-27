@@ -90,6 +90,63 @@ create unique index memberships_one_owner_at_least on … -- 不行:唯一索引
 
 ---
 
+## 「机器不能和批准它的人不一致」怎么让开路
+
+`20260906` 那条复合外键把 `machines.owner_user_id` 钉在 `enrolments.approved_by` 上。换主人要
+改前者,而后者不能改 —— 所以这条约束要么让路,要么换主人做不成。
+
+**定的是:它变成一条只在 `insert` 时检查的约束触发器。**
+
+理由是这两列在这一片之前问的是同一个问题,之后不是了:
+
+```
+enrolments.approved_by     谁说的「可以」。发生过一次,然后就是历史
+machines.owner_user_id     现在是谁的。会变
+```
+
+那条外键说的是「它们永远相等」,而真正值得守的规矩是「**它们在机器领凭据的那一刻相等**」——
+也就是**一台机器不能出生在错误的人名下**。出生之后归属会动,那不是不一致,那是换了主人。
+
+**为什么不是「代码保证插入时相等就行」:** 因为 `20260906` 自己写下的理由还成立 ——
+`code-style.md` 9:迟到的写者必须在 SQL 里失败。所以它从外键变成触发器,不是从外键变成注释。
+房子里已经有这个做法:`20260908` 那条「一个 Space 一开始就有 owner」就是一条约束触发器,
+而且同样是 insert 也管。
+
+**为什么不是改 `approved_by`:** 那是改历史。`prd.md` 05 ⑦ 承诺的正是反面 ——
+他说过的话、他交办过的事,永远还写着他的名字。为了让一条约束好过而改一行历史,
+是把这一片的承诺卖掉换一次迁移方便。而且 `approved_by` 全库只有一处读:机器领凭据时
+给 `owner_user_id` 播种。它就是历史,没有别的身份。
+
+---
+
+## 换主人
+
+两条接口,在下面的清单里。两条都收 `{ ownerUserId }`。
+
+**一件事换主人是一列的写入**(`tasks.owner_user_id`),而 Inbox 查的就是这一列,所以通知自动
+跟着走 —— [Devin 的定时任务是同一个做法:归属换了,通知跟着换](https://docs.devin.ai/product-guides/scheduled-sessions)。
+
+**新主人必须是这个 Space 里没被撤销的成员。** 不然「转给…」会变成一条把东西转出这个
+Space 的路,而那不是任何人想按的按钮。
+
+**谁能按:这个 Space 的 owner。** 换主人这件事存在的理由是有人要走,而处理走人是 owner 的活
+(`prd.md` ④)。「东西的现主人也能转给别人」现在**没有消费者**,按 `architecture.md` §2
+那条「当前就有消费者」不建。
+
+---
+
+## 退出是自己的事,不是 owner 的恩准
+
+`DELETE /spaces/{slug}/members/{userId}` 和它旁边那条 `…/held`,门是
+**「你是这个 Space 的 owner,或者那个人就是你」**。
+
+只挂 `requireOwner` 的话,一个 member 连走都走不了 —— 得求人把自己踢出去。
+[GitHub 的做法是任何成员随时可以自己退出](https://docs.github.com/en/account-and-profile/how-tos/organization-membership/removing-yourself-from-an-organization),
+唯一拦住的是最后一个 owner,而拦他的是那条「至少一个 owner」,不是权限。我们照做:
+**权限拦的是「动别人」,不是「动自己」;拦最后一个 owner 的是数据库那条延迟约束。**
+
+---
+
 ## 接口
 
 ```
@@ -104,6 +161,9 @@ GET    /spaces/{slug}/members               谁在这儿,各是什么角色
 PATCH  /spaces/{slug}/members/{userId}      改角色
 DELETE /spaces/{slug}/members/{userId}      移除(自己退出也是这条)
 GET    /spaces/{slug}/members/{userId}/held 移除之前:他名下还有什么
+
+PATCH  /spaces/{slug}/conversations/{id}/task  一件事换主人
+PATCH  /spaces/{slug}/machines/{id}            一台机器换主人
 ```
 
 **加入是 `POST /me/spaces`,不是 `POST /spaces/{slug}/members`。** 发生的事是
@@ -123,12 +183,7 @@ memberships 长出 role 和 revoked_at        每一处读成员资格的地方�
                                           machinesIn · waitingOn(Inbox)· 每一处 join
 
 machines 的复合外键                        「机器不能和批准它的人不一致」在换主人时挡路。
-                                          **还没决定,所以换主人还没做。** 两条路:
-                                          (a) 换主人时连着改 enrolments.approved_by ——
-                                              但那是历史,历史不该被改
-                                          (b) 把复合外键换成只说「主人存在」——
-                                              但那会丢掉一条现在拦得住事情的规矩
-                                          在写代码之前决定,并写在这儿
+                                          **定了:变成只在 insert 时检查。** 见下一节
 
 01 的 design「不建:权限字段」              有消费者了(谁能邀请、谁能移除、谁能改名)。
                                           那句话要改成「只有两个角色,而且不会再多」

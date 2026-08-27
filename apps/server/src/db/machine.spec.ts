@@ -16,6 +16,7 @@ import {
 } from './machine.ts'
 import { arrive } from './user.ts'
 import { createSpace } from './space.ts'
+import { handMachineTo, joins, removes } from './membership.ts'
 import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
 import { normalizeSlug, type Slug } from '@handover/universal'
@@ -89,21 +90,31 @@ async function attached(name = 'mina-mbp'): Promise<string> {
 }
 
 describe('who a machine belongs to', () => {
-  it('cannot be somebody other than whoever approved it', async () => {
+  it('cannot be somebody other than whoever approved it, at the moment it is written', async () => {
     // Written twice on purpose — the copy on `machines` carries the index every question about a
-    // machine goes through. Two copies are only safe while they cannot disagree, and if they did,
-    // the approval would say one person while reachability, the name on the row and the Disconnect
-    // button all said another.
-    const machine = await attached()
+    // machine goes through. What must never happen is a machine *born* under the wrong person:
+    // the approval would say one person while reachability, the name on the row and the
+    // Disconnect button all said another, from its first day.
+    //
+    // Only at that moment. Since `20260909` the owner may move afterwards, because by then the
+    // two columns are answering different questions — who said yes, and whose it is now.
+    const secretHash = await approved()
     const stranger = await someoneElse()
 
     await expect(
       db
-        .updateTable('machines')
-        .set({ owner_user_id: stranger })
-        .where('id', '=', machine)
+        .insertInto('machines')
+        .values({
+          name: 'not-theirs',
+          enrolled_from: db
+            .selectFrom('enrolments')
+            .select('id')
+            .where('secret_hash', '=', secretHash),
+          owner_user_id: stranger,
+          token_hash: hashSecret(`hm_${randomUUID()}`),
+        })
         .execute(),
-    ).rejects.toThrow(/violates foreign key constraint/u)
+    ).rejects.toThrow(/belongs to whoever approved it/u)
   })
 })
 
@@ -429,3 +440,49 @@ describe('taking one away', () => {
 function never(): never {
   throw new Error('the fixture expected a machine')
 }
+
+describe('handing a machine to another person', () => {
+  it('moves whose it is, and leaves who approved it alone', async () => {
+    // Two questions, not one fact written twice. Since `20260909` the row may move — and the
+    // enrolment still says who let it in, which is history and `prd.md` 05 ⑦ promises to keep.
+    const machineId = await attached()
+    const rui = await someoneElse()
+    await joins(db, { userId: rui, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
+
+    expect(await handMachineTo(db, { spaceId: SPACE, machineId, userId: rui })).toEqual({
+      kind: 'moved',
+    })
+
+    const row = await db
+      .selectFrom('machines')
+      .innerJoin('enrolments', 'enrolments.id', 'machines.enrolled_from')
+      .select(['machines.owner_user_id as owner', 'enrolments.approved_by as approvedBy'])
+      .where('machines.id', '=', machineId)
+      .executeTakeFirstOrThrow()
+
+    expect([row.owner, row.approvedBy]).toEqual([rui, PERSON])
+  })
+
+  it('keeps it reachable from the Space, which is the whole point of moving it', async () => {
+    // Tailscale's lesson, avoided rather than repeated: deleting a user there deletes their
+    // devices and the connections stop. Handing the team's build server to somebody who is
+    // staying is how that never happens here.
+    const machineId = await attached('build-server-1')
+    const rui = await someoneElse()
+    await joins(db, { userId: rui, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
+    await handMachineTo(db, { spaceId: SPACE, machineId, userId: rui })
+
+    await removes(db, { spaceId: SPACE, userId: PERSON })
+
+    expect((await machinesIn(db, SPACE)).machines.map((one) => one.id)).toEqual([machineId])
+  })
+
+  it('refuses somebody who is not in this Space', async () => {
+    const machineId = await attached()
+    const stranger = await someoneElse()
+
+    expect(await handMachineTo(db, { spaceId: SPACE, machineId, userId: stranger })).toEqual({
+      kind: 'not-a-member',
+    })
+  })
+})

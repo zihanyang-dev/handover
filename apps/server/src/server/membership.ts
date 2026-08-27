@@ -63,3 +63,27 @@ export function requireOwner(db: Database) {
     return undefined
   })
 }
+
+/**
+ * An owner's job, unless the person it is about is the person asking.
+ *
+ * Leaving is removing aimed at yourself, and reading what is still yours is the list you are
+ * shown before you press it. Behind `requireOwner` alone, a member cannot leave a Space at all —
+ * they have to find an owner and ask to be thrown out.
+ *
+ * [GitHub lets any member remove themselves at any time](https://docs.github.com/en/account-and-profile/how-tos/organization-membership/removing-yourself-from-an-organization),
+ * and the only person it stops is the last owner — stopped by the rule that a Space keeps one,
+ * not by a permission. Ours is the same split: **this gate is about doing things to other
+ * people.** The last owner is stopped a layer down, by the database.
+ */
+export function requireOwnerOrYourself(db: Database) {
+  return createMiddleware<{ Variables: Signed & InSpace }>(async (c, next) => {
+    const about = c.req.param('userId')
+    if (about !== c.get('userId') && !(await isOwner(db, c.get('space').id, c.get('userId')))) {
+      return c.json(body(NOT_YOURS), NOT_YOURS.status)
+    }
+
+    await next()
+    return undefined
+  })
+}

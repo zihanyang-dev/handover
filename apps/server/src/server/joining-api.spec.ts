@@ -160,6 +160,79 @@ describe('following a link', () => {
   })
 })
 
+describe('leaving under your own steam', () => {
+  it('is a member’s to do, without having to ask to be thrown out', async () => {
+    // Behind an owner-only gate a member cannot leave at all — they have to find somebody and ask
+    // to be removed. GitHub lets anybody remove themselves; the only person stopped there is the
+    // last owner, and stopped by the rule that a Space keeps one rather than by a permission.
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+    const who = await whoIs(MINA)
+
+    expect((await as(MINA, `/spaces/${SLUG}/members/${who}`, 'DELETE')).status).toBe(204)
+
+    expect((await as(MINA, `/spaces/${SLUG}/members`)).status).toBe(404)
+  })
+
+  it('shows a member what is still theirs first, the same as anybody else is shown', async () => {
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+    const who = await whoIs(MINA)
+
+    expect((await as(MINA, `/spaces/${SLUG}/members/${who}/held`)).status).toBe(200)
+  })
+
+  it('does not let a member aim it at anybody else', async () => {
+    // The gate is about doing things *to other people*, and nothing else about it moved.
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+    const kai = await whoIs(KAI)
+
+    const tried = await as(MINA, `/spaces/${SLUG}/members/${kai}`, 'DELETE')
+
+    expect(tried.status).toBe(403)
+    expect((await as(MINA, `/spaces/${SLUG}/members/${kai}/held`)).status).toBe(403)
+  })
+
+  it('is not a way to make yourself an owner', async () => {
+    // The other half of the same gate, and the half with teeth: leaving is yours to do, and
+    // changing what you may do is not. One middleware on the wrong route makes every member an
+    // owner, and nothing about the screen would look different.
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+    const who = await whoIs(MINA)
+
+    const tried = await as(MINA, `/spaces/${SLUG}/members/${who}`, 'PATCH', { role: 'owner' })
+
+    expect(tried.status).toBe(403)
+  })
+})
+
+describe('handing something to another person', () => {
+  it('refuses a person who is not in this Space, rather than moving it out of one', async () => {
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+
+    const tried = await as(KAI, `/spaces/${SLUG}/conversations/${randomUUID()}/task`, 'PATCH', {
+      ownerUserId: randomUUID(),
+    })
+
+    expect(tried.status).toBe(404)
+  })
+
+  it('is not a member’s to do', async () => {
+    const { secret } = await aLink()
+    await joined(MINA, secret)
+    const kai = await whoIs(KAI)
+
+    const tried = await as(MINA, `/spaces/${SLUG}/machines/${randomUUID()}`, 'PATCH', {
+      ownerUserId: kai,
+    })
+
+    expect(tried.status).toBe(403)
+  })
+})
+
 describe('taking somebody out', () => {
   it('stops them reaching the Space at all', async () => {
     const { secret } = await aLink()

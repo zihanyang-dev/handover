@@ -16,6 +16,9 @@ import { api } from '../../api.ts'
 
 type Member = { userId: string; displayName: string; you: boolean }
 
+/** Somebody it could go to: everybody here except whoever it is already. */
+type Instead = { userId: string; displayName: string }
+
 function heldBy(slug: string, userId: string) {
   return {
     queryKey: ['held', slug, userId] as const,
@@ -33,10 +36,13 @@ function heldBy(slug: string, userId: string) {
 export function Held({
   slug,
   member,
+  others,
   close,
 }: {
   readonly slug: string
   readonly member: Member
+  /** Who it could go to instead. Empty when there is nobody else, and then nothing is offered. */
+  readonly others: readonly Instead[]
   readonly close: () => void
 }) {
   const heading = useId()
@@ -73,8 +79,8 @@ export function Held({
 
       <Reading held={held} theirs={said.theirs} empty={working.length + machines.length === 0} />
 
-      <Running slug={slug} working={working} />
-      <Machines machines={machines} />
+      <Running slug={slug} working={working} others={others} />
+      <Machines slug={slug} machines={machines} others={others} />
 
       {/* Said out loud, because the alternative is somebody assuming this button tidies up. It
           does not, and finding that out afterwards is finding out that an agent has been running
@@ -164,8 +170,10 @@ function Reading({
 function Running({
   slug,
   working,
+  others,
 }: {
   readonly slug: string
+  readonly others: readonly Instead[]
   readonly working: readonly {
     conversationId: string
     goal: string
@@ -187,15 +195,18 @@ function Running({
                 {one.state} · {one.machineName}
               </span>
             </span>
-            {/* A way in, not a way to decide from here. Whether this one should be stopped is
-                answered by reading it, and reading it is one click away. */}
-            <Link
-              className="button-quiet"
-              to="/s/$slug/c/$id"
-              params={{ slug, id: one.conversationId }}
-            >
-              Open
-            </Link>
+            <span className="beside">
+              <HandTo slug={slug} what={{ kind: 'work', id: one.conversationId }} others={others} />
+              {/* A way in, not a way to decide from here. Whether this one should be stopped is
+                  answered by reading it, and reading it is one click away. */}
+              <Link
+                className="button-quiet"
+                to="/s/$slug/c/$id"
+                params={{ slug, id: one.conversationId }}
+              >
+                Open
+              </Link>
+            </span>
           </li>
         ))}
       </ul>
@@ -205,8 +216,12 @@ function Running({
 
 /** Their machines, and whether anybody here is in the middle of using one. */
 function Machines({
+  slug,
   machines,
+  others,
 }: {
+  readonly slug: string
+  readonly others: readonly Instead[]
   readonly machines: readonly { id: string; name: string; inUse: number }[]
 }) {
   if (machines.length === 0) return null
@@ -223,9 +238,73 @@ function Machines({
                 {one.inUse === 0 ? 'nobody is using it' : `${String(one.inUse)} running on it`}
               </span>
             </span>
+            <HandTo slug={slug} what={{ kind: 'machine', id: one.id }} others={others} />
           </li>
         ))}
       </ul>
     </>
+  )
+}
+
+/**
+ * Handing one row to somebody else here.
+ *
+ * A select and not a dialog on top of a dialog: the choice is one of a handful of names, and the
+ * act is the choosing. Nothing is confirmed because nothing is destroyed — handing it back is the
+ * same control with the other name in it.
+ *
+ * Offered only when there is somebody to hand it to. A Space of two people where one is leaving
+ * has exactly one answer, and a menu with one entry is a menu that should have been a button —
+ * but a Space of five has four, so it is a menu.
+ */
+function HandTo({
+  slug,
+  what,
+  others,
+}: {
+  readonly slug: string
+  readonly what: { readonly kind: 'work' | 'machine'; readonly id: string }
+  readonly others: readonly Instead[]
+}) {
+  const client = useQueryClient()
+  const handing = useMutation({
+    mutationFn: async (userId: string) => {
+      const { response } =
+        what.kind === 'work'
+          ? await api.PATCH('/spaces/{slug}/conversations/{id}/task', {
+              params: { path: { slug, id: what.id } },
+              body: { ownerUserId: userId },
+            })
+          : await api.PATCH('/spaces/{slug}/machines/{id}', {
+              params: { path: { slug, id: what.id } },
+              body: { ownerUserId: userId },
+            })
+      if (!response.ok) throw new Error(String(response.status))
+    },
+    // Both lists change: it left one person's and joined another's.
+    onSuccess: async () => client.invalidateQueries({ queryKey: ['held', slug] }),
+  })
+
+  if (others.length === 0) return null
+
+  return (
+    <select
+      className="field"
+      aria-label="Hand it to"
+      value=""
+      disabled={handing.isPending}
+      onChange={(event) => {
+        handing.mutate(event.target.value)
+      }}
+    >
+      <option value="" disabled>
+        Hand to…
+      </option>
+      {others.map((one) => (
+        <option key={one.userId} value={one.userId}>
+          {one.displayName}
+        </option>
+      ))}
+    </select>
   )
 }

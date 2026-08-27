@@ -23,7 +23,7 @@ test('ask somebody in, and take them out again', async ({ browser }) => {
   const kai = await kaiBrowser.newPage()
 
   // ① The first person makes a Space and connects a machine of their own.
-  await signsIn(kai, 'kai')
+  const kaiAddress = await signsIn(kai, 'kai')
   const slug = await makesASpace(kai)
   const laptop = await aMachine(await sessionOf(kaiBrowser), 'kai-mbp')
   await laptop.poll()
@@ -55,7 +55,11 @@ test('ask somebody in, and take them out again', async ({ browser }) => {
   // ⑤ And she cannot take it away. `prd.md` 05 ③: you can use it, you cannot have it.
   await expect(mina.getByRole('button', { name: 'Disconnect' })).toHaveCount(0)
 
-  // ⑥ He sees her, and that she is not an owner.
+  // ⑥ She connects a machine of her own, which he can see and cannot take away.
+  const hers = await aMachine(await sessionOf(minaBrowser), 'mina-mbp')
+  await hers.poll()
+
+  // ⑦ He sees her, and that she is not an owner.
   await kai.reload()
   await kai.getByRole('tab', { name: 'People' }).click()
   await expect(kai.getByText(minaAddress)).toBeVisible({ timeout: 15_000 })
@@ -63,13 +67,26 @@ test('ask somebody in, and take them out again', async ({ browser }) => {
   // every row that is not already one.
   await expect(kai.getByText('Owner', { exact: true })).toHaveCount(1)
 
-  // ⑦ Taking her out is a list first. Nothing on it moves by itself, and the screen says so.
+  // ⑧ Taking her out is a list first, and her machine is on it. Nothing on it moves by itself,
+  // and the screen says so.
   await kai.getByRole('button', { name: 'Remove' }).click()
-  await expect(kai.getByText(/Nothing here stops or moves/u)).toBeVisible({ timeout: 15_000 })
+  await expect(kai.getByText('mina-mbp')).toBeVisible({ timeout: 15_000 })
+  await expect(kai.getByText(/Nothing here stops or moves/u)).toBeVisible()
+
+  // ⑨ So he takes the machine first — Tailscale's lesson, which is that deleting the person
+  // deletes their devices and the connections stop. Handed over, it stays.
+  await kai.getByLabel('Hand it to').selectOption({ label: kaiAddress })
+  await expect(kai.getByText('mina-mbp')).toHaveCount(0, { timeout: 15_000 })
+
   await kai.getByRole('button', { name: `Remove ${minaAddress}` }).click()
   await expect(kai.getByText(minaAddress)).toHaveCount(0, { timeout: 15_000 })
 
-  // ⑧ Her session is still hers — she is signed in — and this Space is simply not there any more.
+  // ⑩ The machine is still here, and now it is his.
+  await kai.getByRole('tab', { name: 'Home' }).click()
+  await expect(kai.getByText('mina-mbp')).toBeVisible({ timeout: 15_000 })
+  await expect(kai.getByText(/’s$/u)).toHaveCount(0)
+
+  // ⑪ Her session is still hers — she is signed in — and this Space is simply not there any more.
   await mina.reload()
   await expect(mina.getByRole('heading', { name: /not available/u })).toBeVisible({
     timeout: 15_000,

@@ -33,6 +33,7 @@ import {
 } from './task.ts'
 import { forgetStranded, openTurn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
+import { handWorkTo, joins, removes } from './membership.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
@@ -68,6 +69,19 @@ beforeEach(async () => {
 
   MACHINE = await attached('mina-mbp')
 })
+
+/** A second person, in this Space. Until `05` there was never one, so nothing needed it. */
+async function alsoHere(): Promise<string> {
+  const address = `rui-${RUN}@example.com`
+  const arrived = await db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
+  await joins(db, { userId: arrived.userId, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
+
+  return arrived.userId
+}
 
 async function attached(machineName: string): Promise<string> {
   const secret = newEnrolmentSecret()
@@ -844,5 +858,59 @@ describe('the Inbox', () => {
       )
 
     expect(await waitingOn(db, stranger.userId)).toEqual([])
+  })
+})
+
+describe('handing a piece of work to another person', () => {
+  it('puts it in their Inbox and takes it out of yours', async () => {
+    // The whole reason it is one column. Whose it is and who is told about it are the same fact,
+    // so there is nothing here to keep in step — and nothing that can be moved and not told.
+    const rui = await alsoHere()
+    const conversation = await handedOver('make the timeout configurable')
+    await nextTurn()
+    await stopsWorking(db, reporting(conversation, 'asked-1'), asking('env var, or a field?'))
+    expect(await waitingOn(db, PERSON)).toHaveLength(1)
+
+    expect(
+      await handWorkTo(db, { spaceId: SPACE, conversationId: conversation, userId: rui }),
+    ).toEqual({ kind: 'moved' })
+
+    expect(await waitingOn(db, PERSON)).toEqual([])
+    expect(await waitingOn(db, rui)).toMatchObject([{ conversationId: conversation }])
+  })
+
+  it('refuses somebody who is not in this Space, so it cannot be handed out of one', async () => {
+    // Otherwise "hand it over" is a way to move a piece of work somewhere nobody here can see it,
+    // and the person it was given to cannot reach the Space it lives in.
+    const address = `outside-${RUN}@example.com`
+    const stranger = await db
+      .transaction()
+      .execute(async (tx) =>
+        arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+      )
+    const conversation = await handedOver()
+    await nextTurn()
+    await stopsWorking(db, reporting(conversation, 'asked-1'), asking('A or B?'))
+
+    expect(
+      await handWorkTo(db, {
+        spaceId: SPACE,
+        conversationId: conversation,
+        userId: stranger.userId,
+      }),
+    ).toEqual({ kind: 'not-a-member' })
+    expect(await waitingOn(db, PERSON)).toHaveLength(1)
+  })
+
+  it('refuses somebody who was removed, rather than handing it to a person who cannot see it', async () => {
+    const rui = await alsoHere()
+    await removes(db, { spaceId: SPACE, userId: rui })
+    const conversation = await handedOver()
+    await nextTurn()
+    await stopsWorking(db, reporting(conversation, 'asked-1'), asking('A or B?'))
+
+    expect(
+      await handWorkTo(db, { spaceId: SPACE, conversationId: conversation, userId: rui }),
+    ).toEqual({ kind: 'not-a-member' })
   })
 })
