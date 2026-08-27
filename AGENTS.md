@@ -70,6 +70,7 @@ sql        手写 SQL 只能出现在 db/
 revoked    每一处读 memberships 都必须带 revoked_at
 routes     每条路由都在它地址所承诺的那道门后面
 endpoints  design 文档写的每条接口,这个部署真的有
+reachable  这个部署有的每条接口,真的有东西够得到 —— 不是被承诺了却没人走得到
 style      屏幕用到的每个 class 名,样式表里都有
 ```
 

@@ -171,6 +171,7 @@ function Aboutlate({
 function Asking({ slug }: { readonly slug: string }) {
   const heading = useId()
   const [link, setLink] = useState<string | undefined>(undefined)
+  const client = useQueryClient()
 
   const asking = useMutation({
     mutationFn: async () => {
@@ -181,7 +182,10 @@ function Asking({ slug }: { readonly slug: string }) {
 
       return data.link
     },
-    onSuccess: setLink,
+    onSuccess: async (made) => {
+      setLink(made)
+      await client.invalidateQueries({ queryKey: ['invitations', slug] })
+    },
   })
 
   return (
@@ -219,6 +223,72 @@ function Asking({ slug }: { readonly slug: string }) {
           </p>
         </>
       )}
+
+      <StillWorking slug={slug} />
     </section>
+  )
+}
+
+/**
+ * The links that still work, and the way to stop one.
+ *
+ * A link is a live credential anybody holding it can use, and the plaintext is gone the moment
+ * the screen that showed it is. So what a person needs afterwards is not the link back — it is a
+ * way to switch it off, and a count of how many are out there. `prd.md` 05 ① promises that.
+ *
+ * Never the secret. Nobody has it any more, including us; a row here is when it runs out. Notion's
+ * key link is the same switch, and turning it off is the only thing you can do to one after it has
+ * been handed out.
+ */
+function StillWorking({ slug }: { readonly slug: string }) {
+  const client = useQueryClient()
+  const open = useQuery({
+    queryKey: ['invitations', slug] as const,
+    queryFn: async () => {
+      const { data, error } = await api.GET('/spaces/{slug}/invitations', {
+        params: { path: { slug } },
+      })
+      if (data === undefined) throw new Error(error.reason)
+
+      return data.invitations
+    },
+  })
+
+  const stopping = useMutation({
+    mutationFn: async (id: string) => {
+      const { response } = await api.DELETE('/spaces/{slug}/invitations/{id}', {
+        params: { path: { slug, id } },
+      })
+      if (!response.ok) throw new Error(String(response.status))
+    },
+    onSuccess: async () => client.invalidateQueries({ queryKey: ['invitations', slug] }),
+  })
+
+  const links = open.data ?? []
+  if (links.length === 0) return null
+
+  return (
+    <ul className="rows" aria-label="Links that still work">
+      {links.map((one) => (
+        <li key={one.id} className="row">
+          <span className="row-name">
+            <strong>One link</strong>
+            <span className="note">
+              stops working {new Date(one.expiresAt).toLocaleDateString()}
+            </span>
+          </span>
+          <button
+            className="button-quiet"
+            type="button"
+            disabled={stopping.isPending}
+            onClick={() => {
+              stopping.mutate(one.id)
+            }}
+          >
+            Stop it working
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }

@@ -861,6 +861,34 @@ describe('the Inbox', () => {
   })
 })
 
+describe('somebody who was taken out of a Space', () => {
+  it('still has their name on what they said and what they handed over', async () => {
+    // `prd.md` 05 ⑦, and it is true today only because nothing tidies up on removal — which is
+    // exactly the kind of true that stops being true the day somebody writes the tidying. Linear
+    // and GitHub both keep a removed member's work attributed to them, and the transcript is a
+    // record: it says what happened, and what happened does not change.
+    const rui = await alsoHere()
+    const conversation = await handedOver('make the timeout configurable')
+    await handWorkTo(db, { spaceId: SPACE, conversationId: conversation, userId: rui })
+
+    await removes(db, { spaceId: SPACE, userId: rui })
+
+    const task = await db
+      .selectFrom('tasks')
+      .select('owner_user_id as owner')
+      .where('conversation_id', '=', conversation)
+      .executeTakeFirstOrThrow()
+    const lines = await db
+      .selectFrom('messages')
+      .select('id')
+      .where('conversation_id', '=', conversation)
+      .execute()
+
+    expect(task.owner).toBe(rui)
+    expect(lines.length).toBeGreaterThan(0)
+  })
+})
+
 describe('handing a piece of work to another person', () => {
   it('puts it in their Inbox and takes it out of yours', async () => {
     // The whole reason it is one column. Whose it is and who is told about it are the same fact,

@@ -175,19 +175,6 @@ textarea.field {
  * `.field` was doing this and is a control: it forced a control's height onto a line of text and,
  * because a control inherits the page's face, printed a command in the prose font.
  */
-.command {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-  box-shadow: inset 0 0 0 1px var(--neutral-950);
-  background: var(--grey-970);
-  color: var(--content);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  overflow-x: auto;
-  white-space: pre;
-  user-select: all;
-}
 
 /*
  * What a tool printed. Somebody else's text, in whatever shape it came in.

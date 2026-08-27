@@ -53,6 +53,11 @@ function people(...members: readonly Member[]) {
   return http.get('*/spaces/acme/members', () => HttpResponse.json({ members }))
 }
 
+/** The links that still work. Owners always ask; a Space with none says nothing about them. */
+function links(...invitations: readonly { id: string; expiresAt: string }[]) {
+  return http.get('*/spaces/acme/invitations', () => HttpResponse.json({ invitations }))
+}
+
 function held(still: StillTheirs = { working: [], machines: [] }) {
   return http.get('*/spaces/acme/members/:userId/held', () => HttpResponse.json(still))
 }
@@ -77,6 +82,7 @@ describe('asking somebody into a Space', () => {
     server.use(
       ...theSpace(),
       people(KAI),
+      links(),
       http.post('*/spaces/acme/invitations', () =>
         HttpResponse.json(
           { id: 'i-1', link: 'http://localhost:5173/join/hi_secret', expiresAt: '2026-09-01' },
@@ -105,11 +111,31 @@ describe('asking somebody into a Space', () => {
   })
 
   it('says which of them is you, and which of them can let people in', async () => {
-    server.use(...theSpace(), people(KAI, MINA))
+    server.use(...theSpace(), people(KAI, MINA), links())
     open()
 
     expect(await screen.findByText('you')).toBeDefined()
     expect(screen.getByText('Owner')).toBeDefined()
+  })
+
+  it('lists the links that still work, and can stop one', async () => {
+    // The plaintext is gone the moment the screen that showed it is, so what somebody needs
+    // afterwards is not the link back — it is the switch. `prd.md` 05 ① promises one.
+    let stopped = ''
+    server.use(
+      ...theSpace(),
+      people(KAI),
+      links({ id: 'i-1', expiresAt: '2026-09-01T10:00:00.000Z' }),
+      http.delete('*/spaces/acme/invitations/:id', ({ params }) => {
+        stopped = String(params['id'])
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop it working' }))
+
+    expect(stopped).toBe('i-1')
   })
 })
 
@@ -119,6 +145,7 @@ describe('what an owner can change', () => {
     server.use(
       ...theSpace(),
       people(KAI, MINA),
+      links(),
       http.patch('*/spaces/acme/members/u-mina', async ({ request }) => {
         asked = await request.json()
         return new HttpResponse(null, { status: 204 })
@@ -133,7 +160,7 @@ describe('what an owner can change', () => {
 
   it('does not offer to change the role of the only person here', async () => {
     // There is nobody to hand it to, and a Space of one is already as owned as it can be.
-    server.use(...theSpace(), people(KAI))
+    server.use(...theSpace(), people(KAI), links())
     open()
 
     expect(await screen.findByText('Kai')).toBeDefined()
@@ -148,6 +175,7 @@ describe('taking somebody out', () => {
     server.use(
       ...theSpace(),
       people(KAI, MINA),
+      links(),
       held({
         working: [
           {
@@ -177,6 +205,7 @@ describe('taking somebody out', () => {
     server.use(
       ...theSpace(),
       people(KAI, MINA),
+      links(),
       held({ working: [], machines: [{ id: 'm-1', name: 'build-server-1', inUse: 2 }] }),
       http.patch('*/spaces/acme/machines/m-1', async ({ request }) => {
         handed = await request.json()
@@ -192,7 +221,7 @@ describe('taking somebody out', () => {
   })
 
   it('offers nowhere to hand it when there is nobody else here', async () => {
-    server.use(...theSpace(), people(KAI), held({ working: [], machines: [] }))
+    server.use(...theSpace(), people(KAI), links(), held({ working: [], machines: [] }))
     open()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Leave' }))
@@ -207,6 +236,7 @@ describe('taking somebody out', () => {
     server.use(
       ...theSpace(),
       people(KAI, MINA),
+      links(),
       held(),
       http.delete('*/spaces/acme/members/u-kai', () =>
         HttpResponse.json({ reason: 'the-last-owner', recovery: 'ask-an-owner' }, { status: 409 }),
