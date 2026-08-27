@@ -14,7 +14,7 @@
  * decision out of SQL, where it is enforced, into TypeScript, where it is remembered.
  */
 
-import { sql, type UpdateObject } from 'kysely'
+import { expressionBuilder, sql, type UpdateObject } from 'kysely'
 import type { DB } from '../../generated/db.ts'
 import { LIFETIME_MINUTES, type Enrolment } from '../machine/enrolment.ts'
 import type { UserCode } from '../machine/user-code.ts'
@@ -94,6 +94,24 @@ export type Waiting = {
   readonly expiresAt: Date
 }
 
+/**
+ * An enrolment nobody has answered yet, and that has not run out.
+ *
+ * Said once because it is asked twice, and the two must agree: once to show a person what they
+ * are about to say yes to, and once as the guard on the update that says it. Tightened in one and
+ * not the other, somebody would be shown a machine they are then told is not there.
+ */
+function stillWaiting(userCode: UserCode) {
+  const eb = expressionBuilder<DB, 'enrolments'>()
+
+  return eb.and([
+    eb('user_code', '=', userCode),
+    eb('approved_at', 'is', null),
+    eb('refused_at', 'is', null),
+    eb('expires_at', '>', sql<Date>`now()`),
+  ])
+}
+
 export async function enrolmentWaiting(
   db: Database,
   userCode: UserCode,
@@ -104,10 +122,7 @@ export async function enrolmentWaiting(
     // Only the code path has a `user_code`, and only that path records a name — so a row found
     // here always has one, and nothing downstream has to wonder what to show.
     .$narrowType<{ machineName: string }>()
-    .where('user_code', '=', userCode)
-    .where('approved_at', 'is', null)
-    .where('refused_at', 'is', null)
-    .where('expires_at', '>', sql<Date>`now()`)
+    .where(stillWaiting(userCode))
     .executeTakeFirst()
 
   return row
@@ -149,10 +164,7 @@ async function answer(db: Database, userCode: UserCode, transition: Transition):
   const changed = await db
     .updateTable('enrolments')
     .set(transition)
-    .where('user_code', '=', userCode)
-    .where('approved_at', 'is', null)
-    .where('refused_at', 'is', null)
-    .where('expires_at', '>', sql<Date>`now()`)
+    .where(stillWaiting(userCode))
     .returning('id')
     .executeTakeFirst()
 

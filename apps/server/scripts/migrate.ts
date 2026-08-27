@@ -100,4 +100,49 @@ export function migrate(): string {
   return DATABASE_URL
 }
 
+/** The name of the database `generate` builds for itself. Nothing else ever points at it. */
+const ONLY_MIGRATIONS = 'handover_generated'
+
+/**
+ * A database holding this branch's migrations and nothing else, and the way to be rid of it.
+ *
+ * Made and dropped rather than reused, because what is being answered is "what do the migrations
+ * in this checkout add up to" — and a database that has been anything else cannot answer it. It
+ * is the same connection as `DATABASE_URL`, with a name of its own.
+ */
+export function onlyTheMigrations(): { readonly url: string; readonly drop: () => void } {
+  const { DATABASE_URL } = loadEnv()
+  const target = new URL(DATABASE_URL)
+  target.pathname = `/${ONLY_MIGRATIONS}`
+  mkdirSync(join(ROOT, 'generated'), { recursive: true })
+
+  run('docker', ['compose', 'up', '--detach', '--wait', SERVICE])
+  asPostgres(target, `drop database if exists ${ONLY_MIGRATIONS}`)
+  asPostgres(target, `create database ${ONLY_MIGRATIONS}`)
+  applyMigrations(target.href)
+  dumpSchema(target.href)
+
+  return {
+    url: target.href,
+    drop: () => {
+      asPostgres(target, `drop database if exists ${ONLY_MIGRATIONS}`)
+    },
+  }
+}
+
+/** One statement against the server, from inside the container, so nothing has to be installed. */
+function asPostgres(target: URL, statement: string): void {
+  capture('docker', [
+    'compose',
+    'exec',
+    '--no-TTY',
+    SERVICE,
+    'psql',
+    `--username=${target.username}`,
+    '--dbname=postgres',
+    '--command',
+    statement,
+  ])
+}
+
 if (process.argv[1] === import.meta.filename) migrate()

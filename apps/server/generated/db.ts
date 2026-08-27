@@ -3,202 +3,187 @@
  * Please do not edit it manually.
  */
 
-import type { ColumnType } from "kysely";
+import type { ColumnType } from 'kysely'
 
-export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
-  ? ColumnType<S, I | undefined, U>
-  : ColumnType<T, T | undefined, T>;
+export type Generated<T> =
+  T extends ColumnType<infer S, infer I, infer U>
+    ? ColumnType<S, I | undefined, U>
+    : ColumnType<T, T | undefined, T>
 
-export type Json = JsonValue;
+export type Json = JsonValue
 
-export type JsonArray = JsonValue[];
+export type JsonArray = JsonValue[]
 
 export type JsonObject = {
-  [x: string]: JsonValue | undefined;
-};
-
-export type JsonPrimitive = boolean | number | string | null;
-
-export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
-
-export type Timestamp = ColumnType<Date, Date | string, Date | string>;
-
-export interface AgentNames {
-  kind: string;
-  machine_id: string;
-  name: string;
-  named_at: Generated<Timestamp>;
+  [x: string]: JsonValue | undefined
 }
 
+export type JsonPrimitive = boolean | number | string | null
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive
+
+export type Timestamp = ColumnType<Date, Date | string, Date | string>
+
 export interface Agents {
-  found_at: Generated<Timestamp>;
-  kind: string;
-  machine_id: string;
-  models: Json | null;
-  version: string;
+  found_at: Generated<Timestamp>
+  kind: string
+  machine_id: string
+  models: Json | null
+  version: string
 }
 
 export interface BrowserSessions {
-  created_at: Generated<Timestamp>;
-  expires_at: Timestamp;
-  id: Generated<string>;
-  revoked_at: Timestamp | null;
-  token_hash: string;
-  user_id: string;
-}
-
-export interface ConversationPins {
-  conversation_id: string;
-  pinned_at: Generated<Timestamp>;
-  user_id: string;
+  created_at: Generated<Timestamp>
+  expires_at: Timestamp
+  id: Generated<string>
+  revoked_at: Timestamp | null
+  token_hash: string
+  user_id: string
 }
 
 export interface Conversations {
-  agent_kind: string;
-  agent_session_id: string | null;
-  created_at: Generated<Timestamp>;
-  id: Generated<string>;
-  machine_id: string;
-  space_id: string;
+  agent_kind: string
+  agent_session_id: string | null
+  created_at: Generated<Timestamp>
+  id: Generated<string>
+  machine_id: string
+  space_id: string
 }
 
 export interface Credentials {
-  kind: string;
-  subject: string;
-  user_id: string;
-  verified_at: Generated<Timestamp>;
+  kind: string
+  subject: string
+  user_id: string
+  verified_at: Generated<Timestamp>
 }
 
 export interface EmailCodes {
-  asked_by: string | null;
-  attempts: Generated<number>;
-  closed_at: Timestamp | null;
-  closed_reason: string | null;
-  code_hash: string;
-  created_at: Generated<Timestamp>;
-  delivery: string | null;
-  email: string;
-  expires_at: Timestamp;
-  id: Generated<string>;
-  purpose: string;
-  request_key: string;
+  asked_by: string | null
+  attempts: Generated<number>
+  closed_at: Timestamp | null
+  closed_reason: string | null
+  code_hash: string
+  created_at: Generated<Timestamp>
+  delivery: string | null
+  email: string
+  expires_at: Timestamp
+  id: Generated<string>
+  purpose: string
+  request_key: string
 }
 
 export interface Enrolments {
-  approved_at: Timestamp | null;
-  approved_by: string | null;
-  claimed_at: Timestamp | null;
-  created_at: Generated<Timestamp>;
-  expires_at: Timestamp;
-  id: Generated<string>;
-  machine_name: string | null;
-  refused_at: Timestamp | null;
-  secret_hash: string;
-  user_code: string | null;
+  approved_at: Timestamp | null
+  approved_by: string | null
+  claimed_at: Timestamp | null
+  created_at: Generated<Timestamp>
+  expires_at: Timestamp
+  id: Generated<string>
+  machine_name: string | null
+  refused_at: Timestamp | null
+  secret_hash: string
+  user_code: string | null
 }
 
 export interface Invitations {
-  created_at: Generated<Timestamp>;
-  expires_at: Timestamp;
-  id: Generated<string>;
-  made_by: string;
-  revoked_at: Timestamp | null;
-  secret_hash: string;
-  space_id: string;
+  created_at: Generated<Timestamp>
+  expires_at: Timestamp
+  id: Generated<string>
+  made_by: string
+  revoked_at: Timestamp | null
+  secret_hash: string
+  space_id: string
 }
 
 export interface Machines {
-  created_at: Generated<Timestamp>;
-  enrolled_from: string;
-  id: Generated<string>;
-  last_seen_at: Generated<Timestamp>;
-  left_at: Timestamp | null;
-  name: string;
-  owner_user_id: string;
-  removed_at: Timestamp | null;
-  token_hash: string;
-  version: string | null;
+  created_at: Generated<Timestamp>
+  enrolled_from: string
+  id: Generated<string>
+  last_seen_at: Generated<Timestamp>
+  left_at: Timestamp | null
+  name: string
+  owner_user_id: string
+  removed_at: Timestamp | null
+  token_hash: string
+  version: string | null
 }
 
 export interface Memberships {
-  created_at: Generated<Timestamp>;
-  request_key: string;
-  revoked_at: Timestamp | null;
-  role: Generated<string>;
-  space_id: string;
-  user_id: string;
+  created_at: Generated<Timestamp>
+  request_key: string
+  revoked_at: Timestamp | null
+  role: Generated<string>
+  space_id: string
+  user_id: string
 }
 
 export interface Messages {
-  content: Json;
-  conversation_id: string;
-  created_at: Generated<Timestamp>;
-  id: Generated<string>;
-  key: string;
-  role: string;
-  said_by: string | null;
-  seq: number;
+  content: Json
+  conversation_id: string
+  created_at: Generated<Timestamp>
+  id: Generated<string>
+  key: string
+  role: string
+  said_by: string | null
+  seq: number
 }
 
 export interface Outputs {
-  body: string;
-  created_at: Generated<Timestamp>;
-  id: Generated<string>;
-  task_id: string;
-  title: string;
-  updated_at: Generated<Timestamp>;
+  body: string
+  created_at: Generated<Timestamp>
+  id: Generated<string>
+  task_id: string
+  title: string
+  updated_at: Generated<Timestamp>
 }
 
 export interface Spaces {
-  created_at: Generated<Timestamp>;
-  display_name: string;
-  emoji: Generated<string>;
-  id: Generated<string>;
-  slug: string;
+  created_at: Generated<Timestamp>
+  display_name: string
+  id: Generated<string>
+  slug: string
 }
 
 export interface Tasks {
-  conversation_id: string;
-  created_at: Generated<Timestamp>;
-  ended_at: Timestamp | null;
-  goal: string;
-  id: Generated<string>;
-  owner_user_id: string;
-  parent_id: string | null;
-  sleep_until: Timestamp | null;
-  state: string;
+  conversation_id: string
+  created_at: Generated<Timestamp>
+  ended_at: Timestamp | null
+  goal: string
+  id: Generated<string>
+  owner_user_id: string
+  parent_id: string | null
+  sleep_until: Timestamp | null
+  state: string
 }
 
 export interface Turns {
-  after_seq: number;
-  claimed_at: Generated<Timestamp>;
-  conversation_id: string;
-  ended_at: Timestamp | null;
-  machine_id: string;
+  after_seq: number
+  claimed_at: Generated<Timestamp>
+  conversation_id: string
+  ended_at: Timestamp | null
+  machine_id: string
 }
 
 export interface Users {
-  created_at: Generated<Timestamp>;
-  display_name: string;
-  id: Generated<string>;
+  created_at: Generated<Timestamp>
+  display_name: string
+  id: Generated<string>
 }
 
 export interface DB {
-  agent_names: AgentNames;
-  agents: Agents;
-  browser_sessions: BrowserSessions;
-  conversation_pins: ConversationPins;
-  conversations: Conversations;
-  credentials: Credentials;
-  email_codes: EmailCodes;
-  enrolments: Enrolments;
-  invitations: Invitations;
-  machines: Machines;
-  memberships: Memberships;
-  messages: Messages;
-  outputs: Outputs;
-  spaces: Spaces;
-  tasks: Tasks;
-  turns: Turns;
-  users: Users;
+  agents: Agents
+  browser_sessions: BrowserSessions
+  conversations: Conversations
+  credentials: Credentials
+  email_codes: EmailCodes
+  enrolments: Enrolments
+  invitations: Invitations
+  machines: Machines
+  memberships: Memberships
+  messages: Messages
+  outputs: Outputs
+  spaces: Spaces
+  tasks: Tasks
+  turns: Turns
+  users: Users
 }

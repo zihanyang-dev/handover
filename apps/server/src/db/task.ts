@@ -10,9 +10,16 @@
  * is waiting on what it handed off — is derived, for the same reason a conversation's three states
  * are: a machine that is killed never writes that it stopped.
  *
- * **Nothing here reads the transcript to decide anything.** The transcript is the open half of this
- * system, where a new kind of activity is a value rather than a release; deciding on it would mean
- * the next activity anybody adds silently wakes every waiting piece of work, with nothing to say so.
+ * **Nothing here reads the transcript to decide what state a piece of work is in.** The transcript
+ * is the open half of this system, where a new kind of activity is a value rather than a release;
+ * deciding on it would mean the next activity anybody adds silently wakes every waiting piece of
+ * work, with nothing to say so.
+ *
+ * Two statements do read it, and neither is that. The Inbox reads the last thing an agent asked,
+ * to show it. And the sweep for stranded work asks whether the line it is about to write is
+ * already there — under a key it chose itself, not an activity type anybody else can add — which
+ * is the same constraint that makes writing it twice a no-op, used to avoid doing the work twice
+ * rather than to decide anything.
  */
 
 import { sql } from 'kysely'

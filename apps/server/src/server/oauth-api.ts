@@ -70,6 +70,18 @@ const BY_NAME = { provider: z.string() }
  */
 const Handoff = named('Handoff', { url: z.url() })
 
+/**
+ * What both legs of leaving can be told.
+ *
+ * Said once and spread into both, because the two differ in the door they are behind and in what
+ * the trip is for — and in nothing a caller can see. Written twice, one of them would eventually
+ * learn something the other did not.
+ */
+const LEAVING = {
+  200: sends(Handoff, 'Send the browser here'),
+  404: refuses(NO_SUCH_PROVIDER, 'No way in by that name'),
+}
+
 export type OAuthApi = {
   readonly db: Database
   readonly secret: string
@@ -218,10 +230,7 @@ function leavingToSignIn(deps: OAuthApi) {
     summary: 'Leave to sign in with a provider',
     params: BY_NAME,
     body: WhereBack,
-    answers: {
-      200: sends(Handoff, 'Send the browser here'),
-      404: refuses(NO_SUCH_PROVIDER, 'No way in by that name'),
-    },
+    answers: LEAVING,
 
     run: async (c) => {
       const sent = await leave(c, deps, {
@@ -244,10 +253,7 @@ function leavingToConnect(deps: OAuthApi) {
     summary: 'Leave to connect a provider to this account',
     params: BY_NAME,
     body: WhereBack,
-    answers: {
-      200: sends(Handoff, 'Send the browser here'),
-      404: refuses(NO_SUCH_PROVIDER, 'No way in by that name'),
-    },
+    answers: LEAVING,
 
     run: async (c) => {
       const sent = await leave(c, deps, {

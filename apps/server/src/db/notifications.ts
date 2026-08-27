@@ -94,6 +94,8 @@ async function attach(to: Listener, trying: Trying, first: boolean): Promise<voi
   // makes the next one a fresh client rather than a second life for a dead one.
   fresh.on('error', (trouble) => {
     to.log.error({ err: trouble, channel: to.channel }, 'a listening connection broke')
+    // Whatever closing a connection that has already gone has to say, it is about the break
+    // above and is already in the log. What matters next is the one being opened.
     fresh.end().catch(() => undefined)
     if (trying.client === fresh) later(to, trying)
   })
