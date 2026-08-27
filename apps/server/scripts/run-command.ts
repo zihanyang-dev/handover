@@ -11,6 +11,16 @@ export function binary(name: string): string {
 }
 
 /**
+ * The same, for a tool the whole repository shares rather than this package.
+ *
+ * Which of the two a package's `node_modules/.bin` holds is pnpm's business and not a fact worth
+ * depending on: `prettier` is declared once, at the root, and is not here.
+ */
+export function repoBinary(name: string): string {
+  return join(ROOT, '..', '..', 'node_modules', '.bin', name)
+}
+
+/**
  * A command that did not exit 0 leaves the repository in an unknown state, so there is one
  * recovery — read the output above and fix it — and therefore one error.
  */

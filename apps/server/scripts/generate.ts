@@ -15,7 +15,7 @@
 import { loadEnv } from '../src/env.ts'
 import { writeContract } from './contract.ts'
 import { onlyTheMigrations } from './migrate.ts'
-import { binary, run } from './run-command.ts'
+import { binary, repoBinary, run } from './run-command.ts'
 
 const { url, drop } = onlyTheMigrations()
 
@@ -30,6 +30,14 @@ run(binary('kysely-codegen'), [
   '--exclude-pattern',
   'schema_migrations',
 ])
+
+// Formatted here rather than left to `kysely-codegen`, which reaches for prettier if it happens
+// to resolve one and writes its own way if it does not. It resolved on a developer's machine and
+// not in CI, so the committed file and the one CI rebuilt differed by a semicolon on every line
+// — a diff that says nothing and fails the build. `.prettierignore` leaves everything under
+// `generated/` alone on purpose; the thing that writes an artefact is the thing that decides how
+// it looks.
+run(repoBinary('prettier'), ['--write', '--ignore-path', '.prettierignore-none', 'generated/db.ts'])
 
 writeContract(loadEnv())
 
