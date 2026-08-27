@@ -19,13 +19,14 @@ import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
 import {
+  type Said,
+  type SaidToAgent,
   askToStop,
   conversationWith,
   machineSays,
   noteAgentSession,
-  openConversation,
+  beginConversation,
   sayTo,
-  type Said,
 } from './conversation.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
 import { checkIn, removeMachine, sayGoodbye } from './machine.ts'
@@ -117,30 +118,53 @@ async function attached(): Promise<string> {
   return collected.machineId
 }
 
-async function opened(): Promise<string> {
-  const conversation = await openConversation(db, {
+/**
+ * A conversation, which is to say somebody's first question — there is no other kind.
+ *
+ * The opening is this conversation's `turn-1`, and every test below counts from it: a fixture
+ * that opened an empty one would be setting up a state nothing in this program can reach.
+ */
+async function opened(text = 'hello'): Promise<string> {
+  const conversation = await beginConversation(db, {
+    conversationId: randomUUID(),
     spaceId: SPACE,
     machineId: MACHINE,
     agentKind: 'claude-code',
+    saidBy: PERSON,
+    asked: { text },
   })
-  if (conversation.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+  if (conversation.kind !== 'begun')
+    throw new Error(`the fixture could not open one: ${conversation.kind}`)
   return conversation.conversationId
 }
 
-async function asks(conversationId: string, key: string, text: string): Promise<Said> {
+async function asks(conversationId: string, key: string, text: string): Promise<SaidToAgent> {
   return sayTo(db, { conversationId, spaceId: SPACE, key, saidBy: PERSON }, { text })
 }
 
 /**
- * Somebody asks, and the machine takes it — which is what really happens before a machine writes
- * anything at all. A turn nobody took is a turn nothing can end.
+ * The same, with the machine having taken that question — what really happens before a machine
+ * writes anything at all. A turn nobody took is a turn nothing can end.
  */
-async function running(conversationId: string, key: string, text: string): Promise<void> {
-  const said = await asks(conversationId, key, text)
-  if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
+async function running(text = 'hello'): Promise<string> {
+  const conversationId = await opened(text)
 
   const taken = await takeOne(db, MACHINE)
   if (taken?.conversationId !== conversationId) throw new Error('the machine took something else')
+  return conversationId
+}
+
+/**
+ * Opened, taken and finished — a conversation sitting still, which is where somebody types next.
+ *
+ * Opening one leaves a question nobody has answered yet, so a conversation is *working* from its
+ * first moment. Tests about what happens to an idle one have to get it there first.
+ */
+async function answered(text = 'hello'): Promise<string> {
+  const conversationId = await running(text)
+  await ends(conversationId, 'opening/end')
+
+  return conversationId
 }
 
 async function ends(
@@ -162,20 +186,26 @@ describe('opening a conversation', () => {
   })
 
   it('refuses an agent that machine does not have', async () => {
-    const conversation = await openConversation(db, {
+    const conversation = await beginConversation(db, {
+      conversationId: randomUUID(),
       spaceId: SPACE,
       machineId: MACHINE,
       agentKind: 'codex',
+      saidBy: PERSON,
+      asked: { text: 'anybody there' },
     })
 
     expect(conversation).toEqual({ kind: 'no-agent' })
   })
 
   it('refuses a machine from another Space, giving nothing away about it', async () => {
-    const conversation = await openConversation(db, {
+    const conversation = await beginConversation(db, {
+      conversationId: randomUUID(),
       spaceId: randomUUID(),
       machineId: MACHINE,
       agentKind: 'claude-code',
+      saidBy: PERSON,
+      asked: { text: 'anybody there' },
     })
 
     expect(conversation).toEqual({ kind: 'no-machine' })
@@ -192,12 +222,13 @@ describe('saying something to an agent', () => {
     // one that forgot would be a conversation sitting still on somebody's screen while the agent
     // worked, and nothing would say which caller it was.
     await listening.listening
-    const conversation = await opened()
+    // Two lines already: the question that opened it, and the agent finishing with it.
+    const conversation = await answered()
     const arriving = told(conversation)
 
-    await asks(conversation, 'turn-1', 'hello')
+    await asks(conversation, 'turn-2', 'hello')
 
-    expect(await arriving).toEqual({ seen: 'written', upTo: 1 })
+    expect(await arriving).toEqual({ seen: 'written', upTo: 3 })
   })
 
   it('says nothing to them when the same thing is said twice', async () => {
@@ -218,19 +249,19 @@ describe('saying something to an agent', () => {
   })
 
   it('does not say it twice when the answer to the first attempt was lost', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await answered()
+    await asks(conversation, 'turn-2', 'hello')
 
-    expect(await asks(conversation, 'turn-1', 'hello')).toEqual({ kind: 'said-already' })
-    expect(await countMessages(conversation)).toBe(1)
+    expect(await asks(conversation, 'turn-2', 'hello')).toEqual({ kind: 'said-already' })
+    // The one that opened it, and this one — sent twice and written once.
+    expect(await countSaid(conversation)).toBe(2)
   })
 
   it('interrupts what it is doing, rather than waiting its turn', async () => {
     // Queued instead, somebody who says "no, leave legacy/ alone" watches it go on editing
     // legacy/ until the step it was already on happens to end — the one thing they were trying
     // to prevent. Both facts are written down: that they asked it to stop, and what they said.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'hello')
+    const conversation = await running('hello')
 
     expect(await asks(conversation, 'turn-2', 'no, leave legacy alone')).toEqual({ kind: 'said' })
     expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
@@ -240,8 +271,7 @@ describe('saying something to an agent', () => {
     // Interrupt twice and the middle question never gets a turn: the machine is handed the last
     // one, which is the one the person went on to ask. Counting every question that never got a
     // turn, this conversation reads as working for ever — a spinner nothing can ever stop.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'hello')
+    const conversation = await running('hello')
     await asks(conversation, 'turn-2', 'no, wait')
     await asks(conversation, 'turn-3', 'do this instead')
     await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
@@ -258,8 +288,7 @@ describe('saying something to an agent', () => {
     // The stopped turn ends after the new question was written, so the ending lands after a
     // question it has nothing to do with. Read the wrong way round, the machine would never be
     // given the very thing the person interrupted it for.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'hello')
+    const conversation = await running('hello')
     await asks(conversation, 'turn-2', 'no, leave legacy alone')
     await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
 
@@ -270,8 +299,7 @@ describe('saying something to an agent', () => {
   })
 
   it('takes the next question once the turn is closed', async () => {
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'hello')
+    const conversation = await running('hello')
     await ends(conversation, 'turn-1/end')
 
     expect(await asks(conversation, 'turn-2', 'and another thing')).toEqual({ kind: 'said' })
@@ -282,7 +310,7 @@ describe('saying something to an agent', () => {
     // somebody said — and both go to the agent in the order they were said. Handing it only the
     // last was right while a Space held one person and is losing a message now: the first would
     // sit in the transcript looking queued and never be answered.
-    const conversation = await opened()
+    const conversation = await answered()
 
     const both = await Promise.all([
       asks(conversation, 'turn-1', 'hello'),
@@ -338,8 +366,7 @@ describe('saying something to an agent', () => {
 
 describe('taking a question', () => {
   it('is the question nobody has taken yet', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
 
     expect(await takeOne(db, MACHINE)).toMatchObject({
       conversationId: conversation,
@@ -353,8 +380,7 @@ describe('taking a question', () => {
     // A request to stop is not an answer. Counted as one, it hides the question from the only
     // machine that could ever end the turn — and the conversation reads as working forever,
     // because the person asking to stop it is what buried it.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'take your time')
+    const conversation = await opened('take your time')
     await askToStop(db, { conversationId: conversation, spaceId: SPACE, key: 'stop-1' })
 
     expect(await takeOne(db, MACHINE)).toMatchObject({ conversationId: conversation })
@@ -364,16 +390,14 @@ describe('taking a question', () => {
     // The whole reason the ledger exists. An agent that started and then died before writing its
     // first line used to leave a question that still looked untouched — handed out again, running
     // whatever it had already done a second time.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
     await takeOne(db, MACHINE)
 
     expect(await takeOne(db, MACHINE)).toBeUndefined()
   })
 
   it('is nothing once the turn is closed', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
     await takeOne(db, MACHINE)
     await ends(conversation, 'turn-1/end')
 
@@ -381,10 +405,8 @@ describe('taking a question', () => {
   })
 
   it('is the longest-waiting one when two conversations are both asking', async () => {
-    const first = await opened()
-    await asks(first, 'turn-1', 'the older question')
-    const second = await opened()
-    await asks(second, 'turn-1', 'the newer question')
+    const first = await opened('the older question')
+    const second = await opened('the newer question')
 
     expect(await takeOne(db, MACHINE)).toMatchObject({ conversationId: first })
   })
@@ -437,27 +459,37 @@ async function countMessages(conversationId: string): Promise<number> {
   return Number(counted.total)
 }
 
+/** Only what people said. The lines a stop or an ending writes are not somebody saying twice. */
+async function countSaid(conversationId: string): Promise<number> {
+  const counted = await db
+    .selectFrom('messages')
+    .select((eb) => eb.fn.countAll<string>().as('total'))
+    .where('conversation_id', '=', conversationId)
+    .where('role', '=', 'user')
+    .executeTakeFirstOrThrow()
+
+  return Number(counted.total)
+}
+
 async function asksToStop(conversationId: string, key = 'turn-1/stop') {
   return askToStop(db, { conversationId, spaceId: SPACE, key })
 }
 
 describe('asking an agent to stop', () => {
   it('is allowed while it is working, which is the only time it means anything', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'take your time')
+    const conversation = await opened('take your time')
 
     expect(await asksToStop(conversation)).toEqual({ kind: 'asked-to-stop' })
   })
 
   it('refuses when nothing is running', async () => {
-    const conversation = await opened()
+    const conversation = await answered()
 
     expect(await asksToStop(conversation)).toEqual({ kind: 'nothing-to-stop' })
   })
 
   it('changes nothing the second time', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'take your time')
+    const conversation = await opened('take your time')
     await asksToStop(conversation)
 
     expect(await asksToStop(conversation)).toEqual({ kind: 'asked-already' })
@@ -465,8 +497,7 @@ describe('asking an agent to stop', () => {
   })
 
   it('reaches the machine through the report it was already making', async () => {
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'take your time')
+    const conversation = await running('take your time')
     await asksToStop(conversation)
 
     expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
@@ -475,8 +506,7 @@ describe('asking an agent to stop', () => {
   it('is still wanted after the agent has said several more things', async () => {
     // The request is not the last word for long: an agent goes on working until it is reached,
     // and every line it writes in the meantime would otherwise bury the request meant to stop it.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'take your time')
+    const conversation = await running('take your time')
     await asksToStop(conversation)
     for (const n of [1, 2, 3]) {
       await machineSays(db, {
@@ -493,8 +523,7 @@ describe('asking an agent to stop', () => {
   it('stops being asked for once the agent says it stopped', async () => {
     // Nothing clears it: the request is the last thing said until the turn closes, and closing
     // the turn is what makes it no longer the last thing said.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'take your time')
+    const conversation = await opened('take your time')
     await asksToStop(conversation)
     await machineSays(db, {
       conversationId: conversation,
@@ -509,8 +538,7 @@ describe('asking an agent to stop', () => {
   it('leaves the turn open until it actually stops', async () => {
     // Asked and stopped are two facts. A turn that was asked to stop and never did is exactly the
     // case somebody needs to be able to see.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'take your time')
+    const conversation = await running('take your time')
     await asksToStop(conversation)
 
     expect(await db.transaction().execute(async (tx) => openTurn(tx, conversation))).toBe(1)
@@ -521,8 +549,7 @@ describe('a turn nobody was watching', () => {
   it('is closed as unknown when the machine says it has just started', async () => {
     // Killing the process that drives an agent does not kill the agent, so it went on working
     // with nobody there. What it did is not knowable from here, and guessing either way is worse.
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'take your time')
+    const conversation = await running('take your time')
     await machineSays(db, {
       conversationId: conversation,
       machineId: MACHINE,
@@ -539,16 +566,14 @@ describe('a turn nobody was watching', () => {
 
   it('leaves a question nobody has started alone', async () => {
     // Nothing was abandoned: no agent ever saw it, and it is still waiting to be answered.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
 
     expect(await forgetStranded(db, MACHINE)).toBe(0)
     expect(await takeOne(db, MACHINE)).toMatchObject({ conversationId: conversation })
   })
 
   it('leaves a finished conversation alone', async () => {
-    const conversation = await opened()
-    await running(conversation, 'turn-1', 'hello')
+    const conversation = await running('hello')
     await ends(conversation, 'turn-1/end')
 
     expect(await forgetStranded(db, MACHINE)).toBe(0)
@@ -559,12 +584,9 @@ describe('a turn nobody was watching', () => {
     // read "nothing open on this machine" before either commits — no primary key stops that, and
     // no test can, since it depends on which statement commits first. The unique partial index
     // can, and this is it.
-    const first = await opened()
-    const second = await opened()
-    await running(first, 'turn-1', 'take your time')
-
-    const said = await asks(second, 'turn-1', 'and this one')
-    if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
+    const first = await running('take your time')
+    const second = await opened('and this one')
+    if (first === second) throw new Error('the fixture opened one conversation twice')
 
     await expect(
       db
@@ -579,8 +601,7 @@ describe('whose words are whose', () => {
   it('writes down which person said it, not only that a person did', async () => {
     // `prd.md` 05 ⑦ promised this and `messages` could not keep it: with two people in a Space,
     // `role: 'user'` says somebody spoke about a line that has to read as a name.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'where does the timeout live?')
+    const conversation = await opened('where does the timeout live?')
 
     const line = await db
       .selectFrom('messages')
@@ -593,8 +614,7 @@ describe('whose words are whose', () => {
   })
 
   it('leaves the other three kinds without one, because nobody said them', async () => {
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
     await machineSays(db, {
       conversationId: conversation,
       machineId: MACHINE,
@@ -637,8 +657,7 @@ describe('who a message can be from', () => {
     // Every kind but a person's. A machine writing under somebody's name is forgery, and the type
     // says so — this asks the table as well, because the type is not what is running in
     // production at three in the morning.
-    const conversation = await opened()
-    await asks(conversation, 'turn-1', 'hello')
+    const conversation = await opened('hello')
 
     for (const [n, role] of ROLES.filter((one) => one !== 'user').entries()) {
       const written = await machineSays(db, {

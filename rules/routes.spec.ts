@@ -83,15 +83,16 @@ describe('what the contract says about who may call what', () => {
     for (const one of inASpace) expect([one.at, one.answers.includes(404)]).toEqual([one.at, true])
   })
 
-  it('leaves open only the ways in, which are the ones nobody can have a credential for yet', async () => {
+  it('leaves open only the ways in and the pictures, and nothing else', async () => {
     // Everything else has to be behind something. This is the list somebody has to change on
     // purpose — and the reason to make it hard is that adding a route is easy.
-    const open = everyEndpoint()
-      .filter((one) => one.shows.length === 0)
-      .map((one) => one.at)
-      .sort()
-
-    expect(open).toEqual([
+    //
+    // Two reasons to be open, kept apart because they are not the same reason. A way in is open
+    // because nobody can hold a credential yet. A face is open because it is a picture a browser
+    // asks for with `<img>`, which carries no session — and asking for one would put identity in
+    // every private cache and every image proxy between here and the screen, for bytes that are
+    // synthetic and say nobody's name.
+    const WAYS_IN = [
       'GET /auth/credentials',
       'GET /auth/{provider}/callback',
       'POST /auth/email-codes',
@@ -99,6 +100,17 @@ describe('what the contract says about who may call what', () => {
       'POST /browser/sessions',
       'POST /enrolments',
       'POST /enrolments/collect',
-    ])
+    ]
+    const PICTURES = [
+      'GET /avatars/agents/{machineId}/{agentKind}',
+      'GET /avatars/users/{userId}',
+    ]
+
+    const open = everyEndpoint()
+      .filter((one) => one.shows.length === 0)
+      .map((one) => one.at)
+      .sort()
+
+    expect(open).toEqual([...WAYS_IN, ...PICTURES].sort())
   })
 })

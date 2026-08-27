@@ -23,6 +23,8 @@ import type { Live } from '../conversation/live.ts'
 import type { Provider } from '../identity/provider.ts'
 import type { Log } from '../log.ts'
 import type { Waiting } from '../machine/waiting.ts'
+import type { ObjectStore } from '../object-store.ts'
+import { avatarApi } from './avatar-api.ts'
 import { conversationApi } from './conversation-api.ts'
 import { credentialApi, type CredentialApi } from './credential-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
@@ -111,6 +113,8 @@ export type App = Omit<CredentialApi, 'providers'> &
     readonly live: Live
     /** The machine questions this instance is holding rather than answering with "nothing". */
     readonly waiting: Waiting
+    /** Where a face is kept once it has been drawn. */
+    readonly objects: ObjectStore
     /**
      * Where the built browser app is, when this process serves it too.
      *
@@ -194,4 +198,5 @@ export function handoverApp(deps: App) {
     .route('/', mounted(conversationApi({ db: deps.db })))
     .route('/', mounted(liveApi({ db: deps.db, live: deps.live })))
     .route('/', mounted(taskApi({ db: deps.db })))
+    .route('/', mounted(avatarApi({ objects: deps.objects })))
 }

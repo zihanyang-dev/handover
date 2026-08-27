@@ -9,6 +9,7 @@ import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
 import { LOG_OPTIONS } from '../log.ts'
 import { waitingRoom } from '../machine/waiting.ts'
+import type { ObjectStore } from '../object-store.ts'
 import { handoverApp, type App } from './app.ts'
 import type { SendCode } from './credential-api.ts'
 
@@ -46,6 +47,13 @@ const unreachable = {
   },
 }
 
+/** No route under test reads a face, so the store answers as an empty bucket would. */
+const noBucket: ObjectStore = {
+  find: async () => undefined,
+  put: async () => undefined,
+  close: () => undefined,
+}
+
 const deps = {
   db,
   secret: env.AUTH_SECRET,
@@ -57,6 +65,7 @@ const deps = {
   live: { say: async () => undefined, watch: () => () => undefined },
   webRoot: undefined,
   waiting: waitingRoom(0),
+  objects: noBucket,
   lettersPerCallerPerHour: 500,
   trustedProxyHops: 0,
 }
@@ -183,6 +192,7 @@ function serving(webRoot: string | undefined) {
     trustedProxyHops: 0,
     webRoot,
     waiting: waitingRoom(0),
+    objects: noBucket,
   }
 
   return handoverApp(deps)

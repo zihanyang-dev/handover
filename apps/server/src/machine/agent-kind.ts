@@ -68,6 +68,7 @@ export type FoundAgent = {
  */
 export type Installed = {
   readonly kind: AgentKind
+  readonly name: string | null
   readonly version: string
   readonly models: unknown
 }

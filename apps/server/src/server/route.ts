@@ -128,8 +128,15 @@ export function refusal(description: string) {
  * under 409 when the failure is a 404 does not compile, and the published contract cannot say a
  * status the handler never answers with. The mark is a type and nothing else — it is not a
  * property, and nothing of it reaches the document.
+ *
+ * Several may share one status, and then all of them are named. Only the status is checked, so
+ * the list is there to be read: one sentence covering three reasons is a sentence somebody has
+ * to work out the reasons behind, and the next person to add a fourth would not know to.
  */
-export function refuses<S extends Status>(failure: Failure<S>, description: string) {
+export function refuses<S extends Status>(
+  failure: Failure<S> | readonly Failure<S>[],
+  description: string,
+) {
   return refusal(description) as Refuses<S>
 }
 
@@ -296,17 +303,26 @@ function doorway<E extends Env>() {
       own: Own,
       always: Always,
     ) =>
-    (db: Database) => {
-      const at = routesBehind<E, Own, Always>(endpointsBehind<E>(shows), gate(db), own, always)
+    (db: Database) =>
+      theFive<E, Own, Always>(endpointsBehind<E>(shows), gate(db), own, always)
+}
 
-      return {
-        get: at('get'),
-        post: at('post'),
-        put: at('put'),
-        patch: at('patch'),
-        delete: at('delete'),
-      }
-    }
+/** The five methods, once the door's gate has been given the database it needed. */
+function theFive<E extends Env, Own extends Decided, Always extends z.ZodRawShape>(
+  published: ReturnType<typeof endpointsBehind<E>>,
+  middleware: readonly MiddlewareHandler[],
+  own: Own,
+  always: Always,
+) {
+  const at = routesBehind<E, Own, Always>(published, middleware, own, always)
+
+  return {
+    get: at('get'),
+    post: at('post'),
+    put: at('put'),
+    patch: at('patch'),
+    delete: at('delete'),
+  }
 }
 
 /**
@@ -377,7 +393,16 @@ const NO_SUCH_SPACE = { 404: refusal('No such Space') }
  * There is still a door — it is just an open one, and naming it says so on purpose rather than by
  * the absence of anything.
  */
-export const anyone = doorway<Env>()(undefined, () => [], {}, {})
+export function anyone() {
+  // Called with nothing, because nothing is what it needs: no gate runs, so there is no database
+  // to hand one. Every other door is `aPerson(db)` because its gate reads a row.
+  return theFive<Env, Record<never, never>, Record<never, never>>(
+    endpointsBehind<Env>(),
+    [],
+    {},
+    {},
+  )
+}
 
 /** Somebody signed in, and that is all this asks. */
 export const aPerson = doorway<{ Variables: Signed }>()(

@@ -7,6 +7,7 @@
  */
 
 import { z } from '@hono/zod-openapi'
+import { avatarPath } from '../avatar.ts'
 import type { Database } from '../db/connection.ts'
 import { ROLE, becomes, membersOf, removes, whatTheyHold } from '../db/membership.ts'
 import { type Failure, refused } from './failure.ts'
@@ -39,6 +40,7 @@ const Role = z.enum([ROLE.owner, ROLE.member]).openapi('Role')
 const Member = named('Member', {
   userId: rowId,
   displayName: z.string(),
+  avatarUrl: z.string(),
   role: Role,
   since: z.iso.datetime(),
   /** Whether this row is the person reading it. A page cannot tell from a name. */
@@ -81,7 +83,13 @@ function whoIsHere({ db }: MemberApi) {
       const here = await membersOf(db, c.get('space').id, c.get('userId'))
 
       return c.json(
-        { members: here.map((one) => ({ ...one, since: one.since.toISOString() })) },
+        {
+          members: here.map((one) => ({
+            ...one,
+            avatarUrl: avatarPath({ kind: 'user', userId: one.userId }),
+            since: one.since.toISOString(),
+          })),
+        },
         200,
       )
     },

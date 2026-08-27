@@ -16,10 +16,12 @@ import {
   askToStop,
   conversationWith,
   conversationsIn,
+  beginConversation,
   machineSays,
   noteAgentSession,
-  openConversation,
+  pinConversation,
   sayTo,
+  unpinConversation,
   type Reading,
   type Standing,
 } from '../db/conversation.ts'
@@ -34,6 +36,27 @@ export type ConversationApi = { readonly db: Database }
 const NO_AGENT: Failure<409> = {
   reason: 'agent-not-on-machine',
   recovery: 'choose-another-agent',
+  status: 409,
+}
+
+/**
+ * Its machine is not here, so the first message was not written.
+ *
+ * Only ever the answer to starting one. A conversation is pinned to its machine for as long as it
+ * exists, so this is the last moment anybody can choose a different one — which is what the
+ * recovery says to do. Saying something into a conversation that already exists is never refused
+ * for this: there is nothing left to choose, and the words wait for the machine it has.
+ */
+const MACHINE_AWAY: Failure<409> = {
+  reason: 'machine-not-here',
+  recovery: 'choose-another-machine',
+  status: 409,
+}
+
+/** A retry key belongs to its first intention; a different one needs a fresh key. */
+const ID_TAKEN: Failure<409> = {
+  reason: 'conversation-id-taken',
+  recovery: 'start-over',
   status: 409,
 }
 
@@ -68,6 +91,8 @@ const Conversation = named('Conversation', {
   opening: z.string().nullable(),
   /** Who asked it. Null before anybody has, and on conversations older than names. */
   startedBy: z.string().nullable(),
+  /** This person's own mark on it. Nobody else's list changes when it is set. */
+  pinned: z.boolean(),
   working: Working,
 })
 
@@ -160,8 +185,17 @@ const StopThis = named('StopThis', CALLED)
 const Conversations = list('conversations', Conversation)
 
 const OpenConversation = named('OpenConversation', {
+  /**
+   * Made by the caller, so a lost answer can be asked for again without opening a second one.
+   *
+   * The id is the key because the intention spans two rows — the conversation and its first
+   * message — and only the caller knows that the request it is making now is the one it already
+   * made and never heard back about.
+   */
+  id: rowId,
   machineId: rowId,
   agentKind: z.enum(AGENT_KIND_NAMES),
+  asked: Asked,
 })
 
 const OpenedConversation = named('OpenedConversation', { id: z.uuid() })
@@ -177,6 +211,8 @@ export function conversationApi(deps: ConversationApi) {
     opening(deps),
     saying(deps),
     stopping(deps),
+    pinning(deps),
+    unpinning(deps),
     reporting(deps),
     naming(deps),
   ]
@@ -191,7 +227,7 @@ function listing({ db }: ConversationApi) {
     },
 
     run: async (c) => {
-      const conversations = await conversationsIn(db, c.get('space').id)
+      const conversations = await conversationsIn(db, c.get('space').id, c.get('userId'))
 
       return c.json({ conversations: conversations.map(asStanding) }, 200)
     },
@@ -229,29 +265,90 @@ function reading({ db }: ConversationApi) {
   })
 }
 
-/** Starting one, which pins it to an agent on a machine for as long as it exists. */
+/**
+ * Starting one, which is the same action as saying its first thing.
+ *
+ * There is no way to make an empty conversation, because an empty conversation is not something
+ * anybody wants: a person who opens the composer and walks away has left nothing behind, and a
+ * list that showed the attempt would be a list of things nobody said. The machine is checked to
+ * be here for the same reason — this is the last moment a different one can be chosen.
+ */
 function opening({ db }: ConversationApi) {
   return aMember(db).post('/spaces/{slug}/conversations', {
-    summary: 'Start a conversation with one agent on one machine',
+    summary: 'Start a conversation by saying its first message',
     body: OpenConversation,
     answers: {
-      201: sends(OpenedConversation, 'Open, and pinned to that agent'),
+      201: sends(OpenedConversation, 'Open, pinned to that agent, with the first message in it'),
       404: refuses(UNAVAILABLE, 'No such Space, or no such machine in it'),
-      409: refuses(NO_AGENT, 'That machine does not have that agent'),
+      409: refuses(
+        [NO_AGENT, MACHINE_AWAY, ID_TAKEN],
+        'That machine or agent cannot take this first message',
+      ),
     },
 
     run: async (c) => {
       const asked = c.req.valid('json')
-      const opened = await openConversation(db, {
+      const opened = await beginConversation(db, {
+        conversationId: asked.id,
         spaceId: c.get('space').id,
         machineId: asked.machineId,
         agentKind: asked.agentKind,
+        asked: asked.asked,
+        // From the session, never from the body, for the reason `saying` says.
+        saidBy: c.get('userId'),
       })
 
       if (opened.kind === 'no-machine') return refused(c, UNAVAILABLE)
       if (opened.kind === 'no-agent') return refused(c, NO_AGENT)
+      if (opened.kind === 'machine-away') return refused(c, MACHINE_AWAY)
+      if (opened.kind === 'id-taken') return refused(c, ID_TAKEN)
 
       return c.json({ id: opened.conversationId }, 201)
+    },
+  })
+}
+
+/**
+ * Keeping one near the top, for the person who asked and nobody else.
+ *
+ * PUT and DELETE rather than a toggle, so the request says the end state it wants: a retry after
+ * an answer nobody saw is the same pin, not a second one and not an unpin. The Space is part of
+ * the write — being a member of this one does not make an id in the path belong to it.
+ */
+function pinning({ db }: ConversationApi) {
+  return aMember(db).put('/spaces/{slug}/conversations/{id}/pin', {
+    summary: 'Pin a conversation for yourself',
+    params: { id: rowId },
+    answers: { 204: 'Pinned, or pinned already', 404: NOT_THERE },
+
+    run: async (c) => {
+      const pinned = await pinConversation(db, {
+        spaceId: c.get('space').id,
+        conversationId: c.req.valid('param').id,
+        userId: c.get('userId'),
+      })
+
+      return pinned ? nothing(c, 204) : refused(c, UNAVAILABLE)
+    },
+  })
+}
+
+/** Taking the mark off. Never there is already the end state asked for, including an id from
+ * another Space — which is why this one has nothing to refuse. */
+function unpinning({ db }: ConversationApi) {
+  return aMember(db).delete('/spaces/{slug}/conversations/{id}/pin', {
+    summary: 'Unpin a conversation for yourself',
+    params: { id: rowId },
+    answers: { 204: 'Unpinned, or unpinned already' },
+
+    run: async (c) => {
+      await unpinConversation(db, {
+        spaceId: c.get('space').id,
+        conversationId: c.req.valid('param').id,
+        userId: c.get('userId'),
+      })
+
+      return nothing(c, 204)
     },
   })
 }
@@ -268,7 +365,11 @@ function saying({ db }: ConversationApi) {
     summary: 'Say something to the agent',
     params: { id: rowId },
     body: SayThis,
-    answers: { 204: 'Said, or said already — either way it is in there once', 404: NOT_THERE },
+    answers: {
+      204: 'Said, or said already — either way it is in there once',
+      404: NOT_THERE,
+      409: refuses(NO_AGENT, 'Its agent is not on that machine any more'),
+    },
 
     run: async (c) => {
       const asked = c.req.valid('json')
@@ -286,6 +387,7 @@ function saying({ db }: ConversationApi) {
       )
 
       if (landed.kind === 'no-conversation') return refused(c, UNAVAILABLE)
+      if (landed.kind === 'no-agent') return refused(c, NO_AGENT)
 
       return nothing(c, 204)
     },

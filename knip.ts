@@ -21,7 +21,12 @@ export default {
       project: 'src/**/*.ts',
       ignoreDependencies: ['dbmate', 'kysely-codegen'],
     },
-    'apps/web': { entry: ['routes/**/*.tsx'], project: '**/*.{ts,tsx}' },
+    // `tailwindcss` is imported from style.css; CSS is deliberately outside knip's TS graph.
+    'apps/web': {
+      entry: ['routes/**/*.tsx'],
+      project: '**/*.{ts,tsx}',
+      ignoreDependencies: ['tailwindcss'],
+    },
     // `bun` is the thing that builds the binaries, spawned the same way.
     'apps/cli': { entry: ['scripts/*.ts'], project: 'src/**/*.ts', ignoreDependencies: ['bun'] },
     'packages/universal': {},

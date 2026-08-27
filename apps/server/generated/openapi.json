@@ -190,6 +190,9 @@
           "displayName": {
             "type": "string"
           },
+          "avatarUrl": {
+            "type": "string"
+          },
           "credentials": {
             "type": "array",
             "items": {
@@ -213,6 +216,7 @@
         },
         "required": [
           "displayName",
+          "avatarUrl",
           "credentials",
           "startedWith",
           "spaces"
@@ -283,12 +287,16 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "emoji": {
+            "type": "string"
           }
         },
         "required": [
           "id",
           "slug",
-          "displayName"
+          "displayName",
+          "emoji"
         ]
       },
       "NewDisplayName": {
@@ -348,6 +356,19 @@
         "required": [
           "displayName",
           "requestKey"
+        ]
+      },
+      "NewSpaceEmoji": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "emoji"
         ]
       },
       "Invitation": {
@@ -469,6 +490,9 @@
           "displayName": {
             "type": "string"
           },
+          "avatarUrl": {
+            "type": "string"
+          },
           "role": {
             "$ref": "#/components/schemas/Role"
           },
@@ -483,6 +507,7 @@
         "required": [
           "userId",
           "displayName",
+          "avatarUrl",
           "role",
           "since",
           "you"
@@ -1088,6 +1113,13 @@
               "codex"
             ]
           },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
           "version": {
             "type": "string"
           },
@@ -1101,8 +1133,24 @@
         },
         "required": [
           "kind",
+          "name",
+          "avatarUrl",
           "version",
           "models"
+        ]
+      },
+      "AgentName": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 48
+          }
+        },
+        "required": [
+          "name"
         ]
       },
       "HandMachineTo": {
@@ -1160,6 +1208,9 @@
             "type": "string",
             "nullable": true
           },
+          "pinned": {
+            "type": "boolean"
+          },
           "working": {
             "$ref": "#/components/schemas/Working"
           }
@@ -1172,6 +1223,7 @@
           "startedAt",
           "opening",
           "startedBy",
+          "pinned",
           "working"
         ]
       },
@@ -1588,6 +1640,10 @@
       "OpenConversation": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "machineId": {
             "type": "string",
             "format": "uuid"
@@ -1598,11 +1654,16 @@
               "claude-code",
               "codex"
             ]
+          },
+          "asked": {
+            "$ref": "#/components/schemas/Asked"
           }
         },
         "required": [
+          "id",
           "machineId",
-          "agentKind"
+          "agentKind",
+          "asked"
         ]
       },
       "SayThis": {
@@ -2732,6 +2793,79 @@
             }
           }
         }
+      },
+      "patch": {
+        "summary": "Change the emoji that identifies this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSpaceEmoji"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only an owner can do this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/spaces/{slug}/invitations": {
@@ -3712,6 +3846,84 @@
         }
       }
     },
+    "/me/machines/{id}/agents/{kind}": {
+      "patch": {
+        "summary": "Name an agent installed on one of your machines",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex"
+              ]
+            },
+            "required": true,
+            "name": "kind",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentName"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Named, or put back to what its kind is called"
+          },
+          "400": {
+            "description": "The body was not the shape it claims",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "You have no installed agent with that identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me/machines/{id}": {
       "delete": {
         "summary": "Disconnect one of your machines",
@@ -3894,7 +4106,7 @@
         }
       },
       "post": {
-        "summary": "Start a conversation with one agent on one machine",
+        "summary": "Start a conversation by saying its first message",
         "security": [
           {
             "browserSession": []
@@ -3922,7 +4134,7 @@
         },
         "responses": {
           "201": {
-            "description": "Open, and pinned to that agent",
+            "description": "Open, pinned to that agent, with the first message in it",
             "content": {
               "application/json": {
                 "schema": {
@@ -3962,7 +4174,7 @@
             }
           },
           "409": {
-            "description": "That machine does not have that agent",
+            "description": "That machine or agent cannot take this first message",
             "content": {
               "application/json": {
                 "schema": {
@@ -4115,6 +4327,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Its agent is not on that machine any more",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
           }
         }
       }
@@ -4192,6 +4414,112 @@
           },
           "409": {
             "description": "Nothing is running in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/pin": {
+      "put": {
+        "summary": "Pin a conversation for yourself",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Pinned, or pinned already"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unpin a conversation for yourself",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unpinned, or unpinned already"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
             "content": {
               "application/json": {
                 "schema": {
@@ -4987,6 +5315,80 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/avatars/users/{userId}": {
+      "get": {
+        "summary": "A person’s stored avatar",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The avatar stored under this identity, drawn once and kept",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The browser already has this one, and it can never change"
+          }
+        }
+      }
+    },
+    "/avatars/agents/{machineId}/{agentKind}": {
+      "get": {
+        "summary": "An installed agent’s stored avatar",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "machineId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex"
+              ]
+            },
+            "required": true,
+            "name": "agentKind",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The avatar stored under this identity, drawn once and kept",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The browser already has this one, and it can never change"
           }
         }
       }

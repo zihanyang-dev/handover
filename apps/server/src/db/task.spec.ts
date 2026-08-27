@@ -17,7 +17,13 @@ import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
-import { conversationsIn, handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
+import {
+  conversationsIn,
+  handOffTo,
+  machineSays,
+  beginConversation,
+  sayTo,
+} from './conversation.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
 import { checkIn, removeMachine } from './machine.ts'
 import { handWorkTo, joins, removes } from './membership.ts'
@@ -126,13 +132,18 @@ async function heard(conversationId: string): Promise<string> {
   return JSON.stringify(said)
 }
 
-async function opened(machineId = MACHINE): Promise<string> {
-  const conversation = await openConversation(db, {
+/** A conversation is somebody's first question, so the fixture asks one. */
+async function opened(text = 'the first thing anybody said', machineId = MACHINE): Promise<string> {
+  const conversation = await beginConversation(db, {
+    conversationId: randomUUID(),
     spaceId: SPACE,
     machineId,
     agentKind: 'claude-code',
+    saidBy: PERSON,
+    asked: { text },
   })
-  if (conversation.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+  if (conversation.kind !== 'begun')
+    throw new Error(`the fixture could not open one: ${conversation.kind}`)
   return conversation.conversationId
 }
 
@@ -155,24 +166,16 @@ async function inAnotherSpace(): Promise<string> {
 
   // Their machine is reachable from there without being connected again — which is the whole
   // reason a person can have work waiting in two Spaces at once.
-  const opened = await openConversation(db, {
+  const opened = await beginConversation(db, {
+    conversationId: randomUUID(),
     spaceId: made.space.id,
     machineId: MACHINE,
     agentKind: 'claude-code',
+    saidBy: PERSON,
+    asked: { text: 'take it from here' },
   })
-  if (opened.kind !== 'opened') throw new Error('the fixture could not open a conversation there')
-
-  const said = await sayTo(
-    db,
-    {
-      conversationId: opened.conversationId,
-      spaceId: made.space.id,
-      key: `beta-ask-${RUN}`,
-      saidBy: PERSON,
-    },
-    { text: 'take it from here' },
-  )
-  if (said.kind !== 'said') throw new Error('the fixture could not ask there')
+  if (opened.kind !== 'begun')
+    throw new Error(`the fixture could not open one there: ${opened.kind}`)
 
   const over = await handOver(db, {
     conversationId: opened.conversationId,
@@ -888,7 +891,7 @@ describe('what the second person in a Space can see', () => {
     const conversation = await handedOver('make the timeout configurable')
 
     const theirs = await underwayIn(db, conversation)
-    const seen = await conversationsIn(db, SPACE)
+    const seen = await conversationsIn(db, SPACE, PERSON)
 
     expect(theirs?.task.goal).toBe('make the timeout configurable')
     expect(seen.map((one) => one.id)).toContain(conversation)
@@ -902,8 +905,7 @@ describe('two people saying something before either is answered', () => {
     // Measured before this existed: only the second line was ever sent, and the first sat in the
     // transcript looking queued for ever. `prd.md` 06 「为什么是现在」.
     const rui = await alsoHere()
-    const conversation = await opened()
-    await asks(conversation, 'k-1', 'where does the timeout live?')
+    const conversation = await opened('where does the timeout live?')
     await sayTo(
       db,
       { conversationId: conversation, spaceId: SPACE, key: 'm-1', saidBy: rui },
@@ -922,8 +924,7 @@ describe('two people saying something before either is answered', () => {
   it('does not carry back a question the turn before it already answered', async () => {
     // The bound is what taking one line used to do. Interrupting writes the new question while
     // the turn it interrupted is still ending, and that turn sits between the two.
-    const conversation = await opened()
-    await asks(conversation, 'k-1', 'where does the timeout live?')
+    const conversation = await opened('where does the timeout live?')
     const first = await takeOne(db, MACHINE)
     await ends(conversation, '1/end')
     await asks(conversation, 'k-2', 'and the retries?')

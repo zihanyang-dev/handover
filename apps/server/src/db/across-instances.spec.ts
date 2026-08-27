@@ -15,7 +15,7 @@ import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
-import { openConversation, sayTo } from './conversation.ts'
+import { beginConversation, sayTo } from './conversation.ts'
 import { connectProvider } from './credential.ts'
 import { issueCode } from './email-code.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
@@ -269,24 +269,17 @@ async function aQuestion(): Promise<{
     found: [{ kind: 'claude-code', version: '2.1.231' }],
   })
 
-  const conversation = await openConversation(one, {
+  const conversation = await beginConversation(one, {
+    conversationId: randomUUID(),
     spaceId: made.space.id,
     machineId: collected.machineId,
     agentKind: 'claude-code',
+    saidBy: userId,
+    asked: { text: 'take your time' },
   })
-  if (conversation.kind !== 'opened') throw new Error('the fixture could not open a conversation')
-
-  const said = await sayTo(
-    one,
-    {
-      conversationId: conversation.conversationId,
-      spaceId: made.space.id,
-      key: `${RUN}-turn`,
-      saidBy: userId,
-    },
-    { text: 'take your time' },
-  )
-  if (said.kind !== 'said') throw new Error('the fixture could not ask')
+  if (conversation.kind !== 'begun') {
+    throw new Error(`the fixture could not open a conversation: ${conversation.kind}`)
+  }
 
   return {
     machineId: collected.machineId,
@@ -302,15 +295,16 @@ async function aSecondQuestion(
   spaceId: string,
   saidBy: string,
 ): Promise<string> {
-  const opened = await openConversation(one, { spaceId, machineId, agentKind: 'claude-code' })
-  if (opened.kind !== 'opened') throw new Error('the fixture could not open a second conversation')
-
-  const said = await sayTo(
-    one,
-    { conversationId: opened.conversationId, spaceId, key: `${RUN}-turn-2`, saidBy },
-    { text: 'and this one too' },
-  )
-  if (said.kind !== 'said') throw new Error('the fixture could not ask a second time')
+  const opened = await beginConversation(one, {
+    conversationId: randomUUID(),
+    spaceId,
+    machineId,
+    agentKind: 'claude-code',
+    saidBy,
+    asked: { text: 'and this one too' },
+  })
+  if (opened.kind !== 'begun')
+    throw new Error(`the fixture could not open a second one: ${opened.kind}`)
 
   return opened.conversationId
 }

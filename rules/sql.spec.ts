@@ -68,6 +68,7 @@ describe('where SQL may be written by hand', () => {
     //
     // Adding a line here is easy and that is the point: it cannot happen by accident.
     expect(everyStatement()).toEqual([
+      'db/conversation.ts  select pg_advisory_xact_lock(hashtextextended(${beginning.conversationId}, 0))',
       'db/credential.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/email-code.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/membership.ts  select pg_advisory_xact_lock(hashtext(${',

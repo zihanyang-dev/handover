@@ -9,9 +9,10 @@
 import { normalizeSlug } from '@handover/universal'
 import { z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { createSpace } from '../db/space.ts'
+import { changeSpaceEmoji, createSpace } from '../db/space.ts'
 import { type Failure, refused } from './failure.ts'
-import { aMember, aPerson, named, refuses, sends } from './route.ts'
+import { NOT_YOURS } from './middleware.ts'
+import { aMember, aPerson, anOwner, named, nothing, refuses, sends } from './route.ts'
 
 export type SpaceApi = { readonly db: Database }
 
@@ -23,7 +24,33 @@ const UNUSABLE_NAME: Failure<400> = {
 }
 
 /** A Space as anything that shows one says it. Said here, and read by `me-api.ts` too. */
-export const Space = named('Space', { id: z.uuid(), slug: z.string(), displayName: z.string() })
+export const Space = named('Space', {
+  id: z.uuid(),
+  slug: z.string(),
+  displayName: z.string(),
+  emoji: z.string(),
+})
+
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' })
+
+const PICTURE = /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u
+
+/**
+ * One visible mark, rather than a string that happens to begin with one.
+ *
+ * A flag is two code points and a family with skin tones is well over ten, so what is counted is
+ * graphemes and not length. The 32 is only there so nothing unbounded reaches the segmenter.
+ */
+const NewEmoji = named('NewSpaceEmoji', {
+  emoji: z
+    .string()
+    .min(1)
+    .max(32)
+    .refine(
+      (value) => [...GRAPHEMES.segment(value)].length === 1 && PICTURE.test(value),
+      'Choose one emoji',
+    ),
+})
 
 const NewSpace = named('NewSpace', {
   displayName: z.string().min(1).max(200).openapi({ example: '徐悦泰 Studio' }),
@@ -37,7 +64,7 @@ const SlugTaken = named('SlugTaken', {
 })
 
 export function spaceApi(deps: SpaceApi) {
-  return [making(deps), entering(deps)]
+  return [making(deps), entering(deps), changingEmoji(deps)]
 }
 
 /** Making one, with whoever asked as its first member. */
@@ -70,6 +97,31 @@ function making({ db }: SpaceApi) {
       }
 
       return c.json(made.space, made.kind === 'created' ? 201 : 200)
+    },
+  })
+}
+
+/**
+ * Changing the mark people recognise this Space by.
+ *
+ * An owner's job, for the same reason the name is: it appears to everybody, and it is the
+ * identity under which invitations and conversations are read. The door has already said so; the
+ * write says it again because the door's answer can go stale while the transaction waits.
+ */
+function changingEmoji({ db }: SpaceApi) {
+  return anOwner(db).patch('/spaces/{slug}', {
+    summary: 'Change the emoji that identifies this Space',
+    body: NewEmoji,
+    answers: { 204: 'Changed' },
+
+    run: async (c) => {
+      const changed = await changeSpaceEmoji(db, {
+        spaceId: c.get('space').id,
+        userId: c.get('userId'),
+        emoji: c.req.valid('json').emoji,
+      })
+
+      return changed ? nothing(c, 204) : refused(c, NOT_YOURS)
     },
   })
 }

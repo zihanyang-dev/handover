@@ -42,8 +42,18 @@ const NO_SESSION: Failure<401> = { reason: 'no-session', recovery: 'sign-in', st
  */
 const NOT_A_MACHINE: Failure<401> = { reason: 'no-machine', recovery: 'start-over', status: 401 }
 
-/** Standing in the room, but this one is not theirs to do. */
-const NOT_YOURS: Failure<403> = { reason: 'not-an-owner', recovery: 'ask-an-owner', status: 403 }
+/**
+ * Standing in the room, but this one is not theirs to do.
+ *
+ * Exported because a gate is not the only place this can be found out. A route whose write checks
+ * the role again — because the answer can go stale between the gate and the transaction — has to
+ * refuse in the same words, and two constants saying "not an owner" would eventually disagree.
+ */
+export const NOT_YOURS: Failure<403> = {
+  reason: 'not-an-owner',
+  recovery: 'ask-an-owner',
+  status: 403,
+}
 
 /** Refuses everything that is not a live session. */
 export function requireSession(db: Database) {

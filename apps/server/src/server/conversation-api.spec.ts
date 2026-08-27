@@ -58,10 +58,17 @@ beforeEach(async () => {
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
 
   MACHINE = await attached()
-  await asMachine('/machines/current/poll', 'POST', {
-    found: [{ command: 'claude', version: '2.1.231' }],
-  })
+  await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
 })
+
+/**
+ * What the machine keeps saying it has.
+ *
+ * Reported on every poll, because a poll is how a machine says what is installed as well as how
+ * it takes its turn: one that reported nothing would be uninstalling its agent, and every
+ * conversation on it would stop being answerable in the middle of a test about something else.
+ */
+const INSTALLED = [{ command: 'claude', version: '2.1.231' }]
 
 async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: string }> {
   // Minted here because a machine mints its own: the server only ever sees the hash.
@@ -121,34 +128,141 @@ function exceptTheClock(reading: unknown) {
   return { ...(reading as Record<string, unknown>), asOf: 'when it was read' }
 }
 
-async function opened(): Promise<string> {
+/**
+ * A conversation with its first thing already said, because that is the only kind there is.
+ *
+ * Every count below is one higher than the thing under test says, and that is the fixture's
+ * doing rather than an accident: there is no way through this API to reach a conversation with
+ * nothing in it.
+ */
+const FIRST = 'read notes.txt'
+
+async function opened(text = FIRST): Promise<string> {
   const response = await asPerson(`/spaces/${SLUG}/conversations`, 'POST', {
+    id: randomUUID(),
     machineId: MACHINE.id,
     agentKind: 'claude-code',
+    asked: { text },
   })
   const { id } = (await response.json()) as { id: string }
   return id
 }
 
 describe('opening a conversation', () => {
-  it('opens one on a machine that has that agent', async () => {
-    const response = await asPerson(`/spaces/${SLUG}/conversations`, 'POST', {
+  it('opens it with the first message, in one intention that is safe to retry', async () => {
+    const id = randomUUID()
+    const request = {
+      id,
       machineId: MACHINE.id,
       agentKind: 'claude-code',
-    })
+      asked: { text: FIRST },
+    }
+    const path = `/spaces/${SLUG}/conversations`
 
-    expect(response.status).toBe(201)
+    const [first, retried] = await Promise.all([
+      asPerson(path, 'POST', request),
+      asPerson(path, 'POST', request),
+    ])
+    const read = (await (await asPerson(`${path}/${id}`)).json()) as {
+      messages: readonly { role: string; content: { text: string } }[]
+    }
+
+    expect(first.status).toBe(201)
+    expect(await first.json()).toEqual({ id })
+    expect(retried.status).toBe(201)
+    expect(await retried.json()).toEqual({ id })
+    expect(read.messages).toEqual([
+      expect.objectContaining({ role: 'user', content: { text: FIRST } }),
+    ])
+  })
+
+  it('does not let a retry id change what its first message meant', async () => {
+    const id = randomUUID()
+    const path = `/spaces/${SLUG}/conversations`
+    const opening = {
+      id,
+      machineId: MACHINE.id,
+      agentKind: 'claude-code',
+      asked: { text: FIRST },
+    }
+    expect((await asPerson(path, 'POST', opening)).status).toBe(201)
+
+    const changed = await asPerson(path, 'POST', {
+      ...opening,
+      asked: { text: 'delete notes.txt' },
+    })
+    const read = (await (await asPerson(`${path}/${id}`)).json()) as {
+      messages: readonly { content: { text: string } }[]
+    }
+
+    expect(changed.status).toBe(409)
+    expect(await changed.json()).toMatchObject({ reason: 'conversation-id-taken' })
+    expect(read.messages.map((message) => message.content.text)).toEqual([FIRST])
   })
 
   it('says which of the two went wrong when the agent is not on that machine', async () => {
     // "No such machine" and "that machine has no Codex" send a person to different places.
     const response = await asPerson(`/spaces/${SLUG}/conversations`, 'POST', {
+      id: randomUUID(),
       machineId: MACHINE.id,
       agentKind: 'codex',
+      asked: { text: FIRST },
     })
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ recovery: 'choose-another-agent' })
+  })
+
+  it('leaves no conversation behind when its machine cannot take the first message', async () => {
+    const id = randomUUID()
+    await asMachine('/machines/current/session', 'DELETE')
+
+    const response = await asPerson(`/spaces/${SLUG}/conversations`, 'POST', {
+      id,
+      machineId: MACHINE.id,
+      agentKind: 'claude-code',
+      asked: { text: FIRST },
+    })
+    const listed = (await (await asPerson(`/spaces/${SLUG}/conversations`)).json()) as {
+      conversations: readonly { id: string }[]
+    }
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ reason: 'machine-not-here' })
+    expect(listed.conversations).not.toContainEqual(expect.objectContaining({ id }))
+  })
+})
+
+describe('pinning a conversation', () => {
+  it('marks it once, and either end state may be asked for twice', async () => {
+    const conversation = await opened()
+    const path = `/spaces/${SLUG}/conversations/${conversation}/pin`
+
+    expect((await asPerson(path, 'PUT')).status).toBe(204)
+    expect((await asPerson(path, 'PUT')).status).toBe(204)
+
+    const pinned = (await (await asPerson(`/spaces/${SLUG}/conversations`)).json()) as {
+      conversations: readonly { id: string; pinned: boolean }[]
+    }
+    expect(pinned.conversations).toContainEqual(
+      expect.objectContaining({ id: conversation, pinned: true }),
+    )
+
+    expect((await asPerson(path, 'DELETE')).status).toBe(204)
+    expect((await asPerson(path, 'DELETE')).status).toBe(204)
+
+    const unpinned = (await (await asPerson(`/spaces/${SLUG}/conversations`)).json()) as {
+      conversations: readonly { id: string; pinned: boolean }[]
+    }
+    expect(unpinned.conversations).toContainEqual(
+      expect.objectContaining({ id: conversation, pinned: false }),
+    )
+  })
+
+  it('does not accept an id that is not a conversation in this Space', async () => {
+    const response = await asPerson(`/spaces/${SLUG}/conversations/${randomUUID()}/pin`, 'PUT')
+
+    expect(response.status).toBe(404)
   })
 })
 
@@ -164,9 +278,11 @@ describe('saying something', () => {
     const read = (await (
       await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
     ).json()) as {
-      messages: readonly unknown[]
+      messages: readonly { role: string }[]
     }
-    expect(read.messages).toHaveLength(1)
+    // Two people-said lines: the one that opened it, and this one — sent twice, written once.
+    // The third line between them is the stop that interrupting an unanswered question writes.
+    expect(read.messages.filter((one) => one.role === 'user')).toHaveLength(2)
   })
 
   it('interrupts what it is doing, rather than being told to wait its turn', async () => {
@@ -175,13 +291,13 @@ describe('saying something', () => {
     const conversation = await opened()
     const path = `/spaces/${SLUG}/conversations/${conversation}/messages`
     await asPerson(path, 'POST', { key: 'turn-1', asked: { text: 'first' } })
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
 
     const response = await asPerson(path, 'POST', { key: 'turn-2', asked: { text: 'second' } })
 
     expect(response.status).toBe(204)
     // And the machine is told to stop, on the very next thing it asks.
-    const told = await asMachine('/machines/current/poll', 'POST', { found: [] })
+    const told = await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     expect(await told.json()).toMatchObject({
       stopping: { conversationId: conversation },
     })
@@ -194,11 +310,7 @@ describe('reading it again while it works', () => {
     // are missing. Asked for whole every second — which is how often a page watching an agent
     // asks — an hour of somebody's own work is downloaded back to them thousands of times.
     const conversation = await opened()
-    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
-      key: 'turn-1',
-      asked: { text: 'read notes.txt' },
-    })
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
       key: 'turn-1/1',
       message: { role: 'assistant', content: { text: 'it says hello' } },
@@ -239,11 +351,7 @@ describe('a line this build cannot read', () => {
     // could not be read. What it is stored as does not matter here — a row written by a build
     // that had a different idea of what a tool call holds looks exactly like this.
     const conversation = await opened()
-    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
-      key: 'turn-1',
-      asked: { text: 'read notes.txt' },
-    })
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     await db
       .insertInto('messages')
       .values({
@@ -277,7 +385,7 @@ describe('whose words are whose', () => {
       key: 'turn-1',
       asked: { text: 'read notes.txt' },
     })
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
       key: 'turn-1/1',
       message: { role: 'assistant', content: { text: 'it says hello' } },
@@ -316,7 +424,7 @@ describe('coming back to it', () => {
       key: 'turn-1',
       asked: { text: 'read notes.txt' },
     })
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
       key: 'turn-1/1',
       message: { role: 'assistant', content: { text: 'it says hello' } },
@@ -343,12 +451,8 @@ describe('coming back to it', () => {
 describe('handing the question to the machine', () => {
   it('arrives in the answer to the check-in it was already making', async () => {
     const conversation = await opened()
-    await asPerson(`/spaces/${SLUG}/conversations/${conversation}/messages`, 'POST', {
-      key: 'turn-1',
-      asked: { text: 'read notes.txt' },
-    })
 
-    const checkedIn = await asMachine('/machines/current/poll', 'POST', { found: [] })
+    const checkedIn = await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
 
     expect(await checkedIn.json()).toMatchObject({
       asking: {
@@ -360,7 +464,7 @@ describe('handing the question to the machine', () => {
   })
 
   it('carries nothing when there is nothing to answer', async () => {
-    const checkedIn = await asMachine('/machines/current/poll', 'POST', { found: [] })
+    const checkedIn = await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
 
     expect(await checkedIn.json()).not.toHaveProperty('asking')
   })
@@ -377,13 +481,13 @@ describe('a machine that has just started', () => {
     })
     // The machine takes it the way it really does — by reporting — and then says one thing before
     // whatever was driving it went away.
-    await asMachine('/machines/current/poll', 'POST', { found: [] })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     await machineWrites(`/machines/current/conversations/${conversation}/messages`, {
       key: 'turn-1/1',
       message: { role: 'assistant', content: { text: 'on it' } },
     })
 
-    await asMachine('/machines/current/poll', 'POST', { found: [], restarted: true })
+    await asMachine('/machines/current/poll', 'POST', { found: INSTALLED, restarted: true })
 
     const read = (await (
       await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
@@ -400,7 +504,7 @@ describe('a machine that has just started', () => {
     })
 
     const checkedIn = await asMachine('/machines/current/poll', 'POST', {
-      found: [],
+      found: INSTALLED,
       restarted: true,
     })
 

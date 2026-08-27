@@ -7,9 +7,10 @@
  */
 
 import { z } from '@hono/zod-openapi'
+import { avatarPath } from '../avatar.ts'
 import { Models } from '../conversation/offers.ts'
 import type { Database } from '../db/connection.ts'
-import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
+import { checkIn, machinesIn, removeMachine, sayGoodbye, setAgentName } from '../db/machine.ts'
 import { handMachineTo } from '../db/membership.ts'
 import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import {
@@ -184,6 +185,9 @@ const CheckedIn = named('CheckedIn', {
 
 const Agent = named('MachineAgent', {
   kind: z.enum(AGENT_KIND_NAMES),
+  /** What its owner calls it. Null means nobody has, and its kind's own name is what shows. */
+  name: z.string().nullable(),
+  avatarUrl: z.string(),
   version: z.string(),
   /** Empty when this agent does not let you choose, and when nobody has asked it yet. */
   models: Models,
@@ -217,8 +221,20 @@ const Machines = list('machines', Machine)
 /** Who a machine is being handed to. */
 const HandMachineTo = named('HandMachineTo', { ownerUserId: rowId })
 
+const AgentName = named('AgentName', {
+  /** Null puts it back to what its kind is called, which is the only way to take a name off. */
+  name: z.string().trim().min(1).max(48).nullable(),
+})
+
 export function machineApi(deps: MachineApi) {
-  return [polling(deps), leaving(deps), listing(deps), detaching(deps), handingOver(deps)]
+  return [
+    polling(deps),
+    leaving(deps),
+    listing(deps),
+    namingAgent(deps),
+    detaching(deps),
+    handingOver(deps),
+  ]
 }
 
 /**
@@ -372,10 +388,41 @@ function listing({ db }: MachineApi) {
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
-        agents: machine.agents.map(asOffered),
+        agents: machine.agents.map((agent) => asOffered(machine.id, agent)),
       }))
 
       return c.json({ machines }, 200)
+    },
+  })
+}
+
+/**
+ * Naming one agent on one of your machines.
+ *
+ * The name follows the owner, not a Space: the same laptop appears in every Space its owner is in,
+ * and an agent called something different in each would be a different agent to each room. Under
+ * `/me` for that reason — it is not a Space's to change, and no Space is named in the path.
+ */
+function namingAgent({ db }: MachineApi) {
+  return aPerson(db).patch('/me/machines/{id}/agents/{kind}', {
+    summary: 'Name an agent installed on one of your machines',
+    params: { id: rowId, kind: z.enum(AGENT_KIND_NAMES) },
+    body: AgentName,
+    answers: {
+      204: 'Named, or put back to what its kind is called',
+      404: refuses(UNAVAILABLE, 'You have no installed agent with that identity'),
+    },
+
+    run: async (c) => {
+      const { id, kind } = c.req.valid('param')
+      const done = await setAgentName(db, {
+        machine: id,
+        owner: c.get('userId'),
+        kind,
+        name: c.req.valid('json').name,
+      })
+
+      return done ? nothing(c, 204) : refused(c, UNAVAILABLE)
     },
   })
 }
@@ -419,11 +466,15 @@ function detaching({ db }: MachineApi) {
  * comes back as no models at all — a page with no control is a page somebody can still use, and a
  * Space screen that will not load because of a model list would not be.
  */
-function asOffered(agent: Installed): z.infer<typeof Agent> {
+function asOffered(machineId: string, agent: Installed): z.infer<typeof Agent> {
   const read = Models.safeParse(agent.models)
 
   return {
     kind: agent.kind,
+    name: agent.name,
+    // The machine is part of the face: two Codexes in one Space are two agents, and one drawing
+    // shared between them would make the page unable to say which of them said something.
+    avatarUrl: avatarPath({ kind: 'agent', machineId, agentKind: agent.kind }),
     version: agent.version,
     models: read.success ? read.data : [],
   }

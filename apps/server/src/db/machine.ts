@@ -254,20 +254,10 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
 
   if (rows.length === 0) return { asOf, machines: [] }
 
-  const found = await tx
-    .selectFrom('agents')
-    .select(['machine_id as machineId', 'kind', 'version', 'models'])
-    // `agents_kind_is_one_we_know` is the list this type is made of, and there is a test that says
-    // the two are the same list. Stated here rather than cast below, like every other invariant
-    // in this file that the schema already guarantees.
-    .$narrowType<{ kind: AgentKind }>()
-    .where(
-      'machine_id',
-      'in',
-      rows.map((row) => row.id),
-    )
-    .orderBy('kind')
-    .execute()
+  const found = await installedOn(
+    tx,
+    rows.map((row) => row.id),
+  )
 
   return {
     asOf,
@@ -280,9 +270,104 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: found
         .filter((agent) => agent.machineId === row.id)
-        .map((agent) => ({ kind: agent.kind, version: agent.version, models: agent.models })),
+        .map((agent) => ({
+          kind: agent.kind,
+          name: agent.name,
+          version: agent.version,
+          models: agent.models,
+        })),
     })),
   }
+}
+
+type NamedInstallation = Installed & { readonly machineId: string }
+
+async function installedOn(
+  tx: Tx,
+  machineIds: readonly string[],
+): Promise<readonly NamedInstallation[]> {
+  return (
+    tx
+      .selectFrom('agents')
+      .leftJoin('agent_names', (join) =>
+        join
+          .onRef('agent_names.machine_id', '=', 'agents.machine_id')
+          .onRef('agent_names.kind', '=', 'agents.kind'),
+      )
+      .select([
+        'agents.machine_id as machineId',
+        'agents.kind',
+        'agent_names.name',
+        'agents.version',
+        'agents.models',
+      ])
+      // The schema and AgentKind are checked against each other in a database test. Narrowing from
+      // that boundary keeps the query honest without scattering casts through every caller.
+      .$narrowType<{ kind: AgentKind }>()
+      .where('agents.machine_id', 'in', machineIds)
+      .orderBy('agents.kind')
+      .execute()
+  )
+}
+
+/**
+ * Keeps a person's choice outside the machine's complete discovery report. An absent report can
+ * remove the installed row; it must not be able to remove the name that should return with it.
+ */
+export async function setAgentName(
+  db: Database,
+  naming: {
+    readonly machine: string
+    readonly owner: string
+    readonly kind: AgentKind
+    readonly name: string | null
+  },
+): Promise<boolean> {
+  return db.transaction().execute(async (tx) => {
+    const machine = await tx
+      .selectFrom('machines')
+      .select('id')
+      .where('id', '=', naming.machine)
+      .where('owner_user_id', '=', naming.owner)
+      .where('removed_at', 'is', null)
+      .forUpdate()
+      .executeTakeFirst()
+
+    if (machine === undefined) return false
+
+    const installed = await tx
+      .selectFrom('agents')
+      .select('kind')
+      .where('machine_id', '=', machine.id)
+      .where('kind', '=', naming.kind)
+      .forUpdate()
+      .executeTakeFirst()
+
+    if (installed === undefined) return false
+
+    const name = naming.name
+    if (name === null) {
+      await tx
+        .deleteFrom('agent_names')
+        .where('machine_id', '=', naming.machine)
+        .where('kind', '=', naming.kind)
+        .execute()
+      return true
+    }
+
+    await tx
+      .insertInto('agent_names')
+      .values({ machine_id: naming.machine, kind: naming.kind, name })
+      .onConflict((clash) =>
+        clash.columns(['machine_id', 'kind']).doUpdateSet({
+          name,
+          named_at: sql<Date>`clock_timestamp()`,
+        }),
+      )
+      .execute()
+
+    return true
+  })
 }
 
 /**

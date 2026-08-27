@@ -29,6 +29,11 @@ export function writeContract(env: Env): void {
     // A contract is read off the routes, and pages are not routes.
     webRoot: undefined,
     waiting: waitingRoom(0),
+    objects: {
+      find: async () => undefined,
+      put: async () => undefined,
+      close: () => undefined,
+    },
     lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
   })

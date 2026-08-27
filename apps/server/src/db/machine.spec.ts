@@ -241,7 +241,9 @@ describe('what a machine reports', () => {
     })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
-    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.1.4', models: null }])
+    expect(machine?.agents).toEqual([
+      { kind: 'claude-code', name: null, version: '2.1.4', models: null },
+    ])
   })
 
   it('records which build of the CLI is on that machine', async () => {
@@ -279,7 +281,9 @@ describe('what a machine reports', () => {
     })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
-    expect(machine?.agents).toEqual([{ kind: 'claude-code', version: '2.2.0', models: null }])
+    expect(machine?.agents).toEqual([
+      { kind: 'claude-code', name: null, version: '2.2.0', models: null },
+    ])
   })
 
   it('keeps what an agent said it offers', async () => {

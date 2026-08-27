@@ -25,6 +25,11 @@ const CONTRACT = 'apps/server/generated/openapi.json'
 const WALKED_INTO = new Set([
   // The browser is sent here by the provider, and arrives with a query string.
   '/auth/{provider}/callback',
+  // A face is fetched by the browser's own `<img>`, from a URL the server put in a response. No
+  // generated client will ever name it, and a page that fetched it through one would be throwing
+  // away the image cache that makes it worth serving this way.
+  '/avatars/users/{userId}',
+  '/avatars/agents/{machineId}/{agentKind}',
 ])
 
 /**

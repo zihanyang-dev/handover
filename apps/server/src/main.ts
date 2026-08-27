@@ -21,6 +21,7 @@ import { createLog } from './log.ts'
 import { POLL_SECONDS } from './machine/presence.ts'
 import { waitingRoom } from './machine/waiting.ts'
 import { resend, type Mailer } from './mail.ts'
+import { s3Objects } from './object-store.ts'
 import { handoverApp } from './server/app.ts'
 import type { SendCode } from './server/credential-api.ts'
 import { keepWaking } from './waker.ts'
@@ -84,6 +85,7 @@ for (const provider of PROVIDERS) {
 log.info({ providers: Object.keys(clients) }, 'sign-in providers')
 
 const db = connect(env)
+const objects = s3Objects(env)
 
 /**
  * Everyone watching a turn on this instance, and the connection that hears about turns running on
@@ -133,6 +135,7 @@ const app = handoverApp({
   clients,
   live: liveThrough(db, watching),
   waiting,
+  objects,
   webRoot: env.WEB_ROOT,
   lettersPerCallerPerHour: env.LETTERS_PER_CALLER_PER_HOUR,
   trustedProxyHops: env.TRUSTED_PROXY_HOPS,
@@ -167,6 +170,7 @@ async function stop(signal: string): Promise<void> {
   // Their own connections, so they are their own to close.
   await listening.stop()
   await waking.stop()
+  objects.close()
 
   // Last, and only once nothing is still using it: closing the pool under a live request would
   // fail it after its transaction had already committed.

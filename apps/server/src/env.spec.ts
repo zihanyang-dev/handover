@@ -5,7 +5,13 @@ const SECRET = 's'.repeat(32)
 const URL = 'postgres://handover:handover@localhost:5443/handover_test?sslmode=disable'
 
 /** Everything a process must be told before it may start. */
-const ENOUGH = { DATABASE_URL: URL, AUTH_SECRET: SECRET, NODE_ENV: 'development' }
+const ENOUGH = {
+  DATABASE_URL: URL,
+  AUTH_SECRET: SECRET,
+  NODE_ENV: 'development',
+  OBJECT_STORE_BUCKET: 'handover-test',
+  OBJECT_STORE_REGION: 'us-east-1',
+}
 
 describe('parseEnv', () => {
   it('returns the parsed environment', () => {
@@ -31,15 +37,13 @@ describe('parseEnv', () => {
 
   it('rejects a URL whose scheme is not postgres', () => {
     const thrown = (): unknown =>
-      parseEnv({ DATABASE_URL: 'http://localhost:5432/handover', AUTH_SECRET: SECRET })
+      parseEnv({ ...ENOUGH, DATABASE_URL: 'http://localhost:5432/handover' })
     expect(thrown).toThrow('DATABASE_URL:')
     expect(thrown).not.toThrow('is not set')
   })
 
   it('rejects a value that is not a URL at all', () => {
-    expect(() => parseEnv({ DATABASE_URL: 'localhost:5432', AUTH_SECRET: SECRET })).toThrow(
-      'DATABASE_URL:',
-    )
+    expect(() => parseEnv({ ...ENOUGH, DATABASE_URL: 'localhost:5432' })).toThrow('DATABASE_URL:')
   })
 
   it('falls back to the default when a number is set to nothing at all', () => {
@@ -73,6 +77,23 @@ describe('parseEnv', () => {
 
     expect(complaint).toContain('DATABASE_URL is not set')
     expect(complaint).toContain('AUTH_SECRET')
+  })
+})
+
+describe('an object store set up halfway', () => {
+  it('refuses an access key without its secret', () => {
+    const half = { ...ENOUGH, OBJECT_STORE_ACCESS_KEY: 'an-id' }
+
+    expect(() => parseEnv(half)).toThrow(
+      'OBJECT_STORE_ACCESS_KEY and OBJECT_STORE_SECRET_KEY go together',
+    )
+  })
+
+  it('keeps credentials absent for a deployment that uses a workload role', () => {
+    const parsed = parseEnv(ENOUGH)
+
+    expect(parsed.OBJECT_STORE_ACCESS_KEY).toBeUndefined()
+    expect(parsed.OBJECT_STORE_FORCE_PATH_STYLE).toBe(false)
   })
 })
 

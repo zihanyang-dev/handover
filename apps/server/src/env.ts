@@ -59,6 +59,28 @@ const SHAPE = z.object({
    */
   WEB_ROOT: z.string().min(1).optional(),
 
+  /**
+   * Where immutable application-owned objects live.
+   *
+   * The endpoint is absent for AWS itself and explicit for an S3-compatible store such as MinIO
+   * or R2. The bucket and region are always stated: a process that guessed a bucket could write a
+   * valid object to the wrong deployment, which is a successful request and a missing avatar at
+   * the same time.
+   */
+  OBJECT_STORE_BUCKET: z.string().min(1),
+  OBJECT_STORE_REGION: z.string().min(1),
+  OBJECT_STORE_ENDPOINT: z.url({ protocol: /^https?$/ }).optional(),
+  OBJECT_STORE_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .default(false),
+  /**
+   * Explicit for local stores; absent together, the AWS SDK uses its normal workload-role chain.
+   * Half a pair is refused below rather than turned into an authentication failure on first use.
+   */
+  OBJECT_STORE_ACCESS_KEY: z.string().min(1).optional(),
+  OBJECT_STORE_SECRET_KEY: z.string().min(1).optional(),
+
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   /**
    * What this process is. No default, on purpose.
@@ -123,9 +145,18 @@ export const PROVIDER_KEYS = {
   github: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
 } as const satisfies Record<Provider, readonly [keyof Env, keyof Env]>
 
+const OBJECT_STORE_KEYS = [
+  'OBJECT_STORE_ACCESS_KEY',
+  'OBJECT_STORE_SECRET_KEY',
+] as const satisfies readonly [keyof Env, keyof Env]
+
 /** An id without its secret, or the other way round, is somebody halfway through a setup. */
 function withPairs(env: Env): Env {
-  const broken = PROVIDERS.map((provider) => PROVIDER_KEYS[provider]).filter(
+  const pairs: readonly (readonly [keyof Env, keyof Env])[] = [
+    ...PROVIDERS.map((provider) => PROVIDER_KEYS[provider]),
+    OBJECT_STORE_KEYS,
+  ]
+  const broken = pairs.filter(
     ([id, secret]) => (env[id] === undefined) !== (env[secret] === undefined),
   )
   if (broken.length === 0) return env

@@ -196,7 +196,7 @@ export function credentialApi(deps: CredentialApi) {
 
 /** Which ways in this deployment can actually offer. A way nobody can use is not offered. */
 function offering({ db, providers }: CredentialApi) {
-  return anyone(db).get('/auth/credentials', {
+  return anyone().get('/auth/credentials', {
     summary: 'Which ways in this deployment can actually offer',
     // Answered to a stranger on purpose: a sign-in page cannot offer a choice it cannot see.
     answers: { 200: sends(Offered, 'Everything a stranger can use to get in') },
@@ -207,7 +207,7 @@ function offering({ db, providers }: CredentialApi) {
 
 /** Asking for a code with nobody signed in, which is how somebody becomes signed in. */
 function askingToSignIn(deps: CredentialApi) {
-  return anyone(deps.db).post('/auth/email-codes', {
+  return anyone().post('/auth/email-codes', {
     summary: 'Ask for a code at an address',
     body: AskForCode,
     answers: A_CODE_GOES_OUT,
@@ -223,7 +223,7 @@ function askingToSignIn(deps: CredentialApi) {
  * existence. Its opposite is `DELETE /browser/sessions/current`, and now the pair reads as one.
  */
 function signingIn({ db, secret, webOrigin }: CredentialApi) {
-  return anyone(db).post('/browser/sessions', {
+  return anyone().post('/browser/sessions', {
     summary: 'Sign in with a code, which starts a session',
     body: SubmitCode,
     answers: {

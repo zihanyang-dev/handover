@@ -110,7 +110,7 @@ export function enrolmentApi(deps: EnrolmentApi) {
 
 /** Asking to come in, which produces a code somebody has to say yes to. */
 function askingToConnect({ db, webOrigin }: EnrolmentApi) {
-  return anyone(db).post('/enrolments', {
+  return anyone().post('/enrolments', {
     summary: 'Ask to bring this machine in, and get a code for somebody to approve',
     body: AskToConnect,
     answers: { 201: sends(AskedToConnect, 'Show the code and start asking') },
@@ -152,7 +152,7 @@ function askingToConnect({ db, webOrigin }: EnrolmentApi) {
  * in it is worth less than this name is worth.
  */
 function collecting({ db }: EnrolmentApi) {
-  return anyone(db).post('/enrolments/collect', {
+  return anyone().post('/enrolments/collect', {
     summary: 'Collect the credential this enrolment was approved for',
     body: CollectEnrolment,
     answers: { 200: sends(Collected, 'What became of it, including still waiting') },

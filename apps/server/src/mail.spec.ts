@@ -20,6 +20,8 @@ const env = parseEnv({
   NODE_ENV: 'test',
   DATABASE_URL: 'postgres://a:b@localhost:5432/c',
   AUTH_SECRET: 's'.repeat(32),
+  OBJECT_STORE_BUCKET: 'handover-test',
+  OBJECT_STORE_REGION: 'us-east-1',
   RESEND_API_KEY: 're_test_key',
   MAIL_FROM: 'from@example.com',
 })

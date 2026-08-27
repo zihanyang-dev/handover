@@ -11,7 +11,7 @@ import { sql } from 'kysely'
 import { pino } from 'pino'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
-import { openConversation, sayTo } from '../db/conversation.ts'
+import { beginConversation, sayTo } from '../db/conversation.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
@@ -124,12 +124,15 @@ async function conversationOn(machine: { id: string; token: string }): Promise<s
     found: [{ command: 'claude', version: '2.1.4' }],
   })
 
-  const opened = await openConversation(db, {
+  const opened = await beginConversation(db, {
+    conversationId: randomUUID(),
     spaceId: SPACE,
     machineId: machine.id,
     agentKind: 'claude-code',
+    saidBy: PERSON,
+    asked: { text: 'the first thing anybody said' },
   })
-  if (opened.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+  if (opened.kind !== 'begun') throw new Error(`the fixture could not open one: ${opened.kind}`)
 
   return opened.conversationId
 }
@@ -208,7 +211,9 @@ describe('what a machine reports', () => {
     expect((await seenInSpace()).machines[0]).toMatchObject({
       name: 'mina-mbp',
       presence: { state: 'here' },
-      agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
+      agents: [
+        expect.objectContaining({ kind: 'claude-code', name: null, version: '2.1.4', models: [] }),
+      ],
     })
   })
 
@@ -224,7 +229,7 @@ describe('what a machine reports', () => {
 
     expect(answered.status).toBe(200)
     expect((await seenInSpace()).machines[0]?.agents).toEqual([
-      { kind: 'claude-code', version: '2.1.4', models: [] },
+      expect.objectContaining({ kind: 'claude-code', name: null, version: '2.1.4', models: [] }),
     ])
   })
 
@@ -452,7 +457,9 @@ describe('holding a machine question instead of answering "nothing"', () => {
       const asking = holding(room).request('/machines/current/poll', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
-        body: JSON.stringify({ found: [] }),
+        // Still reporting what it has: a poll says what is installed as well as taking a turn,
+        // and one that reported nothing would be uninstalling the agent this test talks to.
+        body: JSON.stringify({ found: [{ command: 'claude', version: '2.1.4' }] }),
       })
       // Said once the question is already being held, which is the only order that tests anything.
       await new Promise((soon) => setTimeout(soon, 50))

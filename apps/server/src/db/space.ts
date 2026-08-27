@@ -30,6 +30,7 @@ export type Space = {
   readonly id: string
   readonly slug: string
   readonly displayName: string
+  readonly emoji: string
 }
 
 export type SpaceCreation =
@@ -55,7 +56,12 @@ async function spaceFor(
   const row = await db
     .selectFrom('memberships')
     .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
-    .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
+    .select([
+      'spaces.id as id',
+      'spaces.slug as slug',
+      'spaces.display_name as displayName',
+      'spaces.emoji as emoji',
+    ])
     .where('memberships.request_key', '=', whose.requestKey)
     .where('memberships.user_id', '=', whose.userId)
     // A retry from somebody who has since been removed makes nothing and finds nothing: the
@@ -90,7 +96,7 @@ export async function createSpace(db: Database, request: SpaceRequest): Promise<
       .insertInto('spaces')
       .values({ display_name: request.displayName, slug: request.slug })
       .onConflict((clash) => clash.column('slug').doNothing())
-      .returning(['id', 'slug', 'display_name as displayName'])
+      .returning(['id', 'slug', 'display_name as displayName', 'emoji'])
       .executeTakeFirst()
 
     if (created === undefined) {
@@ -118,11 +124,50 @@ export async function spacesOf(db: Database, userId: string): Promise<readonly S
   return db
     .selectFrom('memberships')
     .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
-    .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
+    .select([
+      'spaces.id as id',
+      'spaces.slug as slug',
+      'spaces.display_name as displayName',
+      'spaces.emoji as emoji',
+    ])
     .where('memberships.user_id', '=', userId)
     .where('memberships.revoked_at', 'is', null)
     .orderBy('spaces.created_at')
     .execute()
+}
+
+/**
+ * Changes the small face by which a Space is recognised.
+ *
+ * The route has already checked the role for a useful refusal, but that answer can go stale while
+ * this transaction waits. Locking the membership row makes removal or demotion line up behind
+ * this decision: the emoji changes while this person is still an owner, or not at all.
+ */
+export async function changeSpaceEmoji(
+  db: Database,
+  change: { readonly spaceId: string; readonly userId: string; readonly emoji: string },
+): Promise<boolean> {
+  return db.transaction().execute(async (tx) => {
+    const owner = await tx
+      .selectFrom('memberships')
+      .select('user_id')
+      .where('space_id', '=', change.spaceId)
+      .where('user_id', '=', change.userId)
+      .where('role', '=', ROLE.owner)
+      .where('revoked_at', 'is', null)
+      .forUpdate()
+      .executeTakeFirst()
+    if (owner === undefined) return false
+
+    const changed = await tx
+      .updateTable('spaces')
+      .set({ emoji: change.emoji })
+      .where('id', '=', change.spaceId)
+      .returning('id')
+      .executeTakeFirst()
+
+    return changed !== undefined
+  })
 }
 
 /**
@@ -141,7 +186,12 @@ export async function spaceForMember(
     db
       .selectFrom('spaces')
       .innerJoin('memberships', 'memberships.space_id', 'spaces.id')
-      .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
+      .select([
+        'spaces.id as id',
+        'spaces.slug as slug',
+        'spaces.display_name as displayName',
+        'spaces.emoji as emoji',
+      ])
       .where('spaces.slug', '=', slug)
       .where('memberships.user_id', '=', userId)
       // The door. Somebody removed gets the same answer as somebody who was never here and the

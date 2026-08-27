@@ -10,11 +10,12 @@
  */
 
 import { sql } from 'kysely'
+import type { Json } from '../../generated/db.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import {
   ACTIVITY,
+  Asked,
   ENDINGS,
-  type Asked,
   type Message,
   type Reported,
 } from '../conversation/transcript.ts'
@@ -29,26 +30,8 @@ import { wakeMachine } from './waking.ts'
 
 export type { Saying, Said, Speaking } from './message.ts'
 
-export type Opening = {
-  readonly spaceId: string
-  readonly machineId: string
-  readonly agentKind: AgentKind
-}
+export type SaidToAgent = Said | { readonly kind: 'no-agent' }
 
-export type Opened =
-  | { readonly kind: 'opened'; readonly conversationId: string }
-  /** No machine by that id can be reached from this Space, or it was removed. Pick another. */
-  | { readonly kind: 'no-machine' }
-  /** The machine is here but that agent is not on it any more. Install it, or pick another. */
-  | { readonly kind: 'no-agent' }
-
-/**
- * Opens a conversation with one agent on one machine.
- *
- * Both facts are checked under the machine's lock rather than read first and decided here: a
- * machine removed between the read and the insert would leave a conversation pinned to something
- * nobody can reach, and the only way out of that would be to delete it again.
- */
 /**
  * The conversation, held for the rest of the transaction, and where its machine was as of now.
  *
@@ -67,6 +50,7 @@ export async function held(tx: Tx, saying: Saying) {
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
     .select([
       'conversations.id',
+      'conversations.agent_kind as agentKind',
       'machines.id as machineId',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
@@ -79,40 +63,141 @@ export async function held(tx: Tx, saying: Saying) {
     .executeTakeFirst()
 }
 
-export async function openConversation(db: Database, opening: Opening): Promise<Opened> {
+export type Beginning = {
+  readonly spaceId: string
+  readonly machineId: string
+  readonly agentKind: AgentKind
+  /** Made by the client, so a lost answer can be asked for again without asking twice. */
+  readonly conversationId: string
+  readonly saidBy: string
+  readonly asked: Asked
+}
+
+export type Begun =
+  | { readonly kind: 'begun'; readonly conversationId: string }
+  /** No machine by that id can be reached from this Space, or it was removed. Pick another. */
+  | { readonly kind: 'no-machine' }
+  /** The machine is here but that agent is not on it any more. Install it, or pick another. */
+  | { readonly kind: 'no-agent' }
+  /**
+   * Its machine is not here, so nothing was written.
+   *
+   * Refused here and nowhere else. A conversation is pinned to one machine for as long as it
+   * exists, so this is the last moment anybody can pick a different one — which is what the
+   * recovery says. Saying something into a conversation that already exists is not refused for
+   * this: there is no other machine to choose by then, and the words wait for the one it has.
+   */
+  | { readonly kind: 'machine-away' }
+  /** That client-generated id already names a different intention. */
+  | { readonly kind: 'id-taken' }
+
+/**
+ * Opens a conversation only when its first message can be written with it.
+ *
+ * The client-generated id is the idempotency key for this cross-row intention. A lost 201 may be
+ * retried with that id and finds the message the committed transaction wrote; a click without a
+ * message never calls this function and therefore has nothing to leave behind.
+ */
+export async function beginConversation(db: Database, beginning: Beginning): Promise<Begun> {
   return db.transaction().execute(async (tx) => {
+    // There is no conversation row to lock yet. This transaction-scoped lock gives concurrent
+    // retries of the client UUID one writer; unrelated conversations never wait on each other.
+    await sql`select pg_advisory_xact_lock(hashtextextended(${beginning.conversationId}, 0))`.execute(
+      tx,
+    )
+
+    const repeated = await openedBefore(tx, beginning)
+    if (repeated !== undefined) return repeated
+
     const machine = await tx
       .selectFrom('machines')
-      .select(['machines.id'])
-      .where('machines.id', '=', opening.machineId)
+      .select([
+        'machines.id',
+        'machines.last_seen_at as lastSeenAt',
+        'machines.left_at as leftAt',
+        sql<Date>`now()`.as('asOf'),
+      ])
+      .where('machines.id', '=', beginning.machineId)
       .where('machines.removed_at', 'is', null)
-      .where(reachableFrom(opening.spaceId))
+      .where(reachableFrom(beginning.spaceId))
       .forUpdate()
       .executeTakeFirst()
 
     if (machine === undefined) return { kind: 'no-machine' }
+    if (presence(machine, machine.asOf).state === 'gone') return { kind: 'machine-away' }
 
     const agent = await tx
       .selectFrom('agents')
-      .select(['kind'])
+      .select('kind')
       .where('machine_id', '=', machine.id)
-      .where('kind', '=', opening.agentKind)
+      .where('kind', '=', beginning.agentKind)
       .executeTakeFirst()
-
     if (agent === undefined) return { kind: 'no-agent' }
 
-    const opened = await tx
+    await tx
       .insertInto('conversations')
       .values({
-        space_id: opening.spaceId,
+        id: beginning.conversationId,
+        space_id: beginning.spaceId,
         machine_id: machine.id,
-        agent_kind: opening.agentKind,
+        agent_kind: beginning.agentKind,
       })
-      .returning('id')
-      .executeTakeFirstOrThrow()
+      .execute()
 
-    return { kind: 'opened', conversationId: opened.id }
+    const said = await append(tx, {
+      conversationId: beginning.conversationId,
+      key: `opening:${beginning.conversationId}`,
+      message: { role: 'user', content: beginning.asked },
+      saidBy: beginning.saidBy,
+    })
+    if (said.kind !== 'said') throw new Error('a new conversation already had its first message')
+
+    await backToWork(tx, beginning.conversationId, machine.id)
+    return { kind: 'begun', conversationId: beginning.conversationId }
   })
+}
+
+/** The same client id after a lost response is the same opening, not another conversation. */
+async function openedBefore(tx: Tx, beginning: Beginning): Promise<Begun | undefined> {
+  const existing = await tx
+    .selectFrom('conversations')
+    .select(['space_id as spaceId', 'machine_id as machineId', 'agent_kind as agentKind'])
+    .where('id', '=', beginning.conversationId)
+    .forUpdate()
+    .executeTakeFirst()
+  if (existing === undefined) return undefined
+  if (
+    existing.spaceId !== beginning.spaceId ||
+    existing.machineId !== beginning.machineId ||
+    existing.agentKind !== beginning.agentKind
+  )
+    return { kind: 'id-taken' }
+
+  const first = await tx
+    .selectFrom('messages')
+    .select(['role', 'content', 'said_by as saidBy'])
+    .where('conversation_id', '=', beginning.conversationId)
+    .where('key', '=', `opening:${beginning.conversationId}`)
+    .executeTakeFirst()
+  if (
+    first === undefined ||
+    first.role !== 'user' ||
+    first.saidBy !== beginning.saidBy ||
+    !sameQuestion(first.content, beginning.asked)
+  )
+    return { kind: 'id-taken' }
+
+  return { kind: 'begun', conversationId: beginning.conversationId }
+}
+
+function sameQuestion(stored: Json, asked: Asked): boolean {
+  const read = Asked.safeParse(stored)
+  return (
+    read.success &&
+    read.data.text === asked.text &&
+    read.data.model === asked.model &&
+    read.data.effort === asked.effort
+  )
 }
 
 /**
@@ -122,7 +207,7 @@ export async function openConversation(db: Database, opening: Opening): Promise<
  * stop, and the words. Each of those stops being true the moment anybody else writes, and a stop
  * written without the message it was written for would be an agent stopped for no reason.
  */
-export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promise<Said> {
+export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promise<SaidToAgent> {
   return db.transaction().execute(async (tx) => {
     const conversation = await held(tx, saying)
     if (conversation === undefined) return { kind: 'no-conversation' }
@@ -149,6 +234,14 @@ export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promi
     // after a day and Signal drops an undelivered message after thirty, because both of those are
     // delivery buffers. A transcript is a record — the words stay, and what waits is the turn.
     const machine = presence(conversation, conversation.asOf)
+
+    const agent = await tx
+      .selectFrom('agents')
+      .select('kind')
+      .where('machine_id', '=', conversation.machineId)
+      .where('kind', '=', conversation.agentKind)
+      .executeTakeFirst()
+    if (agent === undefined) return { kind: 'no-agent' }
 
     // Saying something to an agent that is working is interrupting it, and it is written down as
     // exactly that: the request to stop, and then the words. Queued instead, somebody who says
@@ -333,6 +426,8 @@ export type Standing = {
    * say who wrote it.
    */
   readonly startedBy: string | null
+  /** This person's mark, not a property shared by everybody else in the Space. */
+  readonly pinned: boolean
   readonly working: Working
 }
 
@@ -342,16 +437,26 @@ export type Standing = {
  * `working` is computed from the ledger and the machine's silence rather than stored, for the same
  * reason presence is: a machine that is killed writes nothing on the way out.
  */
-export async function conversationsIn(db: Database, spaceId: string): Promise<readonly Standing[]> {
+export async function conversationsIn(
+  db: Database,
+  spaceId: string,
+  userId: string,
+): Promise<readonly Standing[]> {
   const rows = await db
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+    .leftJoin('conversation_pins', (join) =>
+      join
+        .onRef('conversation_pins.conversation_id', '=', 'conversations.id')
+        .on('conversation_pins.user_id', '=', userId),
+    )
     .select((eb) => [
       'conversations.id',
       'conversations.agent_kind as agentKind',
       'conversations.machine_id as machineId',
       'machines.name as machineName',
       'conversations.created_at as startedAt',
+      'conversation_pins.pinned_at as pinnedAt',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       sql<Date>`now()`.as('asOf'),
@@ -382,9 +487,76 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
     .execute()
 
   return rows.map((row) => ({
-    ...row,
+    id: row.id,
+    agentKind: row.agentKind,
+    machineId: row.machineId,
+    machineName: row.machineName,
+    startedAt: row.startedAt,
+    opening: row.opening,
+    startedBy: row.startedBy,
+    pinned: row.pinnedAt !== null,
     working: working(row.unfinished, presence(row, row.asOf)),
   }))
+}
+
+/**
+ * Marks a conversation for this person.
+ *
+ * The Space is part of the insert rather than trusted from the route. A conversation id from
+ * somewhere else must not be accepted merely because the person also happens to belong there.
+ * A second PUT is the same mark, so the original position is left alone rather than made recent.
+ */
+export async function pinConversation(
+  db: Database,
+  pin: { readonly spaceId: string; readonly conversationId: string; readonly userId: string },
+): Promise<boolean> {
+  const pinned = await db
+    .insertInto('conversation_pins')
+    .columns(['user_id', 'conversation_id'])
+    .expression((eb) =>
+      eb
+        .selectFrom('conversations')
+        .select([eb.val(pin.userId).as('user_id'), 'conversations.id as conversation_id'])
+        .where('conversations.id', '=', pin.conversationId)
+        .where('conversations.space_id', '=', pin.spaceId),
+    )
+    .onConflict((conflict) => conflict.columns(['user_id', 'conversation_id']).doNothing())
+    .returning('conversation_id')
+    .executeTakeFirst()
+
+  if (pinned !== undefined) return true
+
+  const already = await db
+    .selectFrom('conversation_pins')
+    .innerJoin('conversations', 'conversations.id', 'conversation_pins.conversation_id')
+    .select('conversation_pins.conversation_id')
+    .where('conversation_pins.user_id', '=', pin.userId)
+    .where('conversation_pins.conversation_id', '=', pin.conversationId)
+    .where('conversations.space_id', '=', pin.spaceId)
+    .executeTakeFirst()
+
+  return already !== undefined
+}
+
+/**
+ * Removes only this person's mark. Missing already means unpinned, so DELETE is idempotent and
+ * reveals nothing about a conversation id from another Space.
+ */
+export async function unpinConversation(
+  db: Database,
+  pin: { readonly spaceId: string; readonly conversationId: string; readonly userId: string },
+): Promise<void> {
+  await db
+    .deleteFrom('conversation_pins')
+    .where('user_id', '=', pin.userId)
+    .where('conversation_id', 'in', (eb) =>
+      eb
+        .selectFrom('conversations')
+        .select('id')
+        .where('id', '=', pin.conversationId)
+        .where('space_id', '=', pin.spaceId),
+    )
+    .execute()
 }
 
 export type Reading = {

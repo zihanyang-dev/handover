@@ -7,6 +7,7 @@
 
 import { z } from '@hono/zod-openapi'
 import { deleteCookie, getCookie } from 'hono/cookie'
+import { avatarPath } from '../avatar.ts'
 import type { Database } from '../db/connection.ts'
 import { revokeSession } from '../db/session.ts'
 import { spacesOf } from '../db/space.ts'
@@ -27,6 +28,8 @@ const Credential = z
 
 const Me = named('Me', {
   displayName: z.string(),
+  /** Where the face is, not the face itself: a `<img src>` the browser caches like any other. */
+  avatarUrl: z.string(),
   // No single address: there is no such thing any more. Every one this account holds is a row in
   // `credentials`, which is also the only place that says how many there are.
   credentials: z.array(Credential).readonly(),
@@ -65,6 +68,7 @@ function who({ db, providers }: MeApi) {
       return c.json(
         {
           displayName: person.displayName,
+          avatarUrl: avatarPath({ kind: 'user', userId: person.id }),
           credentials: shown(person.credentials, providers),
           // The oldest, which is what `credentialsOf` orders them by and what `shown` no longer
           // keeps. Absent is impossible: an account exists because a credential proved it.

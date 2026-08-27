@@ -746,7 +746,67 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Change the emoji that identifies this Space */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NewSpaceEmoji"];
+                };
+            };
+            responses: {
+                /** @description Changed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Only an owner can do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/spaces/{slug}/invitations": {
@@ -1790,6 +1850,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/machines/{id}/agents/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Name an agent installed on one of your machines */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    kind: "claude-code" | "codex";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AgentName"];
+                };
+            };
+            responses: {
+                /** @description Named, or put back to what its kind is called */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description You have no installed agent with that identity */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/me/machines/{id}": {
         parameters: {
             query?: never;
@@ -1970,7 +2098,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Start a conversation with one agent on one machine */
+        /** Start a conversation by saying its first message */
         post: {
             parameters: {
                 query?: never;
@@ -1986,7 +2114,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Open, and pinned to that agent */
+                /** @description Open, pinned to that agent, with the first message in it */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2022,7 +2150,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description That machine does not have that agent */
+                /** @description That machine or agent cannot take this first message */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -2158,6 +2286,15 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
+                /** @description Its agent is not on that machine any more */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -2238,6 +2375,100 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{slug}/conversations/{id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Pin a conversation for yourself */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Pinned, or pinned already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, or no such conversation in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Unpin a conversation for yourself */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Unpinned, or unpinned already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -2986,6 +3217,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/avatars/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A person’s stored avatar */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The avatar stored under this identity, drawn once and kept */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+                /** @description The browser already has this one, and it can never change */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/avatars/agents/{machineId}/{agentKind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An installed agent’s stored avatar */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    machineId: string;
+                    agentKind: "claude-code" | "codex";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The avatar stored under this identity, drawn once and kept */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+                /** @description The browser already has this one, and it can never change */
+                304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3036,6 +3358,7 @@ export interface components {
         };
         Me: {
             displayName: string;
+            avatarUrl: string;
             credentials: components["schemas"]["Credential"][];
             /** @enum {string} */
             startedWith: "email" | "google" | "github";
@@ -3059,6 +3382,7 @@ export interface components {
             id: string;
             slug: string;
             displayName: string;
+            emoji: string;
         };
         NewDisplayName: {
             displayName: string;
@@ -3075,6 +3399,9 @@ export interface components {
             /** @example 徐悦泰 Studio */
             displayName: string;
             requestKey: string;
+        };
+        NewSpaceEmoji: {
+            emoji: string;
         };
         Invitation: {
             /** Format: uuid */
@@ -3110,6 +3437,7 @@ export interface components {
             /** Format: uuid */
             userId: string;
             displayName: string;
+            avatarUrl: string;
             role: components["schemas"]["Role"];
             /** Format: date-time */
             since: string;
@@ -3264,8 +3592,13 @@ export interface components {
         MachineAgent: {
             /** @enum {string} */
             kind: "claude-code" | "codex";
+            name: string | null;
+            avatarUrl: string;
             version: string;
             models: components["schemas"]["Model"][];
+        };
+        AgentName: {
+            name: string | null;
         };
         HandMachineTo: {
             /** Format: uuid */
@@ -3285,6 +3618,7 @@ export interface components {
             startedAt: string;
             opening: string | null;
             startedBy: string | null;
+            pinned: boolean;
             working: components["schemas"]["Working"];
         };
         Working: {
@@ -3395,9 +3729,12 @@ export interface components {
         };
         OpenConversation: {
             /** Format: uuid */
+            id: string;
+            /** Format: uuid */
             machineId: string;
             /** @enum {string} */
             agentKind: "claude-code" | "codex";
+            asked: components["schemas"]["Asked"];
         };
         SayThis: {
             key: string;

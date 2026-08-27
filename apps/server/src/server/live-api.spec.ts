@@ -18,7 +18,7 @@ import { pino } from 'pino'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { watchers } from '../conversation/watchers.ts'
 import { connect, type Database } from '../db/connection.ts'
-import { openConversation } from '../db/conversation.ts'
+import { beginConversation } from '../db/conversation.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
@@ -113,12 +113,15 @@ beforeEach(async () => {
     body: JSON.stringify({ found: [{ command: 'claude', version: '2.1.231' }] }),
   })
 
-  const opened = await openConversation(db, {
+  const opened = await beginConversation(db, {
+    conversationId: randomUUID(),
     spaceId: made.space.id,
     machineId: collected.machineId,
     agentKind: 'claude-code',
+    saidBy: arrived.userId,
+    asked: { text: 'the first thing anybody said' },
   })
-  if (opened.kind !== 'opened') throw new Error('the fixture could not open a conversation')
+  if (opened.kind !== 'begun') throw new Error(`the fixture could not open one: ${opened.kind}`)
   CONVERSATION = opened.conversationId
 })
 

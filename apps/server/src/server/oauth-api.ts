@@ -226,7 +226,7 @@ async function leave(
 
 /** Leaving with nobody signed in, which is how somebody becomes signed in. */
 function leavingToSignIn(deps: OAuthApi) {
-  return anyone(deps.db).post('/auth/{provider}/start', {
+  return anyone().post('/auth/{provider}/start', {
     summary: 'Leave to sign in with a provider',
     params: BY_NAME,
     body: WhereBack,
@@ -271,7 +271,7 @@ function leavingToConnect(deps: OAuthApi) {
 
 /** Coming back, which always ends at a page: the browser was redirected, so nobody reads a body. */
 function comingBack(deps: OAuthApi) {
-  return anyone(deps.db).get('/auth/{provider}/callback', {
+  return anyone().get('/auth/{provider}/callback', {
     summary: 'Where the provider sends the browser back to',
     params: BY_NAME,
     // One answer, always: the browser arrived here by being redirected, so everything that can go
