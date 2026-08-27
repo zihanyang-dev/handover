@@ -6,8 +6,7 @@
  * comes back "that key does not work".
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { Check2, Clipboard } from 'react-bootstrap-icons'
+import { Copy } from './copy.tsx'
 
 export function ShellCommand({ command }: { readonly command: string }) {
   return (
@@ -18,36 +17,7 @@ export function ShellCommand({ command }: { readonly command: string }) {
         </span>{' '}
         <span>{command}</span>
       </code>
-      <Copy text={command} />
+      <Copy text={command} what="command" />
     </div>
-  )
-}
-
-/** Says it copied, then stops saying it — a tick that never clears reads as a stuck button. */
-function Copy({ text }: { readonly text: string }) {
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  useEffect(() => {
-    return () => {
-      clearTimeout(timer.current)
-    }
-  }, [])
-
-  return (
-    <button
-      className="shell-copy"
-      type="button"
-      aria-label={copied ? 'Copied' : 'Copy command'}
-      title={copied ? 'Copied' : 'Copy command'}
-      onClick={() => {
-        void navigator.clipboard.writeText(text)
-        setCopied(true)
-        timer.current = setTimeout(() => {
-          setCopied(false)
-        }, 1600)
-      }}
-    >
-      {copied ? <Check2 aria-hidden /> : <Clipboard aria-hidden />}
-    </button>
   )
 }

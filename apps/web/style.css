@@ -1583,6 +1583,39 @@ textarea.field {
   margin-top: 1rem;
 }
 
+/* A decision that needs a list in front of it. A native dialog, so the page behind it really is
+   inert and Escape means what it means everywhere else. */
+.checklist {
+  width: min(32rem, calc(100vw - 3rem));
+  margin: auto;
+  border: 1px solid var(--grey-800);
+  border-radius: var(--radius-lg);
+  background: var(--base);
+  color: var(--content);
+  padding: 1.5rem;
+}
+
+.checklist::backdrop {
+  background: var(--neutral-950);
+}
+
+.checklist h2 {
+  margin: 0 0 0.75rem;
+  font-size: var(--text-m);
+}
+
+.checklist h3 {
+  margin: 1rem 0 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--grey-500);
+}
+
+.checklist .beside {
+  margin-top: 1.25rem;
+  justify-content: flex-end;
+}
+
 .panel-head {
   display: flex;
   align-items: center;

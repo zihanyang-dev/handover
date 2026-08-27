@@ -39,6 +39,15 @@ export function PersonIcon({ className }: IconProps) {
   )
 }
 
+/** Two of them. Who else is in here — which is a different question from who you are. */
+export function PeopleIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" aria-hidden>
+      <path d="M7.75 3.5a2.875 2.875 0 1 0 0 5.75 2.875 2.875 0 0 0 0-5.75M6.125 6.375a1.625 1.625 0 1 1 3.25 0 1.625 1.625 0 0 1-3.25 0M13.5 5a.625.625 0 0 0 0 1.25 1.375 1.375 0 0 1 0 2.75.625.625 0 0 0 0 1.25 2.625 2.625 0 0 0 0-5.25M7.75 10.25c-1.53 0-2.82.36-3.74.94-.915.578-1.51 1.42-1.51 2.4 0 .621.504 1.125 1.125 1.125h8.25c.621 0 1.125-.504 1.125-1.125 0-.98-.595-1.822-1.51-2.4-.92-.58-2.21-.94-3.74-.94m-3.97 3.215c.06-.44.34-.87.895-1.22.66-.417 1.71-.745 3.075-.745s2.415.328 3.075.745c.555.35.835.78.894 1.22zM14.25 11a.625.625 0 0 0 0 1.25c.79 0 1.375.26 1.71.55.33.286.415.577.415.75 0 .345.28.625.625.625s.625-.28.625-.625c0-.617-.29-1.222-.845-1.7-.552-.476-1.34-.85-2.53-.85" />
+    </svg>
+  )
+}
+
 /** A tray. What is waiting on you, wherever it is waiting from. */
 export function InboxIcon({ className }: IconProps) {
   return (
