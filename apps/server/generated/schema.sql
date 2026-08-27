@@ -69,6 +69,20 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: agent_names; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_names (
+    machine_id uuid NOT NULL,
+    kind text NOT NULL,
+    name text NOT NULL,
+    named_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT agent_names_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text]))),
+    CONSTRAINT agent_names_name_check CHECK (((name = btrim(name)) AND ((char_length(name) >= 1) AND (char_length(name) <= 48))))
+);
+
+
+--
 -- Name: agents; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -93,6 +107,17 @@ CREATE TABLE public.browser_sessions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     expires_at timestamp with time zone NOT NULL,
     revoked_at timestamp with time zone
+);
+
+
+--
+-- Name: conversation_pins; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.conversation_pins (
+    user_id uuid NOT NULL,
+    conversation_id uuid NOT NULL,
+    pinned_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL
 );
 
 
@@ -257,7 +282,9 @@ CREATE TABLE public.spaces (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     display_name text NOT NULL,
     slug text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    emoji text DEFAULT '🏠'::text NOT NULL,
+    CONSTRAINT spaces_emoji_is_bounded CHECK (((char_length(emoji) >= 1) AND (char_length(emoji) <= 32)))
 );
 
 
@@ -307,6 +334,14 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: agent_names agent_names_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_names
+    ADD CONSTRAINT agent_names_pkey PRIMARY KEY (machine_id, kind);
+
+
+--
 -- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -328,6 +363,14 @@ ALTER TABLE ONLY public.browser_sessions
 
 ALTER TABLE ONLY public.browser_sessions
     ADD CONSTRAINT browser_sessions_token_hash_key UNIQUE (token_hash);
+
+
+--
+-- Name: conversation_pins conversation_pins_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversation_pins
+    ADD CONSTRAINT conversation_pins_pkey PRIMARY KEY (user_id, conversation_id);
 
 
 --
@@ -547,6 +590,13 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: conversation_pins_by_person; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX conversation_pins_by_person ON public.conversation_pins USING btree (user_id, pinned_at DESC);
+
+
+--
 -- Name: conversations_in_space; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -673,6 +723,14 @@ CREATE CONSTRAINT TRIGGER memberships_keep_an_owner AFTER INSERT OR DELETE OR UP
 
 
 --
+-- Name: agent_names agent_names_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_names
+    ADD CONSTRAINT agent_names_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id) ON DELETE CASCADE;
+
+
+--
 -- Name: agents agents_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -686,6 +744,22 @@ ALTER TABLE ONLY public.agents
 
 ALTER TABLE ONLY public.browser_sessions
     ADD CONSTRAINT browser_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: conversation_pins conversation_pins_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversation_pins
+    ADD CONSTRAINT conversation_pins_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: conversation_pins conversation_pins_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversation_pins
+    ADD CONSTRAINT conversation_pins_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
