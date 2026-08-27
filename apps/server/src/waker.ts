@@ -10,9 +10,9 @@
  * only the one whose update touches a row has anything to tell: the rest find nothing due.
  */
 
-import type { Database } from '../db/connection.ts'
-import { tellWhoeverIsWaitingOnAGoneMachine, wakeWhoseTimeHasCome } from '../db/task.ts'
-import type { Log } from '../log.ts'
+import type { Database } from './db/connection.ts'
+import { tellWhoeverIsWaitingOnAGoneMachine, wakeWhoseTimeHasCome } from './db/task.ts'
+import type { Log } from './log.ts'
 
 /**
  * How often to look.

@@ -32,7 +32,7 @@ export type Recovery =
   | 'ask-an-owner'
 
 /** Every status a refusal is allowed to carry. A route narrows this to the ones it can answer. */
-export type Status = 400 | 401 | 403 | 404 | 409 | 429 | 500
+type Status = 400 | 401 | 403 | 404 | 409 | 429 | 500
 
 export type Failure<S extends Status = Status> = {
   readonly reason: string

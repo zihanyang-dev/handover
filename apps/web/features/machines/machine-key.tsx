@@ -15,9 +15,9 @@ import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api } from '../../api.ts'
 
-export const MACHINE_KEY = ['machine-key'] as const
+const MACHINE_KEY = ['machine-key'] as const
 
-export function machineKey() {
+function machineKey() {
   return queryOptions({
     queryKey: MACHINE_KEY,
     retry: false,
@@ -32,7 +32,7 @@ export function machineKey() {
 }
 
 /** What to run on the machine, said the same way wherever a key is shown. */
-export function connectWith(key: string): string {
+function connectWith(key: string): string {
   return `handover connect --key ${key}`
 }
 
@@ -87,6 +87,6 @@ export function useMachineKey(active: boolean): Keyed {
 }
 
 /** How long this key has, in whole seconds, never below zero. */
-export function secondsUntil(expiresAt: string): number {
+function secondsUntil(expiresAt: string): number {
   return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000))
 }

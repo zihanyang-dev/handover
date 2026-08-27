@@ -161,11 +161,7 @@ const UNDELIVERABLE = {
   body: { reason: 'address-refused', recovery: 'retype' },
 } as const
 
-export async function askForCode(
-  sender: Sender,
-  send: SendCode,
-  request: CodeRequest,
-): Promise<Asked> {
+async function askForCode(sender: Sender, send: SendCode, request: CodeRequest): Promise<Asked> {
   const code = newCode()
   const opened = await issueCode(
     sender.db,

@@ -19,6 +19,7 @@ import { sql } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS, type Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
+import { stillItsToWriteOn } from './machine.ts'
 import { append, held, type Saying } from './message.ts'
 import { wakeMachine } from './waking.ts'
 
@@ -34,7 +35,7 @@ export const STATE = {
   done: 'done',
 } as const
 
-export type State = (typeof STATE)[keyof typeof STATE]
+type State = (typeof STATE)[keyof typeof STATE]
 
 /** The piece of work running in one conversation, if there is one. */
 export type Task = {
@@ -263,21 +264,9 @@ async function onItsOwn(
   change: (tx: Tx, conversationId: string) => Promise<Reported>,
 ): Promise<Reported> {
   return db.transaction().execute(async (tx) => {
-    // The machine is joined under the lock, not merely named: the comment above is only true if
-    // `removeMachine` cannot commit between this read and the write. Without the join a machine
-    // somebody has just taken away could still move a piece of work, overwrite an output, or open
-    // one on a third machine — with its credential already refused everywhere else.
-    const conversation = await tx
-      .selectFrom('conversations')
-      .innerJoin('machines', 'machines.id', 'conversations.machine_id')
-      .select('conversations.id')
-      .where('conversations.id', '=', reporting.conversationId)
-      .where('conversations.machine_id', '=', reporting.machineId)
-      .where('machines.removed_at', 'is', null)
-      .forUpdate()
-      .executeTakeFirst()
+    const conversation = await stillItsToWriteOn(tx, reporting)
 
-    return conversation === undefined ? { kind: 'nothing-to-report' } : change(tx, conversation.id)
+    return conversation === undefined ? { kind: 'nothing-to-report' } : change(tx, conversation)
   })
 }
 
@@ -310,7 +299,7 @@ export type Stopping =
   | { readonly state: 'done'; readonly ending: Ending; readonly said: string }
 
 /** How a piece of work ended, in the words a person reads. */
-export type Ending = 'done' | 'cannot'
+type Ending = 'done' | 'cannot'
 
 /**
  * The agent stops working, and says why.
@@ -595,7 +584,7 @@ export type Underway = {
   readonly under: { readonly conversationId: string; readonly goal: string } | null
 }
 
-export type HandedOff = {
+type HandedOff = {
   readonly conversationId: string
   readonly goal: string
   readonly state: State
@@ -612,7 +601,7 @@ export type HandedOff = {
   readonly whereabouts: Whereabouts
 }
 
-export type Written = {
+type Written = {
   readonly title: string
   readonly body: string
   readonly writtenAt: Date

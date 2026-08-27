@@ -19,7 +19,7 @@ import type { Model } from './agents/agent.ts'
 import type { Found } from './discovery.ts'
 
 /** What is reported: what was found, and — the first time each version is seen — what it offers. */
-export type Offered = Found & { readonly models?: Model[] }
+type Offered = Found & { readonly models?: Model[] }
 
 export type Offering = (found: readonly Found[]) => Promise<readonly Offered[]>
 

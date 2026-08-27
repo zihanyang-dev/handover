@@ -8,14 +8,17 @@
 Dockerfile          服务器 + 它托管的那些页面,一个镜像
 apps/server/        API
   src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
+                    住在这里的是 db/ 和 server/ 都要用、而谁都不该拥有的那些
   src/db/           持久化边界
   src/server/       入站传输
+  src/rules/        扫全库的机械规则。不测任何一段代码,它们读源文件
   scripts/          生成器与仓库维护脚本
   migrations/       已提交的永不修改
   generated/        生成物,永不手改
 apps/web/           浏览器应用
   features/         一块屏幕上的一件事
   routes/           地址到屏幕
+  rules/            同 server 的 rules/:扫全库的机械规则
   components/ui/    没有主人的视觉零件:一段手写体、一次礼花、一层渐变模糊
                     进这里的标准是「它不知道 Handover 是什么」
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
@@ -111,6 +114,8 @@ pnpm generate     迁移测试库 → schema.sql → db.ts → openapi.json → 
 pnpm typecheck    三个包各自的类型世界
 pnpm lint         oxlint,type-aware,按包
 pnpm format       prettier --check
+pnpm unused       knip:没人 import 的文件、export、依赖
+pnpm duplication  jscpd:跨文件的复制粘贴。测试不算 —— 布置同一个场景本来就该长得像
 pnpm test         vitest —— 四组:unit · web · db(要 postgres)· service(要 docker 里的 systemd)
 pnpm test:agents  第五组,单独点名跑:真的 claude 和 codex,花真的模型调用
 pnpm coverage     跑一遍并打一张表。不设阈值:百分比不是关于正确性的事实
@@ -166,9 +171,23 @@ CLIENT_ID / SECRET
 
 ## 5. 检查边界
 
-自动化只检查通用机械事实:类型、lint、格式、生成漂移和行为结果。
+自动化检查三类东西:
 
-**不写扫描业务 owner、依赖方向、错误恢复或命名词表的自研检查。** 产品承诺进入行为测试;责任边界、依赖方向与命名在完整 diff 中人工评审。
+```
+通用机械事实      类型 · lint · 格式 · 生成漂移 · 行为结果
+没人用的东西      knip:文件、export、依赖
+结构不变量        rules/ 下每条一个文件,扫全库的源文件
+```
+
+**能机械检查的不变量,写成一条规则,不要写成注释。** 注释会和代码分家,分家之后它变成谎话。
+
+**规则守结构,行为测试守承诺。** 一条规则说的是"每一处读 memberships 都必须带 `revoked_at`";
+"被移除的人看不到别人的机器"是一条行为测试。前者防的是下一次有人漏写,后者防的是这一次写错。
+
+这一节从前写的是反的("不写自研检查,依赖方向和命名由人工评审判断")。改掉是因为数出来的账:
+**机械化的那几条,违反数是 0;没机械化的那一条,积了 365 处。**
+
+责任边界和命名仍然是人工评审的事 —— 那两样目前还没有一条写得出来的机械判据。
 
 ## 6. 删除
 

@@ -82,7 +82,7 @@ export type CodeToSend = {
  * travel with it so a page can say what this deployment actually does, rather than a number
  * compiled into the page and right only until somebody changes one side.
  */
-export type IssuedCode = {
+type IssuedCode = {
   readonly id: string
   readonly expiresAt: Date
   readonly resendAfterSeconds: number

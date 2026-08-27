@@ -8,7 +8,8 @@
 
 import type { components } from '../generated/api.ts'
 import type { Agent, Asked, Said, Told, Why } from './agents/agent.ts'
-import { EXCERPT, PIECE, shorten } from './agents/agent.ts'
+import { PIECE } from '@handover/universal'
+import { EXCERPT, shorten } from './agents/agent.ts'
 import { NO_ANSWER, type Api } from './api.ts'
 import { sleep } from './sleeping.ts'
 

@@ -8,10 +8,10 @@
 
 import { afterAll, describe, expect, it } from 'vitest'
 import { pino } from 'pino'
-import { connect, type Database } from '../db/connection.ts'
-import { loadEnv } from '../env.ts'
-import { LOG_OPTIONS } from '../log.ts'
-import { wakeWhoseTimeHasCome } from '../db/task.ts'
+import { connect, type Database } from './db/connection.ts'
+import { loadEnv } from './env.ts'
+import { LOG_OPTIONS } from './log.ts'
+import { wakeWhoseTimeHasCome } from './db/task.ts'
 import { keepWaking } from './waker.ts'
 
 const env = loadEnv()

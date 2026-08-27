@@ -270,7 +270,7 @@ export async function owedAnAnswer(db: Database | Tx, conversationId: string): P
  * Also the answer to "is this machine busy", which is the ledger's to give rather than the
  * machine's: asked of the machine, the answer is stale the moment it finishes a turn.
  */
-export async function openTurnsOn(
+async function openTurnsOn(
   db: Database,
   machineId: string,
 ): Promise<readonly { conversationId: string; afterSeq: number }[]> {

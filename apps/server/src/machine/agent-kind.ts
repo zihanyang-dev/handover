@@ -34,7 +34,7 @@ export const AGENT_COMMANDS = AGENT_KIND_NAMES.map((kind) => AGENT_KINDS[kind].c
  * Ours, not the agent's: each adapter turns whatever its own SDK says into this, so a page has one
  * shape to render whichever agent it is looking at. Carried through and stored as it arrives.
  */
-export type Model = {
+type Model = {
   readonly id: string
   readonly name: string
   readonly about: string

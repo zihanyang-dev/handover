@@ -142,7 +142,7 @@ function isForgotten(trouble: unknown): boolean {
  * Codex throws provider errors verbatim, so what arrives here is often a JSON body. A person
  * reading a page is owed the sentence inside it, not the envelope it came in.
  */
-export function plainly(trouble: unknown): string {
+function plainly(trouble: unknown): string {
   const said = plain((trouble as { message?: unknown } | undefined)?.message).trim()
   if (!said.startsWith('{')) return said === '' ? 'Codex stopped without saying why.' : said
 

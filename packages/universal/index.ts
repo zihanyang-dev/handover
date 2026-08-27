@@ -5,9 +5,11 @@
  * be told over the wire goes over the wire — a value in a response is right for the deployment
  * that sent it, while a value compiled into a page is right only until somebody changes one side.
  *
- * Everything here runs in both places. Nothing here may import Node, and nothing may import the
- * browser: the name is the entry test, and a module that fails it belongs in the app that needs it.
+ * Everything here runs in all three places — browser, server, and a machine. Nothing here may
+ * import Node, and nothing may import the browser: the name is the entry test, and a module that
+ * fails it belongs in the app that needs it.
  */
 
 export { normalizeSlug, nextFreeSlug, type Slug } from './slug.ts'
 export { returnPath } from './return-path.ts'
+export { PIECE } from './piece.ts'

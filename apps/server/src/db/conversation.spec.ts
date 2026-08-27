@@ -22,7 +22,7 @@ import {
   type Said,
 } from './conversation.ts'
 import { approveEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment, sayGoodbye } from './machine.ts'
+import { checkIn, collectEnrolment, removeMachine, sayGoodbye } from './machine.ts'
 import { createSpace } from './space.ts'
 import { arrive } from './user.ts'
 
@@ -304,6 +304,23 @@ describe('saying something to an agent', () => {
       { conversationId: conversation, spaceId: randomUUID(), key: 'turn-1' },
       { text: 'hello' },
     )
+
+    expect(said).toEqual({ kind: 'no-conversation' })
+  })
+
+  it('refuses a machine its owner took away while the request was already inside', async () => {
+    // Its credential is refused at the door from the next call on. This is the call already
+    // through it: the middleware let it past before the removal committed, and a line written now
+    // would be one more line from a machine nobody can reach any more.
+    const conversation = await opened()
+    await removeMachine(db, { machine: MACHINE, owner: PERSON })
+
+    const said = await machineSays(db, {
+      conversationId: conversation,
+      machineId: MACHINE,
+      key: 'turn-1/said',
+      message: { role: 'assistant', content: { text: 'hello back' } },
+    })
 
     expect(said).toEqual({ kind: 'no-conversation' })
   })

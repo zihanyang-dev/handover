@@ -14,14 +14,7 @@
  */
 
 import { z } from '@hono/zod-openapi'
-
-/**
- * How much of a command's output travels in one piece.
- *
- * Well under `NOTIFY`'s 8000 bytes once it is JSON with a name beside it, so no piece is ever the
- * one that gets dropped for being too big.
- */
-export const PIECE = 3000
+import { PIECE } from '@handover/universal'
 
 /**
  * What an agent reports that is never written down.

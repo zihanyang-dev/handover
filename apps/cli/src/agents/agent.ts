@@ -99,7 +99,7 @@ type Tool = Extract<Message, { role: 'tool' }>['content']
  * is written once and never revised: a row per streamed fragment would be an update per fragment,
  * and Postgres keeps every version of a row it updates.
  */
-export type Unkept = components['schemas']['Unkept']
+type Unkept = components['schemas']['Unkept']
 
 /**
  * One thing said or done, in our words. Every adapter produces exactly this.
@@ -144,15 +144,6 @@ export type Why =
  * conversation wants to see that a command ran and roughly what came back.
  */
 export const EXCERPT = 400
-
-/**
- * How much of a command's output travels in one live piece.
- *
- * Well under `NOTIFY`'s 8000 bytes once it is JSON, so no piece is ever the one dropped for being
- * too big. Stated here as well as in the contract because a number is not a shape: the generated
- * types carry the schema, not its bounds.
- */
-export const PIECE = 3000
 
 export function shorten(value: string): string {
   return value.length <= EXCERPT ? value : `${value.slice(0, EXCERPT - 1)}…`

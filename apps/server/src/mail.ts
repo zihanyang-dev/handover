@@ -16,13 +16,13 @@ const ENDPOINT = 'https://api.resend.com/emails'
  */
 const GIVE_UP_AFTER_MS = 10_000
 
-export type Letter = {
+type Letter = {
   readonly to: string
   readonly subject: string
   readonly text: string
 }
 
-export type Delivery = 'sent' | 'refused' | 'unknown'
+type Delivery = 'sent' | 'refused' | 'unknown'
 
 export type Mailer = (letter: Letter) => Promise<Delivery>
 

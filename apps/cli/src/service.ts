@@ -180,7 +180,7 @@ export type Step = {
  * wait-out  run until it fails. That failure is what is being waited for.
  * ```
  */
-export type Need = 'do-it' | 'clear-it' | 'wait-out'
+type Need = 'do-it' | 'clear-it' | 'wait-out'
 
 /**
  * Which service manager this machine hands itself to.

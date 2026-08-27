@@ -29,7 +29,7 @@ export const Asked = z.object({
 })
 
 /** Something the agent said. Its reasoning is not here — see `THINKING_IS_NOT_KEPT`. */
-export const Answered = z.object({ text: z.string() })
+const Answered = z.object({ text: z.string() })
 
 /**
  * Something the agent did, already in our words.
@@ -60,7 +60,7 @@ const Did = z.object({
  * know shows the conversation without it, which is why a new kind of activity is a value and not
  * a migration.
  */
-export const Happened = z.looseObject({ activityType: z.string() })
+const Happened = z.looseObject({ activityType: z.string() })
 
 /**
  * The activities this slice writes.
@@ -180,5 +180,4 @@ export function unreadable(seq: number, at: Date): Spoken {
  */
 export const ROLES = Message.options.map((one) => one.shape.role.value)
 
-export type Role = Message['role']
 export type Asked = z.infer<typeof Asked>

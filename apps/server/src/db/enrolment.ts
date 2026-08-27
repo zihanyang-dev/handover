@@ -47,7 +47,7 @@ export type MachineAsking = {
  * because it is made before anybody knows which machine will use it. Only who made it, because
  * making one *was* the approving — and what they were agreeing to is that the machine is theirs.
  */
-export type KeyMade = {
+type KeyMade = {
   readonly kind: 'key'
   readonly secretHash: string
   readonly approvedBy: string

@@ -49,11 +49,37 @@
 
 **新范围主要从"研究"里进来。** 有真实失败陈述才研究。
 
+## 发第一个 tag 之前:地基优先于影响面
+
+**发第一个 tag 的那天,把这一节删掉。**
+
+现在没有任何外部使用者。所以**不为兼容留任何垫片**:该改名就改名,该搬就搬,同一次改动里把每一处引用都改掉。数据库格式、on-disk 格式、协议同理 —— 旧的直接拒绝,不做迁移期。
+
+这一条是照 [DeepSeek Harness 的 `AGENTS.md`](https://github.com/deepseek-ai/deepseek-harness) 抄的,连"发布时删掉这一节"这句都是。它的用处是**给"要不要现在大改"一个默认答案**:现在改的代价只有一次 `pnpm check`,以后改的代价是所有已经装在别人机器上的东西。
+
+发出去之后这一条就是错的,所以它必须有一个到期日。
+
 ## 检查只做机械事实
 
-编译器、lint、格式化和生成器只检查与业务无关的机械事实。
+编译器、lint、格式化、生成器,以及**扫全库的机械规则**。
 
-**不写扫描 owner 名单、依赖方向、错误恢复或命名词表的自研门禁。** 产品承诺由行为测试保护;责任、依赖方向和命名由完整 diff 的人工评审判断。
+规则住在 `apps/server/src/rules/` 和 `apps/web/rules/`,一条一个文件。它们不测任何一段代码,它们扫源文件:
+
+```
+sql        手写 SQL 只能出现在 db/
+revoked    每一处读 memberships 都必须带 revoked_at
+routes     每条路由都在它地址所承诺的那道门后面
+endpoints  design 文档写的每条接口,这个部署真的有
+style      屏幕用到的每个 class 名,样式表里都有
+```
+
+外加两个现成的:`pnpm unused`(knip:没人 import 的文件、export、依赖)和 `pnpm duplication`(jscpd:跨文件的复制粘贴)。
+
+**能机械检查的不变量,接到门禁上,不要写在注释里。** 注释和代码会分家,而分家之后注释变成谎话 —— 我们撞过一次:`onItsOwn` 的注释承诺了一个查询根本没做的检查。
+
+这一条从前写的是反的("不写自研门禁,依赖方向和命名由人工评审判断")。改掉是因为数出来的账:**机械化的那几条,违反数是 0;没机械化的那一条,积了 365 处。**
+
+产品承诺仍然由行为测试保护 —— 门禁守的是结构,不是行为。
 
 ## 升级给人
 
@@ -68,7 +94,7 @@
 ## 命令
 
 ```
-pnpm generate · typecheck · lint · format · test · test:db · check
+pnpm generate · typecheck · lint · format · unused · duplication · test · test:db · check
 pnpm test:agents   不在 check 里:要两个 agent 都装着、登录着,而且花真的模型调用
 pnpm test:e2e      不在 check 里:要 docker 里的库,而且它自己 build 一次前端
                    真浏览器走完整旅程 —— 关闭一条旅程时的「真实旅程跑一遍」就是它

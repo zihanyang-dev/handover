@@ -244,5 +244,3 @@ export function HandwritingSvg(props: HandwritingSvgProps) {
     </Message>
   )
 }
-
-export default HandwritingSvg

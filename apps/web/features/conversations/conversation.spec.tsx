@@ -882,8 +882,12 @@ describe('what a piece of work shows beside the conversation', () => {
         HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
       ),
       http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
-      http.get('*/spaces/acme/conversations/c-1', () => {
+      http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
         asked += 1
+        // Answers `after` the way the server does. A mock that ignored it would hand the page the
+        // same line again every second, which is not a thing this system can do — and the page
+        // would then be shown accumulating a transcript nobody could ever be sent.
+        const after = new URL(request.url).searchParams.get('after')
 
         return HttpResponse.json<Transcript>({
           id: 'c-1',
@@ -892,7 +896,9 @@ describe('what a piece of work shows beside the conversation', () => {
           // Idle: no turn is running this instant. The work is not finished.
           working: { state: 'idle' } as Transcript['working'],
           offers: [],
-          messages: [say(1, 'user', { text: 'go' })] as Transcript['messages'],
+          messages: (after === null
+            ? [say(1, 'user', { text: 'go' })]
+            : []) as Transcript['messages'],
           underway: underway({ state: 'working' }),
         })
       }),

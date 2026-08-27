@@ -228,7 +228,7 @@ export async function sayGoodbye(db: Database, machineId: string): Promise<void>
  * Not `Attached`: that word is the door a machine's credential opens, and one name for the holder
  * of a credential and for a row on a screen is one of them being read as the other.
  */
-export type Machine = {
+type Machine = {
   readonly id: string
   readonly name: string
   /** Which build of the CLI it is running, or nothing when it has never said. */
@@ -266,6 +266,40 @@ export type Seen = {
  * else. Joined, `for update` would lock the membership row too — and then opening a conversation
  * would queue behind anything touching who is in what.
  */
+/**
+ * The conversation a machine is allowed to write into, locked, or nothing.
+ *
+ * Two paths need this and they must never disagree: a machine adding a line to a transcript, and
+ * a machine reporting on the piece of work it is running. Both are told by the middleware that
+ * the credential is good — and both open a transaction afterwards, so both have to ask again
+ * inside it. A machine somebody removed in between must not get one more write.
+ *
+ * The join is what makes the removal check mean anything. Read without it, `removeMachine` can
+ * commit between this and the write and the line lands anyway; with it, `for update` holds the
+ * machine's row too. It costs the writes on one machine being serialized against each other — a
+ * row lock held for one short transaction, against a few lines a second — which is worth what it
+ * buys.
+ *
+ * Takes the transaction, not the pool: read outside the one that writes, the answer is already
+ * stale by the time it is used.
+ */
+export async function stillItsToWriteOn(
+  tx: Tx,
+  on: { readonly conversationId: string; readonly machineId: string },
+): Promise<string | undefined> {
+  const conversation = await tx
+    .selectFrom('conversations')
+    .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+    .select('conversations.id')
+    .where('conversations.id', '=', on.conversationId)
+    .where('conversations.machine_id', '=', on.machineId)
+    .where('machines.removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+
+  return conversation?.id
+}
+
 export function reachableFrom(spaceId: string) {
   return (eb: ExpressionBuilder<DB, 'machines'>): Expression<SqlBool> =>
     eb.exists(

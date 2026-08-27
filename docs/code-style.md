@@ -281,6 +281,30 @@ export function parseEnv(source: Readonly<Record<string, string | undefined>>): 
 - **空串等于没设。** 否则 `DATABASE_URL=` 报的是"格式不对",而正确的话是"没设" —— 两句话指向完全不同的动作。
 - **一次列全。** 配置坏了只有一个行动者、一个恢复(改完重启),按 §5.1 是**一个**错误;但它必须一次说完所有问题,否则每修一条要重启一次。
 
+### 4.7 默认值要显式,不能藏在 `??` 里 `人工`
+
+**决定默认值是一步,要有名字、要在拥有它的那一层。**`?? default` 写在用它的地方,是把一个决定伪装成一个表达式。
+
+```ts
+// 错:一个 503 在这里变成了「这不是你的 Space」
+const space = data ?? null
+if (space === null) return notYours()
+
+// 对:先分辨清楚,再各自处理
+if (response.status === 404) return null
+if (data === undefined) throw new Error(`could not read (${response.status})`)
+```
+
+**这一条是我们真的踩过的**:一个 `data ?? null` 把「服务器坏了」和「没有这个 Space」折成了同一句话,而这两句要人做的事完全不同。当时的测试只覆盖了 `HttpResponse.error()`,所以它绿着。
+
+判据是一句话:**`??` 右边的东西,是不是在回答一个和左边不同的问题?** 是,就说明这里有两种情况被折成了一种。
+
+[DeepSeek Harness 把它写成一条硬规则](https://github.com/deepseek-ai/deepseek-harness):默认值是拥有它那一侧的一个显式 `resolve(request): Spec` 步骤,不是 `run()` 里藏着的一个 `?? default`。
+
+`??` 用在**两边回答同一个问题**的时候仍然是对的 —— `name ?? 'Untitled'` 没有折叠任何东西。
+
+---
+
 ---
 
 ## 5. 错误与恢复
