@@ -12,7 +12,7 @@
  */
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
@@ -59,40 +59,124 @@ export type Underway = components['schemas']['Underway']
  * for a fresh turn, which is what a key is for — clearing it from inside would be a state change
  * during the render that noticed the turn had moved on.
  */
-export function useWatching(slug: string, id: string): readonly Moment[] {
+/**
+ * How long a name stays up after the last time somebody said they were typing.
+ *
+ * Longer than {@link SAYS_SO_EVERY} so an indicator does not flicker between two heartbeats, and
+ * short enough that a browser which was closed mid-sentence does not leave somebody's name on
+ * another person's screen. Nothing says "stopped": a tab that crashed cannot.
+ */
+const STOPS_SHOWING_MS = 4000
+
+/** How often the browser says it is still typing, while somebody is. */
+const SAYS_SO_EVERY = 2000
+
+/**
+ * The connection itself, opened once per conversation.
+ *
+ * Its own function so the hook above stays readable, and because what it does is one thing: a
+ * browser reconnects on its own, and everything about *what* arrives belongs to the caller.
+ */
+function watch(slug: string, id: string): EventSource {
+  return new EventSource(`/spaces/${slug}/conversations/${id}/live`, { withCredentials: true })
+}
+
+/**
+ * Nothing of the last turn stays on screen when a new one begins.
+ *
+ * Not a key on the component, which is what this used to be: that closed the stream and opened
+ * another at the start of every turn — exactly when the first moments of that turn arrive. They
+ * are sent once and kept nowhere, so each one that landed in the gap was gone for good, and what
+ * a person saw was a turn that began in silence.
+ *
+ * Remembering the last turn in state is React's own way of resetting when a prop changes: it
+ * re-renders before anything is shown, and the connection above is untouched.
+ */
+function useStartsAgainEachTurn(turn: number, clear: (moments: readonly Moment[]) => void): void {
+  const [showing, setShowing] = useState(turn)
+
+  if (showing !== turn) {
+    setShowing(turn)
+    clear([])
+  }
+}
+
+export function useWatching(
+  slug: string,
+  id: string,
+  /** Which turn is running. A new one shows nothing of the last, and the list starts again. */
+  turn: number,
+): { readonly moments: readonly Moment[]; readonly typing: string | undefined } {
   const [moments, setMoments] = useState<readonly Moment[]>([])
+  const [typing, setTyping] = useState<string | undefined>(undefined)
   const client = useQueryClient()
 
+  useStartsAgainEachTurn(turn, setMoments)
+
   useEffect(() => {
-    const live = new EventSource(`/spaces/${slug}/conversations/${id}/live`, {
-      withCredentials: true,
-    })
+    let forgets: ReturnType<typeof setTimeout> | undefined = undefined
+    const live = watch(slug, id)
 
-    const read = async (): Promise<void> =>
-      client.invalidateQueries({ queryKey: ['conversation', slug, id] })
-
-    // Whatever arrived while this browser was not connected arrived while it was not connected.
-    // A stream that reconnects without catching up is a page that stays behind by however long it
-    // was away, and neither end can tell that from an agent that went quiet.
-    live.onopen = () => {
-      void read()
+    const read = (): void => {
+      void client.invalidateQueries({ queryKey: ['conversation', slug, id] })
     }
 
-    live.onmessage = (event: MessageEvent<string>) => {
-      // The heartbeat, which says only that the connection is still there.
-      if (event.data === '') return
+    // Whatever arrived while this browser was not connected arrived while it was not connected. A
+    // stream that reconnects without catching up is a page that stays behind by however long it
+    // was away, and neither end can tell that from an agent that went quiet.
+    live.onopen = read
 
+    live.onmessage = (event: MessageEvent<string>) => {
+      if (event.data === '') return
       const watched = JSON.parse(event.data) as Watched
-      if (watched.seen === 'written') void read()
-      else setMoments((sofar) => [...sofar, watched.moment])
+
+      if (watched.seen === 'written') read()
+      else if (watched.seen === 'moment') setMoments((sofar) => [...sofar, watched.moment])
+      else {
+        setTyping(watched.who)
+        // Forgotten on our own rather than on being told: being told is the one message a browser
+        // that was closed mid-sentence cannot send.
+        clearTimeout(forgets)
+        forgets = setTimeout(() => {
+          setTyping(undefined)
+        }, STOPS_SHOWING_MS)
+      }
     }
 
     return () => {
+      clearTimeout(forgets)
       live.close()
     }
   }, [slug, id, client])
 
-  return moments
+  return { moments, typing }
+}
+
+/**
+ * Says you are typing, at most once every {@link SAYS_SO_EVERY}.
+ *
+ * Throttled rather than debounced: what the other side needs is to keep hearing it while somebody
+ * is still going, and a debounce says nothing until they stop — which is the one moment it does
+ * not matter.
+ */
+export function useSayingYouAreTyping(slug: string, id: string): () => void {
+  const last = useRef(0)
+
+  return () => {
+    const now = Date.now()
+    if (now - last.current < SAYS_SO_EVERY) return
+    last.current = now
+
+    // Nothing is done with the answer, and a failure is swallowed on purpose: what this says is
+    // kept nowhere, so one that did not arrive is a name that does not appear — exactly what it
+    // would be if the person had paused. Left unhandled it is a rejected promise on every
+    // dropped connection, about nothing.
+    api
+      .POST('/spaces/{slug}/conversations/{id}/typing', {
+        params: { path: { slug, id } },
+      })
+      .catch(() => undefined)
+  }
 }
 
 export function conversationsIn(slug: string) {

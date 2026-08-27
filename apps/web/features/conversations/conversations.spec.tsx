@@ -45,6 +45,44 @@ const MINA: components['schemas']['Machine'] = {
   agents: [{ kind: 'claude-code', version: '2.1.4', models: [] }],
 }
 
+describe('whose conversation is whose', () => {
+  it('says who started each one, on a list several people read', async () => {
+    // A Space with five people in it is otherwise a wall of rows nobody can place. The name is
+    // derived from the first thing anybody said in it, not stored on the conversation.
+    server.use(
+      ...theSpace({
+        conversations: [
+          {
+            id: 'c-1',
+            agentKind: 'claude-code',
+            machineId: 'm-1',
+            machineName: 'kai-mbp',
+            startedAt: '2026-08-27T10:00:00.000Z',
+            opening: 'where does the timeout live?',
+            startedBy: 'Kai',
+            working: { state: 'idle' },
+          },
+          {
+            id: 'c-2',
+            agentKind: 'claude-code',
+            machineId: 'm-1',
+            machineName: 'kai-mbp',
+            startedAt: '2026-08-26T10:00:00.000Z',
+            opening: 'an older one',
+            startedBy: null,
+            working: { state: 'idle' },
+          },
+        ],
+      }),
+    )
+    open('/s/acme')
+
+    expect(await screen.findByText(/Kai · claude code on kai-mbp/iu)).toBeDefined()
+    // The one from before names: it says what it can and does not invent the rest.
+    expect(screen.getByText(/^claude code on kai-mbp$/iu)).toBeDefined()
+  })
+})
+
 describe('the conversations in a Space', () => {
   it('says what was asked, not a name somebody had to invent', async () => {
     server.use(
@@ -58,6 +96,7 @@ describe('the conversations in a Space', () => {
             machineName: 'mina-mbp',
             startedAt: new Date().toISOString(),
             opening: 'read the timeout logic',
+            startedBy: 'Kai',
             working: { state: 'idle' },
           },
         ],
@@ -89,6 +128,7 @@ describe('the conversations in a Space', () => {
             machineName: 'mina-mbp',
             startedAt: new Date().toISOString(),
             opening: 'take your time',
+            startedBy: 'Kai',
             working: { state: 'working' },
           },
         ],

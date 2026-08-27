@@ -1078,6 +1078,10 @@
             "type": "string",
             "nullable": true
           },
+          "startedBy": {
+            "type": "string",
+            "nullable": true
+          },
           "working": {
             "$ref": "#/components/schemas/Working"
           }
@@ -1089,6 +1093,7 @@
           "machineName",
           "startedAt",
           "opening",
+          "startedBy",
           "working"
         ]
       },
@@ -1215,13 +1220,18 @@
               "at": {
                 "type": "string",
                 "format": "date-time"
+              },
+              "said": {
+                "type": "string",
+                "nullable": true
               }
             },
             "required": [
               "role",
               "content",
               "seq",
-              "at"
+              "at",
+              "said"
             ]
           },
           {
@@ -1706,6 +1716,24 @@
             "required": [
               "seen",
               "upTo"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "seen": {
+                "type": "string",
+                "enum": [
+                  "typing"
+                ]
+              },
+              "who": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seen",
+              "who"
             ]
           }
         ]
@@ -4547,6 +4575,60 @@
           },
           "404": {
             "description": "No such Space, or no such conversation in it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/conversations/{id}/typing": {
+      "post": {
+        "summary": "Say that you are typing, which is kept nowhere",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Said to whoever is watching, and to nobody if nobody is"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Space",
             "content": {
               "application/json": {
                 "schema": {

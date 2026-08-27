@@ -286,6 +286,11 @@ export type Standing = {
   readonly startedAt: Date
   /** The first thing a person said, which is what a list of conversations has to show. */
   readonly opening: string | null
+  /**
+   * Who said it. Null when nobody has spoken yet, and on conversations opened before a line could
+   * say who wrote it.
+   */
+  readonly startedBy: string | null
   readonly working: Working
 }
 
@@ -316,6 +321,18 @@ export async function conversationsIn(db: Database, spaceId: string): Promise<re
         .orderBy('messages.seq')
         .limit(1)
         .as('opening'),
+      // Whose it is, derived from the same line the opening comes from rather than stored on the
+      // conversation. Stored, it would be a second copy of the author of one message and would
+      // disagree with it the day anything about that line changes. `architecture.md` §2.
+      eb
+        .selectFrom('messages')
+        .innerJoin('users', 'users.id', 'messages.said_by')
+        .select('users.display_name as startedBy')
+        .whereRef('messages.conversation_id', '=', 'conversations.id')
+        .where('messages.role', '=', 'user')
+        .orderBy('messages.seq')
+        .limit(1)
+        .as('startedBy'),
       stillOwed(sql.ref('conversations.id')).as('unfinished'),
     ])
     .where('conversations.space_id', '=', spaceId)
@@ -440,12 +457,22 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
 
   const from = tx
     .selectFrom('messages')
-    .select(['seq', 'role', 'content', 'created_at as at'])
-    .where('conversation_id', '=', conversation.id)
-    .orderBy('seq')
+    // The name and not the id: a page shows a person, and looking each one up afterwards would be
+    // a second read per line of transcript. Null on the three kinds nobody said, and on lines
+    // written before a line could say who wrote it.
+    .leftJoin('users', 'users.id', 'messages.said_by')
+    .select([
+      'messages.seq',
+      'messages.role',
+      'messages.content',
+      'messages.created_at as at',
+      'users.display_name as said',
+    ])
+    .where('messages.conversation_id', '=', conversation.id)
+    .orderBy('messages.seq')
 
   const messages = await (
-    reading.after === undefined ? from : from.where('seq', '>', reading.after)
+    reading.after === undefined ? from : from.where('messages.seq', '>', reading.after)
   ).execute()
 
   return {

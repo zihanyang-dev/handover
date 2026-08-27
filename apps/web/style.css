@@ -256,24 +256,16 @@ textarea.field {
 }
 
 /*
- * Their label goes bold on hover, and two zero-width spacers give back exactly the width the
- * heavier letters take, so the button never moves under the pointer.
+ * Their label goes heavier under the pointer, and the button does not change size.
+ *
+ * Painted rather than re-weighted. A real `font-weight` change re-measures the text, and every
+ * way of giving that width back — two spacers in `ch`, a transition to smooth them — approximates
+ * a number that belongs to the font: measured, the button was still seven pixels wider hovered
+ * than not, and it moved under the pointer at the moment somebody was aiming at it. A stroke in
+ * the same colour thickens the letters and touches no metric at all.
  */
-.button-label::before,
-.button-label::after {
-  content: '';
-  display: inline-block;
-  width: 0.5ch;
-  transition: width 200ms ease;
-}
-
 .button:enabled:hover .button-label {
-  font-weight: 600;
-}
-
-.button:enabled:hover .button-label::before,
-.button:enabled:hover .button-label::after {
-  width: 0;
+  -webkit-text-stroke: 0.3px currentColor;
 }
 
 /* ── separator ──────────────────────────────────────────────────────────── */
@@ -318,6 +310,16 @@ textarea.field {
 .said svg {
   flex: none;
   margin-top: 0.125rem;
+}
+
+/* Who said it, on the only kind of line a person says. Quiet: the name is there to be told
+   apart from the name above it, not to be read first. */
+.said-by {
+  display: block;
+  margin-bottom: 0.125rem;
+  font-size: var(--text-xxs);
+  font-weight: 600;
+  color: var(--grey-500);
 }
 
 .said-bad {

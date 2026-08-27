@@ -36,7 +36,7 @@ test('talk to an agent, hand it over, and be asked something', async ({ page, co
   await page.getByLabel('Say something').fill('where does the timeout live?')
   await page.getByRole('button', { name: 'Send' }).click()
   const first = await waitsForATurn(machine)
-  expect(first.asked?.text).toBe('where does the timeout live?')
+  expect(first.asked.map((one) => one.text)).toEqual(['where does the timeout live?'])
 
   // ⑤ The agent answers, and what it said is on the screen.
   await machine.says(first, { role: 'assistant', content: { text: 'In client.ts, hard-coded.' } })
@@ -103,3 +103,28 @@ async function sessionOf(context: import('@playwright/test').BrowserContext): Pr
 
   return session.value
 }
+
+test('what an agent is doing right now reaches a browser that is watching', async ({
+  page,
+  context,
+}) => {
+  // The live channel, on its own. Everything else in this suite reads the transcript, which is
+  // written down and refetched; this is the half that is kept nowhere and only ever exists on a
+  // connection somebody is holding open. A screen test cannot reach it — it fakes `EventSource` —
+  // so without this the whole path from a machine to a person's screen is unwalked.
+  await signsIn(page, 'ilya')
+  await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'ilya-mbp')
+  await machine.poll()
+  await expect(page.getByText('ilya-mbp')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByRole('button', { name: /claude code/i }).click()
+  await expect(page).toHaveURL(/\/c\//u)
+  await page.getByLabel('Say something').fill('read notes.txt')
+  await page.getByRole('button', { name: 'Send' }).click()
+  const turn = await waitsForATurn(machine)
+
+  await machine.happening(turn, { said: 'thinking', text: 'looking for notes.txt' })
+
+  await expect(page.getByText('looking for notes.txt')).toBeVisible({ timeout: 15_000 })
+})

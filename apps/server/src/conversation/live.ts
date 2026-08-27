@@ -63,6 +63,18 @@ export const Watched = z
      * from where they had got to, and this is only what tells them there is one.
      */
     z.object({ seen: z.literal('written'), upTo: z.number().int().positive() }),
+    /**
+     * Somebody else has the box open and is typing.
+     *
+     * Never written down, like everything else here — it is not a fact, it is what this second
+     * looks like, and it dies with the connection that carried it. What it prevents is two people
+     * in one Space each answering an agent without knowing the other is halfway through.
+     *
+     * A name, not an id: it goes on a screen. And there is no matching "stopped typing", because
+     * a browser that crashed cannot send one — whoever is typing says so every few seconds, and
+     * whoever is watching gives up on their own. See `prd.md` 06 ③.
+     */
+    z.object({ seen: z.literal('typing'), who: z.string() }),
   ])
   .openapi('Watched')
 

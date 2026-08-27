@@ -58,6 +58,10 @@ function transcript(
       HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
     ),
     http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
+    http.post(
+      '*/spaces/acme/conversations/:id/typing',
+      () => new HttpResponse(null, { status: 204 }),
+    ),
     http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
       const after = new URL(request.url).searchParams.get('after')
       const tail = after === null ? messages : messages.filter((one) => one.seq > Number(after))
@@ -93,11 +97,12 @@ type Transcript = components['schemas']['Transcript']
 type Offers = Transcript['offers']
 
 const AT = '2026-08-26T10:00:00.000Z'
-const say = (seq: number, role: string, content: unknown): Message => ({
+const say = (seq: number, role: string, content: unknown, said?: string | null): Message => ({
   seq,
   role,
   content,
   at: AT,
+  ...(role === 'user' ? { said: said ?? null } : {}),
 })
 
 const OFFERS: Offers = [
@@ -413,14 +418,36 @@ describe('watching it work', () => {
     expect(screen.queryAllByText('the timeout is 30 seconds')).toHaveLength(1)
   })
 
-  it('watches nothing at all once the turn has settled', async () => {
-    // A connection held open on a finished conversation is one held open for nothing.
+  it('keeps watching once the turn has settled, because that is when somebody types', async () => {
+    // It used to close here, and the reason was good while the only thing this carried was an
+    // agent at work: a connection on a finished conversation was one held for nothing. It now
+    // also carries somebody else having the box open — which happens precisely when no turn is
+    // running. Closed until one started, two people in a Space would only ever see each other
+    // after it was too late to matter.
     server.use(...transcript([say(1, 'activity', { activityType: 'done' })]))
     open('/s/acme/c/c-1')
     await screen.findByRole('button', { name: 'Send' })
 
-    expect(isWatching(LIVE)).toBe(false)
+    expect(isWatching(LIVE)).toBe(true)
   })
+
+  it('says who is typing, and forgets on its own rather than on being told', async () => {
+    // Nothing sends "stopped": a browser that was closed mid-sentence cannot. So the name goes up
+    // when it is heard and comes down when it stops being heard.
+    server.use(...transcript([say(1, 'activity', { activityType: 'done' })]))
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Send' })
+
+    serverSends(LIVE, { seen: 'typing', who: 'Mina' })
+
+    expect(await screen.findByText('Mina is typing…')).toBeDefined()
+    await waitFor(
+      () => {
+        expect(screen.queryByText('Mina is typing…')).toBeNull()
+      },
+      { timeout: 8000 },
+    )
+  }, 12_000)
 })
 
 describe('while it is working', () => {
@@ -732,6 +759,33 @@ describe('handing a conversation over', () => {
 
     await screen.findByRole('button', { name: 'Send' })
     expect(screen.queryByLabelText('This piece of work')).toBeNull()
+  })
+})
+
+describe('whose words are whose', () => {
+  it('puts a name on a person\u2019s line and nothing on the agent\u2019s', async () => {
+    // A Space with two people in it: `user` on its own says somebody spoke, about a line that has
+    // to read as a name — and the reader cannot tell their own words from a colleague\u2019s.
+    server.use(
+      ...transcript([
+        say(1, 'user', { text: 'where does the timeout live?' }, 'Kai'),
+        say(2, 'assistant', { text: 'In client.ts.' }),
+        say(3, 'user', { text: 'ok, take it from here' }, 'Mina'),
+      ]),
+    )
+    open('/s/acme/c/c-1')
+
+    expect(await screen.findByText('Kai')).toBeDefined()
+    expect(screen.getByText('Mina')).toBeDefined()
+  })
+
+  it('says nothing at all about a line written before names existed', async () => {
+    // Not "unknown", not the Space\u2019s owner, not a guess from the conversation. `prd.md` 06 ⑥.
+    server.use(...transcript([say(1, 'user', { text: 'an old question' }, null)]))
+    open('/s/acme/c/c-1')
+
+    expect(await screen.findByText('an old question')).toBeDefined()
+    expect(screen.queryByText(/unknown|somebody/iu)).toBeNull()
   })
 })
 

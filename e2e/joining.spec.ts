@@ -11,7 +11,7 @@
  */
 
 import { expect, test, type BrowserContext } from '@playwright/test'
-import { aMachine } from './a-machine.ts'
+import { aMachine, waitsForATurn } from './a-machine.ts'
 import { db, makesASpace, signsIn } from './someone.ts'
 
 test.afterAll(async () => {
@@ -114,3 +114,86 @@ async function sessionOf(context: BrowserContext): Promise<string> {
 
   return session.value
 }
+
+test('two people in one conversation, and each can see whose words are whose', async ({
+  browser,
+}) => {
+  // The whole of 06 walked: a name on every line a person says, both of two questions reaching
+  // the agent, and each of them able to see the other with the box open.
+  const kaiBrowser = await browser.newContext()
+  const kai = await kaiBrowser.newPage()
+  const kaiAddress = await signsIn(kai, 'kai')
+  const slug = await makesASpace(kai)
+  const laptop = await aMachine(await sessionOf(kaiBrowser), 'kai-mbp')
+  await laptop.poll()
+  await expect(kai.getByText('kai-mbp')).toBeVisible({ timeout: 15_000 })
+
+  await kai.getByRole('tab', { name: 'People' }).click()
+  await kai.getByRole('button', { name: 'Make a link' }).click()
+  const link = await kai.getByRole('code').innerText()
+
+  const minaBrowser = await browser.newContext()
+  const mina = await minaBrowser.newPage()
+  const minaAddress = await signsIn(mina, 'mina')
+  await mina.goto(new URL(link).pathname)
+  await mina.getByRole('button', { name: /^Join / }).click()
+  await mina.waitForURL(new RegExp(`/s/${slug}`, 'u'), { timeout: 20_000 })
+
+  // ① Kai starts a conversation and asks something, and the machine takes that turn.
+  await kai.getByRole('tab', { name: 'Home' }).click()
+  await kai.getByRole('button', { name: /claude code/i }).click()
+  await expect(kai).toHaveURL(/\/c\//u)
+  await kai.getByLabel('Say something').fill('where does the timeout live?')
+  await kai.getByRole('button', { name: 'Send' }).click()
+  const first = await waitsForATurn(laptop)
+
+  // ② Mina opens the same conversation from the sidebar, and it says whose it is.
+  await mina.reload()
+  await expect(mina.getByText(/where does the timeout live\?/u)).toBeVisible({ timeout: 15_000 })
+  await expect(mina.getByText(new RegExp(`${kaiAddress} ·`, 'u'))).toBeVisible()
+  await mina.getByRole('link', { name: /where does the timeout live/u }).click()
+  await expect(mina).toHaveURL(/\/c\//u)
+
+  // ③ In the transcript, the line carries the name of the person who said it.
+  await expect(mina.getByText(kaiAddress, { exact: true })).toBeVisible({ timeout: 15_000 })
+
+  // ④ Mina types, and Kai sees that somebody else has the box open. Nothing about this is ever
+  // written down — it is on the stream that keeps nothing.
+  await mina.getByLabel('Say something').fill('and does it affect retries?')
+  await expect(kai.getByText(`${minaAddress} is typing…`)).toBeVisible({ timeout: 15_000 })
+
+  // ⑤ Both of them speak while the agent is still on Kai's question, which is the only way two
+  // people are ever waiting at once.
+  //
+  // Its clock is written rather than polled, the way `journey.spec.ts` writes it the other way to
+  // make a machine gone. A real machine reports every twenty-five seconds whether or not it is
+  // busy — its own comment says a turn can run ten minutes — but this journey spends longer than
+  // the silence threshold in two browsers between one machine action and the next, and polling to
+  // stay present is also how a turn is taken: one taken here would be a turn for Kai's question
+  // alone, which is the very thing being tested.
+  await db
+    .updateTable('machines')
+    .set({ last_seen_at: new Date() })
+    .where('name', '=', 'kai-mbp')
+    .execute()
+  await mina.getByRole('button', { name: 'Send' }).click()
+  await expect(kai.getByText('and does it affect retries?')).toBeVisible({ timeout: 15_000 })
+
+  await kai.getByLabel('Say something').fill('and the timeout on retries themselves?')
+  await kai.getByRole('button', { name: /^(Send|Stop)$/u }).click()
+  await expect(mina.getByText('and the timeout on retries themselves?')).toBeVisible({
+    timeout: 15_000,
+  })
+
+  // ⑥ The turn ends, and the next one carries both of the questions asked while it ran — oldest
+  // first, each under the name of whoever asked it. Handed only the last, one person would be
+  // left with a question on screen that is never answered.
+  await laptop.ends(first)
+  const next = await waitsForATurn(laptop)
+
+  expect(next.asked.map((one) => one.text)).toEqual([
+    'and does it affect retries?',
+    'and the timeout on retries themselves?',
+  ])
+  expect(next.asked.map((one) => one.who)).toEqual([minaAddress, kaiAddress])
+})

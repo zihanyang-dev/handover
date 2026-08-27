@@ -26,7 +26,7 @@ export default {
     'apps/cli': { entry: ['scripts/*.ts'], project: 'src/**/*.ts', ignoreDependencies: ['bun'] },
     'packages/universal': {},
     // Not a workspace package: Playwright is run from the root against its own config.
-    '.': { entry: ['e2e/playwright.config.ts', 'e2e/*.spec.ts'], ignoreDependencies: ['jscpd'] },
+    '.': { entry: ['e2e/playwright.config.ts', 'e2e/*.spec.ts'] },
   },
   ignore: ['**/generated/**'],
   vitest: true,

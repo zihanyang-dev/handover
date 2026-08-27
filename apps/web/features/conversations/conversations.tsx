@@ -46,6 +46,9 @@ export function Conversations({ slug }: { readonly slug: string }) {
                 {one.opening ?? 'Nothing said yet'}
               </Link>
               <span className="note">
+                {/* Whose it is, on a list several people read. Left out rather than guessed when
+                    nobody has spoken yet or the conversation is older than names. */}
+                {one.startedBy !== null && `${one.startedBy} · `}
                 {agentName(one.agentKind)} on {one.machineName}
               </span>
             </span>

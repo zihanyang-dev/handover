@@ -166,8 +166,20 @@ const PLACE = { seq: z.number().int(), at: z.iso.datetime() }
  * Built from the four above rather than written out again, because a second list of what a `tool`
  * line holds is a second list that can be wrong — and the page reading it would believe it.
  */
+/**
+ * Who said it, on the only kind of line a person says.
+ *
+ * A name and not an id: a page shows people, and it would otherwise hold a table of them to
+ * translate every line. Null on lines written before a line could say who wrote it — `prd.md` 06
+ * ⑥ is that those stay nameless rather than being guessed at.
+ *
+ * Absent from the other three rather than null on them: nobody said an agent's answer, a tool
+ * call or an activity, and a field that is always null is a question that should not be asked.
+ */
+const SAID = { said: z.string().nullable() }
+
 export const Spoken = z.discriminatedUnion('role', [
-  FROM.person.extend(PLACE),
+  FROM.person.extend(PLACE).extend(SAID),
   FROM.agent.extend(PLACE),
   FROM.tool.extend(PLACE),
   FROM.nobody.extend(PLACE),

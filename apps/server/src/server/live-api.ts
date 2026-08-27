@@ -10,6 +10,7 @@ import { createRoute, z } from '@hono/zod-openapi'
 import { streamSSE } from 'hono/streaming'
 import { Unkept, Watched, type Live } from '../conversation/live.ts'
 import { conversationInSpace } from '../db/conversation.ts'
+import { nameOf } from '../db/user.ts'
 import type { Database } from '../db/connection.ts'
 import { SHOWS, api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
 import {
@@ -42,7 +43,7 @@ const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
 
 export function liveApi(deps: LiveApi) {
   return api<{ Variables: Signed & InSpace }>()
-    .openapiRoutes([watching(deps)])
+    .openapiRoutes([watching(deps), typing(deps)])
     .route('/', api<{ Variables: Attached }>().openapiRoutes([reporting(deps)]))
 }
 
@@ -126,6 +127,49 @@ function reporting(deps: LiveApi) {
       await deps.live.say({
         conversationId: c.req.valid('param').id,
         watched: { seen: 'moment', moment: c.req.valid('json') },
+      })
+
+      return c.body(null, 204)
+    },
+  })
+}
+
+/**
+ * Somebody has the box open and is typing.
+ *
+ * Kept nowhere, like everything else on this channel. It is not a fact about the conversation —
+ * it is what this second looks like — and a Space where two people can both answer an agent is
+ * one where each of them needs to know the other is halfway through a sentence.
+ *
+ * Said again every few seconds rather than paired with a "stopped". A browser that was closed, a
+ * laptop that slept and a network that went cannot send the second half, so whoever is watching
+ * forgets on their own instead. Nothing here has any state to leak.
+ *
+ * The name comes from the session, not the body: an endpoint that reads who is typing out of what
+ * it was sent is an endpoint that lets anybody type as anybody.
+ */
+function typing(deps: LiveApi) {
+  return behindAMembership({
+    route: createRoute({
+      method: 'post',
+      path: '/spaces/{slug}/conversations/{id}/typing',
+      summary: 'Say that you are typing, which is kept nowhere',
+      middleware: [requireSession(deps.db), requireMember(deps.db)],
+      request: { params: z.object({ slug: z.string(), id: rowId }) },
+      responses: {
+        ...BEHIND_A_SESSION,
+        204: saysNothing('Said to whoever is watching, and to nobody if nobody is'),
+        404: refusal('No such Space'),
+      },
+    }),
+
+    handler: async (c) => {
+      // The same reasoning as a machine's moment: shown to whoever is already watching that id and
+      // kept nowhere, so a wrong id costs a line on a screen and nothing else. Membership has
+      // already been asked, which is the part that matters.
+      await deps.live.say({
+        conversationId: c.req.valid('param').id,
+        watched: { seen: 'typing', who: await nameOf(deps.db, c.get('userId')) },
       })
 
       return c.body(null, 204)

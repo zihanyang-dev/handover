@@ -2593,6 +2593,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{slug}/conversations/{id}/typing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say that you are typing, which is kept nowhere */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Said to whoever is watching, and to nobody if nobody is */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/machines/current/conversations/{id}/live": {
         parameters: {
             query?: never;
@@ -3186,6 +3241,7 @@ export interface components {
             /** Format: date-time */
             startedAt: string;
             opening: string | null;
+            startedBy: string | null;
             working: components["schemas"]["Working"];
         };
         Working: {
@@ -3219,6 +3275,7 @@ export interface components {
             seq: number;
             /** Format: date-time */
             at: string;
+            said: string | null;
         } | {
             /** @enum {string} */
             role: "assistant";
@@ -3342,6 +3399,10 @@ export interface components {
             /** @enum {string} */
             seen: "written";
             upTo: number;
+        } | {
+            /** @enum {string} */
+            seen: "typing";
+            who: string;
         };
         Unkept: {
             /** @enum {string} */

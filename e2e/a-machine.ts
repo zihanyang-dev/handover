@@ -17,14 +17,23 @@ const ORIGIN = 'http://localhost:3199'
 type Asking = {
   readonly conversationId: string
   readonly afterSeq: number
-  readonly asked?: { readonly text: string }
+  /** Everything a person said since the last turn, oldest first — see `db/turn.ts`. */
+  readonly asked: readonly { readonly text: string; readonly who: string | null }[]
 }
 
+/**
+ * How often this reports in, like the real command does on its own.
+ *
+ * Comfortably inside the silence threshold, which is what being here means: nothing is pushed to
+ * a machine, so a machine is present exactly as long as it keeps saying so.
+ */
 export type Machine = {
   /** Report in, and take a turn if one is waiting. Answers nothing when there is none. */
   readonly poll: () => Promise<Asking | undefined>
   /** Say something into a conversation, as the agent would. */
   readonly says: (asking: Asking, message: unknown) => Promise<void>
+  /** Say what is happening right now, which is kept nowhere and only reaches whoever is watching. */
+  readonly happening: (asking: Asking, moment: unknown) => Promise<void>
   /** Finish the turn it is on. */
   readonly ends: (asking: Asking, how?: string) => Promise<void>
   /**
@@ -57,16 +66,26 @@ export async function aMachine(sessionToken: string, name: string): Promise<Mach
   if (how !== 'granted') throw new Error(`the machine was not let in: ${how}`)
 
   const authorization = `Bearer ${token}`
+
+  const reportIn = async (): Promise<Asking | undefined> => {
+    const said = await ask(
+      '/machines/current/poll',
+      { authorization },
+      { found: [{ command: 'claude', version: '2.1.4' }] },
+    )
+
+    return (said as { asking?: Asking }).asking
+  }
+
   const machine: Machine = {
     id: name,
-    poll: async () => {
-      const said = await ask(
-        '/machines/current/poll',
+    poll: reportIn,
+    happening: async (asking, moment) => {
+      await ask(
+        `/machines/current/conversations/${asking.conversationId}/live`,
         { authorization },
-        { found: [{ command: 'claude', version: '2.1.4' }] },
+        moment,
       )
-
-      return (said as { asking?: Asking }).asking
     },
     says: async (asking, message) => {
       await ask(
@@ -99,7 +118,7 @@ export async function aMachine(sessionToken: string, name: string): Promise<Mach
 }
 
 /** Waits for a turn, because a machine is told about one by asking rather than being called. */
-export async function waitsForATurn(machine: Machine, seconds = 20): Promise<Asking> {
+export async function waitsForATurn(machine: Machine, seconds = 30): Promise<Asking> {
   const until = Date.now() + seconds * 1000
   while (Date.now() < until) {
     const asking = await machine.poll()

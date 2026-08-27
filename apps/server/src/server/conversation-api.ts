@@ -89,6 +89,8 @@ const standingBody = z
     startedAt: z.iso.datetime(),
     /** What was first asked. A conversation nobody has spoken into yet has nothing to show. */
     opening: z.string().nullable(),
+    /** Who asked it. Null before anybody has, and on conversations older than names. */
+    startedBy: z.string().nullable(),
     working: workingBody,
   })
   .openapi('Conversation')

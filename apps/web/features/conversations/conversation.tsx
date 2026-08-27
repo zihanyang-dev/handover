@@ -20,9 +20,9 @@ import {
   type Moment,
   type Message,
   type Working,
+  useSayingYouAreTyping,
 } from './talking.ts'
 import { Underway } from './underway.tsx'
-import type { Underway as What } from './talking.ts'
 
 /**
  * What an activity says, for the ones this page has words for.
@@ -92,12 +92,12 @@ export function Conversation({ slug, id }: { readonly slug: string; readonly id:
         {/* Keyed by the turn: a new question is a new list, and nothing of the last one stays on
             screen.
             
-            Open while a turn is running, and also while a piece of work is still open — because
-            that one moves on its own, and the stream is how the page hears about it. It shows
-            nothing when there is nothing happening, so the cost of holding it is one connection. */}
-        {(working.state === 'working' || stillOpen(underway)) && (
-          <Watching key={turnOf(messages)} slug={slug} id={id} />
-        )}
+            Open whenever somebody is looking, not only while a turn runs. It shows nothing when
+            nothing is happening, so the cost of holding it is one connection — and the moment it
+            has to carry now is somebody else typing, which happens precisely when no turn is
+            running. Closed until a turn started, two people would only ever see each other after
+            it was too late to matter. */}
+        <Watching slug={slug} id={id} turn={turnOf(messages)} />
 
         <Doing state={working.state} />
         <Ask
@@ -203,11 +203,6 @@ function Run({ did }: { readonly did: readonly Did[] }) {
   )
 }
 
-/** Whether a piece of work handed over here could still move without anybody doing anything. */
-function stillOpen(underway: What | undefined): boolean {
-  return underway !== undefined && underway.state !== 'done'
-}
-
 /**
  * Which turn is running, by the question it is answering.
  *
@@ -231,6 +226,9 @@ function Said({
   if (message.role === 'user')
     return (
       <li id={atSeq(message.seq)} className="said">
+        {/* Only when it is known. Lines written before a line could say who wrote it stay
+            nameless rather than being guessed at — `prd.md` 06 ⑥. */}
+        {message.said !== null && <span className="said-by">{message.said}</span>}
         {message.content.text}
       </li>
     )
@@ -358,9 +356,17 @@ function Happened({ at, what }: { readonly at: number; readonly what: Activity }
  * `prd.md` 03 ⑦ is a table of exactly that: thinking and a command's full output are here while it
  * runs, and afterwards there is a first paragraph and nothing.
  */
-function Watching({ slug, id }: { readonly slug: string; readonly id: string }) {
-  const moments = useWatching(slug, id)
-  if (moments.length === 0) return null
+function Watching({
+  slug,
+  id,
+  turn,
+}: {
+  readonly slug: string
+  readonly id: string
+  readonly turn: number
+}) {
+  const { moments, typing } = useWatching(slug, id, turn)
+  if (moments.length === 0 && typing === undefined) return null
 
   return (
     <ul className="stack-tight" aria-label="Happening now">
@@ -371,7 +377,16 @@ function Watching({ slug, id }: { readonly slug: string; readonly id: string }) 
           {moment.said === 'output' ? <pre className="output">{moment.text}</pre> : said(moment)}
         </li>
       ))}
-      <li className="note">Thinking and full output are shown here and never kept.</li>
+      {/* Somebody else has the box open. Said here rather than beside the box, because this is
+          the list of what is happening this second and that is what it is. */}
+      {typing !== undefined && (
+        <li className="note" aria-live="polite">
+          {typing} is typing…
+        </li>
+      )}
+      {moments.length > 0 && (
+        <li className="note">Thinking and full output are shown here and never kept.</li>
+      )}
     </ul>
   )
 }
@@ -524,6 +539,7 @@ function Ask({
   readonly offers: readonly Model[]
 }) {
   const [text, setText] = useState('')
+  const sayingSo = useSayingYouAreTyping(slug, id)
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
   const say = useSay(slug, id)
@@ -563,6 +579,7 @@ function Ask({
         value={text}
         onChange={(event) => {
           setText(event.target.value)
+          sayingSo()
         }}
       />
 

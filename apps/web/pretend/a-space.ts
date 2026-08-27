@@ -36,5 +36,12 @@ export function theSpace({
     http.get(`*/spaces/${slug}/conversations`, () =>
       HttpResponse.json<Conversations>({ conversations }),
     ),
+    // The conversation screen says it is typing while somebody types. Answered here because it is
+    // part of what that screen does, and a double that does not know about a call the app makes
+    // turns a passing test into an error nobody can place.
+    http.post(
+      `*/spaces/${slug}/conversations/:id/typing`,
+      () => new HttpResponse(null, { status: 204 }),
+    ),
   ]
 }
