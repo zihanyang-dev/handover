@@ -9,10 +9,11 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Watched } from '../conversation/live.ts'
+import { watchers } from '../conversation/watchers.ts'
 import { loadEnv } from '../env.ts'
 import { createLog } from '../log.ts'
 import { connect, type Database } from './connection.ts'
-import { showEveryoneWatching, listenForLive, liveThrough } from './watching.ts'
+import { listenForLive, liveThrough } from './watching.ts'
 
 const env = loadEnv()
 const log = createLog({ ...env, LOG_LEVEL: 'fatal' })
@@ -21,9 +22,9 @@ const log = createLog({ ...env, LOG_LEVEL: 'fatal' })
 const machineSide: Database = connect(env)
 const browserSide: Database = connect(env)
 
-const watching = new Map<string, Set<(watched: Watched) => void>>()
+const watching = watchers()
 const listening = listenForLive(env, log, (happening) => {
-  showEveryoneWatching(watching, happening)
+  watching.show(happening)
 })
 
 const live = liveThrough(browserSide, watching)
@@ -59,7 +60,7 @@ describe('something said on one instance', () => {
     const conversationId = randomUUID()
     const arriving = seen(conversationId)
 
-    await liveThrough(machineSide, new Map()).say({
+    await liveThrough(machineSide, watchers()).say({
       conversationId,
       watched: { seen: 'moment', moment: { said: 'thinking', text: 'let me look at the file' } },
     })
@@ -76,7 +77,7 @@ describe('something said on one instance', () => {
     const conversationId = randomUUID()
     const arriving = seen(conversationId)
 
-    await liveThrough(machineSide, new Map()).say({
+    await liveThrough(machineSide, watchers()).say({
       conversationId,
       watched: { seen: 'written', upTo: 42 },
     })
@@ -87,7 +88,7 @@ describe('something said on one instance', () => {
   it('reaches nobody who is watching a different conversation', async () => {
     const arriving = seen(randomUUID(), 500)
 
-    await liveThrough(machineSide, new Map()).say({
+    await liveThrough(machineSide, watchers()).say({
       conversationId: randomUUID(),
       watched: { seen: 'moment', moment: { said: 'thinking', text: 'not for you' } },
     })
@@ -102,7 +103,7 @@ describe('something said on one instance', () => {
     const conversationId = randomUUID()
     const arriving = seen(conversationId)
 
-    await liveThrough(machineSide, new Map()).say({
+    await liveThrough(machineSide, watchers()).say({
       conversationId,
       watched: { seen: 'moment', moment: { said: 'thinking', text: 'x'.repeat(20_000) } },
     })

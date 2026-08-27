@@ -16,13 +16,13 @@ import { normalizeSlug, type Slug } from '@handover/universal'
 import { serve } from '@hono/node-server'
 import { pino } from 'pino'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import type { Watched } from '../conversation/live.ts'
+import { watchers } from '../conversation/watchers.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { openConversation } from '../db/conversation.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
-import { showEveryoneWatching, liveThrough, listenForLive } from '../db/watching.ts'
+import { listenForLive, liveThrough } from '../db/watching.ts'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { LOG_OPTIONS } from '../log.ts'
@@ -38,9 +38,9 @@ const db: Database = connect(env)
 const log = pino({ ...LOG_OPTIONS, level: 'silent' })
 
 /** The same wiring `main.ts` does: a map of watchers, and the connection that feeds it. */
-const watching = new Map<string, Set<(watched: Watched) => void>>()
+const watching = watchers()
 const listening = listenForLive(env, log, (happening) => {
-  showEveryoneWatching(watching, happening)
+  watching.show(happening)
 })
 
 const live = liveThrough(db, watching)

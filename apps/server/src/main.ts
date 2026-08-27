@@ -7,10 +7,10 @@
  */
 
 import { serve } from '@hono/node-server'
-import type { Watched } from './conversation/live.ts'
+import { watchers } from './conversation/watchers.ts'
 import { connect } from './db/connection.ts'
 import { listenForWaking } from './db/waking.ts'
-import { showEveryoneWatching, listenForLive, liveThrough } from './db/watching.ts'
+import { listenForLive, liveThrough } from './db/watching.ts'
 import { PROVIDER_KEYS, loadEnv } from './env.ts'
 import { codeLetter } from './identity/email-code.ts'
 import { githubClient } from './identity/github.ts'
@@ -89,9 +89,9 @@ const db = connect(env)
  * Everyone watching a turn on this instance, and the connection that hears about turns running on
  * the others. A moment is worth nothing a second later, so none of this is kept anywhere.
  */
-const watching = new Map<string, Set<(watched: Watched) => void>>()
+const watching = watchers()
 const listening = listenForLive(env, log, (happening) => {
-  showEveryoneWatching(watching, happening)
+  watching.show(happening)
 })
 
 /**
@@ -102,9 +102,18 @@ const listening = listenForLive(env, log, (happening) => {
  * held here while the person who has something for it is talking to another instance.
  */
 const waiting = waitingRoom(POLL_SECONDS)
-const waking = listenForWaking(env, log, (machineId) => {
-  waiting.wake(machineId)
-})
+const waking = listenForWaking(
+  env,
+  log,
+  (machineId) => {
+    waiting.wake(machineId)
+  },
+  // Whatever was said while this connection was down was said to nobody. Everybody held here
+  // looks again, which is the same thing their hold running out would have done — only now.
+  () => {
+    waiting.wakeEveryone()
+  },
+)
 
 /**
  * The one thing on this side that starts on its own.

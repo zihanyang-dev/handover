@@ -33,11 +33,28 @@ export async function wakeMachine(tx: Tx, machineId: string): Promise<void> {
   await sql`select pg_notify(${CHANNEL}, ${machineId})`.execute(tx)
 }
 
-/** Hears every machine anybody woke, on this instance. A payload that is not one is not one. */
-export function listenForWaking(env: Env, log: Log, heard: (machineId: string) => void): Listening {
-  return listenOn(env, log, CHANNEL, (payload) => {
-    const read = z.uuid().safeParse(payload)
-    if (read.success) heard(read.data)
-    else log.warn('something that is not a machine was sent on the waking channel')
+/**
+ * Hears every machine anybody woke, on this instance. A payload that is not one is not one.
+ *
+ * `again` is handed on because a gap in this channel is the one that costs something: every
+ * machine held here through it was never told, and would wait out its whole hold. Whoever holds
+ * those questions wakes them all, and each asks the tables again.
+ */
+export function listenForWaking(
+  env: Env,
+  log: Log,
+  heard: (machineId: string) => void,
+  again: () => void,
+): Listening {
+  return listenOn({
+    env,
+    log,
+    channel: CHANNEL,
+    again,
+    heard: (payload) => {
+      const read = z.uuid().safeParse(payload)
+      if (read.success) heard(read.data)
+      else log.warn('something that is not a machine was sent on the waking channel')
+    },
   })
 }

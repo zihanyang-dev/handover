@@ -11,6 +11,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Watched } from '../conversation/live.ts'
 import { ACTIVITY, ROLES } from '../conversation/transcript.ts'
+import { watchers } from '../conversation/watchers.ts'
 import { loadEnv } from '../env.ts'
 import { createLog } from '../log.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
@@ -31,29 +32,25 @@ import { checkIn, removeMachine, sayGoodbye } from './machine.ts'
 import { createSpace } from './space.ts'
 import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
-import { showEveryoneWatching, listenForLive } from './watching.ts'
+import { listenForLive } from './watching.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
-const watching = new Map<string, Set<(watched: Watched) => void>>()
+const watching = watchers()
 const listening = listenForLive(env, createLog({ ...env, LOG_LEVEL: 'fatal' }), (happening) => {
-  showEveryoneWatching(watching, happening)
+  watching.show(happening)
 })
 
 /** What a watcher of this conversation is told, or nothing if nothing arrives. */
 async function told(conversationId: string, within = 3000): Promise<Watched | undefined> {
   return new Promise((settle) => {
-    const here = watching.get(conversationId) ?? new Set()
-    watching.set(conversationId, here)
-
-    const see = (watched: Watched): void => {
-      here.delete(see)
+    const stop = watching.watch(conversationId, (watched) => {
+      stop()
       settle(watched)
-    }
-    here.add(see)
+    })
 
     setTimeout(() => {
-      here.delete(see)
+      stop()
       settle(undefined)
     }, within).unref()
   })

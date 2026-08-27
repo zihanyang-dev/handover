@@ -12,7 +12,8 @@
  */
 
 import { sql } from 'kysely'
-import { Happening, type Live, type Watched } from '../conversation/live.ts'
+import { Happening, type Live } from '../conversation/live.ts'
+import type { Watchers } from '../conversation/watchers.ts'
 import type { Env } from '../env.ts'
 import type { Log } from '../log.ts'
 import type { Database, Tx } from './connection.ts'
@@ -61,52 +62,42 @@ export async function noteWritten(tx: Tx, conversationId: string, upTo: number):
 }
 
 /**
- * Hears everything anybody said about a conversation on this deployment.
+ * Hears every moment happening on the other instances.
  *
  * Something this build cannot read is something nobody can act on, and it is gone either way —
  * said in the log once rather than thrown at whoever is watching.
+ *
+ * No `again`: a moment is worth nothing a second later and is kept nowhere, so there is nothing
+ * to go and look at. What was missed while this was down is missed, and the page that was
+ * watching reads the transcript on its own anyway.
  */
 export function listenForLive(
   env: Env,
   log: Log,
   heard: (happening: Happening) => void,
 ): Listening {
-  return listenOn(env, log, CHANNEL, (payload) => {
-    const read = Happening.safeParse(JSON.parse(payload === '' ? 'null' : payload))
-    if (read.success) heard(read.data)
-    else log.warn('something live arrived in a shape this build does not know')
+  return listenOn({
+    env,
+    log,
+    channel: CHANNEL,
+    heard: (payload) => {
+      const read = Happening.safeParse(JSON.parse(payload === '' ? 'null' : payload))
+      if (read.success) heard(read.data)
+      else log.warn('something live arrived in a shape this build does not know')
+    },
   })
 }
 
 /**
- * Everyone watching on this instance.
+ * Saying and watching, as one thing, which is what a route is handed.
  *
- * A plain map, because that is all it is: the fan-out across instances is the notification, and
- * what is left here is handing one moment to the browsers this process is holding open.
+ * The two halves are not alike: saying is a statement in a transaction, and watching is a map
+ * this process holds — see `conversation/watchers.ts`. They are put together here because a
+ * route should not have to know that.
  */
-export function liveThrough(db: Database, watching: Map<string, Set<(watched: Watched) => void>>) {
+export function liveThrough(db: Database, here: Watchers): Live {
   return {
     say: async (happening: Happening) => announce(db, happening),
-
-    watch: (conversationId: string, see: (watched: Watched) => void) => {
-      const here = watching.get(conversationId) ?? new Set()
-      here.add(see)
-      watching.set(conversationId, here)
-
-      return () => {
-        here.delete(see)
-        // The last watcher of a conversation takes its name with it, so a server that has been up
-        // for a month is not holding one empty set per conversation anybody ever opened.
-        if (here.size === 0) watching.delete(conversationId)
-      }
-    },
-  } satisfies Live
-}
-
-/** Shows one thing to every browser this instance is holding open on that conversation. */
-export function showEveryoneWatching(
-  watching: Map<string, Set<(watched: Watched) => void>>,
-  happening: Happening,
-): void {
-  for (const see of watching.get(happening.conversationId) ?? []) see(happening.watched)
+    watch: here.watch,
+  }
 }

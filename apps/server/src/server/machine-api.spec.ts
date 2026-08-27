@@ -433,9 +433,16 @@ describe('holding a machine question instead of answering "nothing"', () => {
     // That last hop is also what makes this work between two instances — the listener is not the
     // pool that wrote, any more than another instance would be.
     const room = waitingRoom(NEVER)
-    const waking = listenForWaking(env, silent, (machineId) => {
-      room.wake(machineId)
-    })
+    const waking = listenForWaking(
+      env,
+      silent,
+      (machineId) => {
+        room.wake(machineId)
+      },
+      () => {
+        room.wakeEveryone()
+      },
+    )
     await waking.listening
 
     try {
