@@ -57,6 +57,9 @@ async function spaceFor(
     .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
     .where('memberships.request_key', '=', whose.requestKey)
     .where('memberships.user_id', '=', whose.userId)
+    // A retry from somebody who has since been removed makes nothing and finds nothing: the
+    // answer to "did I already make this" is about a Space they can still reach.
+    .where('memberships.revoked_at', 'is', null)
     .executeTakeFirst()
   return row
 }
@@ -109,6 +112,7 @@ export async function spacesOf(db: Database, userId: string): Promise<readonly S
     .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
     .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
     .where('memberships.user_id', '=', userId)
+    .where('memberships.revoked_at', 'is', null)
     .orderBy('spaces.created_at')
     .execute()
 }
@@ -125,11 +129,17 @@ export async function spaceForMember(
   slug: string,
   userId: string,
 ): Promise<Space | undefined> {
-  return db
-    .selectFrom('spaces')
-    .innerJoin('memberships', 'memberships.space_id', 'spaces.id')
-    .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
-    .where('spaces.slug', '=', slug)
-    .where('memberships.user_id', '=', userId)
-    .executeTakeFirst()
+  return (
+    db
+      .selectFrom('spaces')
+      .innerJoin('memberships', 'memberships.space_id', 'spaces.id')
+      .select(['spaces.id as id', 'spaces.slug as slug', 'spaces.display_name as displayName'])
+      .where('spaces.slug', '=', slug)
+      .where('memberships.user_id', '=', userId)
+      // The door. Somebody removed gets the same answer as somebody who was never here and the
+      // same answer as a Space that does not exist — one answer, so an address tells nobody
+      // anything they did not already know.
+      .where('memberships.revoked_at', 'is', null)
+      .executeTakeFirst()
+  )
 }

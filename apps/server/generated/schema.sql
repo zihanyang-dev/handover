@@ -19,6 +19,29 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: a_space_keeps_an_owner(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.a_space_keeps_an_owner() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+begin
+  if not exists (
+    select 1 from memberships
+     where space_id = coalesce(new.space_id, old.space_id)
+       and role = 'owner'
+       and revoked_at is null
+  ) then
+    raise exception 'a Space must have at least one owner'
+      using errcode = 'check_violation', constraint = 'memberships_keep_an_owner';
+  end if;
+
+  return null;
+end;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -124,6 +147,21 @@ CREATE TABLE public.enrolments (
 
 
 --
+-- Name: invitations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invitations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    space_id uuid NOT NULL,
+    secret_hash text NOT NULL,
+    made_by uuid NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: machines; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -149,7 +187,10 @@ CREATE TABLE public.memberships (
     space_id uuid NOT NULL,
     user_id uuid NOT NULL,
     request_key text NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    role text DEFAULT 'member'::text NOT NULL,
+    revoked_at timestamp with time zone,
+    CONSTRAINT memberships_role_known CHECK ((role = ANY (ARRAY['owner'::text, 'member'::text])))
 );
 
 
@@ -347,6 +388,22 @@ ALTER TABLE ONLY public.enrolments
 
 
 --
+-- Name: invitations invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invitations
+    ADD CONSTRAINT invitations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invitations invitations_secret_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invitations
+    ADD CONSTRAINT invitations_secret_hash_key UNIQUE (secret_hash);
+
+
+--
 -- Name: machines machines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -501,10 +558,24 @@ CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (us
 
 
 --
+-- Name: invitations_open; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX invitations_open ON public.invitations USING btree (space_id) WHERE (revoked_at IS NULL);
+
+
+--
 -- Name: machines_of_owner; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX machines_of_owner ON public.machines USING btree (owner_user_id) WHERE (removed_at IS NULL);
+
+
+--
+-- Name: memberships_here; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX memberships_here ON public.memberships USING btree (space_id, user_id) WHERE (revoked_at IS NULL);
 
 
 --
@@ -547,6 +618,13 @@ CREATE INDEX tasks_waiting_on_owner ON public.tasks USING btree (owner_user_id) 
 --
 
 CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
+
+
+--
+-- Name: memberships memberships_keep_an_owner; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER memberships_keep_an_owner AFTER DELETE OR UPDATE ON public.memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.a_space_keeps_an_owner();
 
 
 --
@@ -595,6 +673,22 @@ ALTER TABLE ONLY public.credentials
 
 ALTER TABLE ONLY public.enrolments
     ADD CONSTRAINT enrolments_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id);
+
+
+--
+-- Name: invitations invitations_made_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invitations
+    ADD CONSTRAINT invitations_made_by_fkey FOREIGN KEY (made_by) REFERENCES public.users(id);
+
+
+--
+-- Name: invitations invitations_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invitations
+    ADD CONSTRAINT invitations_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
 
 
 --

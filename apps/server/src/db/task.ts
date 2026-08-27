@@ -547,7 +547,12 @@ export async function waitingOn(db: Database, userId: string): Promise<readonly 
     // Joined rather than trusted: the owner is who it stopped on, but somebody taken out of a
     // Space should stop seeing what is happening in it, whoever they used to be.
     .innerJoin('memberships', (join) =>
-      join.onRef('memberships.space_id', '=', 'spaces.id').on('memberships.user_id', '=', userId),
+      join
+        .onRef('memberships.space_id', '=', 'spaces.id')
+        .on('memberships.user_id', '=', userId)
+        // An Inbox is what is waiting on you *here*. Work in a Space somebody has left is not
+        // theirs to answer any more, and a row they cannot open is worse than no row.
+        .on('memberships.revoked_at', 'is', null),
     )
     .select((eb) => [
       'conversations.id as conversationId',

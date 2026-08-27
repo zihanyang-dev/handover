@@ -273,7 +273,11 @@ export function reachableFrom(spaceId: string) {
         .selectFrom('memberships')
         .select('memberships.user_id')
         .whereRef('memberships.user_id', '=', 'machines.owner_user_id')
-        .where('memberships.space_id', '=', spaceId),
+        .where('memberships.space_id', '=', spaceId)
+        // Somebody who was removed takes their machines with them, at the moment they are
+        // removed. Left out here and nowhere else, a Space would go on reaching a laptop that
+        // belongs to somebody who is no longer in it.
+        .where('memberships.revoked_at', 'is', null),
     )
 }
 

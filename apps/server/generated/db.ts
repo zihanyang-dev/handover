@@ -84,6 +84,16 @@ export interface Enrolments {
   user_code: string | null;
 }
 
+export interface Invitations {
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  made_by: string;
+  revoked_at: Timestamp | null;
+  secret_hash: string;
+  space_id: string;
+}
+
 export interface Machines {
   created_at: Generated<Timestamp>;
   enrolled_from: string;
@@ -100,6 +110,8 @@ export interface Machines {
 export interface Memberships {
   created_at: Generated<Timestamp>;
   request_key: string;
+  revoked_at: Timestamp | null;
+  role: Generated<string>;
   space_id: string;
   user_id: string;
 }
@@ -163,6 +175,7 @@ export interface DB {
   credentials: Credentials;
   email_codes: EmailCodes;
   enrolments: Enrolments;
+  invitations: Invitations;
   machines: Machines;
   memberships: Memberships;
   messages: Messages;
