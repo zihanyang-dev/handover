@@ -85,18 +85,20 @@ export function applyMigrations(url: string): void {
 }
 
 /**
- * Returns the URL of a development database that is up and holds every committed migration.
+ * Brings up a development database and puts every committed migration on it.
  *
- * The container and the schema dump are what make this the developer's version: `pnpm check`
- * fails on any drift under generated/, and that file is written here.
+ * It does not write the schema dump, and used to. The dump is a picture of *the migrations*, and
+ * this is pointed at whatever `DATABASE_URL` names — a development database, the test one, the
+ * end-to-end one. Whatever else has ever been in that database went into the artefact, and a
+ * database shared with another branch put ninety-one lines of somebody else's schema in this
+ * repository. Only `generate` writes it now, from a database it makes for the purpose.
  */
 export function migrate(): string {
   const { DATABASE_URL } = loadEnv()
-  mkdirSync(join(ROOT, 'generated'), { recursive: true })
 
   run('docker', ['compose', 'up', '--detach', '--wait', SERVICE])
   applyMigrations(DATABASE_URL)
-  dumpSchema(DATABASE_URL)
+
   return DATABASE_URL
 }
 
