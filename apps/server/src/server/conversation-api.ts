@@ -37,19 +37,6 @@ const NO_AGENT: Failure<409> = {
   status: 409,
 }
 
-/**
- * Nobody is there to pick it up, so it is refused now rather than queued for an empty room.
- *
- * The recovery is another machine rather than waiting: a closed laptop is not something to wait
- * out at a keyboard, and the only thing this conversation can be picked up by is the machine it
- * was opened on.
- */
-const MACHINE_AWAY: Failure<409> = {
-  reason: 'machine-away',
-  recovery: 'choose-another-machine',
-  status: 409,
-}
-
 /** It already stopped, or never started. Either way there is nothing here to interrupt. */
 const NOTHING_RUNNING: Failure<409> = {
   reason: 'nothing-to-stop',
@@ -281,11 +268,7 @@ function saying({ db }: ConversationApi) {
     summary: 'Say something to the agent',
     params: { id: rowId },
     body: SayThis,
-    answers: {
-      204: 'Said, or said already — either way it is in there once',
-      404: NOT_THERE,
-      409: refuses(MACHINE_AWAY, 'Its machine is not here'),
-    },
+    answers: { 204: 'Said, or said already — either way it is in there once', 404: NOT_THERE },
 
     run: async (c) => {
       const asked = c.req.valid('json')
@@ -303,7 +286,6 @@ function saying({ db }: ConversationApi) {
       )
 
       if (landed.kind === 'no-conversation') return refused(c, UNAVAILABLE)
-      if (landed.kind === 'machine-away') return refused(c, MACHINE_AWAY)
 
       return nothing(c, 204)
     },

@@ -641,9 +641,7 @@ function Ask({
   )
 }
 
-function whyNot(reason: string): string {
-  if (reason === 'machine-away') return 'Its machine is not here. Wait for it, or use another one.'
-
+function whyNot(_reason: string): string {
   return 'That did not go through. Try again.'
 }
 

@@ -33,10 +33,7 @@ export type Said =
   /** The same message again. Nothing was written the second time, and nothing needs to be. */
   | { readonly kind: 'said-already' }
   | { readonly kind: 'no-conversation' }
-  /** Its machine is not here. Nobody would pick this up, so it is refused rather than queued. */
-  | { readonly kind: 'machine-away' }
 
-/** One message and where it goes. Everything a writer needs and nothing about who they are. */
 /**
  * A line to add, and — when a person said it — which person.
  *

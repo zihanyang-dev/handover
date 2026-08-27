@@ -674,23 +674,29 @@ describe('choosing what to ask with', () => {
   })
 })
 
-describe('saying something', () => {
-  it('says so when the machine is not there to hear it', async () => {
+describe('saying something to a machine that is not here', () => {
+  it('takes it, and goes on saying the machine is away', async () => {
+    // Nothing is sent to a machine — it asks, and is handed everything said since its last turn.
+    // So the box stays open on a shut laptop: what somebody types is written down and waiting,
+    // and the note above it is what tells them it will not be answered this second.
+    let said = ''
     server.use(
-      ...transcript([say(1, 'activity', { activityType: 'done' })]),
-      http.post('*/spaces/acme/conversations/c-1/messages', () =>
-        HttpResponse.json(
-          { reason: 'machine-away', recovery: 'choose-another-machine' },
-          { status: 409 },
-        ),
-      ),
+      ...transcript([say(1, 'activity', { activityType: 'done' })], 'unknown'),
+      http.post('*/spaces/acme/conversations/c-1/messages', async ({ request }) => {
+        said = ((await request.json()) as { asked: { text: string } }).asked.text
+
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
 
     open('/s/acme/c/c-1')
     await userEvent.type(await screen.findByLabelText('Say something'), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    expect(await screen.findByText(/machine is not here/i)).toBeDefined()
+    await waitFor(() => {
+      expect(said).toBe('hello')
+    })
+    expect(screen.getByText(/machine is not here/iu)).toBeDefined()
   })
 })
 

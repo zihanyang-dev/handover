@@ -2158,15 +2158,6 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Its machine is not here */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
             };
         };
         delete?: never;

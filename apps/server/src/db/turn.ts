@@ -181,11 +181,6 @@ function owedATurn(machineId: string) {
          -- out between that and this, and then this hands one more turn to a laptop nobody can
          -- reach — with its credential already refused everywhere else. Same shape as the check
          -- stillItsToWriteOn makes for a machine that writes.
-         -- The machine is still here, asked in the statement that claims rather than at the door.
-         -- The door read the credential in an earlier transaction; somebody can take the machine
-         -- out between that and this, and then this hands one more turn to a laptop nobody can
-         -- reach — with its credential already refused everywhere else. Same shape as the check
-         -- stillItsToWriteOn makes for a machine that writes.
          and exists (
            select 1 from machines here
             where here.id = ${machineId} and here.removed_at is null

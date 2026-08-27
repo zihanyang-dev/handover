@@ -4115,16 +4115,6 @@
                 }
               }
             }
-          },
-          "409": {
-            "description": "Its machine is not here",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
           }
         }
       }

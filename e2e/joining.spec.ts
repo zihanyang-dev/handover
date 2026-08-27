@@ -163,19 +163,10 @@ test('two people in one conversation, and each can see whose words are whose', a
   await expect(kai.getByText(`${minaAddress} is typing…`)).toBeVisible({ timeout: 15_000 })
 
   // ⑤ Both of them speak while the agent is still on Kai's question, which is the only way two
-  // people are ever waiting at once.
-  //
-  // Its clock is written rather than polled, the way `journey.spec.ts` writes it the other way to
-  // make a machine gone. A real machine reports every twenty-five seconds whether or not it is
-  // busy — its own comment says a turn can run ten minutes — but this journey spends longer than
-  // the silence threshold in two browsers between one machine action and the next, and polling to
-  // stay present is also how a turn is taken: one taken here would be a turn for Kai's question
-  // alone, which is the very thing being tested.
-  await db
-    .updateTable('machines')
-    .set({ last_seen_at: new Date() })
-    .where('name', '=', 'kai-mbp')
-    .execute()
+  // people are ever waiting at once. Its machine has been quiet for longer than the silence
+  // threshold by now — two browsers signing in and joining take longer than that — and nothing
+  // here does anything about it, because nothing has to: what a person says is written down
+  // whether or not the laptop is open, and the turn carries it when the laptop asks again.
   await mina.getByRole('button', { name: 'Send' }).click()
   await expect(kai.getByText('and does it affect retries?')).toBeVisible({ timeout: 15_000 })
 

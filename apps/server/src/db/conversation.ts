@@ -133,10 +133,22 @@ export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promi
     // "you cannot say that", about something already said.
     if (await alreadySaid(tx, saying)) return { kind: 'said-already' }
 
-    // Refused rather than queued: somebody is waiting for an answer, and a message that will sit
-    // until a laptop opens again is worse than being told now that nobody is there.
+    // Written down whether or not its machine is awake, because nothing here is ever *sent* to a
+    // machine: a machine asks, and `owedATurn` hands it everything said since its last turn. That
+    // query asks only that the machine has not been removed — not that it is online — so a line
+    // written while a laptop is shut is picked up the moment it opens.
+    //
+    // This used to be refused, which was written for one person talking to their own laptop. With
+    // a second person in the Space it is somebody else's laptop, and refusing threw their words
+    // away before anything was written down. Nobody else does that: Multica's daemon polls and
+    // the server holds the work until it comes back, a GitHub Actions job for an offline
+    // self-hosted runner queues, and a message to somebody offline is stored and delivered when
+    // they reconnect. All three keep the words and show the sender that it is waiting.
+    //
+    // No expiry either, and for the same reason Multica has none: GitHub cancels a queued job
+    // after a day and Signal drops an undelivered message after thirty, because both of those are
+    // delivery buffers. A transcript is a record — the words stay, and what waits is the turn.
     const machine = presence(conversation, conversation.asOf)
-    if (machine.state === 'gone') return { kind: 'machine-away' }
 
     // Saying something to an agent that is working is interrupting it, and it is written down as
     // exactly that: the request to stop, and then the words. Queued instead, somebody who says

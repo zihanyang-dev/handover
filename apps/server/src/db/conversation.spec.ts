@@ -299,11 +299,14 @@ describe('saying something to an agent', () => {
     ])
   })
 
-  it('refuses when the machine has said it is leaving', async () => {
+  it('keeps what somebody says to a machine that has gone, for when it comes back', async () => {
+    // Nothing is ever sent to a machine — it asks, and is handed everything said since its last
+    // turn. So a shut laptop is not a reason to throw somebody's words away before writing them
+    // down; it is a reason to show them it is not here, which the transcript already carries.
     const conversation = await opened()
     await sayGoodbye(db, MACHINE)
 
-    expect(await asks(conversation, 'turn-1', 'hello')).toEqual({ kind: 'machine-away' })
+    expect(await asks(conversation, 'turn-1', 'hello')).toEqual({ kind: 'said' })
   })
 
   it('refuses a conversation in another Space, giving nothing away about it', async () => {
