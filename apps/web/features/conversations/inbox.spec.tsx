@@ -12,9 +12,9 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../../routeTree.gen.ts'
-import { theSpace } from '../../pretend/a-space.ts'
 import type { components } from '../../generated/api.ts'
+import { theSpace } from '../../pretend/a-space.ts'
+import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
 

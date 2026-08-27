@@ -6,10 +6,12 @@
  * the weaker of the two everywhere.
  */
 
-import { createRoute, z } from '@hono/zod-openapi'
+import { z } from '@hono/zod-openapi'
+import { Models } from '../conversation/offers.ts'
 import type { Database } from '../db/connection.ts'
-import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
+import { handMachineTo } from '../db/membership.ts'
+import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import {
   agentsFound,
   AGENT_COMMANDS,
@@ -17,31 +19,21 @@ import {
   type AgentKind,
   type Installed,
 } from '../machine/agent-kind.ts'
+import type { Waiting } from '../machine/waiting.ts'
+import { onTheWire, Presence } from '../machine/whereabouts.ts'
+import { type Failure, UNAVAILABLE, refused } from './failure.ts'
 import {
-  SHOWS,
-  api,
-  endpointsBehind,
-  insteadOfMalformed,
+  aMachine,
+  aMember,
+  aPerson,
+  anOwner,
+  list,
+  named,
+  nothing,
+  refuses,
   rowId,
-  saysNothing,
   sends,
-  takes,
-} from './contract.ts'
-import {
-  BEHIND_A_MACHINE,
-  BEHIND_A_SESSION,
-  body,
-  MALFORMED_BODY,
-  refusal,
-  type Failure,
-  UNAVAILABLE,
-} from './failure.ts'
-import { requireMachine, type Attached } from './machine-session.ts'
-import type { Waiting } from './waiting.ts'
-import { modelsBody } from './offers.ts'
-import { requireMember, type InSpace } from './membership.ts'
-import { requireSession, type Signed } from './session.ts'
-import { onTheWire, presenceBody } from './whereabouts.ts'
+} from './route.ts'
 
 export type MachineApi = {
   readonly db: Database
@@ -58,161 +50,176 @@ export type MachineApi = {
 const NOT_OURS: Failure<401> = { reason: 'no-machine', recovery: 'start-over', status: 401 }
 
 /**
- * What a machine reports by command name, not by kind.
+ * Whoever it was handed to is not here, or the machine is not there to hand over.
+ *
+ * One answer for both, because a handover is written in the statement that checks — and by the
+ * time it comes back, "no rows" cannot say which. What to do about either is the same: look at
+ * the screen again, which is showing what is actually true.
+ */
+const CANNOT_HAND_OVER: Failure<404> = {
+  reason: 'cannot-hand-over',
+  recovery: 'start-over',
+  status: 404,
+}
+
+/**
+ * One agent a machine found, reported by command name rather than by kind.
  *
  * It reports what it actually looked for. Names this deployment does not know are dropped rather
  * than refused: a newer CLI against an older server should be a machine with fewer agents, not a
  * machine that cannot check in.
  */
-const reporting = z
-  .object({
-    found: z
-      .array(
-        z.object({
-          command: z.string().min(1).max(100),
-          version: z.string().min(1).max(100),
-          /**
-           * What this version lets a person choose.
-           *
-           * Absent on nearly every report, and that is the design: asking an agent costs starting
-           * it up, so a machine asks only when the version it found is new. Absent means "nothing
-           * said about it", which leaves whatever was stored — not "it offers nothing".
-           */
-          models: modelsBody.optional(),
-        }),
-      )
-      .max(50)
-      .readonly(),
-    /**
-     * This machine has just started.
-     *
-     * Only it can say so, and it is worth saying: a turn left open on a machine that has just
-     * started is one whose agent went on working with nobody watching, and no answer about it can
-     * be had from here.
-     */
-    restarted: z.boolean().optional(),
-    /**
-     * Which build of the CLI this is.
-     *
-     * Optional so that a machine older than this field can still check in — the same reason a
-     * command this deployment does not know is dropped rather than refused. Absent is recorded as
-     * absent: a machine that cannot say which build it is has answered the question.
-     */
-    version: z.string().min(1).max(100).optional(),
-  })
-  .openapi('MachineReport')
+const Found = named('AgentFound', {
+  command: z.string().min(1).max(100),
+  version: z.string().min(1).max(100),
+  /**
+   * What this version lets a person choose.
+   *
+   * Absent on nearly every report, and that is the design: asking an agent costs starting it up,
+   * so a machine asks only when the version it found is new. Absent means "nothing said about
+   * it", which leaves whatever was stored — not "it offers nothing".
+   */
+  models: Models.optional(),
+})
+
+/** What a machine says about itself, every time it asks whether there is anything for it. */
+const Report = named('MachineReport', {
+  /** Everything it looked for and found. Fifty is far more than a machine has. */
+  found: z.array(Found).max(50).readonly(),
+  /**
+   * This machine has just started.
+   *
+   * Only it can say so, and it is worth saying: a turn left open on a machine that has just
+   * started is one whose agent went on working with nobody watching, and no answer about it can
+   * be had from here.
+   */
+  restarted: z.boolean().optional(),
+  /**
+   * Which build of the CLI this is.
+   *
+   * Optional so that a machine older than this field can still check in — the same reason a
+   * command this deployment does not know is dropped rather than refused. Absent is recorded as
+   * absent: a machine that cannot say which build it is has answered the question.
+   */
+  version: z.string().min(1).max(100).optional(),
+})
+
+/**
+ * Everything a person said since the turn before, oldest first.
+ *
+ * A list because two people can each say something before either is answered, and both have to
+ * reach the agent — one of them dropped is a message that sits on a screen looking queued and is
+ * never answered. Empty on a turn nobody asked for.
+ *
+ * The same shape both ways: it is what a machine is told, and it is what a row is checked against
+ * on the way out. Written twice, the check would eventually be checking something else.
+ */
+const Said = named('Said', { text: z.string(), who: z.string().nullable() })
+
+/** All of them, oldest first. */
+const EVERYTHING_SAID = z.array(Said).readonly()
 
 /** One question waiting for an answer on this machine. */
-const askingBody = z
-  .object({
-    conversationId: z.uuid(),
-    agentKind: z.enum(AGENT_KIND_NAMES),
-    /**
-     * What the agent calls this conversation, when it has said so.
-     *
-     * Absent on a first turn, and handed back on every later one — it is how the agent is asked to
-     * remember, and how a turn nobody saw the end of can be read back afterwards.
-     */
-    agentSession: z.string().nullable(),
-    /**
-     * Which line of the transcript this turn begins after.
-     *
-     * Not "which question this answers": a conversation somebody handed over runs turns nobody
-     * asked for, and the line before those is the ending of the turn before them.
-     */
-    afterSeq: z.number().int(),
-    /**
-     * What this piece of work is for, when somebody handed the conversation over.
-     *
-     * Null when nobody has, and then `asked` is the whole of the turn. Sent on every turn rather
-     * than once: the agent's memory of the last one may not have survived, and a turn that
-     * forgot everything still has to know what it is doing.
-     */
-    goal: z.string().nullable(),
-    /**
-     * Everything a person said since the turn before this one, oldest first.
-     *
-     * A list because two people can each say something before either is answered, and both have
-     * to reach the agent — one of them dropped is a message that sits on a screen looking queued
-     * and is never answered. Empty on a turn nobody asked for.
-     */
-    asked: z.array(z.object({ text: z.string(), who: z.string().nullable() })).readonly(),
-    /** Which model to run, when the last person to speak chose one. */
-    model: z.string().nullable(),
-    /** How hard to think, when the last person to speak chose. */
-    effort: z.string().nullable(),
-  })
-  .openapi('SomethingToAnswer')
+const Asking = named('SomethingToAnswer', {
+  conversationId: rowId,
+  agentKind: z.enum(AGENT_KIND_NAMES),
+  /**
+   * What the agent calls this conversation, when it has said so.
+   *
+   * Absent on a first turn, and handed back on every later one — it is how the agent is asked to
+   * remember, and how a turn nobody saw the end of can be read back afterwards.
+   */
+  agentSession: z.string().nullable(),
+  /**
+   * Which line of the transcript this turn begins after.
+   *
+   * Not "which question this answers": a conversation somebody handed over runs turns nobody
+   * asked for, and the line before those is the ending of the turn before them.
+   */
+  afterSeq: z.number().int(),
+  /**
+   * What this piece of work is for, when somebody handed the conversation over.
+   *
+   * Null when nobody has, and then `asked` is the whole of the turn. Sent on every turn rather
+   * than once: the agent's memory of the last one may not have survived, and a turn that forgot
+   * everything still has to know what it is doing.
+   */
+  goal: z.string().nullable(),
+  asked: EVERYTHING_SAID,
+  /** Which model to run, when the last person to speak chose one. */
+  model: z.string().nullable(),
+  /** How hard to think, when the last person to speak chose. */
+  effort: z.string().nullable(),
+})
 
 /** Which turn a stop is about. Both halves, so a stop cannot be applied to a later turn. */
-const stoppingBody = z
-  .object({ conversationId: z.uuid(), afterSeq: z.number().int() })
-  .openapi('StopWanted')
+const Stopping = named('StopWanted', { conversationId: rowId, afterSeq: z.number().int() })
 
-const checkedInBody = z
-  .object({
-    /**
-     * How long to wait before asking again.
-     *
-     * Zero because this deployment holds the question instead: the answer to "is there anything
-     * for me" does not come back until there is, or until the hold is up. A machine that also
-     * slept would double the gap, and be counted as gone halfway through it.
-     */
-    pollSeconds: z.number().int().nonnegative(),
-    /** Which commands to look for. Told every time, so the list can change without a release. */
-    lookFor: z.array(z.string()).readonly(),
-    /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
-    asking: askingBody.optional(),
-    /**
-     * The turn somebody has asked this machine to stop working on.
-     *
-     * The turn and not just the conversation: a stop read a moment before the turn it was about
-     * ended would otherwise stop whatever that machine picked up next, and leave that one claimed
-     * with nobody running it.
-     *
-     * Told rather than pushed, because a machine is reached by nothing but its own asking. It
-     * keeps being told until the agent says it stopped, which is what makes a stop that arrived
-     * while nothing was listening arrive on the next report instead of being lost.
-     */
-    stopping: stoppingBody.optional(),
-  })
-  .openapi('CheckedIn')
+const CheckedIn = named('CheckedIn', {
+  /**
+   * How long to wait before asking again.
+   *
+   * Zero because this deployment holds the question instead: the answer to "is there anything for
+   * me" does not come back until there is, or until the hold is up. A machine that also slept
+   * would double the gap, and be counted as gone halfway through it.
+   */
+  pollSeconds: z.number().int().nonnegative(),
+  /** Which commands to look for. Told every time, so the list can change without a release. */
+  lookFor: z.array(z.string()).readonly(),
+  /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
+  asking: Asking.optional(),
+  /**
+   * The turn somebody has asked this machine to stop working on.
+   *
+   * The turn and not just the conversation: a stop read a moment before the turn it was about
+   * ended would otherwise stop whatever that machine picked up next, and leave that one claimed
+   * with nobody running it.
+   *
+   * Told rather than pushed, because a machine is reached by nothing but its own asking. It keeps
+   * being told until the agent says it stopped, which is what makes a stop that arrived while
+   * nothing was listening arrive on the next report instead of being lost.
+   */
+  stopping: Stopping.optional(),
+})
 
-const agentBody = z
-  .object({
-    kind: z.enum(AGENT_KIND_NAMES),
-    version: z.string(),
-    /** Empty when this agent does not let you choose, and when nobody has asked it yet. */
-    models: modelsBody,
-  })
-  .openapi('MachineAgent')
+const Agent = named('MachineAgent', {
+  kind: z.enum(AGENT_KIND_NAMES),
+  version: z.string(),
+  /** Empty when this agent does not let you choose, and when nobody has asked it yet. */
+  models: Models,
+})
 
-const machineBody = z
-  .object({
-    id: z.uuid(),
-    name: z.string(),
-    /**
-     * Whose it is, and whether that is you.
-     *
-     * A Space with two people in it has two people's laptops in it, and what an agent does on one
-     * of them happens in that person's files. Only its owner can disconnect it, and a page that
-     * did not say which was which would be offering everybody a button that only works on one.
-     */
-    ownerName: z.string(),
-    yours: z.boolean(),
-    /**
-     * Which build of the CLI it is running.
-     *
-     * Absent when it has never said, which is a build older than the field itself. Shown as such
-     * rather than filled in — a version this deployment guessed would be read as one it was told.
-     */
-    version: z.string().optional(),
-    presence: presenceBody,
-    agents: z.array(agentBody).readonly(),
-  })
-  .openapi('Machine')
+const Machine = named('Machine', {
+  id: rowId,
+  name: z.string(),
+  /**
+   * Whose it is, and whether that is you.
+   *
+   * A Space with two people in it has two people's laptops in it, and what an agent does on one
+   * of them happens in that person's files. Only its owner can disconnect it, and a page that did
+   * not say which was which would be offering everybody a button that only works on one.
+   */
+  ownerName: z.string(),
+  yours: z.boolean(),
+  /**
+   * Which build of the CLI it is running.
+   *
+   * Absent when it has never said, which is a build older than the field itself. Shown as such
+   * rather than filled in — a version this deployment guessed would be read as one it was told.
+   */
+  version: z.string().optional(),
+  presence: Presence,
+  agents: z.array(Agent).readonly(),
+})
 
-const machinesBody = z.object({ machines: z.array(machineBody).readonly() }).openapi('Machines')
+const Machines = list('machines', Machine)
+
+/** Who a machine is being handed to. */
+const HandMachineTo = named('HandMachineTo', { ownerUserId: rowId })
+
+export function machineApi(deps: MachineApi) {
+  return [polling(deps), leaving(deps), listing(deps), detaching(deps), handingOver(deps)]
+}
 
 /**
  * A question this machine has just taken, as it is told about it.
@@ -221,9 +228,6 @@ const machinesBody = z.object({ machines: z.array(machineBody).readonly() }).ope
  * an older build is exactly the case where a shape can be wrong. A row that will not parse is one
  * this machine cannot act on, and pretending otherwise sends it a turn it cannot take.
  */
-/** The lines as a row holds them, checked before they are handed to a machine. */
-const SAID = z.array(z.object({ text: z.string(), who: z.string().nullable() })).readonly()
-
 function asAsking(taken: Taken) {
   return {
     conversationId: taken.conversationId,
@@ -231,37 +235,42 @@ function asAsking(taken: Taken) {
     agentSession: taken.agentSession,
     afterSeq: taken.afterSeq,
     goal: taken.goal,
-    // Parsed on the way out rather than trusted: it went in as JSON, and a row written by an
-    // older build is a shape this one has never seen.
-    asked: SAID.parse(taken.asked),
+    asked: EVERYTHING_SAID.parse(taken.asked),
     model: taken.model,
     effort: taken.effort,
   }
 }
 
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
-const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
-const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
-
-export function machineApi(deps: MachineApi) {
-  return (
-    api<{ Variables: Signed & InSpace }>()
-      .openapiRoutes([listing(deps)])
-      // Disconnecting is about a machine and not about a Space, so it is mounted on its own with
-      // nothing but a session behind it. Reading a Space's machines still needs membership of it.
-      .route('/', api<{ Variables: Signed }>().openapiRoutes([detaching(deps)]))
-      .route('/', whatMachinesDo(deps))
-  )
-}
-
 /**
- * What a machine does for itself.
+ * Handing one to somebody else here.
  *
- * Its own app, because it is behind its own door: a machine's credential is not a person's, and
- * one app holding both would be one `c` that claims to have what only half its routes ever do.
+ * Whoever approved it still approved it — that is history and does not move. What moves is which
+ * Spaces it can be reached from and who may disconnect it.
+ *
+ * `PATCH` and not a `POST` to some transfer: nothing is created. One field of a thing that
+ * already exists says somebody else's name now.
  */
-function whatMachinesDo(deps: MachineApi) {
-  return api<{ Variables: Attached }>().openapiRoutes([polling(deps), leaving(deps)])
+function handingOver({ db }: MachineApi) {
+  return anOwner(db).patch('/spaces/{slug}/machines/{id}', {
+    summary: 'Hand a machine to somebody else here',
+    params: { id: rowId },
+    body: HandMachineTo,
+    answers: {
+      204: 'It is theirs',
+      404: refuses(CANNOT_HAND_OVER, 'No such Space, no such machine, or nobody here by that name'),
+    },
+
+    run: async (c) => {
+      const handed = await handMachineTo(db, {
+        spaceId: c.get('space').id,
+        machineId: c.req.valid('param').id,
+        userId: c.req.valid('json').ownerUserId,
+      })
+      if (handed.kind === 'not-a-member') return refused(c, CANNOT_HAND_OVER)
+
+      return nothing(c, 204)
+    },
+  })
 }
 
 /**
@@ -305,21 +314,15 @@ async function whatIsOwed(db: Database, machineId: string) {
 
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
 function polling(deps: MachineApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'post',
-      path: '/machines/current/poll',
-      summary: 'Report what this machine has, and ask whether there is anything for it',
-      middleware: [requireMachine(deps.db)],
-      request: { body: takes(reporting) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        200: sends(checkedInBody, 'What to look for, and anything waiting'),
-      },
-    }),
+  return aMachine(deps.db).post('/machines/current/poll', {
+    summary: 'Report what this machine has, and ask whether there is anything for it',
+    body: Report,
+    answers: {
+      200: sends(CheckedIn, 'What to look for, and anything waiting'),
+      401: refuses(NOT_OURS, 'Not a live machine credential, or not a machine any more'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       const machineId = c.get('machineId')
       const reported = c.req.valid('json')
       // Removed between the credential being read and this transaction opening: nothing to check
@@ -329,7 +332,7 @@ function polling(deps: MachineApi) {
         version: reported.version,
         found: agentsFound(reported.found),
       })
-      if (!still) return c.json(body(NOT_OURS), NOT_OURS.status)
+      if (!still) return refused(c, NOT_OURS)
 
       if (reported.restarted === true) await forgetStranded(deps.db, machineId)
 
@@ -339,46 +342,29 @@ function polling(deps: MachineApi) {
 }
 
 /** Going away on purpose, so nobody has to wait out the silence to find out. */
-function leaving(deps: MachineApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'delete',
-      path: '/machines/current/session',
-      summary: 'Say this machine is stopping on purpose',
-      middleware: [requireMachine(deps.db)],
-      responses: {
-        ...BEHIND_A_MACHINE,
-        204: saysNothing('Gone, without waiting out the silence'),
-      },
-    }),
+function leaving({ db }: MachineApi) {
+  return aMachine(db).delete('/machines/current/session', {
+    summary: 'Say this machine is stopping on purpose',
+    answers: { 204: 'Gone, without waiting out the silence' },
 
-    handler: async (c) => {
-      await sayGoodbye(deps.db, c.get('machineId'))
-      return c.body(null, 204)
+    run: async (c) => {
+      await sayGoodbye(db, c.get('machineId'))
+
+      return nothing(c, 204)
     },
   })
 }
 
 /** Every machine this Space can reach — its members' — here or not. */
-function listing(deps: MachineApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'get',
-      path: '/spaces/{slug}/machines',
-      summary: 'The machines this Space can reach',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string() }) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        200: sends(machinesBody, 'Every member\u2019s machines, here or not'),
-        404: refusal('No such Space'),
-      },
-    }),
+function listing({ db }: MachineApi) {
+  return aMember(db).get('/spaces/{slug}/machines', {
+    summary: 'The machines this Space can reach',
+    answers: { 200: sends(Machines, 'Every member\u2019s machines, here or not') },
 
-    handler: async (c) => {
+    run: async (c) => {
       // `asOf` comes back with them, from the same clock that wrote `last_seen_at`. A `new Date()`
       // here would be this process's clock deciding a fact the database's clock recorded.
-      const seen = await machinesIn(deps.db, c.get('space').id)
+      const seen = await machinesIn(db, c.get('space').id)
       const machines = seen.machines.map((machine) => ({
         id: machine.id,
         name: machine.name,
@@ -401,33 +387,26 @@ function listing(deps: MachineApi) {
  * away — and there is nothing to take it out *of*: where it can be reached from follows from
  * where its owner is a member.
  */
-function detaching(deps: MachineApi) {
-  return behindASession({
-    route: createRoute({
-      method: 'delete',
-      path: '/me/machines/{id}',
-      summary: 'Disconnect one of your machines',
-      middleware: [requireSession(deps.db)],
-      request: { params: z.object({ id: rowId }) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        204: saysNothing('Disconnected, and its credential stops working'),
-        404: refusal('You have no machine with that id'),
-      },
-    }),
+function detaching({ db }: MachineApi) {
+  return aPerson(db).delete('/me/machines/{id}', {
+    summary: 'Disconnect one of your machines',
+    params: { id: rowId },
+    instead: UNAVAILABLE,
+    answers: {
+      204: 'Disconnected, and its credential stops working',
+      404: refuses(UNAVAILABLE, 'You have no machine with that id'),
+    },
 
-    hook: insteadOfMalformed(UNAVAILABLE),
-
-    handler: async (c) => {
-      const removed = await removeMachine(deps.db, {
+    run: async (c) => {
+      const removed = await removeMachine(db, {
         machine: c.req.valid('param').id,
         owner: c.get('userId'),
       })
 
       // Somebody else's id disconnects nothing, and says what a machine you do not have says.
-      if (!removed) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
+      if (!removed) return refused(c, UNAVAILABLE)
 
-      return c.body(null, 204)
+      return nothing(c, 204)
     },
   })
 }
@@ -440,8 +419,8 @@ function detaching(deps: MachineApi) {
  * comes back as no models at all — a page with no control is a page somebody can still use, and a
  * Space screen that will not load because of a model list would not be.
  */
-function asOffered(agent: Installed): z.infer<typeof agentBody> {
-  const read = modelsBody.safeParse(agent.models)
+function asOffered(agent: Installed): z.infer<typeof Agent> {
+  const read = Models.safeParse(agent.models)
 
   return {
     kind: agent.kind,

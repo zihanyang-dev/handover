@@ -12,8 +12,8 @@
  * decides that one — a late writer finds out in SQL.
  */
 
-import { sql } from 'kysely'
 import { nextFreeSlug, type Slug } from '@handover/universal'
+import { sql } from 'kysely'
 import type { Database } from './connection.ts'
 import { ROLE } from './membership.ts'
 

@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { signInApi, type SendCode } from './sign-in-api.ts'
-import { SESSION_COOKIE } from './session.ts'
-import { meApi } from './me-api.ts'
-import { createSpace } from '../db/space.ts'
-import { userHolding } from '../db/session.ts'
-import { hashSessionToken } from '../identity/session.ts'
 import { normalizeSlug } from '@handover/universal'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
+import { userHolding } from '../db/session.ts'
+import { createSpace } from '../db/space.ts'
 import { loadEnv } from '../env.ts'
+import { hashSessionToken } from '../identity/session.ts'
+import { credentialApi, type SendCode } from './credential-api.ts'
+import { meApi } from './me-api.ts'
+import { mounted } from './route.ts'
+import { SESSION_COOKIE } from './session.ts'
 
 /** Fresh per test: addresses and Space names are unique across the whole database. */
 let RUN = ''
@@ -24,6 +25,7 @@ const SENDING = { lettersPerCallerPerHour: 500, trustedProxyHops: 0 }
 
 /** Where a browser reaches this app, which is what decides whether a cookie is `Secure`. */
 const WEB = 'http://localhost:5173'
+
 const db: Database = connect(env)
 
 afterAll(async () => {
@@ -31,19 +33,24 @@ afterAll(async () => {
 })
 
 let lastCode = ''
+
 const sendCode: SendCode = async (_to, code) => {
   lastCode = code
   return 'sent'
 }
-const auth = signInApi({
-  ...SENDING,
-  db,
-  secret: env.AUTH_SECRET,
-  sendCode,
-  providers: ['google', 'github'],
-  webOrigin: WEB,
-})
-const app = meApi({ db, providers: ['google', 'github'] })
+
+const auth = mounted(
+  credentialApi({
+    ...SENDING,
+    db,
+    secret: env.AUTH_SECRET,
+    sendCode,
+    providers: ['google', 'github'],
+    webOrigin: WEB,
+  }),
+)
+
+const app = mounted(meApi({ db, providers: ['google', 'github'] }))
 
 /** Signs somebody in the way a browser would, and returns the cookie it was handed. */
 async function signedIn(email: string): Promise<string> {

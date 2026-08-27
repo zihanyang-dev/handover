@@ -1,13 +1,13 @@
-import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
+import { sql } from 'kysely'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { newSessionToken } from '../identity/session.ts'
+import { loadEnv } from '../env.ts'
 import { hashCode, MAX_ATTEMPTS, RESEND_INTERVAL_SECONDS } from '../identity/email-code.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { connect, type Database } from './connection.ts'
 import { issueCode } from './email-code.ts'
 import { signInWithCode, type SignIn } from './sign-in.ts'
 import { arrive } from './user.ts'
-import { connect, type Database } from './connection.ts'
-import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
 
@@ -30,6 +30,7 @@ beforeEach(() => {
   RUN = randomUUID()
   EMAIL = `mina-${RUN}@example.com`
 })
+
 const CODE = '493018'
 
 async function sendCode(email = EMAIL, requestKey = `${RUN}-k1`): Promise<string> {

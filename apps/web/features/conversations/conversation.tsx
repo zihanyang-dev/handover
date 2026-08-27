@@ -6,8 +6,8 @@
  * what make a transcript an account of what happened rather than a chat log with gaps in it.
  */
 
-import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
 import { CheckCircle, ExclamationCircle, Terminal } from 'react-bootstrap-icons'
 import { agentName } from '../agents.ts'
 import {
@@ -295,6 +295,7 @@ function Proposal({
 
 /** What a tool call holds is the contract's to say, and it says it — see `Message` there. */
 type Did = Extract<Message, { role: 'tool' }>['content']
+
 type Activity = Extract<Message, { role: 'activity' }>['content']
 
 function Used({ did }: { readonly did: Did }) {

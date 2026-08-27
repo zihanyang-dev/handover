@@ -11,27 +11,27 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { normalizeSlug, type Slug } from '@handover/universal'
-import { enrolmentApi } from './enrolment-api.ts'
-import { approvalApi } from './approval-api.ts'
-import { machineApi } from './machine-api.ts'
-import { waitingRoom } from './waiting.ts'
-import { liveApi } from './live-api.ts'
-import { SESSION_COOKIE } from './session.ts'
-import { connect, type Database } from '../db/connection.ts'
-import { handTo, liveThrough, listenForLive } from '../db/live.ts'
-import type { Watched } from '../conversation/live.ts'
-import { openConversation } from '../db/conversation.ts'
-import { createSpace } from '../db/space.ts'
-import { openSession } from '../db/session.ts'
-import { newSessionToken } from '../identity/session.ts'
-import { arrive } from '../db/user.ts'
-import { loadEnv } from '../env.ts'
-import { LOG_OPTIONS } from '../log.ts'
-import { pino } from 'pino'
-import { serve } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
+import { normalizeSlug, type Slug } from '@handover/universal'
+import { serve } from '@hono/node-server'
+import { pino } from 'pino'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import type { Watched } from '../conversation/live.ts'
+import { connect, type Database } from '../db/connection.ts'
+import { openConversation } from '../db/conversation.ts'
+import { openSession } from '../db/session.ts'
+import { createSpace } from '../db/space.ts'
+import { arrive } from '../db/user.ts'
+import { showEveryoneWatching, liveThrough, listenForLive } from '../db/watching.ts'
+import { loadEnv } from '../env.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { LOG_OPTIONS } from '../log.ts'
+import { waitingRoom } from '../machine/waiting.ts'
+import { enrolmentApi } from './enrolment-api.ts'
+import { liveApi } from './live-api.ts'
+import { machineApi } from './machine-api.ts'
+import { mounted } from './route.ts'
+import { SESSION_COOKIE } from './session.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
@@ -40,16 +40,14 @@ const log = pino({ ...LOG_OPTIONS, level: 'silent' })
 /** The same wiring `main.ts` does: a map of watchers, and the connection that feeds it. */
 const watching = new Map<string, Set<(watched: Watched) => void>>()
 const listening = listenForLive(env, log, (happening) => {
-  handTo(watching, happening)
+  showEveryoneWatching(watching, happening)
 })
+
 const live = liveThrough(db, watching)
 
-const enrolments = enrolmentApi({ db, webOrigin: 'http://localhost:5173' }).route(
-  '/',
-  approvalApi({ db }),
-)
-const machines = machineApi({ db, waiting: waitingRoom(0) })
-const app = liveApi({ db, live })
+const enrolments = mounted(enrolmentApi({ db, webOrigin: 'http://localhost:5173' }))
+const machines = mounted(machineApi({ db, waiting: waitingRoom(0) }))
+const app = mounted(liveApi({ db, live }))
 
 afterAll(async () => {
   await listening.stop()

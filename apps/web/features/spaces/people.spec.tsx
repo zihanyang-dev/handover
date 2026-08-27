@@ -14,10 +14,11 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { components } from '../../generated/api.ts'
-import { routeTree } from '../../routeTree.gen.ts'
 import { theSpace } from '../../pretend/a-space.ts'
+import { routeTree } from '../../routeTree.gen.ts'
 
 type Member = components['schemas']['Member']
+
 type StillTheirs = components['schemas']['StillTheirs']
 
 const server = setupServer()
@@ -41,6 +42,7 @@ const KAI: Member = {
   since: '2026-08-01T10:00:00.000Z',
   you: true,
 }
+
 const MINA: Member = {
   userId: 'u-mina',
   displayName: 'Mina',

@@ -1,13 +1,13 @@
+import { normalizeSlug } from '@handover/universal'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { normalizeSlug } from '@handover/universal'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../../routeTree.gen.ts'
 import { signedIn } from '../../pretend/signed-in.ts'
+import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
 

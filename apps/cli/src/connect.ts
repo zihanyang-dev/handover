@@ -7,8 +7,8 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import type { Api } from './api.ts'
 import type { components } from '../generated/api.ts'
+import type { Api } from './api.ts'
 import type { Attachment } from './store.ts'
 
 /**

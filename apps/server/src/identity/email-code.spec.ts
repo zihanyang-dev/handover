@@ -13,6 +13,7 @@ import {
 const NOW = new Date('2026-08-24T12:00:00Z')
 const SECRET = 's'.repeat(32)
 const EMAIL = 'mina@example.com'
+
 const CODE = '493018'
 
 function live(overrides: Partial<SentCode> = {}): SentCode {

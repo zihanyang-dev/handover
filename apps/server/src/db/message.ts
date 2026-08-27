@@ -11,7 +11,7 @@
 import { sql } from 'kysely'
 import type { Message } from '../conversation/transcript.ts'
 import type { Tx } from './connection.ts'
-import { noteWritten } from './live.ts'
+import { noteWritten } from './watching.ts'
 
 /**
  * Where a person is writing, and under what name.
@@ -53,36 +53,6 @@ export type Appending = {
   | { readonly message: Extract<Message, { role: 'user' }>; readonly saidBy: string }
   | { readonly message: Exclude<Message, { role: 'user' }>; readonly saidBy?: undefined }
 )
-
-/**
- * The conversation, held for the rest of the transaction, and where its machine was as of now.
- *
- * One read rather than two, and one lock rather than a lock and a hope: whether the agent is busy
- * and whether its machine is here are both answered from this row, and both stop being true the
- * moment somebody else writes.
- *
- * The machine is joined *under* the lock, so `for update` holds its row as well. That is
- * deliberate and load-bearing: without it, a machine can be removed between this read and the
- * write, and something lands on a machine nobody can reach. See `machineSays` for the same
- * bargain from the other side.
- */
-export async function held(tx: Tx, saying: Saying) {
-  return tx
-    .selectFrom('conversations')
-    .innerJoin('machines', 'machines.id', 'conversations.machine_id')
-    .select([
-      'conversations.id',
-      'machines.id as machineId',
-      'machines.last_seen_at as lastSeenAt',
-      'machines.left_at as leftAt',
-      sql<Date>`now()`.as('asOf'),
-    ])
-    .where('conversations.id', '=', saying.conversationId)
-    .where('conversations.space_id', '=', saying.spaceId)
-    .where('machines.removed_at', 'is', null)
-    .forUpdate()
-    .executeTakeFirst()
-}
 
 export async function alreadySaid(tx: Tx, saying: Saying): Promise<boolean> {
   const already = await tx

@@ -1,17 +1,22 @@
+/**
+ * Somebody watching, on a second connection.
+ *
+ * A second connection because that is the case worth proving: the browser is held open by one
+ * instance and the write happens on another, and what has to cross between them is Postgres.
+ */
+
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { sql } from 'kysely'
 import { normalizeSlug, type Slug } from '@handover/universal'
+import { sql } from 'kysely'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import type { Watched } from '../conversation/live.ts'
 import { ACTIVITY, ROLES } from '../conversation/transcript.ts'
 import { loadEnv } from '../env.ts'
-import { newEnrolmentSecret } from '../machine/secret.ts'
-import { hashSecret } from '../secret.ts'
-import { newUserCode } from '../machine/user-code.ts'
-import { connect, type Database } from './connection.ts'
 import { createLog } from '../log.ts'
-import type { Watched } from '../conversation/live.ts'
-import { handTo, listenForLive } from './live.ts'
-import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
+import { newEnrolmentSecret } from '../machine/secret.ts'
+import { newUserCode } from '../machine/user-code.ts'
+import { hashSecret } from '../secret.ts'
+import { connect, type Database } from './connection.ts'
 import {
   askToStop,
   conversationWith,
@@ -21,23 +26,18 @@ import {
   sayTo,
   type Said,
 } from './conversation.ts'
-import { approveEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment, removeMachine, sayGoodbye } from './machine.ts'
+import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
+import { checkIn, removeMachine, sayGoodbye } from './machine.ts'
 import { createSpace } from './space.ts'
+import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
+import { showEveryoneWatching, listenForLive } from './watching.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
-
-/**
- * Somebody watching, on a second connection.
- *
- * A second connection because that is the case worth proving: the browser is held open by one
- * instance and the write happens on another, and what has to cross between them is Postgres.
- */
 const watching = new Map<string, Set<(watched: Watched) => void>>()
 const listening = listenForLive(env, createLog({ ...env, LOG_LEVEL: 'fatal' }), (happening) => {
-  handTo(watching, happening)
+  showEveryoneWatching(watching, happening)
 })
 
 /** What a watcher of this conversation is told, or nothing if nothing arrives. */
@@ -67,6 +67,7 @@ afterAll(async () => {
 let RUN = ''
 let SPACE = ''
 let PERSON = ''
+
 /** The name that will be on the lines they say — for email, the address they signed in with. */
 let PERSON_NAME = ''
 let MACHINE = ''

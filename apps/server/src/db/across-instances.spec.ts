@@ -6,26 +6,25 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { type Slug, normalizeSlug } from '@handover/universal'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
 import { loadEnv } from '../env.ts'
 import { hashCode } from '../identity/email-code.ts'
 import { newSessionToken } from '../identity/session.ts'
-import { userHolding, revokeSession } from './session.ts'
-import { connect, type Database } from './connection.ts'
-import { issueCode } from './email-code.ts'
-import { signInWithCode } from './sign-in.ts'
-import { arrive } from './user.ts'
-import { createSpace } from './space.ts'
-import { connectProvider } from './credential.ts'
-import { openConversation, sayTo } from './conversation.ts'
-import { takeOne } from './turn.ts'
-import { openEnrolment, approveEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment } from './machine.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
-import { hashSecret } from '../secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
-import { normalizeSlug } from '@handover/universal'
-import type { Slug } from '@handover/universal'
+import { hashSecret } from '../secret.ts'
+import { connect, type Database } from './connection.ts'
+import { openConversation, sayTo } from './conversation.ts'
+import { connectProvider } from './credential.ts'
+import { issueCode } from './email-code.ts'
+import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
+import { checkIn } from './machine.ts'
+import { userHolding, revokeSession } from './session.ts'
+import { signInWithCode } from './sign-in.ts'
+import { createSpace } from './space.ts'
+import { takeOne } from './turn.ts'
+import { arrive } from './user.ts'
 
 const env = loadEnv()
 
@@ -43,6 +42,7 @@ beforeEach(() => {
   RUN = randomUUID()
   EMAIL = `mina-${randomUUID()}@example.com`
 })
+
 const CODE = '493018'
 
 afterAll(async () => {

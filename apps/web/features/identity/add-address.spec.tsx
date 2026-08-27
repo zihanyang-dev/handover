@@ -5,8 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../../routeTree.gen.ts'
 import { signedIn } from '../../pretend/signed-in.ts'
+import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
 
@@ -23,7 +23,9 @@ afterAll(() => {
 })
 
 const EMAIL = 'mina@example.com'
+
 const SECOND = 'zane@example.com'
+
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
 /** This account, with the addresses that already reach it. */

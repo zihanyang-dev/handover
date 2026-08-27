@@ -11,8 +11,8 @@ import { join } from 'node:path'
 import { connect } from '../src/db/connection.ts'
 import { loadEnv, type Env } from '../src/env.ts'
 import { createLog } from '../src/log.ts'
+import { waitingRoom } from '../src/machine/waiting.ts'
 import { CONTRACT, handoverApp } from '../src/server/app.ts'
-import { waitingRoom } from '../src/server/waiting.ts'
 import { ROOT } from './run-command.ts'
 
 export function writeContract(env: Env): void {

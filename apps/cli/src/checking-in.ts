@@ -7,6 +7,7 @@
  * in the answer to a report it was already making.
  */
 
+import { agentFor } from './agents/known-agents.ts'
 import {
   endTurn,
   startAnswering,
@@ -15,7 +16,6 @@ import {
   type Machine,
   type Stopping,
 } from './answering.ts'
-import { agentFor } from './agents/known-agents.ts'
 import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
 import { VERSION } from './env.ts'

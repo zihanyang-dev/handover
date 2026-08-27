@@ -6,10 +6,22 @@
  * be a second thing to keep signed in.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { Options, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
-import { plain, shorten } from './agent.ts'
+import {
+  type Options,
+  type SDKMessage,
+  type SDKResultMessage,
+  query,
+} from '@anthropic-ai/claude-agent-sdk'
+import {
+  type Agent,
+  type Asked,
+  type Model,
+  type Said,
+  type Talk,
+  type Told,
+  plain,
+  shorten,
+} from './agent.ts'
 import { onPath } from './on-path.ts'
 
 /** The binary this drives. Found on the PATH captured when the machine was connected. */

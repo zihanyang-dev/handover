@@ -44,7 +44,7 @@ export async function userHolding(db: Database, tokenHash: string): Promise<stri
 export async function revokeSession(db: Database, tokenHash: string): Promise<void> {
   await db
     .updateTable('browser_sessions')
-    .set({ revoked_at: sql`now()` })
+    .set({ revoked_at: sql<Date>`clock_timestamp()` })
     .where('token_hash', '=', tokenHash)
     .where('revoked_at', 'is', null)
     .execute()

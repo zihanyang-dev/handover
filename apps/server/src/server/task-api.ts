@@ -12,45 +12,54 @@
  * of them has to do; one of them forgot, and a piece of work sat waiting on an owner who was
  * never told. As one `PATCH` it is one rule with one place to forget.
  *
- * Two doors, and the same split as everywhere else: a person opens and ends work through their
- * Space; the agent running it speaks through its machine's own credential, and the path never
- * names a machine. One endpoint is under neither — the Inbox. Work you handed out is work you
- * answer for wherever it lives, and a person with three Spaces has one Inbox.
+ * Three doors. A person opens, hands over and ends work through their Space; the agent running it
+ * speaks through its machine's own credential, and the path never names a machine. One endpoint is
+ * under neither — the Inbox. Work you handed out is work you answer for wherever it lives, and a
+ * person with three Spaces has one Inbox.
  */
 
-import { createRoute, z } from '@hono/zod-openapi'
-import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
+import { z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { handOffTo } from '../db/conversation.ts'
+import { handWorkTo } from '../db/membership.ts'
 import { handOver, stopsWorking, takeBack, waitingOn, writesOutput } from '../db/task.ts'
-import { SHOWS, api, endpointsBehind, rowId, saysNothing, sends, takes } from './contract.ts'
+import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
+import { type Failure, UNAVAILABLE, refused } from './failure.ts'
 import {
-  BEHIND_A_MACHINE,
-  BEHIND_A_SESSION,
-  body,
-  MALFORMED_BODY,
-  refusal,
-  type Failure,
-  UNAVAILABLE,
-} from './failure.ts'
-import { requireMachine, type Attached } from './machine-session.ts'
-import { requireMember, type InSpace } from './membership.ts'
-import { requireSession, type Signed } from './session.ts'
+  aMachine,
+  aMember,
+  aPerson,
+  anOwner,
+  named,
+  nothing,
+  refuses,
+  rowId,
+  sends,
+} from './route.ts'
 
 export type TaskApi = { readonly db: Database }
 
 /** Something is already running in this conversation. One at a time — see the index that says so. */
-const ALREADY: Failure<409> = {
-  reason: 'already-handed-over',
-  recovery: 'start-over',
-  status: 409,
-}
+const ALREADY: Failure<409> = { reason: 'already-handed-over', recovery: 'start-over', status: 409 }
 
 /** Nothing was handed over here, so there is nothing to take back or to report about. */
 const NOT_HANDED_OVER: Failure<409> = {
   reason: 'not-handed-over',
   recovery: 'start-over',
   status: 409,
+}
+
+/**
+ * Whoever it was handed to is not here, or there is nothing there to hand over.
+ *
+ * One answer for both, because a handover is written in the statement that checks — and by the
+ * time it comes back, "no rows" cannot say which. What to do about either is the same: look at the
+ * screen again, which is showing what is actually true.
+ */
+const CANNOT_HAND_OVER: Failure<404> = {
+  reason: 'cannot-hand-over',
+  recovery: 'start-over',
+  status: 404,
 }
 
 const NO_MACHINE: Failure<409> = {
@@ -65,11 +74,10 @@ const NO_AGENT: Failure<409> = {
   status: 409,
 }
 
-const named = { key: z.string().min(1).max(200) }
-const goal = z.string().min(1).max(2000)
+/** What the caller calls this request, so a lost answer is safe to retry. */
+const CALLED = { key: z.string().min(1).max(200) }
 
-const handingOverBody = z.object({ ...named, goal }).openapi('HandOver')
-const takingBackBody = z.object(named).openapi('TakeBack')
+const goal = z.string().min(1).max(2000)
 
 /**
  * The agent stopping, and why.
@@ -78,7 +86,7 @@ const takingBackBody = z.object(named).openapi('TakeBack')
  * What starts it again is a person saying something, a piece of work it handed out coming back,
  * or the clock. **The union is the state machine**, so nothing has to explain it a second time.
  */
-const howBody = z
+const HowItStopped = z
   .discriminatedUnion('state', [
     z.object({ state: z.literal('wait'), question: z.string().min(1).max(4000) }),
     z.object({ state: z.literal('sleep'), until: z.iso.datetime() }),
@@ -90,76 +98,66 @@ const howBody = z
   ])
   .openapi('HowItStopped')
 
-const stoppingBody = z.object({ ...named, how: howBody }).openapi('StopWorking')
+const Waiting = named('Waiting', {
+  conversationId: z.uuid(),
+  spaceSlug: z.string(),
+  machineName: z.string(),
+  goal: z.string(),
+  /** What it asked. Null when it stopped without saying — which a page shows as such. */
+  asked: z.string().nullable(),
+  since: z.iso.datetime(),
+})
 
-const handingOffBody = z
-  .object({
-    ...named,
-    goal,
-    machine: z.string().min(1).max(200),
-    agentKind: z.enum(AGENT_KIND_NAMES),
-  })
-  .openapi('HandOff')
+const Inbox = named('Inbox', { waiting: z.array(Waiting).readonly() })
+
+const HandOver = named('HandOver', { ...CALLED, goal })
+
+const TakeBack = named('TakeBack', CALLED)
+
+/** Who a piece of work is being handed to. */
+const HandWorkTo = named('HandWorkTo', { ownerUserId: rowId })
+
+const StopWorking = named('StopWorking', { ...CALLED, how: HowItStopped })
+
+const HandOff = named('HandOff', {
+  ...CALLED,
+  goal,
+  machine: z.string().min(1).max(200),
+  agentKind: z.enum(AGENT_KIND_NAMES),
+})
+
+const WorkOpened = named('WorkOpened', { conversationId: z.uuid() })
 
 /** No name of its own: the title in the path is the name, so writing it again replaces it. */
-const writingBody = z.object({ text: z.string().min(1).max(65_536) }).openapi('WriteOutput')
-
-const openedBody = z.object({ conversationId: z.uuid() }).openapi('HandedOff')
-
-const waitingBody = z
-  .object({
-    conversationId: z.uuid(),
-    spaceSlug: z.string(),
-    machineName: z.string(),
-    goal: z.string(),
-    /** What it asked. Null when it stopped without saying — which a page shows as such. */
-    asked: z.string().nullable(),
-    since: z.iso.datetime(),
-  })
-  .openapi('Waiting')
-
-const inboxBody = z.object({ waiting: z.array(waitingBody).readonly() }).openapi('Inbox')
-
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
-const behindASession = endpointsBehind<{ Variables: Signed }>(SHOWS.session)
-const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
+const WriteOutput = named('WriteOutput', { text: z.string().min(1).max(65_536) })
 
 export function taskApi(deps: TaskApi) {
-  return api<{ Variables: Signed & InSpace }>()
-    .openapiRoutes([handingOver(deps), takingBack(deps)])
-    .route('/', api<{ Variables: Signed }>().openapiRoutes([inbox(deps)]))
-    .route('/', whatAgentsSay(deps))
-}
-
-function whatAgentsSay(deps: TaskApi) {
-  return api<{ Variables: Attached }>().openapiRoutes([
+  return [
+    handingOver(deps),
+    takingBack(deps),
+    handingToSomebody(deps),
+    inbox(deps),
     stopping(deps),
     handingOff(deps),
     writing(deps),
-  ])
+  ]
 }
 
 /** Creating it, which is where a piece of work begins. */
-function handingOver(deps: TaskApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'post',
-      path: '/spaces/{slug}/conversations/{id}/task',
-      summary: 'Let it carry on without being spoken to',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }), body: takes(handingOverBody) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        ...MALFORMED_BODY,
-        204: saysNothing('Handed over, or handed over already'),
-        404: refusal('No such Space, or no such conversation in it'),
-        409: refusal('Something is already running in this conversation'),
-      },
-    }),
+function handingOver({ db }: TaskApi) {
+  return aMember(db).post('/spaces/{slug}/conversations/{id}/task', {
+    summary: 'Let it carry on without being spoken to',
+    params: { id: rowId },
+    body: HandOver,
+    answers: {
+      204: 'Handed over, or handed over already',
+      404: refuses(UNAVAILABLE, 'No such Space, or no such conversation in it'),
+      409: refuses(ALREADY, 'Something is already running in this conversation'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       const asked = c.req.valid('json')
-      const over = await handOver(deps.db, {
+      const over = await handOver(db, {
         conversationId: c.req.valid('param').id,
         spaceId: c.get('space').id,
         key: asked.key,
@@ -167,10 +165,10 @@ function handingOver(deps: TaskApi) {
         goal: asked.goal,
       })
 
-      if (over.kind === 'no-conversation') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (over.kind === 'already-handed-over') return c.json(body(ALREADY), ALREADY.status)
+      if (over.kind === 'no-conversation') return refused(c, UNAVAILABLE)
+      if (over.kind === 'already-handed-over') return refused(c, ALREADY)
 
-      return c.body(null, 204)
+      return nothing(c, 204)
     },
   })
 }
@@ -183,53 +181,70 @@ function handingOver(deps: TaskApi) {
  * comes in a body, because in this system a lost answer must be safe to retry, and that matters
  * more than a `DELETE` with nothing in it.
  */
-function takingBack(deps: TaskApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'delete',
-      path: '/spaces/{slug}/conversations/{id}/task',
-      summary: 'Stop it carrying on, and stop whatever it handed off',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }), body: takes(takingBackBody) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        ...MALFORMED_BODY,
-        204: saysNothing('Taken back, or taken back already'),
-        404: refusal('No such Space, no such conversation, and nothing handed over in it'),
-      },
-    }),
+function takingBack({ db }: TaskApi) {
+  return aMember(db).delete('/spaces/{slug}/conversations/{id}/task', {
+    summary: 'Stop it carrying on, and stop whatever it handed off',
+    params: { id: rowId },
+    body: TakeBack,
+    answers: {
+      204: 'Taken back, or taken back already',
+      404: refuses(UNAVAILABLE, 'No such Space, no such conversation, and nothing handed over'),
+    },
 
-    handler: async (c) => {
-      const back = await takeBack(deps.db, {
+    run: async (c) => {
+      const back = await takeBack(db, {
         conversationId: c.req.valid('param').id,
         spaceId: c.get('space').id,
         key: c.req.valid('json').key,
       })
 
-      return back.kind === 'taken-back'
-        ? c.body(null, 204)
-        : c.json(body(UNAVAILABLE), UNAVAILABLE.status)
+      return back.kind === 'taken-back' ? nothing(c, 204) : refused(c, UNAVAILABLE)
+    },
+  })
+}
+
+/**
+ * Handing it to somebody else here — which is also who the Inbox tells, because it is one column.
+ *
+ * `PATCH` and not a `POST` to some transfer: nothing is created. One field of a thing that already
+ * exists says somebody else's name now.
+ */
+function handingToSomebody({ db }: TaskApi) {
+  return anOwner(db).patch('/spaces/{slug}/conversations/{id}/task', {
+    summary: 'Hand a piece of work to somebody else here',
+    params: { id: rowId },
+    body: HandWorkTo,
+    answers: {
+      204: 'It is theirs, and it is in their Inbox',
+      404: refuses(
+        CANNOT_HAND_OVER,
+        'No such Space, nothing running there, or nobody here by that name',
+      ),
+    },
+
+    run: async (c) => {
+      // Named at the boundary: in a path it is `{id}`, and by the time it reaches the tables it is
+      // a conversation. Three opaque ids in one call is where they get swapped.
+      const handed = await handWorkTo(db, {
+        spaceId: c.get('space').id,
+        conversationId: c.req.valid('param').id,
+        userId: c.req.valid('json').ownerUserId,
+      })
+      if (handed.kind === 'not-a-member') return refused(c, CANNOT_HAND_OVER)
+
+      return nothing(c, 204)
     },
   })
 }
 
 /** Everything waiting on this person, wherever it is. The only read that is not under a Space. */
-function inbox(deps: TaskApi) {
-  return behindASession({
-    route: createRoute({
-      method: 'get',
-      path: '/me/inbox',
-      summary: 'Everything waiting on you, across every Space',
-      middleware: [requireSession(deps.db)],
-      request: {},
-      responses: {
-        ...BEHIND_A_SESSION,
-        200: sends(inboxBody, 'Newest first'),
-      },
-    }),
+function inbox({ db }: TaskApi) {
+  return aPerson(db).get('/me/inbox', {
+    summary: 'Everything waiting on you, across every Space',
+    answers: { 200: sends(Inbox, 'Newest first') },
 
-    handler: async (c) => {
-      const waiting = await waitingOn(deps.db, c.get('userId'))
+    run: async (c) => {
+      const waiting = await waitingOn(db, c.get('userId'))
 
       return c.json(
         { waiting: waiting.map((one) => ({ ...one, since: one.since.toISOString() })) },
@@ -240,26 +255,20 @@ function inbox(deps: TaskApi) {
 }
 
 /** The agent stops working, and says why. The one place a piece of work leaves `working`. */
-function stopping(deps: TaskApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'patch',
-      path: '/machines/current/conversations/{id}/task',
-      summary: 'Stop working, and say why',
-      middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(stoppingBody) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        204: saysNothing('Stopped, or stopped already'),
-        409: refusal('Nothing was handed over in that conversation'),
-      },
-    }),
+function stopping({ db }: TaskApi) {
+  return aMachine(db).patch('/machines/current/conversations/{id}/task', {
+    summary: 'Stop working, and say why',
+    params: { id: rowId },
+    body: StopWorking,
+    answers: {
+      204: 'Stopped, or stopped already',
+      409: refuses(NOT_HANDED_OVER, 'Nothing was handed over in that conversation'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       const asked = c.req.valid('json')
       const stopped = await stopsWorking(
-        deps.db,
+        db,
         { conversationId: c.req.valid('param').id, machineId: c.get('machineId'), key: asked.key },
         asked.how.state === 'sleep'
           ? { state: 'sleep', until: new Date(asked.how.until) }
@@ -268,34 +277,26 @@ function stopping(deps: TaskApi) {
             : { state: 'done', ending: asked.how.ending, said: asked.how.text },
       )
 
-      return stopped.kind === 'noted'
-        ? c.body(null, 204)
-        : c.json(body(NOT_HANDED_OVER), NOT_HANDED_OVER.status)
+      return stopped.kind === 'noted' ? nothing(c, 204) : refused(c, NOT_HANDED_OVER)
     },
   })
 }
 
 /** The agent opens a piece of work for another agent, and carries on. */
-function handingOff(deps: TaskApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'post',
-      path: '/machines/current/conversations/{id}/task/handed-off',
-      summary: 'Open a piece of work for another agent',
-      middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(handingOffBody) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        201: sends(openedBody, 'Opened, and its machine already knows'),
-        404: refusal('Nothing was handed over in that conversation'),
-        409: refusal('No such machine here, or it does not have that agent'),
-      },
-    }),
+function handingOff({ db }: TaskApi) {
+  return aMachine(db).post('/machines/current/conversations/{id}/task/handed-off', {
+    summary: 'Open a piece of work for another agent',
+    params: { id: rowId },
+    body: HandOff,
+    answers: {
+      201: sends(WorkOpened, 'Opened, and its machine already knows'),
+      404: refuses(UNAVAILABLE, 'Nothing was handed over in that conversation'),
+      409: refuses(NO_MACHINE, 'No such machine here, or it does not have that agent'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       const asked = c.req.valid('json')
-      const off = await handOffTo(deps.db, {
+      const off = await handOffTo(db, {
         conversationId: c.req.valid('param').id,
         machineId: c.get('machineId'),
         key: asked.key,
@@ -304,9 +305,9 @@ function handingOff(deps: TaskApi) {
         goal: asked.goal,
       })
 
-      if (off.kind === 'nothing-to-hand-off') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (off.kind === 'no-machine') return c.json(body(NO_MACHINE), NO_MACHINE.status)
-      if (off.kind === 'no-agent') return c.json(body(NO_AGENT), NO_AGENT.status)
+      if (off.kind === 'nothing-to-hand-off') return refused(c, UNAVAILABLE)
+      if (off.kind === 'no-machine') return refused(c, NO_MACHINE)
+      if (off.kind === 'no-agent') return refused(c, NO_AGENT)
 
       return c.json({ conversationId: off.conversationId }, 201)
     },
@@ -320,36 +321,25 @@ function handingOff(deps: TaskApi) {
  * opening on the first day and its conclusion on the third and stays one document. Nothing here
  * carries a name to be idempotent under, because the address already is one.
  */
-function writing(deps: TaskApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'put',
-      path: '/machines/current/conversations/{id}/task/outputs/{title}',
-      summary: 'Write something down as a piece of work in its own right',
-      middleware: [requireMachine(deps.db)],
-      request: {
-        params: z.object({ id: rowId, title: z.string().min(1).max(200) }),
-        body: takes(writingBody),
-      },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        204: saysNothing('Written, or revised'),
-        409: refusal('Nothing was handed over in that conversation'),
-      },
-    }),
+function writing({ db }: TaskApi) {
+  return aMachine(db).put('/machines/current/conversations/{id}/task/outputs/{title}', {
+    summary: 'Write something down as a piece of work in its own right',
+    params: { id: rowId, title: z.string().min(1).max(200) },
+    body: WriteOutput,
+    answers: {
+      204: 'Written, or revised',
+      409: refuses(NOT_HANDED_OVER, 'Nothing was handed over in that conversation'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       const where = c.req.valid('param')
       const wrote = await writesOutput(
-        deps.db,
+        db,
         { conversationId: where.id, machineId: c.get('machineId'), key: where.title },
         { title: where.title, body: c.req.valid('json').text },
       )
 
-      return wrote.kind === 'noted'
-        ? c.body(null, 204)
-        : c.json(body(NOT_HANDED_OVER), NOT_HANDED_OVER.status)
+      return wrote.kind === 'noted' ? nothing(c, 204) : refused(c, NOT_HANDED_OVER)
     },
   })
 }

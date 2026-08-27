@@ -11,9 +11,9 @@
  */
 
 import { sql } from 'kysely'
+import { hashSecret, mint } from '../secret.ts'
 import type { Database } from './connection.ts'
 import { joins } from './membership.ts'
-import { hashSecret, mint } from '../secret.ts'
 
 /** So one found in a shell history says which door it opens. */
 const INVITATION = 'hi'

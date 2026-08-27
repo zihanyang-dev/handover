@@ -19,8 +19,9 @@ import { sql } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS, type Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
+import { held } from './conversation.ts'
 import { stillItsToWriteOn } from './machine.ts'
-import { append, held, type Saying } from './message.ts'
+import { append, type Saying } from './message.ts'
 import { wakeMachine } from './waking.ts'
 
 /** What it is up to, as far as anything that decides is concerned. Four, and no fifth. */
@@ -290,7 +291,7 @@ async function reports(
 }
 
 /** How a piece of work stops working, and why. Three, because `working` is nobody else to set. */
-export type Stopping =
+export type HowItStopped =
   /** It asked whoever handed this out. Only they start it again. */
   | { readonly state: 'wait'; readonly question: string }
   /** It is waiting out a moment. Only the clock starts it again. */
@@ -317,7 +318,7 @@ type Ending = 'done' | 'cannot'
 export async function stopsWorking(
   db: Database,
   reporting: Reporting,
-  how: Stopping,
+  how: HowItStopped,
 ): Promise<Reported> {
   return reports(db, reporting, async (tx, task) => {
     // The name decides, and it decides *first*. A report that already landed must move nothing a
@@ -335,7 +336,7 @@ export async function stopsWorking(
 }
 
 /** The moment, for a person reading the conversation later. */
-function said(how: Stopping): { readonly activityType: string } & Record<string, unknown> {
+function said(how: HowItStopped): { readonly activityType: string } & Record<string, unknown> {
   if (how.state === 'wait') return { activityType: ACTIVITY.asked, text: how.question }
   if (how.state === 'sleep') {
     return { activityType: ACTIVITY.asleep, until: how.until.toISOString() }
@@ -358,7 +359,7 @@ function said(how: Stopping): { readonly activityType: string } & Record<string,
  * A person is told by their Inbox, which is a query and needs no telling. An agent is told by
  * being handed another turn, which is this.
  */
-async function tellWhoeverWasWaiting(tx: Tx, task: Task, how: Stopping): Promise<void> {
+async function tellWhoeverWasWaiting(tx: Tx, task: Task, how: HowItStopped): Promise<void> {
   if (task.parentId === null || how.state === 'sleep') return
 
   const parent = await tx
@@ -393,7 +394,7 @@ async function moveTo(tx: Tx, task: Task, state: State, until: Date | null): Pro
     .set({
       state,
       sleep_until: state === STATE.sleep ? until : null,
-      ended_at: state === STATE.done ? sql<Date>`now()` : null,
+      ended_at: state === STATE.done ? sql<Date>`clock_timestamp()` : null,
     })
     .where('id', '=', task.id)
     .where('ended_at', 'is', null)
@@ -413,7 +414,7 @@ export async function writesOutput(
       .onConflict((conflict) =>
         conflict
           .columns(['task_id', 'title'])
-          .doUpdateSet({ body: written.body, updated_at: sql<Date>`now()` }),
+          .doUpdateSet({ body: written.body, updated_at: sql<Date>`clock_timestamp()` }),
       )
       .execute()
 
@@ -485,6 +486,22 @@ export async function tellWhoeverIsWaitingOnAGoneMachine(db: Database): Promise<
     .where('kid.state', '=', STATE.working)
     .where('parent.ended_at', 'is', null)
     .where('km.last_seen_at', '<', sql<Date>`now() - ${SILENT_FOR_SECONDS} * interval '1 second'`)
+    // Not the ones already told. Nothing about a stranded child changes when its parent is told
+    // — it is still `working`, and its machine is still away — so without this the same rows come
+    // back on every sweep for as long as they exist, and the sweep gets slower for ever. What was
+    // said is already written down, under a name this statement can ask for: `messages_said_once`
+    // is the same constraint that makes writing it twice a no-op.
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('messages')
+            .select('messages.id')
+            .whereRef('messages.conversation_id', '=', 'pc.id')
+            .where(sql<boolean>`messages.key = 'gone/' || kid.id`),
+        ),
+      ),
+    )
     .execute()
 
   let told = 0

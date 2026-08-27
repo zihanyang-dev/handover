@@ -6,10 +6,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { normalizeSlug, type Slug } from '@handover/universal'
 import { sql } from 'kysely'
 import { Client } from 'pg'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { normalizeSlug, type Slug } from '@handover/universal'
 import { loadEnv } from '../env.ts'
 import { connect, type Database } from './connection.ts'
 import {
@@ -19,7 +19,7 @@ import {
   revokeInvitation,
   whatItOpens,
 } from './invitation.ts'
-import { becomes, isOwner, joins, membersOf, removes, ROLE, whatTheyHold } from './membership.ts'
+import { ROLE, becomes, isOwner, joins, membersOf, removes, whatTheyHold } from './membership.ts'
 import { createSpace, spaceForMember, spacesOf } from './space.ts'
 import { arrive } from './user.ts'
 

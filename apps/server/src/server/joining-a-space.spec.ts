@@ -10,9 +10,14 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
-import { joiningApi } from './joining-api.ts'
-import { signInApi, type SendCode } from './sign-in-api.ts'
+import { waitingRoom } from '../machine/waiting.ts'
+import { credentialApi, type SendCode } from './credential-api.ts'
+import { invitationApi } from './invitation-api.ts'
+import { machineApi } from './machine-api.ts'
+import { memberApi } from './member-api.ts'
+import { mounted } from './route.ts'
 import { spaceApi } from './space-api.ts'
+import { taskApi } from './task-api.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
@@ -23,21 +28,33 @@ afterAll(async () => {
 })
 
 let lastCode = ''
+
 const sendCode: SendCode = async (_to, code) => {
   lastCode = code
   return 'sent'
 }
-const auth = signInApi({
-  lettersPerCallerPerHour: 500,
-  trustedProxyHops: 0,
-  db,
-  secret: env.AUTH_SECRET,
-  sendCode,
-  providers: ['google', 'github'],
-  webOrigin: WEB,
-})
-const spaces = spaceApi(db)
-const app = joiningApi({ db, webOrigin: WEB })
+
+const auth = mounted(
+  credentialApi({
+    lettersPerCallerPerHour: 500,
+    trustedProxyHops: 0,
+    db,
+    secret: env.AUTH_SECRET,
+    sendCode,
+    providers: ['google', 'github'],
+    webOrigin: WEB,
+  }),
+)
+
+const spaces = mounted(spaceApi({ db }))
+// All four, in one app, exactly as `app.ts` mounts them — the split is by what a route is
+// about, and a person joining a Space crosses all of it in one sitting.
+const app = mounted([
+  ...invitationApi({ db, webOrigin: WEB }),
+  ...memberApi({ db }),
+  ...taskApi({ db }),
+  ...machineApi({ db, waiting: waitingRoom(0) }),
+])
 
 let RUN = ''
 let KAI = ''

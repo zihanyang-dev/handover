@@ -7,9 +7,9 @@
  */
 
 import { z } from '@hono/zod-openapi'
-import { presence, type Whereabouts } from '../machine/presence.ts'
+import { presence, type Whereabouts } from './presence.ts'
 
-export const presenceBody = z
+export const Presence = z
   .discriminatedUnion('state', [
     z.object({ state: z.literal('here') }),
     /** `since` is when we last had evidence either way — not when it went. */
@@ -23,7 +23,7 @@ export const presenceBody = z
  * `asOf` comes from the database rather than this process: whether a machine counts as here is a
  * comparison against a clock, and the clock that wrote `last_seen_at` is the one to compare with.
  */
-export function onTheWire(where: Whereabouts, asOf: Date): z.infer<typeof presenceBody> {
+export function onTheWire(where: Whereabouts, asOf: Date): z.infer<typeof Presence> {
   const found = presence(where, asOf)
 
   return found.state === 'here'

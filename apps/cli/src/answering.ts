@@ -6,10 +6,17 @@
  * conversation on it would read as "nobody knows" while it was busy working.
  */
 
-import type { components } from '../generated/api.ts'
-import type { Agent, Asked, Said, Told, Why } from './agents/agent.ts'
 import { PIECE } from '@handover/universal'
-import { EXCERPT, shorten } from './agents/agent.ts'
+import type { components } from '../generated/api.ts'
+import {
+  type Agent,
+  type Asked,
+  EXCERPT,
+  type Said,
+  type Told,
+  type Why,
+  shorten,
+} from './agents/agent.ts'
 import { NO_ANSWER, type Api } from './api.ts'
 import { sleep } from './sleeping.ts'
 

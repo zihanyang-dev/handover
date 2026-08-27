@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import * as oauth from 'openid-client'
+import { describe, expect, it } from 'vitest'
 import { begin } from './handshake.ts'
 
 /** A provider that exists only as metadata. Beginning a trip is all URL building — nothing is sent. */

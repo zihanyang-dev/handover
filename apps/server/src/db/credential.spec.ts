@@ -1,16 +1,21 @@
-import { sql } from 'kysely'
+/**
+ * One fresh id per test, and everything the test touches is named from it. That is what lets a
+ * count below be a count of this test's rows rather than of the whole table.
+ */
+
 import { randomUUID } from 'node:crypto'
+import { sql } from 'kysely'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { newSessionToken } from '../identity/session.ts'
+import { loadEnv } from '../env.ts'
+import { CREDENTIAL_KINDS } from '../identity/credential.ts'
 import { hashCode } from '../identity/email-code.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
-import { CREDENTIAL_KINDS } from '../identity/credential.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { connect, type Database } from './connection.ts'
 import { addAddress, connectProvider } from './credential.ts'
 import { issueCode } from './email-code.ts'
 import { signInWithCode, signInWithProvider } from './sign-in.ts'
 import { personById } from './user.ts'
-import { connect, type Database } from './connection.ts'
-import { loadEnv } from '../env.ts'
 
 const env = loadEnv()
 
@@ -23,11 +28,6 @@ afterAll(async () => {
 })
 
 const CODE = '493018'
-
-/**
- * One fresh id per test, and everything the test touches is named from it. That is what lets a
- * count below be a count of this test's rows rather than of the whole table.
- */
 let RUN = ''
 let EMAIL = ''
 let SUBJECT = ''

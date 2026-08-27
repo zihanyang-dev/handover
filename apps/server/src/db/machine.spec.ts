@@ -1,25 +1,18 @@
-import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { newEnrolmentSecret } from '../machine/secret.ts'
-import { hashSecret } from '../secret.ts'
-import { newUserCode } from '../machine/user-code.ts'
-import { presence } from '../machine/presence.ts'
-import { approveEnrolment, openEnrolment, refuseEnrolment } from './enrolment.ts'
-import {
-  checkIn,
-  collectEnrolment,
-  machineHolding,
-  machinesIn,
-  removeMachine,
-  sayGoodbye,
-} from './machine.ts'
-import { arrive } from './user.ts'
-import { createSpace } from './space.ts'
-import { handMachineTo, joins, removes } from './membership.ts'
-import { connect, type Database } from './connection.ts'
-import { loadEnv } from '../env.ts'
 import { normalizeSlug, type Slug } from '@handover/universal'
+import { sql } from 'kysely'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { loadEnv } from '../env.ts'
+import { presence } from '../machine/presence.ts'
+import { newEnrolmentSecret } from '../machine/secret.ts'
+import { newUserCode } from '../machine/user-code.ts'
+import { hashSecret } from '../secret.ts'
+import { connect, type Database } from './connection.ts'
+import { approveEnrolment, collectEnrolment, openEnrolment, refuseEnrolment } from './enrolment.ts'
+import { checkIn, machineHolding, machinesIn, removeMachine, sayGoodbye } from './machine.ts'
+import { handMachineTo, joins, removes } from './membership.ts'
+import { createSpace } from './space.ts'
+import { arrive } from './user.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)

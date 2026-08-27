@@ -10,8 +10,12 @@
  */
 
 import { Link, useMatches } from '@tanstack/react-router'
-import { useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useState,
+} from 'react'
 import { Mark } from '../../mark.tsx'
 import type { Me } from '../identity/me.ts'
 import {

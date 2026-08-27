@@ -12,21 +12,20 @@
  */
 
 import { execFile } from 'node:child_process'
-import { hostname, homedir } from 'node:os'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { hostname, homedir } from 'node:os'
 import { dirname } from 'node:path'
-import { parseArgs } from 'node:util'
-import { promisify } from 'node:util'
+import { parseArgs, promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
 import { VERSION, howToRunThis, machineEnvironment, readEnv } from './env.ts'
 import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
+import { reachableAs } from './reachable.ts'
 import { forEveryone, handoverFor, type Step } from './service.ts'
 import { sleep } from './sleeping.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
-import { reachableAs } from './reachable.ts'
 import { runTask } from './task.ts'
 
 const run = promisify(execFile)

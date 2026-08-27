@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { returnPath } from './return-path.ts'
 
 const WEB = 'https://app.handover.test'
+
 const back = (asked: string | undefined) => returnPath(asked, WEB)
 
 describe('returnPath', () => {

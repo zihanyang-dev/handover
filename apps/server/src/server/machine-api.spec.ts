@@ -1,35 +1,39 @@
+/**
+ * Somebody else in this Space, with a laptop of their own.
+ *
+ * The membership is written here rather than joined through the product, because nothing shipped
+ * yet lets anybody join a Space — and what these tests are about is what a second member sees.
+ */
+
 import { randomUUID } from 'node:crypto'
+import { normalizeSlug, type Slug } from '@handover/universal'
+import { sql } from 'kysely'
 import { pino } from 'pino'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
 import { openConversation, sayTo } from '../db/conversation.ts'
-import { listenForWaking } from '../db/waking.ts'
-import { createSpace } from '../db/space.ts'
 import { openSession } from '../db/session.ts'
+import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
+import { listenForWaking } from '../db/waking.ts'
 import { loadEnv } from '../env.ts'
-import { LOG_OPTIONS } from '../log.ts'
 import { newSessionToken } from '../identity/session.ts'
+import { LOG_OPTIONS } from '../log.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
-import { approvalApi } from './approval-api.ts'
+import { waitingRoom, type Waiting } from '../machine/waiting.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { machineApi } from './machine-api.ts'
-import { waitingRoom, type Waiting } from './waiting.ts'
+import { mounted } from './route.ts'
 import { SESSION_COOKIE } from './session.ts'
-import { normalizeSlug, type Slug } from '@handover/universal'
-import { sql } from 'kysely'
 
 const env = loadEnv()
 const db: Database = connect(env)
 
 /** A log nobody reads: what these tests are about is what comes back, not what was written down. */
 const silent = pino(LOG_OPTIONS, { write: () => undefined })
-const enrolments = enrolmentApi({ db, webOrigin: 'http://localhost:5173' }).route(
-  '/',
-  approvalApi({ db }),
-)
+const enrolments = mounted(enrolmentApi({ db, webOrigin: 'http://localhost:5173' }))
 /** Zero, so every test below answers at once. The holding itself has its own tests, at the end. */
-const app = machineApi({ db, waiting: waitingRoom(0) })
+const app = mounted(machineApi({ db, waiting: waitingRoom(0) }))
 
 afterAll(async () => {
   await db.destroy()
@@ -162,12 +166,6 @@ async function signedInStranger(): Promise<{ cookie: string; userId: string }> {
   return { cookie: `${SESSION_COOKIE}=${token.token}`, userId: arrived.userId }
 }
 
-/**
- * Somebody else in this Space, with a laptop of their own.
- *
- * The membership is written here rather than joined through the product, because nothing shipped
- * yet lets anybody join a Space — and what these tests are about is what a second member sees.
- */
 async function alsoHere(): Promise<{ cookie: string; userId: string }> {
   const stranger = await signedInStranger()
   await db
@@ -410,7 +408,7 @@ describe('holding a machine question instead of answering "nothing"', () => {
   const NEVER = 30
 
   /** An app of its own, because what is being tested is how long this one holds. */
-  const holding = (room: Waiting) => machineApi({ db, waiting: room })
+  const holding = (room: Waiting) => mounted(machineApi({ db, waiting: room }))
 
   it('answers at once when there is already something to take', async () => {
     // The hold is for when there is nothing. Anything else would make every turn wait out a hold

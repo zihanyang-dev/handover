@@ -7,23 +7,23 @@
  */
 
 import { serve } from '@hono/node-server'
-import { connect } from './db/connection.ts'
-import { handTo, listenForLive, liveThrough } from './db/live.ts'
-import { listenForWaking } from './db/waking.ts'
-import { POLL_SECONDS } from './machine/presence.ts'
-import { waitingRoom } from './server/waiting.ts'
 import type { Watched } from './conversation/live.ts'
+import { connect } from './db/connection.ts'
+import { listenForWaking } from './db/waking.ts'
+import { showEveryoneWatching, listenForLive, liveThrough } from './db/watching.ts'
 import { PROVIDER_KEYS, loadEnv } from './env.ts'
 import { codeLetter } from './identity/email-code.ts'
-import { createLog } from './log.ts'
-import { resend, type Mailer } from './mail.ts'
+import { githubClient } from './identity/github.ts'
+import { googleClient } from './identity/google.ts'
+import type { ProviderClient } from './identity/provider-client.ts'
 import { PROVIDERS, type Provider } from './identity/provider.ts'
+import { createLog } from './log.ts'
+import { POLL_SECONDS } from './machine/presence.ts'
+import { waitingRoom } from './machine/waiting.ts'
+import { resend, type Mailer } from './mail.ts'
 import { handoverApp } from './server/app.ts'
+import type { SendCode } from './server/credential-api.ts'
 import { keepWaking } from './waker.ts'
-import type { SendCode } from './server/email-code.ts'
-import { githubClient } from './server/oauth/github.ts'
-import { googleClient } from './server/oauth/google.ts'
-import type { ProviderClient } from './server/oauth/provider-client.ts'
 
 /** How long in-flight requests get to finish before this stops waiting for them. */
 const GRACE_MS = 10_000
@@ -91,7 +91,7 @@ const db = connect(env)
  */
 const watching = new Map<string, Set<(watched: Watched) => void>>()
 const listening = listenForLive(env, log, (happening) => {
-  handTo(watching, happening)
+  showEveryoneWatching(watching, happening)
 })
 
 /**

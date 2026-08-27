@@ -1,11 +1,10 @@
+import { PIECE } from '@handover/universal'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { Agent, Said, Told } from './agents/agent.ts'
-import { PIECE } from '@handover/universal'
-import { EXCERPT, shorten } from './agents/agent.ts'
-import { apiFor } from './api.ts'
+import { type Agent, EXCERPT, type Said, type Told, shorten } from './agents/agent.ts'
 import { startAnswering, type Asking } from './answering.ts'
+import { apiFor } from './api.ts'
 
 const server = setupServer()
 const ORIGIN = 'http://handover.test'

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeSlug, type Slug } from '@handover/universal'
-import { createSpace, type SpaceCreation } from './space.ts'
-import { connect, type Database } from './connection.ts'
-import { arrive } from './user.ts'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { loadEnv } from '../env.ts'
+import { connect, type Database } from './connection.ts'
+import { createSpace, type SpaceCreation } from './space.ts'
+import { arrive } from './user.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)

@@ -3,9 +3,9 @@
  * has to be asked for afterwards — and asked for in the one place that says whether it is proved.
  */
 
-import { z } from 'zod'
 import * as oauth from 'openid-client'
-import { normalizeEmail } from '../../identity/email-address.ts'
+import { z } from 'zod'
+import { normalizeEmail } from './email-address.ts'
 import { begin, exchange } from './handshake.ts'
 import type { Identified, ProviderClient } from './provider-client.ts'
 

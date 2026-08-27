@@ -348,7 +348,7 @@ async function openTurnsOn(
  * turn that no longer exists. Named by conversation alone it stops the wrong one — measured, and
  * it left that turn claimed with nobody running it.
  */
-export type Stopping = {
+export type StopWanted = {
   readonly conversationId: string
   readonly afterSeq: number
 }
@@ -365,7 +365,10 @@ export type Stopping = {
  * told again on every report — which is also what makes a request that arrived while the machine
  * was between reports arrive on the next one instead of being lost.
  */
-export async function stopWantedOn(db: Database, machineId: string): Promise<Stopping | undefined> {
+export async function stopWantedOn(
+  db: Database,
+  machineId: string,
+): Promise<StopWanted | undefined> {
   const wanted = await db
     .selectFrom('turns')
     .select(['turns.conversation_id as conversationId', 'turns.after_seq as afterSeq'])

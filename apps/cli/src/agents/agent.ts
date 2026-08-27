@@ -89,6 +89,7 @@ export type Told =
 
 /** One message as the server will accept it, and the shape of a tool line inside it. */
 type Message = components['schemas']['MachineMessage']['message']
+
 type Tool = Extract<Message, { role: 'tool' }>['content']
 
 /**

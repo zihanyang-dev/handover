@@ -10,8 +10,6 @@
  */
 
 import { sql } from 'kysely'
-import type { AgentKind } from '../machine/agent-kind.ts'
-import { presence } from '../machine/presence.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import {
   ACTIVITY,
@@ -20,11 +18,13 @@ import {
   type Message,
   type Reported,
 } from '../conversation/transcript.ts'
+import type { AgentKind } from '../machine/agent-kind.ts'
+import { presence } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
-import { append, alreadySaid, held, type Saying, type Said, type Speaking } from './message.ts'
-import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
-import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
 import { reachableFrom, stillItsToWriteOn } from './machine.ts'
+import { append, alreadySaid, type Saying, type Said, type Speaking } from './message.ts'
+import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
+import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
 import { wakeMachine } from './waking.ts'
 
 export type { Saying, Said, Speaking } from './message.ts'
@@ -49,6 +49,36 @@ export type Opened =
  * machine removed between the read and the insert would leave a conversation pinned to something
  * nobody can reach, and the only way out of that would be to delete it again.
  */
+/**
+ * The conversation, held for the rest of the transaction, and where its machine was as of now.
+ *
+ * One read rather than two, and one lock rather than a lock and a hope: whether the agent is busy
+ * and whether its machine is here are both answered from this row, and both stop being true the
+ * moment somebody else writes.
+ *
+ * The machine is joined *under* the lock, so `for update` holds its row as well. That is
+ * deliberate and load-bearing: without it, a machine can be removed between this read and the
+ * write, and something lands on a machine nobody can reach. See `machineSays` for the same
+ * bargain from the other side.
+ */
+export async function held(tx: Tx, saying: Saying) {
+  return tx
+    .selectFrom('conversations')
+    .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+    .select([
+      'conversations.id',
+      'machines.id as machineId',
+      'machines.last_seen_at as lastSeenAt',
+      'machines.left_at as leftAt',
+      sql<Date>`now()`.as('asOf'),
+    ])
+    .where('conversations.id', '=', saying.conversationId)
+    .where('conversations.space_id', '=', saying.spaceId)
+    .where('machines.removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+}
+
 export async function openConversation(db: Database, opening: Opening): Promise<Opened> {
   return db.transaction().execute(async (tx) => {
     const machine = await tx
@@ -132,7 +162,7 @@ export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promi
   })
 }
 
-export type Stopping =
+export type StopAsked =
   | { readonly kind: 'asked-to-stop' }
   /** The same request again. It was already asked, and asking twice changes nothing. */
   | { readonly kind: 'asked-already' }
@@ -153,7 +183,7 @@ export type Stopping =
  * turn that just ended wants to hear that it already stopped; somebody who types a sentence wants
  * it said either way.
  */
-export async function askToStop(db: Database, saying: Saying): Promise<Stopping> {
+export async function askToStop(db: Database, saying: Saying): Promise<StopAsked> {
   return db.transaction().execute(async (tx) => {
     const conversation = await held(tx, saying)
     if (conversation === undefined) return { kind: 'no-conversation' }

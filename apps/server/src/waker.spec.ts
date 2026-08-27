@@ -6,8 +6,8 @@
  * next round finds it.
  */
 
-import { afterAll, describe, expect, it } from 'vitest'
 import { pino } from 'pino'
+import { afterAll, describe, expect, it } from 'vitest'
 import { connect, type Database } from './db/connection.ts'
 import { loadEnv } from './env.ts'
 import { LOG_OPTIONS } from './log.ts'

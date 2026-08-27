@@ -6,8 +6,8 @@
  *   2. the `credentials` row, via its unique index
  */
 
-import { initialDisplayName, type Profile } from '../identity/display-name.ts'
 import { canonical, type Credential } from '../identity/credential.ts'
+import { initialDisplayName, type Profile } from '../identity/display-name.ts'
 import type { Database, Tx } from './connection.ts'
 import { credentialsOf, holdTheAddress, holderOf, link } from './credential.ts'
 

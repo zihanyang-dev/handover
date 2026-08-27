@@ -1,4 +1,24 @@
-/** Opening the pool a process talks to Postgres through. */
+/**
+ * Opening the pool a process talks to Postgres through.
+ *
+ * ## Which clock a column gets
+ *
+ * Postgres has two and they are not interchangeable. `now()` is the instant the *transaction*
+ * began and does not move while it runs; `clock_timestamp()` is the wall clock and does. A
+ * transaction that reads, thinks, and then writes gets two different answers from them.
+ *
+ * **A moment gets `clock_timestamp()`** — `approved_at`, `revoked_at`, `left_at`, `ended_at`.
+ * These say when something happened, and the transaction's start time can put a row earlier than
+ * something that really happened before it.
+ *
+ * **A deadline and a reading get `now()`** — `expires_at > now()`, and the `asOf` a screen is
+ * shown beside. Every statement in one transaction wants the *same* instant, so two reads in it
+ * cannot disagree about what time it is.
+ *
+ * Written here because the rule was already being broken in four places: `revoked_at` was
+ * stamped with both, in two files, and so was `ended_at`. `rules/clocks.spec.ts` asks it now, so
+ * neither spelling can look right on its own again.
+ */
 
 import { Kysely, PostgresDialect, type Transaction } from 'kysely'
 import { Pool } from 'pg'

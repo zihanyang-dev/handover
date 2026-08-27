@@ -15,10 +15,10 @@
  */
 
 import { sql, type UpdateObject } from 'kysely'
-import { LIFETIME_MINUTES } from '../machine/enrolment.ts'
-import type { UserCode } from '../machine/user-code.ts'
 import type { DB } from '../../generated/db.ts'
-import type { Database } from './connection.ts'
+import { LIFETIME_MINUTES, type Enrolment } from '../machine/enrolment.ts'
+import type { UserCode } from '../machine/user-code.ts'
+import type { Database, Tx } from './connection.ts'
 
 /**
  * The two ways an enrolment begins, as two shapes rather than one with holes in it.
@@ -134,12 +134,12 @@ export async function approveEnrolment(
 ): Promise<Answered> {
   return answer(db, userCode, {
     approved_by: by.userId,
-    approved_at: sql`clock_timestamp()`,
+    approved_at: sql<Date>`clock_timestamp()`,
   })
 }
 
 export async function refuseEnrolment(db: Database, userCode: UserCode): Promise<Answered> {
-  return answer(db, userCode, { refused_at: sql`clock_timestamp()` })
+  return answer(db, userCode, { refused_at: sql<Date>`clock_timestamp()` })
 }
 
 /** Typed against the table, so a column name that is not one is a compile error, not a 500. */
@@ -157,4 +157,102 @@ async function answer(db: Database, userCode: UserCode, transition: Transition):
     .executeTakeFirst()
 
   return changed === undefined ? { kind: 'not-waiting' } : { kind: 'answered' }
+}
+
+export type Collected = { readonly kind: 'granted'; readonly machineId: string } | Enrolment
+
+export type Collecting = {
+  readonly secretHash: string
+  /** The credential this machine will hold afterwards. The token itself never comes here. */
+  readonly tokenHash: string
+  /** What the machine calls itself. Used only when nobody named it at approval. */
+  readonly machineName: string
+}
+
+/**
+ * Turns an approved enrolment into a machine, or says why it cannot.
+ *
+ * The `where` is the whole guard: two machines racing on one single-use key both run this update
+ * and only one matches. Reading first and deciding in TypeScript would let both in, and the
+ * second would be a machine nobody meant to admit.
+ */
+export async function collectEnrolment(db: Database, collecting: Collecting): Promise<Collected> {
+  return db.transaction().execute(async (tx) => {
+    const won = await tx
+      .updateTable('enrolments')
+      .set({ claimed_at: sql<Date>`clock_timestamp()` })
+      .where('secret_hash', '=', collecting.secretHash)
+      .where('approved_at', 'is not', null)
+      .where('refused_at', 'is', null)
+      .where('claimed_at', 'is', null)
+      .where('expires_at', '>', sql<Date>`now()`)
+      .returning(['id', 'approved_by', 'machine_name'])
+      // `enrolments_approved_together` says an approved row names who approved it, and only
+      // approved rows reach here. The column is nullable because nobody has said yes yet.
+      .$narrowType<{ approved_by: string }>()
+      .executeTakeFirst()
+
+    if (won === undefined) return whyNot(tx, collecting)
+
+    const machine = await tx
+      .insertInto('machines')
+      .values({
+        // Whoever said yes owns it. Not the Space they were looking at when they did: a laptop
+        // belongs to a person, and that person is in as many Spaces as they are in.
+        owner_user_id: won.approved_by,
+        // What was approved wins: somebody looked at a name and said yes to it, and a machine
+        // that arrived calling itself something else is not the one they agreed to.
+        name: won.machine_name ?? collecting.machineName,
+        token_hash: collecting.tokenHash,
+        enrolled_from: won.id,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow()
+
+    return { kind: 'granted', machineId: machine.id }
+  })
+}
+
+/**
+ * Why the collection did not happen, or that it already did.
+ *
+ * A machine that collected and never heard the answer asks again with the same secret and the same
+ * token. That is not somebody else taking its place — it is the same machine, and the answer it
+ * missed is still the true one. Anything else with a spent secret really is somebody else.
+ *
+ * The rest is ordered by what the reader needs most, not by the order the columns are in: being
+ * told somebody else already collected this beats being told it also happened to run out.
+ */
+async function whyNot(tx: Tx, collecting: Collecting): Promise<Collected> {
+  const secretHash = collecting.secretHash
+  const already = await tx
+    .selectFrom('enrolments')
+    .innerJoin('machines', 'machines.enrolled_from', 'enrolments.id')
+    .select('machines.id')
+    .where('enrolments.secret_hash', '=', secretHash)
+    .where('machines.token_hash', '=', collecting.tokenHash)
+    .where('machines.removed_at', 'is', null)
+    .executeTakeFirst()
+
+  if (already !== undefined) return { kind: 'granted', machineId: already.id }
+
+  const row = await tx
+    .selectFrom('enrolments')
+    // Whether it ran out is decided by the database's clock, like every other deadline here.
+    // Comparing against this process's clock would make the answer depend on which host replied.
+    .select([
+      'approved_at',
+      'refused_at',
+      'claimed_at',
+      sql<boolean>`expires_at <= now()`.as('isOver'),
+    ])
+    .where('secret_hash', '=', secretHash)
+    .executeTakeFirst()
+
+  if (row === undefined) return { kind: 'no-enrolment' }
+  if (row.claimed_at !== null) return { kind: 'spent' }
+  if (row.refused_at !== null) return { kind: 'refused' }
+  if (row.isOver) return { kind: 'expired' }
+
+  return { kind: 'waiting' }
 }

@@ -10,8 +10,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useEffect, useId, useRef } from 'react'
 import { api } from '../../api.ts'
 
 type Member = { userId: string; displayName: string; you: boolean }

@@ -1,22 +1,26 @@
 import { randomUUID } from 'node:crypto'
+import { normalizeSlug, type Slug } from '@handover/universal'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
-import { createSpace } from '../db/space.ts'
 import { openSession } from '../db/session.ts'
+import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { hashSecret } from '../secret.ts'
-import { approvalApi } from './approval-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
+import { mounted } from './route.ts'
 import { SESSION_COOKIE } from './session.ts'
-import { normalizeSlug, type Slug } from '@handover/universal'
 
 const env = loadEnv()
 const db: Database = connect(env)
 const WEB = 'http://localhost:5173'
+
 /** Both halves, mounted as the app mounts them: one journey, two audiences. */
-const app = enrolmentApi({ db, webOrigin: WEB }).route('/', approvalApi({ db }))
+const app = mounted(enrolmentApi({ db, webOrigin: WEB })).route(
+  '/',
+  mounted(enrolmentApi({ db, webOrigin: WEB })),
+)
 
 afterAll(async () => {
   await db.destroy()

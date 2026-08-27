@@ -72,7 +72,8 @@ export type CodeToSend = {
   readonly purpose: Purpose
   readonly codeHash: string
   /**
-   * Who asked, as a hash. Null when this deployment cannot honestly tell — see `caller.ts`.
+   * Who asked, as a hash. Null when this deployment cannot honestly tell; `credential-api.ts`
+   * works it out.
    */
   readonly askedBy: string | null
 }
@@ -274,7 +275,7 @@ export async function noteDelivery(
 async function supersede(tx: Tx, request: CodeToSend): Promise<void> {
   await tx
     .updateTable('email_codes')
-    .set({ closed_at: sql`now()`, closed_reason: 'superseded' })
+    .set({ closed_at: sql<Date>`clock_timestamp()`, closed_reason: 'superseded' })
     .where('email', '=', request.email)
     .where('purpose', '=', request.purpose)
     .where('closed_at', 'is', null)
@@ -342,7 +343,7 @@ export async function spendCode(tx: Tx, secret: string, answer: Answer): Promise
 
   await tx
     .updateTable('email_codes')
-    .set({ closed_at: sql`now()`, closed_reason: 'consumed' })
+    .set({ closed_at: sql<Date>`clock_timestamp()`, closed_reason: 'consumed' })
     .where('id', '=', answer.codeId)
     .execute()
 

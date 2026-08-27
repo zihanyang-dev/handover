@@ -13,7 +13,7 @@
  * two processes can run the same one.
  */
 
-import { z } from 'zod'
+import { z } from '@hono/zod-openapi'
 
 /**
  * Which model, and how hard to think, for one thing a person said.
@@ -22,14 +22,16 @@ import { z } from 'zod'
  * cheap question and the hard one arrive in the same conversation. Absent means the agent's own
  * default; we never guess a value on its behalf.
  */
-export const Asked = z.object({
-  text: z.string().min(1),
-  model: z.string().optional(),
-  effort: z.string().optional(),
-})
+export const Asked = z
+  .object({
+    text: z.string().min(1),
+    model: z.string().optional(),
+    effort: z.string().optional(),
+  })
+  .openapi('Asked')
 
 /** Something the agent said. Its reasoning is not here — see `THINKING_IS_NOT_KEPT`. */
-const Answered = z.object({ text: z.string() })
+const Answered = z.object({ text: z.string() }).openapi('Answered')
 
 /**
  * Something the agent did, already in our words.
@@ -39,19 +41,21 @@ const Answered = z.object({ text: z.string() })
  * written. `verb` is a courtesy the adapter extends to tools it recognises, and a page that gets
  * none still has `name` to show.
  */
-const Did = z.object({
-  name: z.string(),
-  verb: z.string(),
-  arg: z.string(),
-  /**
-   * How it went, when the tool says.
-   *
-   * Absent is a real answer: not every tool reports a verdict, and putting a tick beside one that
-   * never said anything would be this side inventing it.
-   */
-  ok: z.boolean().optional(),
-  excerpt: z.string(),
-})
+const Did = z
+  .object({
+    name: z.string(),
+    verb: z.string(),
+    arg: z.string(),
+    /**
+     * How it went, when the tool says.
+     *
+     * Absent is a real answer: not every tool reports a verdict, and putting a tick beside one that
+     * never said anything would be this side inventing it.
+     */
+    ok: z.boolean().optional(),
+    excerpt: z.string(),
+  })
+  .openapi('Did')
 
 /**
  * Everything that is neither speech nor a tool.
@@ -60,7 +64,7 @@ const Did = z.object({
  * know shows the conversation without it, which is why a new kind of activity is a value and not
  * a migration.
  */
-const Happened = z.looseObject({ activityType: z.string() })
+const Happened = z.looseObject({ activityType: z.string() }).openapi('Happened')
 
 /**
  * The activities this slice writes.

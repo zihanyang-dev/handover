@@ -70,13 +70,13 @@ describe('where SQL may be written by hand', () => {
     expect(everyStatement()).toEqual([
       'db/credential.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/email-code.ts  select pg_advisory_xact_lock(hashtext(${',
-      'db/live.ts  select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})',
       'db/membership.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/space.ts  select pg_advisory_xact_lock(hashtext(${request.requestKey}))',
       'db/task.ts  with due as (',
       'db/task.ts  with recursive tree as',
       'db/turn.ts  with ${owedATurn(machineId)}, claimed as',
       'db/waking.ts  select pg_notify(${CHANNEL}, ${machineId})',
+      'db/watching.ts  select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})',
     ])
   })
 })

@@ -7,14 +7,14 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
-import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
-import { useMachineKey, type Keyed } from './machine-key.tsx'
 import { useOpenConversation } from '../conversations/talking.ts'
 import { ShellCommand } from '../shell-command.tsx'
+import { useMachineKey, type Keyed } from './machine-key.tsx'
 
 function machinesIn(slug: string) {
   return {

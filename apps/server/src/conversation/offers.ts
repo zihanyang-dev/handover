@@ -12,7 +12,7 @@
 
 import { z } from '@hono/zod-openapi'
 
-const modelBody = z
+const Model = z
   .object({
     id: z.string().min(1).max(200),
     name: z.string().max(200),
@@ -30,4 +30,4 @@ const modelBody = z
  * Empty covers two situations a page treats the same: an agent that offers no choice, and one
  * nobody has asked yet. Both mean no control, and neither means anything is wrong.
  */
-export const modelsBody = z.array(modelBody).max(100).readonly()
+export const Models = z.array(Model).max(100).readonly()

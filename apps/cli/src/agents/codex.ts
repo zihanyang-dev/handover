@@ -8,12 +8,24 @@
  * Reconciling them is this file's job and nothing above it ever finds out.
  */
 
-import { Codex } from '@openai/codex-sdk'
-import type { ModelReasoningEffort, ThreadEvent, ThreadItem } from '@openai/codex-sdk'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { Agent, Asked, Model, Said, Talk, Told } from './agent.ts'
-import { plain, shorten } from './agent.ts'
+import {
+  Codex,
+  type ModelReasoningEffort,
+  type ThreadEvent,
+  type ThreadItem,
+} from '@openai/codex-sdk'
+import {
+  type Agent,
+  type Asked,
+  type Model,
+  type Said,
+  type Talk,
+  type Told,
+  plain,
+  shorten,
+} from './agent.ts'
 import { onPath } from './on-path.ts'
 
 /** The binary this drives. Found on the PATH captured when the machine was connected. */

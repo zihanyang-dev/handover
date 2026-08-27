@@ -12,7 +12,7 @@ import type { Watched } from '../conversation/live.ts'
 import { loadEnv } from '../env.ts'
 import { createLog } from '../log.ts'
 import { connect, type Database } from './connection.ts'
-import { handTo, listenForLive, liveThrough } from './live.ts'
+import { showEveryoneWatching, listenForLive, liveThrough } from './watching.ts'
 
 const env = loadEnv()
 const log = createLog({ ...env, LOG_LEVEL: 'fatal' })
@@ -23,8 +23,9 @@ const browserSide: Database = connect(env)
 
 const watching = new Map<string, Set<(watched: Watched) => void>>()
 const listening = listenForLive(env, log, (happening) => {
-  handTo(watching, happening)
+  showEveryoneWatching(watching, happening)
 })
+
 const live = liveThrough(browserSide, watching)
 
 beforeAll(async () => {

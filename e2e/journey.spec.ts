@@ -21,7 +21,7 @@ test('talk to an agent, hand it over, and be asked something', async ({ page, co
   // ① Sign in from the front door and make a Space — which lands straight in it, with no step
   // in between and no first-Space special case.
   await signsIn(page, 'mina')
-  const slug = await makesASpace(page)
+  await makesASpace(page)
 
   // ② A machine of theirs connects, and appears without anybody refreshing.
   const machine = await aMachine(await sessionOf(context), 'mina-mbp')

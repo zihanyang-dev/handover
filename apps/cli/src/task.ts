@@ -11,8 +11,8 @@
  */
 
 import type { components } from '../generated/api.ts'
-import { apiFor, type Api } from './api.ts'
 import { EVERY_KIND } from './agents/known-agents.ts'
+import { apiFor, type Api } from './api.ts'
 import { readAttachment } from './store.ts'
 
 /** Set on every turn of a conversation somebody handed over. Absent means nobody did. */

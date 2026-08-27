@@ -7,8 +7,8 @@
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Key } from 'react-bootstrap-icons'
 import { useId } from 'react'
+import { Key } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
 import { AddAddress } from './add-address.tsx'
 import { meQuery } from './me.ts'

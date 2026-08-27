@@ -6,7 +6,7 @@
  * allowed past this file. What comes out is an address somebody proved, or a reason it is not one.
  */
 
-import type { ProviderIdentity } from '../../identity/provider.ts'
+import type { ProviderIdentity } from './provider.ts'
 
 export type Handoff = {
   readonly url: URL

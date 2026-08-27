@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
+import { connect, type Database } from '../db/connection.ts'
+import { credentialsOf } from '../db/credential.ts'
 import { openSession } from '../db/session.ts'
 import { arrive } from '../db/user.ts'
-import { credentialsOf } from '../db/credential.ts'
-import { newSessionToken } from '../identity/session.ts'
-import type { ProviderIdentity } from '../identity/provider.ts'
-import { oauthApi } from './oauth-api.ts'
-import type { Identified, ProviderClient } from './oauth/provider-client.ts'
-import { SESSION_COOKIE } from './session.ts'
-import { connect, type Database } from '../db/connection.ts'
 import { loadEnv } from '../env.ts'
+import type { Identified, ProviderClient } from '../identity/provider-client.ts'
+import type { ProviderIdentity } from '../identity/provider.ts'
+import { newSessionToken } from '../identity/session.ts'
+import { oauthApi } from './oauth-api.ts'
+import { mounted } from './route.ts'
+import { SESSION_COOKIE } from './session.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
@@ -27,7 +28,9 @@ beforeEach(() => {
   RUN = randomUUID()
   EMAIL = `mina-${randomUUID()}@example.com`
 })
+
 const ORIGIN = 'http://localhost:3000'
+
 const WEB = 'http://localhost:5173'
 
 let MINA: ProviderIdentity = {
@@ -58,15 +61,17 @@ function stub(answer: Identified | Error): ProviderClient {
   }
 }
 
-function appWith(answer: Identified): ReturnType<typeof oauthApi> {
+function appWith(answer: Identified): ReturnType<typeof mounted> {
   const client = stub(answer)
-  return oauthApi({
-    db,
-    secret: env.AUTH_SECRET,
-    origin: ORIGIN,
-    webOrigin: WEB,
-    clients: { google: client, github: client },
-  })
+  return mounted(
+    oauthApi({
+      db,
+      secret: env.AUTH_SECRET,
+      origin: ORIGIN,
+      webOrigin: WEB,
+      clients: { google: client, github: client },
+    }),
+  )
 }
 
 const identified = (identity: ProviderIdentity): Identified => ({ kind: 'identified', identity })
@@ -79,7 +84,7 @@ function cookiesOf(response: Response): string {
 }
 
 async function start(
-  app: ReturnType<typeof oauthApi>,
+  app: ReturnType<typeof mounted>,
   next?: string,
   cookie = '',
 ): Promise<Response> {
@@ -91,7 +96,7 @@ async function start(
 }
 
 async function comeBack(
-  app: ReturnType<typeof oauthApi>,
+  app: ReturnType<typeof mounted>,
   cookie: string,
   query = '?code=abc&state=state-value',
   path = '/auth/google/callback',
@@ -147,13 +152,15 @@ describe('leaving for a provider', () => {
 
   it('answers a provider without keys exactly as it answers one that does not exist', async () => {
     const client = stub(identified(MINA))
-    const onlyGoogle = oauthApi({
-      db,
-      secret: env.AUTH_SECRET,
-      origin: ORIGIN,
-      webOrigin: WEB,
-      clients: { google: client },
-    })
+    const onlyGoogle = mounted(
+      oauthApi({
+        db,
+        secret: env.AUTH_SECRET,
+        origin: ORIGIN,
+        webOrigin: WEB,
+        clients: { google: client },
+      }),
+    )
 
     const withoutKeys = await onlyGoogle.request('/auth/github/start', {
       method: 'POST',
@@ -206,13 +213,15 @@ describe('coming back', () => {
         throw new Error('the token endpoint broke')
       },
     }
-    const app = oauthApi({
-      db,
-      secret: env.AUTH_SECRET,
-      origin: ORIGIN,
-      webOrigin: WEB,
-      clients: { google: breaking, github: breaking },
-    })
+    const app = mounted(
+      oauthApi({
+        db,
+        secret: env.AUTH_SECRET,
+        origin: ORIGIN,
+        webOrigin: WEB,
+        clients: { google: breaking, github: breaking },
+      }),
+    )
     const left = await app.request('/auth/google/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SHOWS } from '../server/contract.ts'
+import { SHOWS } from '../server/route.ts'
 
 const CONTRACT_FILE = join(import.meta.dirname, '..', '..', 'generated', 'openapi.json')
 

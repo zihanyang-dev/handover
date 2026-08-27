@@ -15,12 +15,12 @@
  * nothing they can do next that works.
  */
 
+import type { Credential } from '../identity/credential.ts'
 import type { Rejection } from '../identity/email-code.ts'
 import type { ProviderIdentity } from '../identity/provider.ts'
-import type { Credential } from '../identity/credential.ts'
-import { openSession } from './session.ts'
 import type { Database } from './connection.ts'
 import { spendCode } from './email-code.ts'
+import { openSession } from './session.ts'
 import { arrive } from './user.ts'
 
 export type SignInAttempt = {

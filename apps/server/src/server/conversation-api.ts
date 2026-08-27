@@ -2,15 +2,16 @@
  * Conversations: opening one, saying something into it, reading it back, and what the machine
  * running it writes.
  *
- * Two holders again, and the same split as machines. A person opens, says and reads through their
- * Space; a machine writes only into the conversation it was handed, and the path never says which
- * machine — its credential does.
+ * Two holders, and the same split as machines. A person opens, says and reads through their
+ * Space; a machine writes only into the conversation it was handed, and the path never names a
+ * machine — its credential does, so a path that said so would be one a caller could write
+ * somebody else's name into.
  */
 
-import { createRoute, z } from '@hono/zod-openapi'
+import { z } from '@hono/zod-openapi'
+import { Models } from '../conversation/offers.ts'
 import { Asked, Reported, Spoken, unreadable } from '../conversation/transcript.ts'
 import type { Database } from '../db/connection.ts'
-import type { Reading, Standing } from '../db/conversation.ts'
 import {
   askToStop,
   conversationWith,
@@ -19,23 +20,13 @@ import {
   noteAgentSession,
   openConversation,
   sayTo,
+  type Reading,
+  type Standing,
 } from '../db/conversation.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
-import { SHOWS, api, endpointsBehind, rowId, saysNothing, sends, takes } from './contract.ts'
-import {
-  BEHIND_A_MACHINE,
-  BEHIND_A_SESSION,
-  body,
-  MALFORMED_BODY,
-  refusal,
-  type Failure,
-  UNAVAILABLE,
-} from './failure.ts'
-import { requireMachine, type Attached } from './machine-session.ts'
-import { modelsBody } from './offers.ts'
-import { requireMember, type InSpace } from './membership.ts'
-import { requireSession, type Signed } from './session.ts'
-import { onTheWire, presenceBody } from './whereabouts.ts'
+import { onTheWire, Presence } from '../machine/whereabouts.ts'
+import { type Failure, UNAVAILABLE, refused } from './failure.ts'
+import { aMachine, aMember, list, named, nothing, refuses, rowId, sends } from './route.ts'
 
 export type ConversationApi = { readonly db: Database }
 
@@ -66,13 +57,13 @@ const NOTHING_RUNNING: Failure<409> = {
   status: 409,
 }
 
-const openingBody = z
-  .object({ machineId: rowId, agentKind: z.enum(AGENT_KIND_NAMES) })
-  .openapi('OpenConversation')
+/** No such Space, or no such conversation in it — one answer, so a URL tells nobody which. */
+const NOT_THERE = refuses(UNAVAILABLE, 'No such Space, or no such conversation in it')
 
-const openedBody = z.object({ id: z.uuid() }).openapi('OpenedConversation')
+/** What the caller calls this request, so a lost answer is safe to retry. */
+const CALLED = { key: z.string().min(1).max(200) }
 
-const workingBody = z
+const Working = z
   .discriminatedUnion('state', [
     z.object({ state: z.literal('idle') }),
     z.object({ state: z.literal('working') }),
@@ -80,24 +71,18 @@ const workingBody = z
   ])
   .openapi('Working')
 
-const standingBody = z
-  .object({
-    id: z.uuid(),
-    agentKind: z.string(),
-    machineId: z.uuid(),
-    machineName: z.string(),
-    startedAt: z.iso.datetime(),
-    /** What was first asked. A conversation nobody has spoken into yet has nothing to show. */
-    opening: z.string().nullable(),
-    /** Who asked it. Null before anybody has, and on conversations older than names. */
-    startedBy: z.string().nullable(),
-    working: workingBody,
-  })
-  .openapi('Conversation')
-
-const standingsBody = z
-  .object({ conversations: z.array(standingBody).readonly() })
-  .openapi('Conversations')
+const Conversation = named('Conversation', {
+  id: z.uuid(),
+  agentKind: z.string(),
+  machineId: z.uuid(),
+  machineName: z.string(),
+  startedAt: z.iso.datetime(),
+  /** What was first asked. A conversation nobody has spoken into yet has nothing to show. */
+  opening: z.string().nullable(),
+  /** Who asked it. Null before anybody has, and on conversations older than names. */
+  startedBy: z.string().nullable(),
+  working: Working,
+})
 
 /**
  * One thing said, as a page reads it.
@@ -106,14 +91,35 @@ const standingsBody = z
  * has to write down what a tool call holds, and a hand-written copy of a contract is the thing
  * this repository refuses everywhere else.
  *
- * A line this build cannot read still comes back, as an activity that says so: refusing to open
- * a conversation because one line in it is unfamiliar would lose the whole of it over the least
- * of it. That door stays open on purpose — an activity type nobody has heard of is a value, not
- * a release.
+ * A line this build cannot read still comes back, as an activity that says so: refusing to open a
+ * conversation because one line in it is unfamiliar would lose the whole of it over the least of
+ * it. That door stays open on purpose — an activity type nobody has heard of is a value, not a
+ * release.
  */
-const spokenBody = Spoken.openapi('Message')
+const Message = Spoken.openapi('Message')
 
-const taskStateBody = z.enum(['working', 'wait', 'sleep', 'done'])
+const TaskState = z.enum(['working', 'wait', 'sleep', 'done'])
+
+/** A piece of work this one opened for another agent, and has not had back yet. */
+const HandedOff = named('HandedOff', {
+  conversationId: z.uuid(),
+  goal: z.string(),
+  state: TaskState,
+  machineName: z.string(),
+  agentKind: z.string(),
+  /** Its machine. One that is not here is one this piece of work will wait on for ever. */
+  presence: Presence,
+})
+
+/** Something it wrote on purpose. Not what it happened to touch on the way. */
+const Output = named('Output', {
+  title: z.string(),
+  body: z.string(),
+  writtenAt: z.iso.datetime(),
+})
+
+/** The piece of work that handed this one out. */
+const Under = named('Under', { conversationId: z.uuid(), goal: z.string() })
 
 /**
  * The piece of work underway in a conversation, when somebody handed it over.
@@ -122,55 +128,37 @@ const taskStateBody = z.enum(['working', 'wait', 'sleep', 'done'])
  * presence *is* the difference between a conversation you are sitting in and one you walked away
  * from, so a page never has to ask a second question to know which it is looking at.
  */
-const underwayBody = z
-  .object({
-    goal: z.string(),
-    state: taskStateBody,
-    /** When it will wake by itself. Only ever set while it is asleep. */
-    sleepUntil: z.iso.datetime().nullable(),
-    /** Its own machine, said the same way its children's are. */
-    presence: presenceBody,
-    /** Still open, which is why the one that handed them out is not being given turns. */
-    handedOff: z
-      .array(
-        z.object({
-          conversationId: z.uuid(),
-          goal: z.string(),
-          state: taskStateBody,
-          machineName: z.string(),
-          agentKind: z.string(),
-          /** Its machine. One that is not here is one this piece of work will wait on for ever. */
-          presence: presenceBody,
-        }),
-      )
-      .readonly(),
-    /** What it wrote on purpose, newest first. Not what it happened to touch on the way. */
-    outputs: z
-      .array(z.object({ title: z.string(), body: z.string(), writtenAt: z.iso.datetime() }))
-      .readonly(),
-    /** The piece of work that handed this one out, when an agent did. Null when a person did. */
-    under: z.object({ conversationId: z.uuid(), goal: z.string() }).nullable(),
-  })
-  .openapi('Underway')
+const Underway = named('Underway', {
+  goal: z.string(),
+  state: TaskState,
+  /** When it will wake by itself. Only ever set while it is asleep. */
+  sleepUntil: z.iso.datetime().nullable(),
+  /** Its own machine, said the same way its children's are. */
+  presence: Presence,
+  /** Still open, which is why the one that handed them out is not being given turns. */
+  handedOff: z.array(HandedOff).readonly(),
+  /** Newest first. */
+  outputs: z.array(Output).readonly(),
+  /** Null when a person handed this one over rather than an agent. */
+  under: Under.nullable(),
+})
 
-const readingBody = z
-  .object({
-    id: z.uuid(),
-    agentKind: z.string(),
-    machineName: z.string(),
-    working: workingBody,
-    /**
-     * What this agent lets a person choose, one question at a time.
-     *
-     * Empty means there is nothing to choose and the page shows no control — which covers both an
-     * agent that does not offer a choice and one nobody has asked yet. Saying nothing is always
-     * allowed, and means the agent's own default.
-     */
-    offers: modelsBody,
-    messages: z.array(spokenBody).readonly(),
-    underway: underwayBody.optional(),
-  })
-  .openapi('Transcript')
+const Transcript = named('Transcript', {
+  id: z.uuid(),
+  agentKind: z.string(),
+  machineName: z.string(),
+  working: Working,
+  /**
+   * What this agent lets a person choose, one question at a time.
+   *
+   * Empty means there is nothing to choose and the page shows no control — which covers both an
+   * agent that does not offer a choice and one nobody has asked yet. Saying nothing is always
+   * allowed, and means the agent's own default.
+   */
+  offers: Models,
+  messages: z.array(Message).readonly(),
+  underway: Underway.optional(),
+})
 
 /**
  * A message and the name it goes by.
@@ -178,15 +166,221 @@ const readingBody = z
  * The name is the caller's, not ours: only they know that the message they are sending now is the
  * one they already sent and never heard back about.
  */
-const sayingBody = z.object({ key: z.string().min(1).max(200), asked: Asked }).openapi('SayThis')
+const SayThis = named('SayThis', { ...CALLED, asked: Asked })
 
-const stoppingBody = z.object({ key: z.string().min(1).max(200) }).openapi('StopThis')
+const StopThis = named('StopThis', CALLED)
 
-const reportingBody = z
-  .object({ key: z.string().min(1).max(200), message: Reported })
-  .openapi('MachineMessage')
+const Conversations = list('conversations', Conversation)
 
-const namingBody = z.object({ session: z.string().min(1).max(200) }).openapi('AgentSession')
+const OpenConversation = named('OpenConversation', {
+  machineId: rowId,
+  agentKind: z.enum(AGENT_KIND_NAMES),
+})
+
+const OpenedConversation = named('OpenedConversation', { id: z.uuid() })
+
+const MachineMessage = named('MachineMessage', { ...CALLED, message: Reported })
+
+const AgentSession = named('AgentSession', { session: z.string().min(1).max(200) })
+
+export function conversationApi(deps: ConversationApi) {
+  return [
+    listing(deps),
+    reading(deps),
+    opening(deps),
+    saying(deps),
+    stopping(deps),
+    reporting(deps),
+    naming(deps),
+  ]
+}
+
+/** Everything in this Space, newest first. */
+function listing({ db }: ConversationApi) {
+  return aMember(db).get('/spaces/{slug}/conversations', {
+    summary: 'The conversations in this Space',
+    answers: {
+      200: sends(Conversations, 'Newest first, each with whether it is being worked on'),
+    },
+
+    run: async (c) => {
+      const conversations = await conversationsIn(db, c.get('space').id)
+
+      return c.json({ conversations: conversations.map(asStanding) }, 200)
+    },
+  })
+}
+
+/** One conversation and everything said in it. Reading changes nothing, so nothing is refused. */
+function reading({ db }: ConversationApi) {
+  return aMember(db).get('/spaces/{slug}/conversations/{id}', {
+    summary: 'Everything said in one conversation',
+    params: { id: rowId },
+    query: {
+      /**
+       * The last line the reader already has.
+       *
+       * Everything past it is everything they are missing, because a transcript is only appended
+       * to. Left out, they get all of it — which is what somebody opening a conversation for the
+       * first time wants, and what asking again every second is not.
+       */
+      after: z.coerce.number().int().min(0).optional(),
+    },
+    answers: { 200: sends(Transcript, 'In order, oldest first'), 404: NOT_THERE },
+
+    run: async (c) => {
+      const transcript = await conversationWith(db, {
+        conversationId: c.req.valid('param').id,
+        spaceId: c.get('space').id,
+        after: c.req.valid('query').after,
+      })
+
+      return transcript === undefined
+        ? refused(c, UNAVAILABLE)
+        : c.json(asTranscript(transcript), 200)
+    },
+  })
+}
+
+/** Starting one, which pins it to an agent on a machine for as long as it exists. */
+function opening({ db }: ConversationApi) {
+  return aMember(db).post('/spaces/{slug}/conversations', {
+    summary: 'Start a conversation with one agent on one machine',
+    body: OpenConversation,
+    answers: {
+      201: sends(OpenedConversation, 'Open, and pinned to that agent'),
+      404: refuses(UNAVAILABLE, 'No such Space, or no such machine in it'),
+      409: refuses(NO_AGENT, 'That machine does not have that agent'),
+    },
+
+    run: async (c) => {
+      const asked = c.req.valid('json')
+      const opened = await openConversation(db, {
+        spaceId: c.get('space').id,
+        machineId: asked.machineId,
+        agentKind: asked.agentKind,
+      })
+
+      if (opened.kind === 'no-machine') return refused(c, UNAVAILABLE)
+      if (opened.kind === 'no-agent') return refused(c, NO_AGENT)
+
+      return c.json({ id: opened.conversationId }, 201)
+    },
+  })
+}
+
+/**
+ * Saying something, which interrupts the agent if it is in the middle of something.
+ *
+ * Saying and stopping are one action for whoever is typing: you do not tell an agent to leave
+ * `legacy/` alone and then wait for it to finish editing `legacy/`. Both facts are still written
+ * down separately — that you asked it to stop, and what you said.
+ */
+function saying({ db }: ConversationApi) {
+  return aMember(db).post('/spaces/{slug}/conversations/{id}/messages', {
+    summary: 'Say something to the agent',
+    params: { id: rowId },
+    body: SayThis,
+    answers: {
+      204: 'Said, or said already — either way it is in there once',
+      404: NOT_THERE,
+      409: refuses(MACHINE_AWAY, 'Its machine is not here'),
+    },
+
+    run: async (c) => {
+      const asked = c.req.valid('json')
+      const landed = await sayTo(
+        db,
+        {
+          conversationId: c.req.valid('param').id,
+          spaceId: c.get('space').id,
+          key: asked.key,
+          // From the session, never from the body: an endpoint that reads the author out of what
+          // it was sent is an endpoint that lets the caller say who they are.
+          saidBy: c.get('userId'),
+        },
+        asked.asked,
+      )
+
+      if (landed.kind === 'no-conversation') return refused(c, UNAVAILABLE)
+      if (landed.kind === 'machine-away') return refused(c, MACHINE_AWAY)
+
+      return nothing(c, 204)
+    },
+  })
+}
+
+/** Asking it to stop, which is allowed only while there is something to stop. */
+function stopping({ db }: ConversationApi) {
+  return aMember(db).post('/spaces/{slug}/conversations/{id}/stop', {
+    summary: 'Ask the agent to stop what it is doing',
+    params: { id: rowId },
+    body: StopThis,
+    answers: {
+      204: 'Asked, or asked already',
+      404: NOT_THERE,
+      409: refuses(NOTHING_RUNNING, 'Nothing is running in it'),
+    },
+
+    run: async (c) => {
+      const asked = await askToStop(db, {
+        conversationId: c.req.valid('param').id,
+        spaceId: c.get('space').id,
+        key: c.req.valid('json').key,
+      })
+
+      if (asked.kind === 'no-conversation') return refused(c, UNAVAILABLE)
+      if (asked.kind === 'nothing-to-stop') return refused(c, NOTHING_RUNNING)
+
+      return nothing(c, 204)
+    },
+  })
+}
+
+/** What the agent said or did. */
+function reporting({ db }: ConversationApi) {
+  return aMachine(db).post('/machines/current/conversations/{id}/messages', {
+    summary: 'Add what the agent said or did',
+    params: { id: rowId },
+    body: MachineMessage,
+    answers: {
+      204: 'Written, or already written',
+      404: refuses(UNAVAILABLE, 'That conversation was not given to this machine'),
+    },
+
+    run: async (c) => {
+      const sent = c.req.valid('json')
+      const written = await machineSays(db, {
+        conversationId: c.req.valid('param').id,
+        machineId: c.get('machineId'),
+        key: sent.key,
+        message: sent.message,
+      })
+
+      return written.kind === 'no-conversation' ? refused(c, UNAVAILABLE) : nothing(c, 204)
+    },
+  })
+}
+
+/** What the agent calls a conversation, which is how a later turn asks it to remember. */
+function naming({ db }: ConversationApi) {
+  return aMachine(db).put('/machines/current/conversations/{id}/session', {
+    summary: 'Record what the agent calls this conversation',
+    params: { id: rowId },
+    body: AgentSession,
+    answers: { 204: 'Kept, unless it already had one' },
+
+    run: async (c) => {
+      await noteAgentSession(db, {
+        conversationId: c.req.valid('param').id,
+        machineId: c.get('machineId'),
+        session: c.req.valid('json').session,
+      })
+
+      return nothing(c, 204)
+    },
+  })
+}
 
 /**
  * A stored conversation as the wire carries it.
@@ -198,7 +392,7 @@ const namingBody = z.object({ session: z.string().min(1).max(200) }).openapi('Ag
  * conversation is still what happened.
  */
 function asTranscript(reading: Reading) {
-  const offers = modelsBody.safeParse(reading.offers)
+  const offers = Models.safeParse(reading.offers)
 
   return {
     ...reading,
@@ -235,273 +429,4 @@ function asUnderway(underway: Reading['underway']) {
 
 function asStanding(standing: Standing) {
   return { ...standing, startedAt: standing.startedAt.toISOString() }
-}
-
-/**
- * A member of this Space, and a machine that was given one of its conversations.
- *
- * Said once each. Every endpoint below is behind one of these two doors and says only what is its
- * own — which of them it is behind is the one thing that decides what `c` holds, and repeating it
- * at each endpoint would be the same fact with seven places to drift.
- */
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
-const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
-
-export function conversationApi(deps: ConversationApi) {
-  return api<{ Variables: Signed & InSpace }>()
-    .openapiRoutes([listing(deps), reading(deps), opening(deps), saying(deps), stopping(deps)])
-    .route('/', whatMachinesReport(deps))
-}
-
-/**
- * What the machine running a conversation writes back.
- *
- * Its own app, because it is behind its own door: a machine's credential is not a person's, and
- * one app holding both would be one `c` that claims to have what only half its routes ever do.
- */
-function whatMachinesReport(deps: ConversationApi) {
-  return api<{ Variables: Attached }>().openapiRoutes([reporting(deps), naming(deps)])
-}
-
-/** Everything in this Space, newest first. */
-function listing(deps: ConversationApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'get',
-      path: '/spaces/{slug}/conversations',
-      summary: 'The conversations in this Space',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string() }) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        200: sends(standingsBody, 'Newest first, each with whether it is being worked on'),
-        404: refusal('No such Space'),
-      },
-    }),
-
-    handler: async (c) => {
-      const conversations = await conversationsIn(deps.db, c.get('space').id)
-
-      return c.json({ conversations: conversations.map(asStanding) }, 200)
-    },
-  })
-}
-
-/** One conversation and everything said in it. Reading changes nothing, so nothing is refused. */
-function reading(deps: ConversationApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'get',
-      path: '/spaces/{slug}/conversations/{id}',
-      summary: 'Everything said in one conversation',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: {
-        params: z.object({ slug: z.string(), id: rowId }),
-        query: z.object({
-          /**
-           * The last line the reader already has.
-           *
-           * Everything past it is everything they are missing, because a transcript is only
-           * appended to. Left out, they get all of it — which is what somebody opening a
-           * conversation for the first time wants, and what asking again every second is not.
-           */
-          after: z.coerce.number().int().min(0).optional(),
-        }),
-      },
-      responses: {
-        ...BEHIND_A_SESSION,
-        200: sends(readingBody, 'In order, oldest first'),
-        404: refusal('No such Space, or no such conversation in it'),
-      },
-    }),
-
-    handler: async (c) => {
-      const transcript = await conversationWith(deps.db, {
-        conversationId: c.req.valid('param').id,
-        spaceId: c.get('space').id,
-        after: c.req.valid('query').after,
-      })
-
-      return transcript === undefined
-        ? c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-        : c.json(asTranscript(transcript), 200)
-    },
-  })
-}
-
-/** Starting one, which pins it to an agent on a machine for as long as it exists. */
-function opening(deps: ConversationApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'post',
-      path: '/spaces/{slug}/conversations',
-      summary: 'Start a conversation with one agent on one machine',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string() }), body: takes(openingBody) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        ...MALFORMED_BODY,
-        201: sends(openedBody, 'Open, and pinned to that agent for good'),
-        404: refusal('No such Space, or no such machine in it'),
-        409: refusal('That machine does not have that agent'),
-      },
-    }),
-
-    handler: async (c) => {
-      const asked = c.req.valid('json')
-      const opened = await openConversation(deps.db, {
-        spaceId: c.get('space').id,
-        machineId: asked.machineId,
-        agentKind: asked.agentKind,
-      })
-
-      if (opened.kind === 'no-machine') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (opened.kind === 'no-agent') return c.json(body(NO_AGENT), NO_AGENT.status)
-
-      return c.json({ id: opened.conversationId }, 201)
-    },
-  })
-}
-
-/**
- * Saying something, which interrupts the agent if it is in the middle of something.
- *
- * Saying and stopping are one action for whoever is typing: you do not tell an agent to leave
- * `legacy/` alone and then wait for it to finish editing `legacy/`. Both facts are still written
- * down separately — that you asked it to stop, and what you said.
- */
-function saying(deps: ConversationApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'post',
-      path: '/spaces/{slug}/conversations/{id}/messages',
-      summary: 'Say something to the agent',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }), body: takes(sayingBody) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        ...MALFORMED_BODY,
-        204: saysNothing('Said, or said already — either way it is in there once'),
-        404: refusal('No such Space, or no such conversation in it'),
-        409: refusal('Its machine is not here'),
-      },
-    }),
-
-    handler: async (c) => {
-      const asked = c.req.valid('json')
-      const landed = await sayTo(
-        deps.db,
-        {
-          conversationId: c.req.valid('param').id,
-          spaceId: c.get('space').id,
-          key: asked.key,
-          // From the session, never from the body: an endpoint that reads the author out of what
-          // it was sent is an endpoint that lets the caller say who they are.
-          saidBy: c.get('userId'),
-        },
-        asked.asked,
-      )
-
-      if (landed.kind === 'no-conversation') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (landed.kind === 'machine-away') return c.json(body(MACHINE_AWAY), MACHINE_AWAY.status)
-
-      return c.body(null, 204)
-    },
-  })
-}
-
-/** Asking it to stop, which is allowed only while there is something to stop. */
-function stopping(deps: ConversationApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'post',
-      path: '/spaces/{slug}/conversations/{id}/stop',
-      summary: 'Ask the agent to stop what it is doing',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }), body: takes(stoppingBody) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        ...MALFORMED_BODY,
-        204: saysNothing('Asked, or asked already'),
-        404: refusal('No such Space, or no such conversation in it'),
-        409: refusal('Nothing is running in it'),
-      },
-    }),
-
-    handler: async (c) => {
-      const asked = await askToStop(deps.db, {
-        conversationId: c.req.valid('param').id,
-        spaceId: c.get('space').id,
-        key: c.req.valid('json').key,
-      })
-
-      if (asked.kind === 'no-conversation') return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-      if (asked.kind === 'nothing-to-stop') {
-        return c.json(body(NOTHING_RUNNING), NOTHING_RUNNING.status)
-      }
-
-      return c.body(null, 204)
-    },
-  })
-}
-
-/** What the agent said or did. The path never names a machine — its credential does. */
-function reporting(deps: ConversationApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'post',
-      path: '/machines/current/conversations/{id}/messages',
-      summary: 'Add what the agent said or did',
-      middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(reportingBody) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        204: saysNothing('Written, or already written'),
-        404: refusal('That conversation was not given to this machine'),
-      },
-    }),
-
-    handler: async (c) => {
-      const sent = c.req.valid('json')
-      const written = await machineSays(deps.db, {
-        conversationId: c.req.valid('param').id,
-        machineId: c.get('machineId'),
-        key: sent.key,
-        message: sent.message,
-      })
-
-      return written.kind === 'no-conversation'
-        ? c.json(body(UNAVAILABLE), UNAVAILABLE.status)
-        : c.body(null, 204)
-    },
-  })
-}
-
-/** What the agent calls a conversation, which is how a later turn asks it to remember. */
-function naming(deps: ConversationApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'put',
-      path: '/machines/current/conversations/{id}/session',
-      summary: 'Record what the agent calls this conversation',
-      middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(namingBody) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        204: saysNothing('Kept, unless it already had one'),
-      },
-    }),
-
-    handler: async (c) => {
-      await noteAgentSession(deps.db, {
-        conversationId: c.req.valid('param').id,
-        machineId: c.get('machineId'),
-        session: c.req.valid('json').session,
-      })
-
-      return c.body(null, 204)
-    },
-  })
 }

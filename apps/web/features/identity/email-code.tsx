@@ -6,10 +6,10 @@
  * and not this, and nothing would say which of the two was lying.
  */
 
+import { returnPath } from '@handover/universal'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { returnPath } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 
 /** Rounded up, so "1 minute" never means "any moment now". */

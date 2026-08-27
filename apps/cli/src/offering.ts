@@ -14,8 +14,8 @@
  * a version can do, not what happened in the last minute.
  */
 
-import { agentForCommand } from './agents/known-agents.ts'
 import type { Model } from './agents/agent.ts'
+import { agentForCommand } from './agents/known-agents.ts'
 import type { Found } from './discovery.ts'
 
 /** What is reported: what was found, and — the first time each version is seen — what it offers. */

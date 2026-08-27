@@ -5,10 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../../routeTree.gen.ts'
-import { signedIn } from '../../pretend/signed-in.ts'
-import { isWatching, serverSends } from '../../pretend/event-source.ts'
 import type { components } from '../../generated/api.ts'
+import { isWatching, serverSends } from '../../pretend/event-source.ts'
+import { signedIn } from '../../pretend/signed-in.ts'
+import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
 
@@ -94,9 +94,11 @@ function underway(more: Partial<NonNullable<Transcript['underway']>> = {}) {
 }
 
 type Transcript = components['schemas']['Transcript']
+
 type Offers = Transcript['offers']
 
 const AT = '2026-08-26T10:00:00.000Z'
+
 const say = (seq: number, role: string, content: unknown, said?: string | null): Message => ({
   seq,
   role,

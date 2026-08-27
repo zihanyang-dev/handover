@@ -6,24 +6,13 @@
  * watching for is simply gone, which is the whole point of it not being the transcript.
  */
 
-import { createRoute, z } from '@hono/zod-openapi'
 import { streamSSE } from 'hono/streaming'
 import { Unkept, Watched, type Live } from '../conversation/live.ts'
+import type { Database } from '../db/connection.ts'
 import { conversationInSpace } from '../db/conversation.ts'
 import { nameOf } from '../db/user.ts'
-import type { Database } from '../db/connection.ts'
-import { SHOWS, api, endpointsBehind, rowId, saysNothing, streams, takes } from './contract.ts'
-import {
-  BEHIND_A_MACHINE,
-  BEHIND_A_SESSION,
-  body,
-  MALFORMED_BODY,
-  refusal,
-  UNAVAILABLE,
-} from './failure.ts'
-import { requireMachine, type Attached } from './machine-session.ts'
-import { requireMember, type InSpace } from './membership.ts'
-import { requireSession, type Signed } from './session.ts'
+import { UNAVAILABLE, refused } from './failure.ts'
+import { aMachine, aMember, nothing, refuses, rowId, streams } from './route.ts'
 
 export type LiveApi = {
   readonly db: Database
@@ -38,45 +27,34 @@ export type LiveApi = {
  */
 const HEARTBEAT_MS = 20_000
 
-const behindAMembership = endpointsBehind<{ Variables: Signed & InSpace }>(SHOWS.session)
-const behindAMachine = endpointsBehind<{ Variables: Attached }>(SHOWS.machine)
-
 export function liveApi(deps: LiveApi) {
-  return api<{ Variables: Signed & InSpace }>()
-    .openapiRoutes([watching(deps), typing(deps)])
-    .route('/', api<{ Variables: Attached }>().openapiRoutes([reporting(deps)]))
+  return [watching(deps), typing(deps), reporting(deps)]
 }
 
 /** What is happening right now, for as long as somebody is looking. */
-function watching(deps: LiveApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'get',
-      path: '/spaces/{slug}/conversations/{id}/live',
-      summary: 'Watch a turn while it runs',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        200: streams(Watched, 'One thing per event, until the browser goes away'),
-        404: refusal('No such Space, or no such conversation in it'),
-      },
-    }),
+function watching({ db, live }: LiveApi) {
+  return aMember(db).get('/spaces/{slug}/conversations/{id}/live', {
+    summary: 'Watch a turn while it runs',
+    params: { id: rowId },
+    answers: {
+      200: streams(Watched, 'One thing per event, until the browser goes away'),
+      404: refuses(UNAVAILABLE, 'No such Space, or no such conversation in it'),
+    },
 
-    handler: async (c) => {
+    run: async (c) => {
       // Asked once, before anything is opened: a stream is a reachable conversation held open,
       // and whether it is reachable is the same question every other route here asks. Only that,
       // though — what has been said in it is the transcript's to answer, and this never shows it.
       const conversationId = c.req.valid('param').id
-      const reachable = await conversationInSpace(deps.db, {
+      const reachable = await conversationInSpace(db, {
         conversationId,
         spaceId: c.get('space').id,
       })
-      if (!reachable) return c.json(body(UNAVAILABLE), UNAVAILABLE.status)
+      if (!reachable) return refused(c, UNAVAILABLE)
 
       return streamSSE(c, async (stream) => {
         const sending: Promise<unknown>[] = []
-        const stop = deps.live.watch(conversationId, (watched) => {
+        const stop = live.watch(conversationId, (watched) => {
           sending.push(stream.writeSSE({ data: JSON.stringify(watched) }))
         })
 
@@ -103,33 +81,25 @@ function watching(deps: LiveApi) {
  * the transcript announces itself when it is written — sending it here as well would be the same
  * sentence crossing the network twice and arriving in two orders.
  */
-function reporting(deps: LiveApi) {
-  return behindAMachine({
-    route: createRoute({
-      method: 'post',
-      path: '/machines/current/conversations/{id}/live',
-      summary: 'Say what is happening right now, which is kept nowhere',
-      middleware: [requireMachine(deps.db)],
-      request: { params: z.object({ id: rowId }), body: takes(Unkept) },
-      responses: {
-        ...BEHIND_A_MACHINE,
-        ...MALFORMED_BODY,
-        204: saysNothing('Said to whoever is watching, and to nobody if nobody is'),
-      },
-    }),
+function reporting({ db, live }: LiveApi) {
+  return aMachine(db).post('/machines/current/conversations/{id}/live', {
+    summary: 'Say what is happening right now, which is kept nowhere',
+    params: { id: rowId },
+    body: Unkept,
+    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
 
-    handler: async (c) => {
+    run: async (c) => {
       // No check that this machine owns the conversation, and none that it exists: a moment is
       // shown to whoever is already watching that id and kept nowhere, so the worst a wrong id can
       // do is say something to a screen its own machine is not driving — and only a live machine
       // credential can say anything at all. Checking would put a query in front of every fragment
       // of every turn, to guard nothing that lasts.
-      await deps.live.say({
+      await live.say({
         conversationId: c.req.valid('param').id,
         watched: { seen: 'moment', moment: c.req.valid('json') },
       })
 
-      return c.body(null, 204)
+      return nothing(c, 204)
     },
   })
 }
@@ -148,31 +118,22 @@ function reporting(deps: LiveApi) {
  * The name comes from the session, not the body: an endpoint that reads who is typing out of what
  * it was sent is an endpoint that lets anybody type as anybody.
  */
-function typing(deps: LiveApi) {
-  return behindAMembership({
-    route: createRoute({
-      method: 'post',
-      path: '/spaces/{slug}/conversations/{id}/typing',
-      summary: 'Say that you are typing, which is kept nowhere',
-      middleware: [requireSession(deps.db), requireMember(deps.db)],
-      request: { params: z.object({ slug: z.string(), id: rowId }) },
-      responses: {
-        ...BEHIND_A_SESSION,
-        204: saysNothing('Said to whoever is watching, and to nobody if nobody is'),
-        404: refusal('No such Space'),
-      },
-    }),
+function typing({ db, live }: LiveApi) {
+  return aMember(db).post('/spaces/{slug}/conversations/{id}/typing', {
+    summary: 'Say that you are typing, which is kept nowhere',
+    params: { id: rowId },
+    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
 
-    handler: async (c) => {
+    run: async (c) => {
       // The same reasoning as a machine's moment: shown to whoever is already watching that id and
       // kept nowhere, so a wrong id costs a line on a screen and nothing else. Membership has
       // already been asked, which is the part that matters.
-      await deps.live.say({
+      await live.say({
         conversationId: c.req.valid('param').id,
-        watched: { seen: 'typing', who: await nameOf(deps.db, c.get('userId')) },
+        watched: { seen: 'typing', who: await nameOf(db, c.get('userId')) },
       })
 
-      return c.body(null, 204)
+      return nothing(c, 204)
     },
   })
 }

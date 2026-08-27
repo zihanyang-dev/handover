@@ -1,27 +1,24 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeSlug, type Slug } from '@handover/universal'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { connect, type Database } from '../db/connection.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/session.ts'
-import { approvalApi } from './approval-api.ts'
+import { waitingRoom } from '../machine/waiting.ts'
 import { conversationApi } from './conversation-api.ts'
 import { enrolmentApi } from './enrolment-api.ts'
 import { machineApi } from './machine-api.ts'
-import { waitingRoom } from './waiting.ts'
+import { mounted } from './route.ts'
 import { SESSION_COOKIE } from './session.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)
-const enrolments = enrolmentApi({ db, webOrigin: 'http://localhost:5173' }).route(
-  '/',
-  approvalApi({ db }),
-)
-const machines = machineApi({ db, waiting: waitingRoom(0) })
-const app = conversationApi({ db })
+const enrolments = mounted(enrolmentApi({ db, webOrigin: 'http://localhost:5173' }))
+const machines = mounted(machineApi({ db, waiting: waitingRoom(0) }))
+const app = mounted(conversationApi({ db }))
 
 afterAll(async () => {
   await db.destroy()

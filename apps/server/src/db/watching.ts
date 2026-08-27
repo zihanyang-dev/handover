@@ -1,5 +1,5 @@
 /**
- * Carrying live moments between server instances.
+ * How a browser watching a turn gets told, across every instance.
  *
  * A machine posts to whichever instance answered it; a browser is watching on whichever instance
  * answered that. In a fleet those are usually not the same process, and nothing in a process's
@@ -103,8 +103,8 @@ export function liveThrough(db: Database, watching: Map<string, Set<(watched: Wa
   } satisfies Live
 }
 
-/** Hands one thing to the browsers this instance is holding open. */
-export function handTo(
+/** Shows one thing to every browser this instance is holding open on that conversation. */
+export function showEveryoneWatching(
   watching: Map<string, Set<(watched: Watched) => void>>,
   happening: Happening,
 ): void {

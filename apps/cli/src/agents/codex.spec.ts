@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { ThreadEvent, ThreadItem } from '@openai/codex-sdk'
+import { describe, expect, it } from 'vitest'
 import { reader, stream } from './codex.ts'
 
 /** What `codex app-server` answers `model/list` with, cut down to what is read out of it. */

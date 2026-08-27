@@ -65,21 +65,22 @@ export async function aMachine(sessionToken: string, name: string): Promise<Mach
   const how = (collected as { kind: string }).kind
   if (how !== 'granted') throw new Error(`the machine was not let in: ${how}`)
 
-  const authorization = `Bearer ${token}`
+  return speaking(name, `Bearer ${token}`)
+}
 
-  const reportIn = async (): Promise<Asking | undefined> => {
-    const said = await ask(
-      '/machines/current/poll',
-      { authorization },
-      { found: [{ command: 'claude', version: '2.1.4' }] },
-    )
-
-    return (said as { asking?: Asking }).asking
-  }
-
-  const machine: Machine = {
+/** Everything a machine that is already in can say, over its own credential. */
+function speaking(name: string, authorization: string): Machine {
+  return {
     id: name,
-    poll: reportIn,
+    poll: async () => {
+      const said = await ask(
+        '/machines/current/poll',
+        { authorization },
+        { found: [{ command: 'claude', version: '2.1.4' }] },
+      )
+
+      return (said as { asking?: Asking }).asking
+    },
     happening: async (asking, moment) => {
       await ask(
         `/machines/current/conversations/${asking.conversationId}/live`,
@@ -113,8 +114,6 @@ export async function aMachine(sessionToken: string, name: string): Promise<Mach
       )
     },
   }
-
-  return machine
 }
 
 /** Waits for a turn, because a machine is told about one by asking rather than being called. */

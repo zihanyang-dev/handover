@@ -174,6 +174,156 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/credentials/email-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a code at an address, to add it to this account */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskForCode"];
+                };
+            };
+            responses: {
+                /** @description A code is on its way, or was already sent for this request key */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IssuedCode"];
+                    };
+                };
+                /** @description The body was not the shape it claims, or no letter can reach that address */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description A code went out moments ago; another would break the one in the inbox */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TooSoon"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an address to this account, by answering the code sent to it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SubmitCode"];
+                };
+            };
+            responses: {
+                /** @description The address now opens this account, or already did */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Wrong digits, or a body that was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description There is no such code */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description This code is finished, or the address opens a different account */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description This code has no tries left */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/{provider}/start": {
         parameters: {
             query?: never;
@@ -195,9 +345,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        next?: string;
-                    };
+                    "application/json": components["schemas"]["WhereBack"];
                 };
             };
             responses: {
@@ -212,6 +360,75 @@ export interface paths {
                 };
                 /** @description The body was not the shape it claims */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No way in by that name */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/credentials/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave to connect a provider to this account */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WhereBack"];
+                };
+            };
+            responses: {
+                /** @description Send the browser here */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Handoff"];
+                    };
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -266,77 +483,6 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/credentials/{provider}/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Leave to connect a provider to this account */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    provider: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        next?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Send the browser here */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Handoff"];
-                    };
-                };
-                /** @description The body was not the shape it claims */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No way in by that name */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -512,7 +658,7 @@ export interface paths {
                         "application/json": components["schemas"]["Space"];
                     };
                 };
-                /** @description The name has no address in it, or the body was the wrong shape */
+                /** @description The name has no address in it */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -584,64 +730,6 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Not there, or not yours — the same answer on purpose */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/spaces/{slug}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Who is in this Space */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Everybody here */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            members: components["schemas"]["Member"][];
-                        };
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
                 /** @description No such Space */
                 404: {
                     headers: {
@@ -686,9 +774,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            invitations: components["schemas"]["OpenInvitation"][];
-                        };
+                        "application/json": components["schemas"]["Invitations"];
                     };
                 };
                 /** @description Nobody is signed in here */
@@ -700,7 +786,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can see them */
+                /** @description Only an owner can do this */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -751,7 +837,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can ask somebody in */
+                /** @description Only an owner can do this */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -816,7 +902,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can stop one */
+                /** @description Only an owner can do this */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -836,6 +922,185 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invitations/{secret}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which Space this link is for, and who asked you */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    secret: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The Space, and who asked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Opens"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That link does not work */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/spaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a Space with a link */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["JoinWith"];
+                };
+            };
+            responses: {
+                /** @description You are in, or already were */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Joined"];
+                    };
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That link does not work */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{slug}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is in this Space */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Everybody here */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Members"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -880,7 +1145,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can take somebody else out */
+                /** @description Only an owner can do this to somebody else */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -935,6 +1200,15 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
                 /** @description Nobody is signed in here */
                 401: {
                     headers: {
@@ -944,7 +1218,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can change this */
+                /** @description Only an owner can do this */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1013,7 +1287,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Only an owner can see what is somebody else’s */
+                /** @description Only an owner can do this to somebody else */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1035,525 +1309,6 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/spaces/{slug}/conversations/{id}/task": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Let it carry on without being spoken to */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["HandOver"];
-                };
-            };
-            responses: {
-                /** @description Handed over, or handed over already */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description The body was not the shape it claims */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No such Space, or no such conversation in it */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Something is already running in this conversation */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        /** Stop it carrying on, and stop whatever it handed off */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["TakeBack"];
-                };
-            };
-            responses: {
-                /** @description Taken back, or taken back already */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description The body was not the shape it claims */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No such Space, no such conversation, and nothing handed over in it */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Hand a piece of work to somebody else here */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["HandTo"];
-                };
-            };
-            responses: {
-                /** @description It is theirs, and it is in their Inbox */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Only an owner can hand something over */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No such Space, nothing running there, or nobody here by that name */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/spaces/{slug}/machines/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Hand a machine to somebody else here */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["HandTo"];
-                };
-            };
-            responses: {
-                /** @description It is theirs */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Only an owner can hand something over */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No such Space, no such machine, or nobody here by that name */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/invitations/{secret}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Which Space this link is for, and who asked you */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    secret: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The Space, and who asked */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            slug: string;
-                            displayName: string;
-                            invitedBy: string;
-                        };
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description That link does not work */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/spaces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Join a Space with a link */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["JoinWith"];
-                };
-            };
-            responses: {
-                /** @description You are in, or already were */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            slug: string;
-                        };
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description That link does not work */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/credentials/email-codes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Ask for a code at an address, to add it to this account */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AskForCode"];
-                };
-            };
-            responses: {
-                /** @description A code is on its way, or was already sent for this request key */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["IssuedCode"];
-                    };
-                };
-                /** @description The body was not the shape it claims, or no letter can reach that address */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description A code went out moments ago; another would break the one in the inbox */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["TooSoon"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/me/credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add an address to this account, by answering the code sent to it */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SubmitCode"];
-                };
-            };
-            responses: {
-                /** @description The address now opens this account, or already did */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Wrong digits, or a body that was not the shape it claims */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description There is no such code */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description This code is finished, or the address opens a different account */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description This code has no tries left */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1798,6 +1553,15 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
                 /** @description Nobody is signed in here */
                 401: {
                     headers: {
@@ -1864,6 +1628,107 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/machines/current/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report what this machine has, and ask whether there is anything for it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MachineReport"];
+                };
+            };
+            responses: {
+                /** @description What to look for, and anything waiting */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CheckedIn"];
+                    };
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Not a live machine credential, or not a machine any more */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/machines/current/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Say this machine is stopping on purpose */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Gone, without waiting out the silence */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description That is not a live machine credential */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1979,7 +1844,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/machines/current/poll": {
+    "/spaces/{slug}/machines/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1988,28 +1853,33 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Report what this machine has, and ask whether there is anything for it */
-        post: {
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Hand a machine to somebody else here */
+        patch: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["MachineReport"];
+                    "application/json": components["schemas"]["HandMachineTo"];
                 };
             };
             responses: {
-                /** @description What to look for, and anything waiting */
-                200: {
+                /** @description It is theirs */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": components["schemas"]["CheckedIn"];
-                    };
+                    content?: never;
                 };
                 /** @description The body was not the shape it claims */
                 400: {
@@ -2020,8 +1890,26 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description That is not a live machine credential */
+                /** @description Nobody is signed in here */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Only an owner can do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, no such machine, or nobody here by that name */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2031,53 +1919,6 @@ export interface paths {
                 };
             };
         };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/machines/current/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Say this machine is stopping on purpose */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Gone, without waiting out the silence */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description That is not a live machine credential */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/spaces/{slug}/conversations": {
@@ -2145,7 +1986,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Open, and pinned to that agent for good */
+                /** @description Open, and pinned to that agent */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2706,6 +2547,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spaces/{slug}/conversations/{id}/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Let it carry on without being spoken to */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HandOver"];
+                };
+            };
+            responses: {
+                /** @description Handed over, or handed over already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, or no such conversation in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Something is already running in this conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        /** Stop it carrying on, and stop whatever it handed off */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TakeBack"];
+                };
+            };
+            responses: {
+                /** @description Taken back, or taken back already */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, no such conversation, and nothing handed over */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Hand a piece of work to somebody else here */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["HandWorkTo"];
+                };
+            };
+            responses: {
+                /** @description It is theirs, and it is in their Inbox */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The body was not the shape it claims */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Only an owner can do this */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No such Space, nothing running there, or nobody here by that name */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/me/inbox": {
         parameters: {
             query?: never;
@@ -2849,7 +2880,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["HandedOff"];
+                        "application/json": components["schemas"]["WorkOpened"];
                     };
                 };
                 /** @description The body was not the shape it claims */
@@ -3009,6 +3040,9 @@ export interface components {
             /** Format: uri */
             url: string;
         };
+        WhereBack: {
+            next?: string;
+        };
         Me: {
             displayName: string;
             credentials: components["schemas"]["Credential"][];
@@ -3051,6 +3085,36 @@ export interface components {
             displayName: string;
             requestKey: string;
         };
+        Invitation: {
+            /** Format: uuid */
+            id: string;
+            link: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        Invitations: {
+            invitations: components["schemas"]["OpenInvitation"][];
+        };
+        OpenInvitation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        Opens: {
+            slug: string;
+            displayName: string;
+            invitedBy: string;
+        };
+        Joined: {
+            slug: string;
+        };
+        JoinWith: {
+            secret: string;
+        };
+        Members: {
+            members: components["schemas"]["Member"][];
+        };
         Member: {
             /** Format: uuid */
             userId: string;
@@ -3062,43 +3126,25 @@ export interface components {
         };
         /** @enum {string} */
         Role: "owner" | "member";
-        Invitation: {
-            /** Format: uuid */
-            id: string;
-            link: string;
-            /** Format: date-time */
-            expiresAt: string;
-        };
-        OpenInvitation: {
-            /** Format: uuid */
-            id: string;
-            /** Format: date-time */
-            expiresAt: string;
-        };
         NewRole: {
             role: components["schemas"]["Role"];
         };
         StillTheirs: {
-            working: {
-                /** Format: uuid */
-                conversationId: string;
-                goal: string;
-                state: string;
-                machineName: string;
-            }[];
-            machines: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-                inUse: number;
-            }[];
+            working: components["schemas"]["WorkTheyHold"][];
+            machines: components["schemas"]["MachineTheyHold"][];
         };
-        HandTo: {
+        WorkTheyHold: {
             /** Format: uuid */
-            ownerUserId: string;
+            conversationId: string;
+            goal: string;
+            state: string;
+            machineName: string;
         };
-        JoinWith: {
-            secret: string;
+        MachineTheyHold: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            inUse: number;
         };
         AskedToConnect: {
             secret: string;
@@ -3157,6 +3203,51 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
         };
+        CheckedIn: {
+            pollSeconds: number;
+            lookFor: string[];
+            asking?: components["schemas"]["SomethingToAnswer"];
+            stopping?: components["schemas"]["StopWanted"];
+        };
+        SomethingToAnswer: {
+            /** Format: uuid */
+            conversationId: string;
+            /** @enum {string} */
+            agentKind: "claude-code" | "codex";
+            agentSession: string | null;
+            afterSeq: number;
+            goal: string | null;
+            asked: components["schemas"]["Said"][];
+            model: string | null;
+            effort: string | null;
+        };
+        Said: {
+            text: string;
+            who: string | null;
+        };
+        StopWanted: {
+            /** Format: uuid */
+            conversationId: string;
+            afterSeq: number;
+        };
+        MachineReport: {
+            found: components["schemas"]["AgentFound"][];
+            restarted?: boolean;
+            version?: string;
+        };
+        AgentFound: {
+            command: string;
+            version: string;
+            models?: components["schemas"]["Model"][];
+        };
+        Model: {
+            id: string;
+            name: string;
+            about: string;
+            efforts: string[];
+            defaultEffort?: string;
+            isDefault: boolean;
+        };
         Machines: {
             machines: components["schemas"]["Machine"][];
         };
@@ -3185,48 +3276,9 @@ export interface components {
             version: string;
             models: components["schemas"]["Model"][];
         };
-        Model: {
-            id: string;
-            name: string;
-            about: string;
-            efforts: string[];
-            defaultEffort?: string;
-            isDefault: boolean;
-        };
-        CheckedIn: {
-            pollSeconds: number;
-            lookFor: string[];
-            asking?: components["schemas"]["SomethingToAnswer"];
-            stopping?: components["schemas"]["StopWanted"];
-        };
-        SomethingToAnswer: {
+        HandMachineTo: {
             /** Format: uuid */
-            conversationId: string;
-            /** @enum {string} */
-            agentKind: "claude-code" | "codex";
-            agentSession: string | null;
-            afterSeq: number;
-            goal: string | null;
-            asked: {
-                text: string;
-                who: string | null;
-            }[];
-            model: string | null;
-            effort: string | null;
-        };
-        StopWanted: {
-            /** Format: uuid */
-            conversationId: string;
-            afterSeq: number;
-        };
-        MachineReport: {
-            found: {
-                command: string;
-                version: string;
-                models?: components["schemas"]["Model"][];
-            }[];
-            restarted?: boolean;
-            version?: string;
+            ownerUserId: string;
         };
         Conversations: {
             conversations: components["schemas"]["Conversation"][];
@@ -3267,11 +3319,7 @@ export interface components {
         Message: {
             /** @enum {string} */
             role: "user";
-            content: {
-                text: string;
-                model?: string;
-                effort?: string;
-            };
+            content: components["schemas"]["Asked"];
             seq: number;
             /** Format: date-time */
             at: string;
@@ -3279,36 +3327,44 @@ export interface components {
         } | {
             /** @enum {string} */
             role: "assistant";
-            content: {
-                text: string;
-            };
+            content: components["schemas"]["Answered"];
             seq: number;
             /** Format: date-time */
             at: string;
         } | {
             /** @enum {string} */
             role: "tool";
-            content: {
-                name: string;
-                verb: string;
-                arg: string;
-                ok?: boolean;
-                excerpt: string;
-            };
+            content: components["schemas"]["Did"];
             seq: number;
             /** Format: date-time */
             at: string;
         } | {
             /** @enum {string} */
             role: "activity";
-            content: {
-                activityType: string;
-            } & {
-                [key: string]: unknown;
-            };
+            content: components["schemas"]["Happened"];
             seq: number;
             /** Format: date-time */
             at: string;
+        };
+        Asked: {
+            text: string;
+            model?: string;
+            effort?: string;
+        };
+        Answered: {
+            text: string;
+        };
+        Did: {
+            name: string;
+            verb: string;
+            arg: string;
+            ok?: boolean;
+            excerpt: string;
+        };
+        Happened: {
+            activityType: string;
+        } & {
+            [key: string]: unknown;
         };
         Underway: {
             goal: string;
@@ -3317,28 +3373,31 @@ export interface components {
             /** Format: date-time */
             sleepUntil: string | null;
             presence: components["schemas"]["Presence"];
-            handedOff: {
-                /** Format: uuid */
-                conversationId: string;
-                goal: string;
-                /** @enum {string} */
-                state: "working" | "wait" | "sleep" | "done";
-                machineName: string;
-                agentKind: string;
-                presence: components["schemas"]["Presence"];
-            }[];
-            outputs: {
-                title: string;
-                body: string;
-                /** Format: date-time */
-                writtenAt: string;
-            }[];
-            under: {
-                /** Format: uuid */
-                conversationId: string;
-                goal: string;
-            } | null;
+            handedOff: components["schemas"]["HandedOff"][];
+            outputs: components["schemas"]["Output"][];
+            under: components["schemas"]["Under"];
         };
+        HandedOff: {
+            /** Format: uuid */
+            conversationId: string;
+            goal: string;
+            /** @enum {string} */
+            state: "working" | "wait" | "sleep" | "done";
+            machineName: string;
+            agentKind: string;
+            presence: components["schemas"]["Presence"];
+        };
+        Output: {
+            title: string;
+            body: string;
+            /** Format: date-time */
+            writtenAt: string;
+        };
+        Under: {
+            /** Format: uuid */
+            conversationId: string;
+            goal: string;
+        } | null;
         OpenedConversation: {
             /** Format: uuid */
             id: string;
@@ -3351,11 +3410,7 @@ export interface components {
         };
         SayThis: {
             key: string;
-            asked: {
-                text: string;
-                model?: string;
-                effort?: string;
-            };
+            asked: components["schemas"]["Asked"];
         };
         StopThis: {
             key: string;
@@ -3365,27 +3420,15 @@ export interface components {
             message: {
                 /** @enum {string} */
                 role: "assistant";
-                content: {
-                    text: string;
-                };
+                content: components["schemas"]["Answered"];
             } | {
                 /** @enum {string} */
                 role: "tool";
-                content: {
-                    name: string;
-                    verb: string;
-                    arg: string;
-                    ok?: boolean;
-                    excerpt: string;
-                };
+                content: components["schemas"]["Did"];
             } | {
                 /** @enum {string} */
                 role: "activity";
-                content: {
-                    activityType: string;
-                } & {
-                    [key: string]: unknown;
-                };
+                content: components["schemas"]["Happened"];
             };
         };
         AgentSession: {
@@ -3426,6 +3469,10 @@ export interface components {
         TakeBack: {
             key: string;
         };
+        HandWorkTo: {
+            /** Format: uuid */
+            ownerUserId: string;
+        };
         Inbox: {
             waiting: components["schemas"]["Waiting"][];
         };
@@ -3459,7 +3506,7 @@ export interface components {
             ending: "done" | "cannot";
             text: string;
         };
-        HandedOff: {
+        WorkOpened: {
             /** Format: uuid */
             conversationId: string;
         };

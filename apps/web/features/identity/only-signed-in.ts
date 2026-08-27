@@ -7,8 +7,8 @@
  * the front door and leaves them to find it again.
  */
 
-import { redirect } from '@tanstack/react-router'
 import { returnPath } from '@handover/universal'
+import { redirect } from '@tanstack/react-router'
 import { cache } from '../../query-client.ts'
 import { meQuery, NotSignedIn } from './me.ts'
 

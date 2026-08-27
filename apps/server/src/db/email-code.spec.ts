@@ -1,10 +1,15 @@
-import { sql } from 'kysely'
+/**
+ * A fresh address per test. Nothing one test does is visible to another, so none of them needs
+ * the database emptied first, and they can run alongside each other.
+ */
+
 import { randomUUID } from 'node:crypto'
+import { sql } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { hashCode, RESEND_INTERVAL_SECONDS, checkCode } from '../identity/email-code.ts'
-import { issueCode, noteDelivery, type Issued } from './email-code.ts'
-import { connect, type Database } from './connection.ts'
 import { loadEnv } from '../env.ts'
+import { hashCode, RESEND_INTERVAL_SECONDS, checkCode } from '../identity/email-code.ts'
+import { connect, type Database } from './connection.ts'
+import { issueCode, noteDelivery, type Issued } from './email-code.ts'
 
 const env = loadEnv()
 
@@ -19,10 +24,6 @@ afterAll(async () => {
 const SECRET = 's'.repeat(32)
 const CODE = '493018'
 
-/**
- * A fresh address per test. Nothing one test does is visible to another, so none of them needs
- * the database emptied first, and they can run alongside each other.
- */
 /** A request key is unique per asker, so a fresh one per test keeps them out of each other's way. */
 let RUN = ''
 let EMAIL = ''

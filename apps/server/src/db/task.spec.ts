@@ -7,33 +7,33 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { normalizeSlug, type Slug } from '@handover/universal'
 import { sql } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { normalizeSlug, type Slug } from '@handover/universal'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { loadEnv } from '../env.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
-import { hashSecret } from '../secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
+import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
 import { conversationsIn, handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
-import { approveEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment, removeMachine } from './machine.ts'
+import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
+import { checkIn, removeMachine } from './machine.ts'
+import { handWorkTo, joins, removes } from './membership.ts'
 import { createSpace } from './space.ts'
 import {
   handOver,
   stopsWorking,
+  takeBack,
   tellWhoeverIsWaitingOnAGoneMachine,
   underwayIn,
-  takeBack,
   waitingOn,
   wakeWhoseTimeHasCome,
   writesOutput,
 } from './task.ts'
 import { forgetStranded, openTurn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
-import { handWorkTo, joins, removes } from './membership.ts'
 
 const env = loadEnv()
 const db: Database = connect(env)

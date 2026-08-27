@@ -6,12 +6,12 @@
  * workspace name and shows what its address will be.
  */
 
+import { normalizeSlug } from '@handover/universal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, Plus, X } from 'react-bootstrap-icons'
-import { normalizeSlug } from '@handover/universal'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Arrival } from '../identity/arrival.tsx'
 import { ME, meQuery, type Me } from '../identity/me.ts'
