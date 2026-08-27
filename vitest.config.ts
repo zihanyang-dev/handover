@@ -7,6 +7,15 @@ export default defineConfig({
   test: {
     projects: [
       {
+        // What the repository asks of itself: not any package's code, and every one of them reads
+        // paths from the root because that is what they are about. See `rules/`.
+        test: {
+          name: 'rules',
+          include: ['rules/*.spec.ts'],
+          environment: 'happy-dom',
+        },
+      },
+      {
         test: {
           name: 'unit',
           include: [

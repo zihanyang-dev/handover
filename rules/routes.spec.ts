@@ -10,11 +10,10 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SHOWS } from '../server/route.ts'
+import { SHOWS } from '../apps/server/src/server/route.ts'
 
-const CONTRACT_FILE = join(import.meta.dirname, '..', '..', 'generated', 'openapi.json')
+const CONTRACT_FILE = 'apps/server/generated/openapi.json'
 
 describe('what the contract says about who may call what', () => {
   /**

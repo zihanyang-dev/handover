@@ -11,14 +11,12 @@ apps/server/        API
                     住在这里的是 db/ 和 server/ 都要用、而谁都不该拥有的那些
   src/db/           持久化边界
   src/server/       入站传输
-  src/rules/        扫全库的机械规则。不测任何一段代码,它们读源文件
   scripts/          生成器与仓库维护脚本
   migrations/       已提交的永不修改
   generated/        生成物,永不手改
 apps/web/           浏览器应用
   features/         一块屏幕上的一件事
   routes/           地址到屏幕
-  rules/            同 server 的 rules/:扫全库的机械规则
   components/ui/    没有主人的视觉零件:一段手写体、一次礼花、一层渐变模糊
                     进这里的标准是「它不知道 Handover 是什么」
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
@@ -33,7 +31,7 @@ apps/cli/           装在机器上的那个命令
   agent-check/      注册表里每个 agent 跑同一套旅程,跑真的二进制
   generated/        生成物,永不手改
 packages/universal/ 两边必须算出同一个答案的东西
-
+rules/              这个仓库对自己的要求,写成测试。清单见 rules/README.md
 e2e/                真浏览器走一遍整条旅程。跑的是构建产物 + 真 server + 真库,
                     一个 origin,和线上同一个形状。唯一的替身是 agent 进程 —— 见 a-machine.ts
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design

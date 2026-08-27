@@ -63,16 +63,11 @@
 
 编译器、lint、格式化、生成器,以及**扫全库的机械规则**。
 
-规则住在 `apps/server/src/rules/` 和 `apps/web/rules/`,一条一个文件。它们不测任何一段代码,它们扫源文件:
+规则住在仓库根的 `rules/`,一条一个文件。它们不属于任何一个包 —— 每一条读的都是从仓库根起算的
+路径,而且好几条跨包。清单和「什么时候该加一条」在 `rules/README.md`,那里是唯一一份。
 
-```
-sql        手写 SQL 只能出现在 db/
-revoked    每一处读 memberships 都必须带 revoked_at
-routes     每条路由都在它地址所承诺的那道门后面
-endpoints  design 文档写的每条接口,这个部署真的有
-reachable  这个部署有的每条接口,真的有东西够得到 —— 不是被承诺了却没人走得到
-style      屏幕用到的每个 class 名,样式表里都有
-```
+**每一条都是先出了事才写的。** 没有一条是「觉得这样好」加的:一条从没被违反过的规则,没人能
+判断它是不是还成立。
 
 外加两个现成的:`pnpm unused`(knip:没人 import 的文件、export、依赖)和 `pnpm duplication`(jscpd:跨文件的复制粘贴)。
 
