@@ -3,7 +3,7 @@
 import { createMiddleware } from 'hono/factory'
 import { machineHolding } from '../db/machine.ts'
 import type { Database } from '../db/connection.ts'
-import { hashSecret } from '../machine/secret.ts'
+import { hashSecret } from '../secret.ts'
 import { body, type Failure } from './failure.ts'
 
 export type Attached = { machineId: string }

@@ -2,7 +2,8 @@ import { sql } from 'kysely'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { newUserCode, type UserCode } from '../machine/user-code.ts'
-import { hashSecret, newEnrolmentSecret } from '../machine/secret.ts'
+import { newEnrolmentSecret } from '../machine/secret.ts'
+import { hashSecret } from '../secret.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import {
   approveEnrolment,

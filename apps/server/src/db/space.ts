@@ -15,6 +15,7 @@
 import { sql } from 'kysely'
 import { nextFreeSlug, type Slug } from '@handover/universal'
 import type { Database } from './connection.ts'
+import { ROLE } from './membership.ts'
 
 export type SpaceRequest = {
   /** The caller's idempotency key. Retrying with the same one must not create a second Space. */
@@ -98,7 +99,14 @@ export async function createSpace(db: Database, request: SpaceRequest): Promise<
 
     await tx
       .insertInto('memberships')
-      .values({ space_id: created.id, user_id: request.userId, request_key: request.requestKey })
+      // Its owner, not merely its first member. Somebody has to be able to let the second person
+      // in, and a Space that begins with nobody who can is a Space nobody can ever join.
+      .values({
+        space_id: created.id,
+        user_id: request.userId,
+        request_key: request.requestKey,
+        role: ROLE.owner,
+      })
       .execute()
 
     return { kind: 'created', space: created }

@@ -624,7 +624,7 @@ CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (mach
 -- Name: memberships memberships_keep_an_owner; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE CONSTRAINT TRIGGER memberships_keep_an_owner AFTER DELETE OR UPDATE ON public.memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.a_space_keeps_an_owner();
+CREATE CONSTRAINT TRIGGER memberships_keep_an_owner AFTER INSERT OR DELETE OR UPDATE ON public.memberships DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.a_space_keeps_an_owner();
 
 
 --
