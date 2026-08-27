@@ -46,7 +46,13 @@ export async function holderOf(db: Database, credential: Credential): Promise<st
   return row?.user_id
 }
 
-/** Every credential this account holds, oldest first, so the first address is the one it started with. */
+/**
+ * Every credential this account holds, oldest first.
+ *
+ * The order is the answer to "which one did this account start as" — and it is the *only* answer,
+ * because `shown` reorders them for reading (addresses, then providers) before anybody sees them.
+ * Whoever needs that fact takes it from here, at the front, and says it by name.
+ */
 export async function credentialsOf(db: Database, userId: string): Promise<readonly Credential[]> {
   const rows = await db
     .selectFrom('credentials')

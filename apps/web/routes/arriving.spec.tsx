@@ -32,11 +32,27 @@ function open(at: string) {
 }
 
 describe('arriving after a trip through a provider', () => {
-  it('says once that this way now reaches an account that was already there', async () => {
-    server.use(signedIn())
+  it('names the way in the account started as, and how many now reach it', async () => {
+    // `prd.md` 01 ③: merging by a confirmed address is our choice, so it owes somebody the whole
+    // picture. Told only "you already had an account", they cannot tell whether it is the one
+    // they meant — and the account they are sure they have is the other one.
+    server.use(
+      signedIn({
+        startedWith: 'google',
+        credentials: [
+          { kind: 'email', address: 'mina@example.com', state: 'ready' },
+          { kind: 'google', state: 'ready' },
+          { kind: 'github', state: 'connectable' },
+        ],
+      }),
+    )
     open('/?handover_result=merged')
 
-    expect(await screen.findByText(/you already had an account here/i)).toBeDefined()
+    const said = await screen.findByText(/you already had an account here/i)
+
+    expect(said.textContent).toContain('made with Google')
+    // Two, not three: one of those is an offer to connect, not a way in.
+    expect(said.textContent).toContain('2 ways')
   })
 
   it('says nothing on an ordinary arrival, and nothing on a reload', async () => {

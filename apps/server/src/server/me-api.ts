@@ -42,6 +42,14 @@ const meBody = z
     // No single address: there is no such thing any more. Every one this account holds is a row
     // in `credentials`, which is also the only place that says how many there are.
     credentials: z.array(credentialBody).readonly(),
+    /**
+     * Which way in this account was made with.
+     *
+     * Said rather than left to be worked out: the list above is ordered for reading — addresses,
+     * then providers — so the order it arrives in no longer says which came first. `prd.md` 01 ③
+     * owes somebody this word by name on the one occasion two ways in become one account.
+     */
+    startedWith: z.enum(['email', ...PROVIDERS]),
     spaces: z.array(spaceBody).readonly(),
   })
   .openapi('Me')
@@ -85,6 +93,9 @@ function who({ db, providers }: MeApi) {
         {
           displayName: person.displayName,
           credentials: shown(person.credentials, providers),
+          // The oldest, which is what `credentialsOf` orders them by and what `shown` no longer
+          // keeps. Absent is impossible: an account exists because a credential proved it.
+          startedWith: person.credentials[0]?.kind ?? 'email',
           spaces: await spacesOf(db, person.id),
         },
         200,

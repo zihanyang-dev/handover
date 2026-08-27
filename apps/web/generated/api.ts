@@ -2279,6 +2279,8 @@ export interface components {
         Me: {
             displayName: string;
             credentials: components["schemas"]["Credential"][];
+            /** @enum {string} */
+            startedWith: "email" | "google" | "github";
             spaces: components["schemas"]["Space"][];
         };
         Credential: {

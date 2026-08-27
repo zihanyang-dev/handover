@@ -200,7 +200,7 @@ POST  /auth/email-codes                   幂等键;→ 码 id · 何时过期 �
 POST  /browser/sessions                   码 id + 码 → 建会话。码不是被造的东西,会话才是
 DELETE /browser/sessions/current
 
-GET   /me                                → User · 怎么进来 · 他的 Space 列表
+GET   /me                                → User · 怎么进来 · 最早那一条 · 他的 Space 列表
 PATCH /me                                → 改 display_name
 POST  /me/credentials/{provider}/start     → { url },连一个提供商到当前账号
 POST  /me/credentials/email-codes              幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
