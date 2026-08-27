@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Agent, Said, Told } from './agents/agent.ts'
+import { EXCERPT, PIECE, shorten } from './agents/agent.ts'
 import { apiFor } from './api.ts'
 import { startAnswering, type Asking } from './answering.ts'
 
@@ -109,6 +110,54 @@ describe('what a turn leaves behind', () => {
     )
 
     expect(JSON.stringify(kept)).not.toContain('let me look at the file')
+  })
+
+  it('shows the whole of what a command printed, and keeps only the beginning', async () => {
+    // `prd.md` 03 ⑦ is a table with one row that differs between watching and coming back, and
+    // this is that row: the full output while it runs, a first paragraph a day later.
+    const long = 'x'.repeat(EXCERPT * 3)
+    const kept = await answered(
+      saying(
+        said({
+          said: 'did',
+          name: 'Bash',
+          verb: 'ran',
+          arg: 'cat big.log',
+          excerpt: shorten(long),
+          output: long,
+        }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
+    )
+
+    // Watching: all of it, in pieces small enough to cross a NOTIFY payload.
+    const printed = watched.filter((one) => one.said === 'output')
+    expect(printed.map((one) => one.text).join('')).toBe(long)
+    for (const piece of printed) expect(piece.text.length).toBeLessThanOrEqual(PIECE)
+
+    // Coming back: the beginning, and no more than that.
+    expect(JSON.stringify(kept)).toContain(shorten(long))
+    expect(JSON.stringify(kept).length).toBeLessThan(long.length)
+  })
+
+  it('does not push output that the excerpt already carries whole', async () => {
+    // The same words crossing the network twice, arriving twice on one screen. Short output is
+    // already in the line the transcript keeps.
+    await answered(
+      saying(
+        said({
+          said: 'did',
+          name: 'Bash',
+          verb: 'ran',
+          arg: 'echo hi',
+          excerpt: 'hi',
+          output: 'hi',
+        }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
+    )
+
+    expect(watched.filter((one) => one.said === 'output')).toEqual([])
   })
 
   it('never writes down that it had started something, only that it did it', async () => {

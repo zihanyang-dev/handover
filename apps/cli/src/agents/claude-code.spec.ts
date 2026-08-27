@@ -40,7 +40,17 @@ describe('turning what Claude says into what a page shows', () => {
     )
 
     expect(did).toEqual([
-      { said: 'did', name: 'Read', verb: 'read', arg: 'b.ts', ok: true, excerpt: 'the first line' },
+      {
+        said: 'did',
+        name: 'Read',
+        verb: 'read',
+        arg: 'b.ts',
+        ok: true,
+        excerpt: 'the first line',
+        // The whole of it travels beside the excerpt, for whoever is watching. Short enough here
+        // that the two are the same words; `answering.ts` is what decides not to send it twice.
+        output: 'the first line',
+      },
     ])
   })
 

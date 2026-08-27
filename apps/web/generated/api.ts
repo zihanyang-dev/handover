@@ -2631,6 +2631,10 @@ export interface components {
             name: string;
             verb: string;
             arg: string;
+        } | {
+            /** @enum {string} */
+            said: "output";
+            text: string;
         };
         HandOver: {
             key: string;

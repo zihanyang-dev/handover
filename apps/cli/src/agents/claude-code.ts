@@ -107,6 +107,8 @@ function finishing(started: Map<string, Call>, block: Record<string, unknown>): 
       ...call,
       ok: block['is_error'] !== true,
       excerpt: shorten(readable(block['content'])),
+      // The whole of it as well, for whoever is watching, and never written down.
+      output: readable(block['content']),
     },
   ]
 }

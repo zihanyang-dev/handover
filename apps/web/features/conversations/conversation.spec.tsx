@@ -333,6 +333,25 @@ describe('watching it work', () => {
     expect(await screen.findByText(/ran rg timeout src\//i)).toBeDefined()
   })
 
+  it('shows the whole of what a command printed while it is still running', async () => {
+    // `prd.md` 03 ⑦ is a table with one row that differs between watching and coming back. The
+    // transcript keeps a first paragraph; this is where the rest of it exists at all.
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, {
+      seen: 'moment',
+      moment: { said: 'doing', name: 'Bash', verb: 'ran', arg: 'cat big.log' },
+    })
+    // In pieces, because this crosses instances through a NOTIFY payload that stops at 8000 bytes.
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'output', text: 'line one\n' } })
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'output', text: 'line two\n' } })
+
+    expect(await screen.findByText(/line one/u)).toBeDefined()
+    expect(await screen.findByText(/line two/u)).toBeDefined()
+  })
+
   it('still says it is thinking when the agent keeps no readable thought', async () => {
     // Claude Code's own record keeps a signature and no text. "It is thinking" is all there is to
     // say, and a line reading "Thinking —" with nothing after it says less than nothing.

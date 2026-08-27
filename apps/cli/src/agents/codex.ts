@@ -62,6 +62,9 @@ function finished(item: ThreadItem): Said[] {
         arg: shorten(item.command),
         ok: item.exit_code === 0,
         excerpt: shorten(item.aggregated_output),
+        // The whole of it as well, for whoever is watching. It is not written down — see
+        // `prd.md` 03 ⑦, where the full output is there while it runs and a first paragraph after.
+        output: item.aggregated_output,
       }),
     ]
   }

@@ -1603,6 +1603,25 @@
               "verb",
               "arg"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "output"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "required": [
+              "said",
+              "text"
+            ]
           }
         ]
       },
