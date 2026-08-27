@@ -25,6 +25,7 @@ enrolments
 
 machines
   id · owner_user_id · name      ← 它属于连它的那个人,不属于 Space
+                                 这一列早晚要能装下「不属于任何人」,见 prd「机器的身份」
   token_hash 唯一           ← 长期凭据,同样只存哈希
   enrolled_from → enrolments
   last_seen_at              ← 在线与否读的时候算,不存状态
