@@ -13,8 +13,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef } from 'react'
 import { api } from '../../api.ts'
+import type { components } from '../../generated/api.ts'
 
-type Member = { userId: string; displayName: string; you: boolean }
+/** Only the three fields this screen shows. Taken from the contract, so it cannot drift. */
+type Member = Pick<components['schemas']['Member'], 'userId' | 'displayName' | 'you'>
 
 /** Somebody it could go to: everybody here except whoever it is already. */
 type Instead = { userId: string; displayName: string }

@@ -34,7 +34,14 @@ function open(at: string) {
   )
 }
 
-type Message = { seq: number; role: string; content: unknown; at: string }
+/**
+ * A line as this file builds one, which is looser than the contract on purpose.
+ *
+ * Half of what these tests are about is a line the contract does not describe — an activity type
+ * this build has never heard of — so the builder has to be able to make one. Named `Line` and not
+ * `Message` because `Message` is the contract's word and this is not it.
+ */
+type Line = { seq: number; role: string; content: unknown; at: string }
 
 /**
  * A conversation the server hands over, tail and all.
@@ -46,7 +53,7 @@ type Message = { seq: number; role: string; content: unknown; at: string }
  * The array is read when it is asked for, so a test can add to it and then say so.
  */
 function transcript(
-  messages: Message[],
+  messages: Line[],
   state = 'idle',
   offers: Offers = [],
   underway?: Transcript['underway'],
@@ -99,7 +106,7 @@ type Offers = Transcript['offers']
 
 const AT = '2026-08-26T10:00:00.000Z'
 
-const say = (seq: number, role: string, content: unknown, said?: string | null): Message => ({
+const say = (seq: number, role: string, content: unknown, said?: string | null): Line => ({
   seq,
   role,
   content,

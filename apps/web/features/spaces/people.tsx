@@ -14,16 +14,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { PersonPlus } from 'react-bootstrap-icons'
 import { api } from '../../api.ts'
+import type { components } from '../../generated/api.ts'
 import { Copy } from '../copy.tsx'
 import { Held } from './held.tsx'
 
-type Member = {
-  userId: string
-  displayName: string
-  role: 'owner' | 'member'
-  since: string
-  you: boolean
-}
+type Member = components['schemas']['Member']
 
 function peopleIn(slug: string) {
   return {

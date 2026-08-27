@@ -1,3 +1,11 @@
+/**
+ * A soft gradient behind the sign-in screen. Not ours: it arrived from 21st.dev.
+ *
+ * Kept as it came, `'use client'`, `interface` and all. It follows the conventions of where it
+ * came from rather than this repository's, and rewriting it into house style would only make the
+ * next version of it a merge instead of a paste. Nothing else imports it — see `sign-in.tsx`.
+ */
+
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
