@@ -9,7 +9,6 @@
     "tokens": ["apps/web/style.css"],
     "components": [
       "apps/web/features/onboarding/onboarding.tsx",
-      "apps/web/features/onboarding/host.tsx",
       "apps/web/features/onboarding/steps.tsx",
       "apps/web/features/identity/sign-in.tsx"
     ],
@@ -122,7 +121,7 @@
     { "fact": "project.instructions", "source": "AGENTS.md" },
     { "fact": "design.tokens", "source": "apps/web/style.css" },
     { "fact": "journey.space", "source": "apps/web/features/onboarding/onboarding.tsx" },
-    { "fact": "journey.host", "source": "apps/web/features/onboarding/host.tsx" },
+    { "fact": "journey.host", "source": "apps/web/features/machines/machines.tsx" },
     { "fact": "notion.card-surface", "source": "https://www.notion.com/templates" },
     { "fact": "notion.sidebar-live", "source": "https://app.notion.com" }
   ],

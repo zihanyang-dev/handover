@@ -14,10 +14,15 @@ import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
 import { useMachineKey, type Keyed } from './machine-key.tsx'
 import { useOpenConversation } from '../conversations/talking.ts'
+import { ShellCommand } from '../shell-command.tsx'
 
 function machinesIn(slug: string) {
   return {
     queryKey: ['machines', slug] as const,
+    // Somebody is looking at this page *because* they are connecting a machine on another one,
+    // and the terminal over there takes as long as it takes. Asking again is how the machine
+    // turns up by itself rather than after somebody thinks to refresh.
+    refetchInterval: 3000,
     queryFn: async () => {
       const { data, error } = await api.GET('/spaces/{slug}/machines', {
         params: { path: { slug } },
@@ -65,12 +70,10 @@ export function Machines({ slug }: { readonly slug: string }) {
 
       {machines.isPending && <p className="empty">Looking…</p>}
 
-      {machines.isSuccess && attached.length === 0 && (
-        <p className="empty">
-          Nothing can run here yet. Agents run on <strong>your</strong> machine, not on ours — run{' '}
-          <code>handover connect</code> on the one you want to use.
-        </p>
-      )}
+      {/* Where connecting a machine happens, for every Space and not only a brand new one. What
+          decides whether to say this is whether anything can run here — which is true of a Space
+          made a minute ago and of one whose only machine was just disconnected. */}
+      {machines.isSuccess && attached.length === 0 && <NothingHere />}
 
       <ul className="rows">
         {attached.map((machine) => (
@@ -195,6 +198,28 @@ function TalkTo({
 }
 
 /**
+ * A Space with nothing that can run in it, which is where connecting a machine happens.
+ *
+ * Every Space, not only a brand new one: what decides whether to say this is whether anything can
+ * run here, which is as true of a Space whose only machine was just disconnected. Said in the one
+ * place that knows, so nobody is walked through connecting a machine they already have.
+ */
+function NothingHere() {
+  return (
+    <div className="stack-tight">
+      <p className="empty">
+        Nothing can run here yet. Agents run on <strong>your</strong> machine, not on ours — run
+        this on the one you want to use.
+      </p>
+      <ShellCommand command="handover connect" />
+      {/* Nobody has to come back and look: the list above keeps asking, so a machine that
+          finishes connecting appears where this message was. */}
+      <p className="note">This page is watching. It will appear here.</p>
+    </div>
+  )
+}
+
+/**
  * A key for a machine with no browser to open, asked for from here.
  *
  * The same key onboarding hands out, from the same place — see `machine-key.ts`. What differs is
@@ -209,7 +234,7 @@ function MachineKey() {
     return (
       <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
         <p className="label">Run this on that machine, within {minutes(key.secondsLeft)}</p>
-        <code className="command">{key.command}</code>
+        <ShellCommand command={key.command} />
         {/*
           Said because it is true and cannot be undone: only the hash is kept, so this is the one
           moment it can be read. Somebody who closes this without copying it needs another key,

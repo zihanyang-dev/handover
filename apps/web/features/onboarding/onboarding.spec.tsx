@@ -63,13 +63,6 @@ describe('the first step — a Space', () => {
     expect(screen.queryByLabelText(/your name/i)).toBeNull()
   })
 
-  it('says how far along this is', async () => {
-    server.use(signedIn())
-    open('/onboarding')
-
-    expect(await screen.findByText(/step 1 of 2/i)).toBeDefined()
-  })
-
   it('shows a non-interactive, readable URL for a name in somebody’s own language', async () => {
     server.use(signedIn())
     open('/onboarding')
@@ -97,7 +90,7 @@ describe('the first step — a Space', () => {
     expect(screen.queryByRole('button', { name: /open acme/i })).toBeNull()
   })
 
-  it('makes the workspace without rewriting the account profile, then moves to the machine', async () => {
+  it('makes the workspace without rewriting the account profile, then goes into it', async () => {
     let renamed = false
     let made: unknown
     server.use(
@@ -119,7 +112,10 @@ describe('the first step — a Space', () => {
 
     expect(made).toEqual({ displayName: 'Acme', requestKey: expect.any(String) as unknown })
     expect(renamed).toBe(false)
-    expect(await screen.findByText(/connect a machine/i)).toBeDefined()
+    // Straight into the Space, the same as picking one that already exists. There is no step
+    // between, and no first-Space special case — `prd.md` 01 ④.
+    expect(await screen.findAllByText('Acme')).not.toHaveLength(0)
+    expect(globalThis.location.pathname).not.toContain('/onboarding/host')
   })
 
   it('offers the address that is free when the one asked for is held', async () => {

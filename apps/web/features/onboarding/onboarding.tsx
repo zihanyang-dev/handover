@@ -16,7 +16,9 @@ import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { Arrival } from '../identity/arrival.tsx'
 import { ME, meQuery, type Me } from '../identity/me.ts'
 import { spaceRefusal } from '../spaces/refusal.ts'
-import { STEP_EXIT_MS, Steps } from './steps.tsx'
+
+/** Long enough for the step to leave the screen, short enough that Continue still feels instant. */
+const STEP_EXIT_MS = 260
 
 function spaceFormPresentation(embedded: boolean, hasSpaces: boolean) {
   if (embedded) return { className: 'stack-tight space-create-form', autoFocus: false }
@@ -319,7 +321,16 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
   const me = useQuery(meQuery)
   const [making, setMaking] = useState(false)
   /** Where this step ends: an existing Space to enter, or a made one to put a machine on. */
-  const [leave, setLeave] = useState<{ to: 'space' | 'host'; slug: string }>()
+  /**
+   * Which Space to go into, once the step has finished leaving the screen.
+   *
+   * Picked and just-made are the same thing on purpose. Making one used to send somebody to a
+   * second step for connecting a machine, and that was a first-Space special case `prd.md` 01 ④
+   * forbids — and since a machine belongs to a person, a new Space already has the machines its
+   * maker connected. What is left of that step lives where it always belonged: a Space with
+   * nothing that can run says so, and shows the command.
+   */
+  const [leave, setLeave] = useState<{ slug: string }>()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const navigate = useNavigate()
 
@@ -331,17 +342,9 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
 
   const spaces = me.data?.spaces ?? []
   const choosing = spaces.length > 0
-  const done = leave !== undefined
 
   useEffect(() => {
     if (leave === undefined) return
-
-    // The Host step mounts at the midpoint and carries the rider forward itself. Waiting here as
-    // well made a completed create feel stuck before the route even began to load.
-    if (leave.to === 'host') {
-      void navigate({ to: '/onboarding/host', search: { s: leave.slug } })
-      return
-    }
 
     timer.current = setTimeout(() => {
       void navigate({ to: '/s/$slug', params: { slug: leave.slug } })
@@ -351,8 +354,6 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
   return (
     <main className="auth onboarding-page">
       <div className="onboarding-shell">
-        <Steps step={1} done={done} mark={done ? 'success' : 'thinking'} />
-
         <section className="onboarding-content">
           <Arrival result={result} />
 
@@ -363,13 +364,13 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
               me={me.data}
               making={making}
               onPick={(slug) => {
-                setLeave({ to: 'space', slug })
+                setLeave({ slug })
               }}
               onMake={() => {
                 setMaking((open) => !open)
               }}
               onMade={(slug) => {
-                setLeave({ to: 'host', slug })
+                setLeave({ slug })
               }}
             />
           )}
@@ -378,7 +379,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
             <MakeSpace
               me={me.data}
               onMade={(slug) => {
-                setLeave({ to: 'host', slug })
+                setLeave({ slug })
               }}
             />
           )}

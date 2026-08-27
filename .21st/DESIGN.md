@@ -27,14 +27,15 @@
    - Several existing Spaces begin as a clickable four-layer card deck with a pronounced hover fan, then use one smooth Motion layout transition to become a compact, completely aligned single column; there is no dealing, stagger, rotation, or bento layout. One Space stays directly selectable.
    - Space cards copy Notion's public Card surface rather than inventing decoration: white, a 10% black keyline, 12px radius, and Notion's interaction-only layered shadow. They have no coloured accents or top strips, no avatars, and retain `/s/<slug>` plus a right arrow.
    - Workspace URL stays disabled and preserves Unicode.
-2. Connect a machine.
-   - Default command is `handover connect`.
-   - Key command is an explicit fallback.
-   - The command is the only Notion Card surface; its label and waiting status form one unboxed visual group around it.
-   - The key fallback is a quiet text action on the command label row; Skip is an equally quiet text action with a right arrow aligned opposite the waiting status, so neither floats in its own empty row.
-   - Regular and key setups occupy the same fixed grid cell and switch instantly without fades or reflow; their title, command card, and status rows keep identical coordinates, while a long key scrolls only inside the command text.
-   - After arrival, show a compact machine-success status followed by read-only agent cards with the agent SVG mark, name, and version. Agent cards are never links, buttons, hover targets, or tab stops.
-   - The final Open Space action remains the only control in the success state.
+2. Connect a machine — **removed as a step.**
+   - It used to follow creating a Space, and it was a first-Space special case, which
+     `docs/roadmap/01-login-and-space/prd.md` ④ forbids: zero, one and many Spaces behave the same.
+   - It also stopped making sense once a machine came to belong to a person rather than a Space —
+     a Space somebody has just made already has whatever machines they have connected.
+   - What it did well lives where it always belonged: a Space with nothing that can run in it says
+     so and shows `handover connect` in a copyable command block, and the list keeps asking so a
+     machine that finishes connecting appears there. The key fallback is the same button it always
+     was, beside the machines.
 
 ## Home shell
 
