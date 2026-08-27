@@ -12,7 +12,7 @@ import { Laptop } from 'react-bootstrap-icons'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
-import { connectWith, machineKey, MACHINE_KEY } from './machine-key.ts'
+import { useMachineKey, type Keyed } from './machine-key.tsx'
 import { useOpenConversation } from '../conversations/talking.ts'
 
 function machinesIn(slug: string) {
@@ -202,23 +202,14 @@ function TalkTo({
  * and one more has no browser on it.
  */
 function MachineKey() {
-  const client = useQueryClient()
   const [asked, setAsked] = useState(false)
-  const key = useQuery({ ...machineKey(), enabled: asked })
+  const key = useMachineKey(asked)
 
-  // Pressing it again has to actually ask again. The query is held for ever on purpose, so once
-  // it has failed, setting the same state a second time changes nothing and the button that now
-  // reads "Try again" does nothing at all — a recovery offered and not delivered.
-  const ask = (): void => {
-    if (key.isError) void client.resetQueries({ queryKey: MACHINE_KEY })
-    setAsked(true)
-  }
-
-  if (key.data !== undefined) {
+  if (asked && key.state === 'ready') {
     return (
       <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
-        <p className="label">Run this on that machine, within 15 minutes</p>
-        <code className="command">{connectWith(key.data.key)}</code>
+        <p className="label">Run this on that machine, within {minutes(key.secondsLeft)}</p>
+        <code className="command">{key.command}</code>
         {/*
           Said because it is true and cannot be undone: only the hash is kept, so this is the one
           moment it can be read. Somebody who closes this without copying it needs another key,
@@ -229,17 +220,44 @@ function MachineKey() {
     )
   }
 
+  // Expired reads differently from never made: one is a command that has stopped working, and
+  // leaving it on screen invites somebody to run it and be turned away with no explanation.
+  const gone = asked && (key.state === 'expired' || key.state === 'unavailable')
+
   return (
-    <button
-      className="button button-quiet"
-      type="button"
-      style={{ marginTop: '0.75rem' }}
-      disabled={asked && key.isPending}
-      onClick={ask}
-    >
-      <span className="button-label">
-        {key.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
-      </span>
-    </button>
+    <>
+      {asked && key.state === 'expired' && (
+        <p className="note" style={{ marginTop: '0.75rem' }}>
+          That key can no longer connect a machine.
+        </p>
+      )}
+      <button
+        className="button button-quiet"
+        type="button"
+        style={{ marginTop: '0.75rem' }}
+        disabled={asked && key.state === 'making'}
+        onClick={() => {
+          if (gone) key.again()
+          setAsked(true)
+        }}
+      >
+        <span className="button-label">{wording(asked ? key.state : 'idle')}</span>
+      </button>
+    </>
   )
+}
+
+/** What the button says, which is a different sentence for each way it can be pressed. */
+function wording(state: Keyed['state'] | 'idle'): string {
+  if (state === 'expired') return 'Make another key'
+  if (state === 'unavailable') return 'Could not make a key. Try again.'
+
+  return 'Add a machine with no browser'
+}
+
+/** How long is left, in the words a person reads on a command they are about to run. */
+function minutes(seconds: number): string {
+  const left = Math.max(1, Math.ceil(seconds / 60))
+
+  return left === 1 ? '1 minute' : `${String(left)} minutes`
 }

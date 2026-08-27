@@ -6,7 +6,7 @@
  * a direct key is the fallback for a machine where that link cannot be opened.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { Check2, CheckCircleFill, ChevronRight, Clipboard } from 'react-bootstrap-icons'
@@ -15,7 +15,7 @@ import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { meQuery } from '../identity/me.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
 import { agentName } from '../agents.ts'
-import { connectWith, machineKey, MACHINE_KEY } from '../machines/machine-key.ts'
+import { useMachineKey } from '../machines/machine-key.tsx'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 function machinesIn(slug: string) {
@@ -46,10 +46,6 @@ function ShellCommand({ command }: { readonly command: string }) {
       <Copy text={command} />
     </div>
   )
-}
-
-function timeLeft(expiresAt: string) {
-  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000))
 }
 
 function countdown(seconds: number) {
@@ -102,30 +98,12 @@ function KeyCommand({
   readonly onBack: () => void
   readonly onSkip: () => void
 }) {
-  const client = useQueryClient()
-  const key = useQuery({ ...machineKey(), enabled: active })
-  /** Kept in state so time is read by a timer, not as an impure calculation during render. */
-  const [remaining, setRemaining] = useState<number>()
-  useEffect(() => {
-    if (!active || key.data === undefined) return
-    const refresh = () => {
-      setRemaining(timeLeft(key.data.expiresAt))
-    }
-    // Let the effect finish before updating React, then keep the visible clock honest.
-    const first = setTimeout(refresh, 0)
-    const timer = setInterval(refresh, 1000)
-    return () => {
-      clearTimeout(first)
-      clearInterval(timer)
-    }
-  }, [active, key.data])
+  const key = useMachineKey(active)
 
-  const expired = remaining === 0
-  if (key.isError || expired) {
-    const makeAnother = () => {
-      setRemaining(undefined)
-      void client.resetQueries({ queryKey: MACHINE_KEY })
-    }
+  if (key.state === 'expired' || key.state === 'unavailable') {
+    const expired = key.state === 'expired'
+    const makeAnother = key.again
+
     return (
       <div className="host-setup">
         <div className="host-setup-body">
@@ -150,7 +128,7 @@ function KeyCommand({
     )
   }
 
-  if (key.isPending || remaining === undefined) {
+  if (key.state === 'making') {
     return (
       <div className="host-setup">
         <div className="host-setup-body">
@@ -162,12 +140,11 @@ function KeyCommand({
     )
   }
 
-  const command = connectWith(key.data.key)
   return (
     <div className="host-setup">
       <div className="host-setup-body">
-        <KeySetupTitle status={`Expires in ${countdown(remaining)}`} onBack={onBack} />
-        <ShellCommand command={command} />
+        <KeySetupTitle status={`Expires in ${countdown(key.secondsLeft)}`} onBack={onBack} />
+        <ShellCommand command={key.command} />
         <Waiting onSkip={onSkip} />
       </div>
     </div>
