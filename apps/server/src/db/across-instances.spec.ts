@@ -34,7 +34,7 @@ const one: Database = connect(env)
 const two: Database = connect(env)
 
 /** A fresh address per test, so no test depends on the database being empty when it starts. */
-/** Request keys are unique across the whole table, so they have to be fresh per test too. */
+/** A request key is unique per asker, so a fresh one per test keeps them out of each other's way. */
 let RUN = ''
 let EMAIL = ''
 
@@ -216,10 +216,28 @@ describe('two instances at once', () => {
     expect(took).toHaveLength(1)
     expect(took[0]?.conversationId).toBe(conversationId)
   })
+
+  it('let exactly one of them take *any* turn on one machine, not one turn each', async () => {
+    // The harder half, and the one a primary key does not catch: two conversations waiting on the
+    // same machine. Each instance reads "nothing open on this machine" in its own snapshot, then
+    // claims a different conversation — two rows, no key in common, and two agents running in one
+    // directory. prd 04 says a machine does exactly one thing at once, and this is where that has
+    // to be decided.
+    const { machineId, spaceId } = await aQuestion()
+    await aSecondQuestion(machineId, spaceId)
+
+    const [first, second] = await Promise.all([takeOne(one, machineId), takeOne(two, machineId)])
+
+    expect([first, second].filter((taken) => taken !== undefined)).toHaveLength(1)
+  })
 })
 
 /** A machine in a Space, a conversation on it, and one question nobody has answered. */
-async function aQuestion(): Promise<{ machineId: string; conversationId: string }> {
+async function aQuestion(): Promise<{
+  machineId: string
+  conversationId: string
+  spaceId: string
+}> {
   const userId = await someone('asking')
   const made = await createSpace(one, {
     requestKey: `${RUN}-space`,
@@ -263,7 +281,26 @@ async function aQuestion(): Promise<{ machineId: string; conversationId: string 
   )
   if (said.kind !== 'said') throw new Error('the fixture could not ask')
 
-  return { machineId: collected.machineId, conversationId: conversation.conversationId }
+  return {
+    machineId: collected.machineId,
+    conversationId: conversation.conversationId,
+    spaceId: made.space.id,
+  }
+}
+
+/** A second conversation on the same machine, with its own unanswered question. */
+async function aSecondQuestion(machineId: string, spaceId: string): Promise<string> {
+  const opened = await openConversation(one, { spaceId, machineId, agentKind: 'claude-code' })
+  if (opened.kind !== 'opened') throw new Error('the fixture could not open a second conversation')
+
+  const said = await sayTo(
+    one,
+    { conversationId: opened.conversationId, spaceId, key: `${RUN}-turn-2` },
+    { text: 'and this one too' },
+  )
+  if (said.kind !== 'said') throw new Error('the fixture could not ask a second time')
+
+  return opened.conversationId
 }
 
 /** An account, made the way arriving makes one. */

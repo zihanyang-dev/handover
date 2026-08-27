@@ -125,7 +125,7 @@ export async function reportOnce(
 }
 
 export type Stopped =
-  /** The machine was taken out of its Space. Nothing to retry: a person has to enrol it again. */
+  /** Its owner disconnected it. Nothing to retry: a person has to connect it again. */
   | { readonly kind: 'removed' }
   /** Asked to stop. It says goodbye so the Space shows it gone immediately. */
   | { readonly kind: 'asked-to-stop' }
@@ -222,7 +222,7 @@ export async function stopIfAsked(
 }
 
 /**
- * A machine that has been taken out of its Space, on its way out.
+ * A machine its owner has disconnected, on its way out.
  *
  * The agent is still running, and this process is about to exit. Left alone it becomes an orphan:
  * nobody watching, still changing files in somebody's project, still spending their subscription.

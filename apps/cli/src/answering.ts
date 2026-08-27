@@ -8,7 +8,7 @@
 
 import type { components } from '../generated/api.ts'
 import type { Agent, Asked, Said, Told, Why } from './agents/agent.ts'
-import { shorten } from './agents/agent.ts'
+import { EXCERPT, PIECE, shorten } from './agents/agent.ts'
 import { NO_ANSWER, type Api } from './api.ts'
 import { sleep } from './sleeping.ts'
 
@@ -199,6 +199,20 @@ const FORGOT = { role: 'activity', content: { activityType: 'forgot' } } as cons
  * turn: a turn that is being answered a second time is a turn nobody saw the end of, and that is
  * recovered by reading the agent's own record rather than by guessing where it got to.
  */
+/** How a turn the agent finished is closed, and what is said about it out loud. */
+async function ended(
+  writing: Writing,
+  asking: Asking,
+  say: (line: string) => void,
+  /** What the agent said, and whether every line of the turn before it landed. */
+  how: { readonly why: Why; readonly whole: boolean },
+): Promise<void> {
+  // What the agent said it was, unless the record is missing lines — then nobody can say.
+  const said = how.whole ? how.why.why : 'unknown, part of it was lost'
+  say(`answered ${asking.conversationId}: ${said}`)
+  await closing(writing, asking, how.whole ? ending(how.why) : LOST)
+}
+
 async function write(
   writing: Writing,
   asking: Asking,
@@ -215,21 +229,17 @@ async function write(
     }
 
     if (one.told === 'ended') {
-      // What the agent said it was, unless the record is missing lines — then nobody can say.
-      const how = whole ? ending(one.why) : LOST
-      say(
-        `answered ${asking.conversationId}: ${whole ? one.why.why : 'unknown, part of it was lost'}`,
-      )
-      await closing(writing, asking, how)
+      await ended(writing, asking, say, { why: one.why, whole })
       return
     }
 
-    const goes = one.told === 'forgot' ? { written: FORGOT } : where(one.said)
+    const goes: { written?: Written; now?: readonly Unkept[] } =
+      one.told === 'forgot' ? { written: FORGOT } : where(one.said)
 
-    if ('now' in goes) {
-      writing.moment(goes.now)
-      continue
-    }
+    // Whatever is only worth seeing now goes first: a tool line landing before its own output
+    // would put the excerpt on screen and then the whole of it underneath, in that order.
+    for (const now of goes.now ?? []) writing.moment(now)
+    if (goes.written === undefined) continue
 
     wrote += 1
     // Never short-circuited: a turn goes on being written down after one line is lost, because
@@ -263,20 +273,48 @@ function ending(why: Why): Happened {
  *
  * One function and not two, because it is one question. Two kinds are never written down — what
  * it was thinking, and that it had started something — and both exist only to show a turn in
- * motion. Everything else is written, and nothing is both: a sentence sent down the live stream
- * *and* written into the transcript is the same sentence crossing the network twice, arriving
- * twice on the screen, and in two orders whenever a write is retried.
+ * motion. Nothing else may be *the same words* in both places: a sentence sent down the live
+ * stream and written into the transcript crosses the network twice, arrives twice on the screen,
+ * and in two orders whenever a write is retried.
+ *
+ * A finished tool is the one thing that is both, and only because the two are different lengths
+ * on purpose — `prd.md` 03 ⑦ promises the whole output while it runs and the first paragraph
+ * afterwards. When they would be the same words, {@link pieces} sends nothing.
  */
-function where(said: Said): { written: Written } | { now: Unkept } {
-  if (said.said === 'thinking' || said.said === 'doing') return { now: said }
+function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
+  // The three that are only ever worth seeing now. `output` is not reported by an adapter — it is
+  // made here, out of the whole of what a tool printed — but it arrives through the same door.
+  if (said.said === 'thinking' || said.said === 'doing' || said.said === 'output') {
+    return { now: [said] }
+  }
   if (said.said === 'text') return { written: { role: 'assistant', content: { text: said.text } } }
   if (said.said === 'trouble') {
     return { written: { role: 'activity', content: { activityType: 'trouble', text: said.text } } }
   }
 
-  // Everything but the tag, so a tool that never said how it went stays a tool that never said.
-  const { said: _kind, ...what } = said
-  return { written: { role: 'tool', content: what } }
+  // Everything but the tag and the live-only output, so a tool that never said how it went stays
+  // a tool that never said.
+  const { said: _kind, output, ...what } = said
+
+  return { now: pieces(output), written: { role: 'tool', content: what } }
+}
+
+/**
+ * A command's output, cut into pieces small enough to cross `NOTIFY`.
+ *
+ * Nothing when there is none, and nothing when it is no longer than the excerpt already going
+ * into the transcript — pushing it then would be the same words arriving twice, which is the one
+ * thing {@link where} exists to prevent.
+ */
+function pieces(output: string | undefined): readonly Unkept[] {
+  if (output === undefined || output.length <= EXCERPT) return []
+
+  const said: Unkept[] = []
+  for (let at = 0; at < output.length; at += PIECE) {
+    said.push({ said: 'output', text: output.slice(at, at + PIECE) })
+  }
+
+  return said
 }
 
 /**

@@ -18,6 +18,7 @@ export function signedIn(who: Partial<Me> = {}) {
     HttpResponse.json<Me>({
       displayName: 'mina@example.com',
       credentials: [],
+      startedWith: 'email',
       spaces: [],
       ...who,
     }),

@@ -18,7 +18,7 @@ import { newUserCode } from '../machine/user-code.ts'
 import { connect, type Database } from './connection.ts'
 import { handOffTo, machineSays, openConversation, sayTo } from './conversation.ts'
 import { approveEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, collectEnrolment } from './machine.ts'
+import { checkIn, collectEnrolment, removeMachine } from './machine.ts'
 import { createSpace } from './space.ts'
 import {
   handOver,
@@ -30,7 +30,7 @@ import {
   wakeWhoseTimeHasCome,
   writesOutput,
 } from './task.ts'
-import { takeOne } from './turn.ts'
+import { forgetStranded, openTurn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
 
 const env = loadEnv()
@@ -125,6 +125,46 @@ async function opened(machineId = MACHINE): Promise<string> {
 async function asks(conversationId: string, key: string, text: string): Promise<void> {
   const said = await sayTo(db, { conversationId, spaceId: SPACE, key }, { text })
   if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
+}
+
+/** The same person, a second Space, a machine of theirs in it, and work handed over there. */
+async function inAnotherSpace(): Promise<string> {
+  const name = `Beta ${RUN.slice(0, 8)}`
+  const made = await createSpace(db, {
+    requestKey: `beta-${RUN}`,
+    userId: PERSON,
+    displayName: name,
+    slug: normalizeSlug(name) as Slug,
+  })
+  if (made.kind !== 'created') throw new Error('the fixture could not make a second Space')
+
+  // Their machine is reachable from there without being connected again — which is the whole
+  // reason a person can have work waiting in two Spaces at once.
+  const opened = await openConversation(db, {
+    spaceId: made.space.id,
+    machineId: MACHINE,
+    agentKind: 'claude-code',
+  })
+  if (opened.kind !== 'opened') throw new Error('the fixture could not open a conversation there')
+
+  const said = await sayTo(
+    db,
+    { conversationId: opened.conversationId, spaceId: made.space.id, key: `beta-ask-${RUN}` },
+    { text: 'take it from here' },
+  )
+  if (said.kind !== 'said') throw new Error('the fixture could not ask there')
+
+  const over = await handOver(db, {
+    conversationId: opened.conversationId,
+    spaceId: made.space.id,
+    key: `beta-over-${RUN}`,
+    userId: PERSON,
+    goal: 'watch the numbers',
+  })
+  if (over.kind !== 'handed-over') throw new Error('the fixture could not hand over there')
+  await takeOne(db, MACHINE)
+
+  return opened.conversationId
 }
 
 /** Handed over, and the first turn taken — where every one of these tests starts. */
@@ -512,7 +552,116 @@ describe('handing a piece of it to somebody else', () => {
   })
 })
 
+describe('a report that arrives twice', () => {
+  it('does not undo the answer a person gave between the two', async () => {
+    // The response to the first was lost, so the agent sends it again. In between, a person read
+    // the question in their Inbox and answered it. Replayed, the work goes back to waiting with
+    // the answer already given and nobody holding it — and nothing anywhere says so.
+    const conversation = await handedOver()
+    await nextTurn()
+    const asked = { conversationId: conversation, machineId: MACHINE, key: 'turn-1/ask' }
+    await stopsWorking(db, asked, { state: 'wait', question: 'which database?' })
+    await asks(conversation, 'answer-1', 'the staging one')
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+
+    await stopsWorking(db, asked, { state: 'wait', question: 'which database?' })
+
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+  })
+
+  it('does not end the turn that is running now with an ending meant for an older one', async () => {
+    // Same lost response, on the plainest path there is. The key names the turn it was written
+    // for; what `openTurn` finds is whichever turn is open — by then, a different question that
+    // is still being answered.
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'where does the timeout live?')
+    await nextTurn()
+    await ends(conversation, 'turn-1/end')
+    await asks(conversation, 'turn-2', 'and the retry count?')
+    const second = await nextTurn()
+    expect(second).toBe(conversation)
+
+    await ends(conversation, 'turn-1/end')
+
+    // Still open: the machine is answering it, and nothing about the retry says otherwise.
+    expect(
+      await db.transaction().execute(async (tx) => openTurn(tx, conversation)),
+    ).not.toBeUndefined()
+  })
+})
+
+describe('a machine that was taken away mid-flight', () => {
+  it('cannot move the work, however far into the request it had got', async () => {
+    // Its credential is refused at the door from the next call on. This is the call already
+    // inside: the middleware let it through before the removal committed, and what it does next
+    // is a write with a credential its owner has just taken away.
+    const conversation = await handedOver()
+    await nextTurn()
+    await removeMachine(db, { machine: MACHINE, owner: PERSON })
+
+    const said = await stopsWorking(
+      db,
+      { conversationId: conversation, machineId: MACHINE, key: 'gone/done' },
+      { state: 'done', ending: 'done', said: 'all finished' },
+    )
+
+    expect(said).toEqual({ kind: 'nothing-to-report' })
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+  })
+})
+
+describe('a turn nobody was watching', () => {
+  it('stops the work as well, or the next look hands it straight back out', async () => {
+    // `unknown` means the turn may already have done everything it was asked. Left `working`, the
+    // very next look gives the agent another turn and it does that work again — the one thing
+    // this state exists to prevent.
+    const conversation = await handedOver()
+    await nextTurn()
+
+    await forgetStranded(db, MACHINE)
+
+    expect((await underwayIn(db, conversation))?.task.state).toBe('wait')
+    expect(await nextTurn()).toBeUndefined()
+  })
+})
+
 describe('taking it back', () => {
+  it('reaches all the way down, not just the children it can see', async () => {
+    // The recursion is the whole point and one level does not test it: a child that handed work
+    // on to a third machine leaves a grandchild changing files in a repository nobody is watching
+    // and nobody wants — exactly what `prd.md` 04 ⑪ says take-back is for.
+    const conversation = await handedOver()
+    await nextTurn()
+    const second = await attached('build-server-1')
+    const third = await attached('build-server-2')
+
+    const child = await handOffTo(db, {
+      conversationId: conversation,
+      machineId: MACHINE,
+      key: 'off-child',
+      machine: 'build-server-1',
+      agentKind: 'codex',
+      goal: 'add an integration test',
+    })
+    if (child.kind !== 'handed-off') throw new Error('could not hand off')
+    await takeOne(db, second)
+    const grandchild = await handOffTo(db, {
+      conversationId: child.conversationId,
+      machineId: second,
+      key: 'off-grandchild',
+      machine: 'build-server-2',
+      agentKind: 'codex',
+      goal: 'run it on the big box',
+    })
+    if (grandchild.kind !== 'handed-off') throw new Error('could not hand off again')
+
+    const back = await takeBack(db, { conversationId: conversation, spaceId: SPACE, key: 'back-2' })
+
+    expect(back).toEqual({ kind: 'taken-back', alsoStopped: 2 })
+    expect(await underwayIn(db, grandchild.conversationId)).toBeUndefined()
+    expect(await nextTurn(third)).toBeUndefined()
+  })
+
   it('takes back what it handed off as well, so nothing is left running unwatched', async () => {
     const conversation = await handedOver()
     await nextTurn()
@@ -635,6 +784,23 @@ describe('putting a goal in front of somebody', () => {
 })
 
 describe('the Inbox', () => {
+  it('really crosses Spaces, and not only in a double that says so', async () => {
+    // The one brake this product has. A piece of work waiting on somebody that is not on this
+    // list is one that will never move again — so "every Space" has to be true of the query, not
+    // of a fixture that only ever built one Space to look in.
+    const here = await handedOver('make the timeout configurable')
+    await nextTurn()
+    await stopsWorking(db, reporting(here, 'asked-here'), asking('env var, or a field?'))
+
+    const elsewhere = await inAnotherSpace()
+    await stopsWorking(db, reporting(elsewhere, 'asked-there'), asking('which region?'))
+
+    const waiting = await waitingOn(db, PERSON)
+    expect(waiting.map((one) => one.conversationId).sort()).toEqual([here, elsewhere].sort())
+    // And they say which Space each one is in, or the list cannot be clicked through.
+    expect(new Set(waiting.map((one) => one.spaceSlug)).size).toBe(2)
+  })
+
   it('has what stopped on this person, with what it asked', async () => {
     const conversation = await handedOver('make the timeout configurable')
     await nextTurn()

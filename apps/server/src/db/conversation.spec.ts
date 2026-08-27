@@ -526,23 +526,24 @@ describe('a turn nobody was watching', () => {
     expect(await forgetStranded(db, MACHINE)).toBe(0)
   })
 
-  it('closes several at once, because two instances can hand out two before either commits', async () => {
-    // One at a time is the rule, and `takeOne` keeps it — so the only way a machine ends up
-    // holding two is two instances asking at the same instant, each seeing nothing open. Rare,
-    // and it still must not leave a conversation reading as working for ever. Written straight
-    // into the table because that race is the only thing that produces it.
+  it('cannot be asked to close two on one machine, because there cannot be two', async () => {
+    // One at a time, decided by the database rather than by whoever asks. Two instances can both
+    // read "nothing open on this machine" before either commits — no primary key stops that, and
+    // no test can, since it depends on which statement commits first. The unique partial index
+    // can, and this is it.
     const first = await opened()
     const second = await opened()
-    for (const one of [first, second]) {
-      const said = await asks(one, 'turn-1', 'take your time')
-      if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
-      await db
-        .insertInto('turns')
-        .values({ conversation_id: one, after_seq: 1, machine_id: MACHINE })
-        .execute()
-    }
+    await running(first, 'turn-1', 'take your time')
 
-    expect(await forgetStranded(db, MACHINE)).toBe(2)
+    const said = await asks(second, 'turn-1', 'and this one')
+    if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
+
+    await expect(
+      db
+        .insertInto('turns')
+        .values({ conversation_id: second, after_seq: 1, machine_id: MACHINE })
+        .execute(),
+    ).rejects.toThrow(/turns_one_open_per_machine/u)
   })
 })
 
@@ -586,3 +587,20 @@ function contentFor(role: string) {
   if (role === 'activity') return { activityType: 'trouble', text: 'something' }
   return { text: 'something' }
 }
+
+describe('a turn and the conversation it is on', () => {
+  it('cannot name a machine the conversation is not on, however it is written', async () => {
+    // `turns.machine_id` is the same fact as `conversations.machine_id`, kept twice because a
+    // partial index on it answers "is this machine busy" without touching conversations. Two
+    // copies are only safe while they cannot disagree, and that is this constraint's whole job.
+    const conversation = await opened()
+    const somebodyElses = await attached()
+
+    await expect(
+      db
+        .insertInto('turns')
+        .values({ conversation_id: conversation, after_seq: 1, machine_id: somebodyElses })
+        .execute(),
+    ).rejects.toThrow(/violates foreign key constraint/u)
+  })
+})

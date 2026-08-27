@@ -38,7 +38,7 @@ function open(at: string) {
 describe('your name', () => {
   it('starts as what is saved, and follows it without being pushed', async () => {
     server.use(signedIn())
-    open('/')
+    open('/settings')
 
     // The field follows what is saved without an effect pushing it there, so the value arrives
     // with the query rather than a render later.
@@ -55,7 +55,7 @@ describe('your name', () => {
         return new HttpResponse(null, { status: 204 })
       }),
     )
-    open('/')
+    open('/settings')
 
     const field = await screen.findByDisplayValue(EMAIL)
     await userEvent.clear(field)
@@ -77,12 +77,12 @@ describe('leaving', () => {
       }),
       http.get('*/auth/credentials', () => HttpResponse.json({ offered: ['email'] })),
     )
-    open('/')
+    open('/settings')
 
     await userEvent.click(await screen.findByRole('button', { name: /sign out/i }))
 
     // A cookie the page forgets is a session the server would still honour.
     expect(revoked).toBe(true)
-    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    expect(await screen.findByRole('form', { name: /^sign in$/i })).toBeDefined()
   })
 })

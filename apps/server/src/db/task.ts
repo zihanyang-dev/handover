@@ -263,11 +263,17 @@ async function onItsOwn(
   change: (tx: Tx, conversationId: string) => Promise<Reported>,
 ): Promise<Reported> {
   return db.transaction().execute(async (tx) => {
+    // The machine is joined under the lock, not merely named: the comment above is only true if
+    // `removeMachine` cannot commit between this read and the write. Without the join a machine
+    // somebody has just taken away could still move a piece of work, overwrite an output, or open
+    // one on a third machine — with its credential already refused everywhere else.
     const conversation = await tx
       .selectFrom('conversations')
-      .select('id')
-      .where('id', '=', reporting.conversationId)
-      .where('machine_id', '=', reporting.machineId)
+      .innerJoin('machines', 'machines.id', 'conversations.machine_id')
+      .select('conversations.id')
+      .where('conversations.id', '=', reporting.conversationId)
+      .where('conversations.machine_id', '=', reporting.machineId)
+      .where('machines.removed_at', 'is', null)
       .forUpdate()
       .executeTakeFirst()
 
@@ -325,8 +331,14 @@ export async function stopsWorking(
   how: Stopping,
 ): Promise<Reported> {
   return reports(db, reporting, async (tx, task) => {
+    // The name decides, and it decides *first*. A report that already landed must move nothing a
+    // second time: between the two attempts a person can have answered, and replaying the
+    // question would put the work back in their Inbox with the answer already given and nobody
+    // holding it. The retry is told it was noted, because it was.
+    const first = await note(tx, task.conversationId, reporting.key, said(how))
+    if (!first) return { kind: 'noted' }
+
     await moveTo(tx, task, how.state, how.state === 'sleep' ? how.until : null)
-    await note(tx, task.conversationId, reporting.key, said(how))
     await tellWhoeverWasWaiting(tx, task, how)
 
     return { kind: 'noted' }

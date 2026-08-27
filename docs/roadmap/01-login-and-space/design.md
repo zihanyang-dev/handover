@@ -44,7 +44,7 @@ credentials
 email_codes
   id · email · purpose(sign-in|attach) · code_hash · expires_at · attempts
   closed_at + closed_reason(consumed|superseded)   两个一起有,或一起没有
-  request_key 唯一           ← 发码的幂等键
+  唯一(request_key, email, purpose)   ← 发码的幂等键
   唯一(email, purpose) where closed_at is null     ← 一个地址每种用途只有一个活着
   purpose 是这封信的用途,不是它的强度:登录的码不能拿去绑定,反过来也不行
   这张表不跟着 credentials 泛化:它记的是"往这个地址发过一封信",而发信是邮箱特有的 ——
@@ -62,8 +62,12 @@ spaces
 memberships
   space_id · user_id · created_at
   唯一(space_id, user_id)
-  request_key 唯一           ← 建 Space 的幂等键,挂在成员关系上
+  唯一(user_id, request_key)  ← 建 Space 的幂等键,挂在成员关系上
 ```
+
+**幂等键从来不是全局唯一的,它只在一个人自己的范围里唯一。** 这两条最早写的确实是单列唯一,
+而那是错的:key 是客户端生成的,两个人同时用 `retry-1`,后来的那个会撞上前一个的行 —— 建 Space
+那次会直接读到别人的 Space。所以它总是和「谁问的」一起构成键。
 
 **不建**:权限字段(没有消费者)· 最近访问 · 断开的记录 · `credentials.is_primary`
 (按 `verified_at` 取最早的就够,一个能和事实不一致的状态没有理由存)。
@@ -193,14 +197,14 @@ GET   /auth/credentials                  → 这个部署能接受哪几种凭�
 POST  /auth/{provider}/start             → { url },浏览器自己去
 GET   /auth/{provider}/callback          → 建会话,跳回 WEB_ORIGIN + next
 POST  /auth/email-codes                   幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
-POST  /auth/email-codes/{id}/answer       → 建会话
+POST  /browser/sessions                   码 id + 码 → 建会话。码不是被造的东西,会话才是
 DELETE /browser/sessions/current
 
-GET   /me                                → User · 怎么进来 · 他的 Space 列表
+GET   /me                                → User · 怎么进来 · 最早那一条 · 他的 Space 列表
 PATCH /me                                → 改 display_name
 POST  /me/credentials/{provider}/start     → { url },连一个提供商到当前账号
 POST  /me/credentials/email-codes              幂等键;→ 码 id · 何时过期 · 何时可重发 · 几位
-POST  /me/credentials/email-codes/{id}/answer  → 把这个地址加成当前账号的一条路
+POST  /me/credentials                          码 id + 码 → 把这个地址加成一条路
 POST  /spaces                            幂等键;→ Space,或带建议的冲突
 GET   /spaces/{slug}                     → Space,或「不可用」
 ```

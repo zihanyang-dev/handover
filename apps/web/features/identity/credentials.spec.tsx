@@ -50,7 +50,7 @@ async function panel() {
 describe('how you get in', () => {
   it('gives every way one of two states and nothing else', async () => {
     server.use(signedIn({ credentials: ALL }))
-    open('/')
+    open('/settings')
 
     const ways = await panel()
 
@@ -61,7 +61,7 @@ describe('how you get in', () => {
 
   it('says who can get in, beside the list rather than in a settings page', async () => {
     server.use(signedIn({ credentials: ALL }))
-    open('/')
+    open('/settings')
 
     // The direct consequence of one address meaning one account: whoever reads that inbox is in.
     expect(
@@ -71,7 +71,7 @@ describe('how you get in', () => {
 
   it('leaves out a provider this deployment has no keys for', async () => {
     server.use(signedIn({ credentials: [{ kind: 'email', address: EMAIL, state: 'ready' }] }))
-    open('/')
+    open('/settings')
 
     const ways = await panel()
 
@@ -91,7 +91,7 @@ describe('how you get in', () => {
         ],
       }),
     )
-    open('/')
+    open('/settings')
 
     const ways = await panel()
 
@@ -108,7 +108,7 @@ describe('how you get in', () => {
         return HttpResponse.json({ url: 'https://provider.example/authorize' })
       }),
     )
-    open('/')
+    open('/settings')
 
     await userEvent.click(await (await panel()).findByRole('button', { name: /^connect$/i }))
 

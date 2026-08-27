@@ -341,8 +341,10 @@ function Happened({ at, what }: { readonly at: number; readonly what: Activity }
 /**
  * What is happening right now, which is not what the transcript will keep.
  *
- * Said out loud rather than left to be discovered: the thinking on this list is gone once the turn
+ * Said out loud rather than left to be discovered: what is on this list is gone once the turn
  * settles, and a person who came back looking for it would otherwise think something was lost.
+ * `prd.md` 03 ⑦ is a table of exactly that: thinking and a command's full output are here while it
+ * runs, and afterwards there is a first paragraph and nothing.
  */
 function Watching({ slug, id }: { readonly slug: string; readonly id: string }) {
   const moments = useWatching(slug, id)
@@ -354,10 +356,10 @@ function Watching({ slug, id }: { readonly slug: string; readonly id: string }) 
         // Nothing here has a name of its own: it is a stream, and its place in it is what it is.
         // Nothing is ever removed or reordered, so the index is stable while it matters.
         <li key={at} className="note">
-          {said(moment)}
+          {moment.said === 'output' ? <pre className="output">{moment.text}</pre> : said(moment)}
         </li>
       ))}
-      <li className="note">Thinking is shown here and never kept.</li>
+      <li className="note">Thinking and full output are shown here and never kept.</li>
     </ul>
   )
 }
@@ -372,6 +374,8 @@ function said(moment: Moment): string {
   if (moment.said === 'thinking') {
     return moment.text.trim() === '' ? 'Thinking…' : `Thinking — ${moment.text}`
   }
+  // Rendered as its own block rather than a line — see the caller. Never reached.
+  if (moment.said === 'output') return moment.text
 
   return `${moment.verb === '' ? moment.name : moment.verb} ${moment.arg}`.trim()
 }

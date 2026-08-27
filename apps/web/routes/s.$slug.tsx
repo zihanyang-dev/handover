@@ -1,30 +1,42 @@
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { onlySignedIn } from '../features/identity/only-signed-in.ts'
+import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { api } from '../api.ts'
-import { SignOut } from '../features/identity/sign-out.tsx'
 import { Conversations } from '../features/conversations/conversations.tsx'
-import { Machines } from '../features/machines/machines.tsx'
+import { onlySignedIn } from '../features/identity/only-signed-in.ts'
+import { Home } from '../features/spaces/home.tsx'
 
+/**
+ * The frame every screen inside a Space is shown in, and the one place it is mounted.
+ *
+ * A layout rather than something each screen renders: mounted twice, opening a conversation
+ * unmounts the frame and puts it back, and the sidebar somebody had collapsed or dragged to a
+ * width they liked is new again. Whatever is inside comes through the `Outlet`.
+ */
 function Screen() {
   const { slug } = Route.useParams()
   const space = useQuery({
     queryKey: ['space', slug],
     queryFn: async () => {
-      const { data } = await api.GET('/spaces/{slug}', { params: { path: { slug } } })
-      return data ?? null
+      // A 404 is "not there, or not yours" — one answer on purpose, so an address cannot be used
+      // to find out which Spaces exist. Anything else is a read that failed, and saying "not
+      // available" to that sends somebody looking for a Space that is theirs and is there.
+      const { data, error, response } = await api.GET('/spaces/{slug}', {
+        params: { path: { slug } },
+      })
+      if (response.status === 404) return null
+      if (data === undefined) throw new Error(error.reason)
+
+      return data
     },
   })
 
-  // Nothing is known yet. Rendering the Space now would show its frame with no name in it, and
-  // for a moment a Space that turns out not to exist looks like one that does.
+  // Nothing is known yet. Rendering the frame now would show it with no name in it, and for a
+  // moment a Space that turns out not to exist looks like one that does.
   if (space.isPending) {
     return (
-      <div className="page">
-        <section className="panel">
-          <p className="empty">Looking…</p>
-        </section>
-      </div>
+      <main className="home-state">
+        <p>Looking…</p>
+      </main>
     )
   }
 
@@ -32,50 +44,34 @@ function Screen() {
   // somebody looking for a Space that is theirs and is there, over a moment of no network.
   if (space.isError) {
     return (
-      <div className="page">
-        <section className="panel">
-          <p className="empty">Could not read this Space. Try again.</p>
-        </section>
-      </div>
+      <main className="home-state">
+        <div>
+          <h1>Could not read this Space</h1>
+          <p className="empty">Try again in a moment.</p>
+        </div>
+      </main>
     )
   }
 
-  // Not there and not yours are the same answer, so this page cannot tell them apart either.
   if (space.data === null) {
     return (
-      <div className="page">
-        <section className="panel">
-          <h2>This Space is not available</h2>
-          <p className="note" style={{ marginTop: '0.5rem' }}>
-            <Link to="/">Back to your Spaces</Link>
-          </p>
-        </section>
-      </div>
+      <main className="home-state">
+        <div>
+          <h1>This Space is not available</h1>
+          <Link to="/onboarding">Back to your Spaces</Link>
+        </div>
+      </main>
     )
   }
 
   return (
-    <div className="page">
-      <div className="row">
-        <span className="row-name">
-          <strong>{space.data.displayName}</strong>
-        </span>
-        <Link className="row-where" to="/">
-          All Spaces
-        </Link>
-      </div>
-      <Machines slug={slug} />
-      <Conversations slug={slug} />
-      {/* Reachable from in here, not only from the Spaces list: somebody who came straight to a
-          Space by its address should not have to go somewhere else to leave. */}
-      <SignOut />
-    </div>
+    <Home space={space.data} aside={<Conversations slug={slug} />}>
+      <Outlet />
+    </Home>
   )
 }
 
 export const Route = createFileRoute('/s/$slug')({
-  // Without this, nobody signed in reads as a Space that is not there — and somebody whose session
-  // ran out is told their Space is gone rather than being asked to sign in again.
   beforeLoad: async ({ location }) => onlySignedIn(location),
   component: Screen,
 })

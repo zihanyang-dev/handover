@@ -73,6 +73,17 @@ describe('choosing a way in', () => {
     expect(said.compareDocumentPosition(google)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
+  it('labels the form without repeating the obvious task on the page', async () => {
+    server.use(offering('google'))
+    open('/sign-in')
+
+    const form = await screen.findByRole('form', { name: /^sign in$/i })
+    const google = await screen.findByRole('button', { name: /continue with google/i })
+
+    expect(form.contains(google)).toBe(true)
+    expect(screen.queryByRole('heading', { name: /^sign in$/i })).toBeNull()
+  })
+
   it('offers only what this deployment has keys for', async () => {
     server.use(offering('google'))
     open('/sign-in')
@@ -95,7 +106,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     // The real route tree, so this is the screen somebody would actually arrive at.
     expect(await screen.findByText(/check your email/i)).toBeDefined()
@@ -112,7 +123,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
     // Staying put is the point: the code screen would be a wait for a letter that never comes.
@@ -143,12 +154,12 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await waitFor(() => {
       expect(bodies).toHaveLength(1)
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByText(/check your email/i)
 
     expect(bodies).toHaveLength(2)
@@ -165,7 +176,7 @@ describe('choosing a way in', () => {
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
-    await userEvent.click(screen.getByRole('button', { name: /send a code/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/a code just went out/i)).toBeDefined()
   })

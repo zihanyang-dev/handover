@@ -81,8 +81,34 @@ describe('handing the code back', () => {
     await waitFor(() => {
       expect(handed).toEqual({ codeId: CHALLENGE, code: '493018' })
     })
-    // The real route tree, so this is where somebody actually ends up.
-    expect(await screen.findByText(/your spaces/i)).toBeDefined()
+    // The real route tree, so this is where somebody actually ends up: onboarding, the first
+    // step asking for a Space's name.
+    expect(await screen.findByRole('heading', { name: /name your workspace/i })).toBeDefined()
+  })
+
+  it('will not send five of them, however somebody asks it to', async () => {
+    // The sixth digit sends it, so anything else that can send is a way to spend an attempt on a
+    // code nobody finished typing — and to be told it is wrong when it was only unfinished.
+    let handed = false
+    server.use(
+      http.post('*/browser/sessions', () => {
+        handed = true
+        return HttpResponse.json({ userId: CHALLENGE }, { status: 200 })
+      }),
+    )
+    open(codeScreen())
+
+    await typeCode('49301')
+    await userEvent.keyboard('{Enter}')
+
+    // Asserted before anything else is looked at, so a failure here says "it sent five" rather
+    // than "a button had different words on it".
+    expect(handed).toBe(false)
+
+    const press = await screen.findByRole('button', { name: /continue|signing in/i })
+    expect(press.hasAttribute('disabled')).toBe(true)
+    await userEvent.click(press)
+    expect(handed).toBe(false)
   })
 
   it('does not submit before there are six', async () => {
@@ -109,7 +135,7 @@ describe('handing the code back', () => {
   it('makes somebody wait before another code, and says how long', async () => {
     open(codeScreen())
 
-    const again = await screen.findByRole('button', { name: /send another in \d+s/i })
+    const again = await screen.findByRole('button', { name: /resend in \d+s/i })
 
     expect(again.hasAttribute('disabled')).toBe(true)
   })
@@ -132,7 +158,7 @@ describe('asking for another one', () => {
     )
     open(codeScreen('0'))
 
-    await userEvent.click(await screen.findByRole('button', { name: /send another/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /resend/i }))
 
     expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
   })
@@ -182,12 +208,15 @@ describe('each way it can fail', () => {
       ),
       http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
       http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
+      http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
     )
     open(`${codeScreen()}&next=%2Fs%2Facme`)
 
     await typeCode('493018')
 
-    expect(await screen.findByText('Acme')).toBeDefined()
+    // Named in the frame twice — the workspace pill and the breadcrumb — which is the Space
+    // page and not the front door, and that is the whole of what this test is about.
+    expect(await screen.findAllByText('Acme')).not.toHaveLength(0)
   })
 
   it('refuses to be sent to somebody else s site by its own address bar', async () => {
@@ -199,7 +228,8 @@ describe('each way it can fail', () => {
 
     await typeCode('493018')
 
-    expect(await screen.findByText(/your spaces/i)).toBeDefined()
+    // The front door, which is where somebody picks a Space — not the address they were sent to.
+    expect(await screen.findByText(/name your workspace/i)).toBeDefined()
   })
 
   it('sends a half-written address back to where codes come from', async () => {
@@ -208,6 +238,6 @@ describe('each way it can fail', () => {
     server.use(signedIn())
     open('/sign-in/code?email=mina%40example.com')
 
-    expect(await screen.findByText(/sign in or sign up/i)).toBeDefined()
+    expect(await screen.findByRole('form', { name: /sign in/i })).toBeDefined()
   })
 })

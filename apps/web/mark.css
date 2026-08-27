@@ -1,0 +1,167 @@
+/*
+ * The mark's motion. One class per state (mark.tsx says which is on); every state moves the
+ * character, face and pupils, because a face that only breathes reads as broken the first
+ * time it is asked to work.
+ *
+ * Everything transforms around its own fill-box center, so the artwork can be re-cropped
+ * (it was — see mark.tsx) without the pivots moving.
+ */
+
+.mark {
+  display: block;
+  /* The character tilts and pops past its crop by a few pixels in active states. */
+  overflow: visible;
+}
+
+.mark-character,
+.mark-face,
+.mark-pupils {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* idle — breathing, blinking, looking around */
+.mark-idle .mark-character {
+  animation: mark-breathe 4s ease-in-out infinite;
+}
+.mark-idle .mark-face {
+  animation: mark-blink 5.8s ease-in-out infinite;
+}
+.mark-idle .mark-pupils {
+  animation: mark-idle-gaze 7.2s ease-in-out infinite;
+}
+
+/* thinking — head tilted, eyes up */
+.mark-thinking .mark-character {
+  animation: mark-think-tilt 2.2s ease-in-out infinite;
+}
+.mark-thinking .mark-pupils {
+  animation: mark-thinking-gaze 2.2s ease-in-out infinite;
+}
+
+/* working — a steady forward pulse, eyes down at the work */
+.mark-working .mark-character {
+  animation: mark-work-pulse 1.05s ease-in-out infinite alternate;
+}
+.mark-working .mark-pupils {
+  animation: mark-working-gaze 1.8s ease-in-out infinite;
+}
+
+/* success — one pop, then still. Runs once: it is an answer, not a mood. */
+.mark-success .mark-character {
+  animation: mark-success-pop 1.1s cubic-bezier(0.2, 0.9, 0.25, 1) 1 both;
+}
+.mark-success .mark-pupils {
+  animation: mark-success-gaze 1.1s ease-out 1 both;
+}
+
+@keyframes mark-breathe {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    transform: scale(1.014, 0.989) translateY(2px);
+  }
+}
+
+@keyframes mark-blink {
+  0%,
+  46%,
+  49%,
+  100% {
+    transform: scaleY(1);
+  }
+  47.5% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes mark-idle-gaze {
+  0%,
+  18%,
+  100% {
+    transform: translate(0);
+  }
+  30%,
+  42% {
+    transform: translate(7px, -2px);
+  }
+  54%,
+  68% {
+    transform: translate(-5px, 2px);
+  }
+  80% {
+    transform: translate(0);
+  }
+}
+
+@keyframes mark-think-tilt {
+  0%,
+  100% {
+    transform: rotate(-0.8deg) translateY(0);
+  }
+  50% {
+    transform: rotate(0.8deg) translateY(2px);
+  }
+}
+
+@keyframes mark-thinking-gaze {
+  0%,
+  100% {
+    transform: translate(5px, -5px);
+  }
+  50% {
+    transform: translate(8px, -7px);
+  }
+}
+
+@keyframes mark-work-pulse {
+  to {
+    transform: scale(0.99, 1.01) rotate(0.45deg);
+  }
+}
+
+@keyframes mark-working-gaze {
+  0%,
+  100% {
+    transform: translate(-5px, 4px);
+  }
+  50% {
+    transform: translate(6px, 4px);
+  }
+}
+
+@keyframes mark-success-pop {
+  0% {
+    transform: scale(1);
+  }
+  28% {
+    transform: scale(0.94, 1.06);
+  }
+  48% {
+    transform: scale(1.055, 0.945) translateY(-7px);
+  }
+  72% {
+    transform: scale(0.99, 1.01);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes mark-success-gaze {
+  0%,
+  100% {
+    transform: translate(0);
+  }
+  45% {
+    transform: translate(0, -5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark * {
+    animation: none !important;
+  }
+}

@@ -25,7 +25,7 @@ export type Offering = (found: readonly Found[]) => Promise<readonly Offered[]>
 
 /**
  * Long enough for a cold binary that has to start, short enough that a machine which would
- * otherwise be perfectly usable is not held out of its Space waiting to learn something optional.
+ * otherwise be perfectly usable is not held back waiting to learn something optional.
  */
 const ANSWER_WITHIN_MS = 15_000
 

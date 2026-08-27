@@ -16,10 +16,22 @@
 import { z } from '@hono/zod-openapi'
 
 /**
- * The two things an agent reports that are never written down.
+ * How much of a command's output travels in one piece.
  *
- * The only two pushed on their own, because they are the only two with nowhere else to be.
- * Everything else an agent says goes into the transcript, and a watcher is sent to read it.
+ * Well under `NOTIFY`'s 8000 bytes once it is JSON with a name beside it, so no piece is ever the
+ * one that gets dropped for being too big.
+ */
+export const PIECE = 3000
+
+/**
+ * What an agent reports that is never written down.
+ *
+ * Two of these have nowhere else to be — what it is thinking, and that it has started something.
+ * The third is the one exception to "nothing is both", and it is the product asking for it:
+ * `prd.md` 03 ⑦ is a table where the full output of a command reads "there" while it runs and
+ * "the first paragraph" a day later. So the whole of it comes through here and the beginning of
+ * it goes into the transcript. Not the same sentence twice — one is a view, the other is the
+ * record, and they are deliberately different lengths.
  */
 export const Unkept = z
   .discriminatedUnion('said', [
@@ -30,6 +42,18 @@ export const Unkept = z
       verb: z.string().max(50),
       arg: z.string().max(2000),
     }),
+    /**
+     * What the command that just ran printed, whole, in pieces.
+     *
+     * `prd.md` 03 ⑦ is a table with one row that differs between watching and coming back: the
+     * full output of a command is there while it runs and is a first paragraph afterwards. This
+     * is the first half of that row, and it is not kept for the same reason thinking is not —
+     * nobody scrolls back through ten kilobytes of a command they watched finish.
+     *
+     * In pieces because this crosses instances through Postgres `NOTIFY`, whose payload stops at
+     * 8000 bytes. They arrive in order on one connection and belong to whatever is running now.
+     */
+    z.object({ said: z.literal('output'), text: z.string().max(PIECE) }),
   ])
   .openapi('Unkept')
 

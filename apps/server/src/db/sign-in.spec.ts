@@ -20,7 +20,7 @@ afterAll(async () => {
 })
 
 /** A fresh address per test, so no test depends on the database being empty when it starts. */
-/** Request keys are unique across the whole table, so they have to be fresh per test too. */
+/** A request key is unique per asker, so a fresh one per test keeps them out of each other's way. */
 let RUN = ''
 let EMAIL = ''
 
@@ -175,16 +175,20 @@ describe('signing in with a code', () => {
   it('dates the session by the database clock', async () => {
     await submit(await sendCode())
 
+    // Measured against the database's own `now()`, in the same statement as the row. Against
+    // `Date.now()` this compares one clock with another: two minutes of drift turns it red, and a
+    // CI box whose clocks agree keeps it green even if the expiry had been worked out here.
     const session = await db
       .selectFrom('browser_sessions')
       .innerJoin('credentials', 'credentials.user_id', 'browser_sessions.user_id')
-      .select('expires_at')
+      .select(
+        sql<number>`(extract(epoch from (expires_at - now())) / 86400)::float8`.as('daysAway'),
+      )
       .where('credentials.subject', 'like', `%${RUN}%`)
       .executeTakeFirstOrThrow()
-    const daysAway = (session.expires_at.getTime() - Date.now()) / 86_400_000
 
-    expect(daysAway).toBeGreaterThan(29)
-    expect(daysAway).toBeLessThan(31)
+    expect(session.daysAway).toBeGreaterThan(29)
+    expect(session.daysAway).toBeLessThan(31)
   })
 })
 

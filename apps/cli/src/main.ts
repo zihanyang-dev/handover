@@ -42,14 +42,14 @@ const run = promisify(execFile)
 /** What this program can be asked to do. Two levels, and the second one is `handover task`. */
 const HELP = `handover — hand a piece of work to an agent on a machine you own
 
-  handover connect        put this machine in a Space
+  handover connect        connect this machine to your account
   handover run            stay connected, and answer what comes
   handover task --help    what an agent says about the work it was handed
   handover version        which build this is
 
   --origin <url>          the deployment to connect to
-  --name <name>           what this machine is called in the Space
-  --key <key>             join without opening a browser
+  --name <name>           what this machine is called
+  --key <key>             connect without opening a browser
   --system / --user       whose service to hand this over to`
 
 if (process.argv[2] === '--help' || process.argv[2] === 'help') {
@@ -131,7 +131,7 @@ if (command === 'connect') {
 }
 
 /**
- * Makes sure this machine really is in a Space, and says what is on it.
+ * Makes sure this machine really is connected, and says what is on it.
  *
  * A file is not a connection. The credential in it can be taken away while nothing here is
  * running, and the recovery somebody is told for exactly that is this very command — so believing
@@ -185,7 +185,7 @@ async function askAndWait(origin: string): Promise<Connected> {
   })
 }
 
-/** The way in for a machine with no browser: the approving already happened, in a Space. */
+/** The way in for a machine with no browser: whoever made the key already did the approving. */
 async function useKey(origin: string, key: string): Promise<Connected> {
   return connectWithKey(apiFor(origin), origin, { key, machineName })
 }
@@ -215,7 +215,7 @@ async function sayWhatIsHere(attachment: Attachment): Promise<Reported['said']> 
 
 /** What to say about one report. Pure, so the words are one thing and the asking is another. */
 function wordsFor(reported: Reported, lookFor: readonly string[]): readonly string[] {
-  if (reported.said === 'not-ours') return ['this machine is not in that Space any more']
+  if (reported.said === 'not-ours') return ['this machine is not connected any more']
 
   const here =
     reported.found.length === 0
@@ -383,7 +383,7 @@ async function stayConnected(attachment: Attachment): Promise<void> {
     // exit as "try again", and trying again can never work — the credential is gone. Exiting 1
     // here is a service that comes back every five seconds forever to be told the same thing.
     // A machine told to leave stays gone until somebody connects it again.
-    say('this machine was taken out of its Space; connect it again to come back')
+    say('this machine was disconnected; connect it again to come back')
     process.exit(0)
   }
 

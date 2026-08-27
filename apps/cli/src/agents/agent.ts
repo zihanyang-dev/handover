@@ -7,8 +7,10 @@ import type { components } from '../../generated/api.ts'
  * the three outcomes belong to the caller — an adapter that reaches for any of them has taken
  * over a decision that is not its to make.
  *
- * Adding an agent is this file implemented once more plus a line in `known-agents.ts`. Nothing
- * in the database, the API, or the page has to know it happened.
+ * Adding an agent takes five changes, not the two this once claimed — the list lives in
+ * `docs/roadmap/03-talking-to-an-agent/design.md`, "加一个 agent 要做什么", and is not copied here
+ * because a copy is how it went back to saying two. Two of the five fail late: a new adapter runs
+ * a whole turn and is then refused at the write.
  */
 
 export type Agent = {
@@ -111,7 +113,15 @@ export type Said =
   | Unkept
   | { readonly said: 'text'; readonly text: string }
   | { readonly said: 'trouble'; readonly text: string }
-  | ({ readonly said: 'did' } & Tool)
+  /**
+   * A tool that finished, with what it printed.
+   *
+   * `excerpt` is what the transcript keeps; `output` is the whole of it, for whoever is watching
+   * right now. The two are not a copy of each other — see `prd.md` 03 ⑦, where the full output is
+   * a row that says "there" while it runs and "the first paragraph" a day later. Absent when the
+   * agent gave nothing back beyond what is already in the excerpt.
+   */
+  | ({ readonly said: 'did'; readonly output?: string } & Tool)
 
 /**
  * Why a turn ended.
@@ -133,7 +143,16 @@ export type Why =
  * adapter because it answers a question about the page, not about any agent: a person scanning a
  * conversation wants to see that a command ran and roughly what came back.
  */
-const EXCERPT = 400
+export const EXCERPT = 400
+
+/**
+ * How much of a command's output travels in one live piece.
+ *
+ * Well under `NOTIFY`'s 8000 bytes once it is JSON, so no piece is ever the one dropped for being
+ * too big. Stated here as well as in the contract because a number is not a shape: the generated
+ * types carry the schema, not its bounds.
+ */
+export const PIECE = 3000
 
 export function shorten(value: string): string {
   return value.length <= EXCERPT ? value : `${value.slice(0, EXCERPT - 1)}…`

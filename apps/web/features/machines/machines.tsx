@@ -12,11 +12,17 @@ import { Laptop } from 'react-bootstrap-icons'
 import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { agentName, type AgentKind } from '../agents.ts'
+import { useMachineKey, type Keyed } from './machine-key.tsx'
 import { useOpenConversation } from '../conversations/talking.ts'
+import { ShellCommand } from '../shell-command.tsx'
 
 function machinesIn(slug: string) {
   return {
     queryKey: ['machines', slug] as const,
+    // Somebody is looking at this page *because* they are connecting a machine on another one,
+    // and the terminal over there takes as long as it takes. Asking again is how the machine
+    // turns up by itself rather than after somebody thinks to refresh.
+    refetchInterval: 3000,
     queryFn: async () => {
       const { data, error } = await api.GET('/spaces/{slug}/machines', {
         params: { path: { slug } },
@@ -64,12 +70,10 @@ export function Machines({ slug }: { readonly slug: string }) {
 
       {machines.isPending && <p className="empty">Looking…</p>}
 
-      {machines.isSuccess && attached.length === 0 && (
-        <p className="empty">
-          Nothing can run here yet. Agents run on <strong>your</strong> machine, not on ours — run{' '}
-          <code>handover connect</code> on the one you want to use.
-        </p>
-      )}
+      {/* Where connecting a machine happens, for every Space and not only a brand new one. What
+          decides whether to say this is whether anything can run here — which is true of a Space
+          made a minute ago and of one whose only machine was just disconnected. */}
+      {machines.isSuccess && attached.length === 0 && <NothingHere />}
 
       <ul className="rows">
         {attached.map((machine) => (
@@ -194,28 +198,43 @@ function TalkTo({
 }
 
 /**
- * A key for a machine with no browser to open.
+ * A Space with nothing that can run in it, which is where connecting a machine happens.
  *
- * Generating one *is* the approving: whoever made it has already decided what the code path asks
- * a person to decide later — that the machine will be theirs. Nothing else about it differs.
+ * Every Space, not only a brand new one: what decides whether to say this is whether anything can
+ * run here, which is as true of a Space whose only machine was just disconnected. Said in the one
+ * place that knows, so nobody is walked through connecting a machine they already have.
+ */
+function NothingHere() {
+  return (
+    <div className="stack-tight">
+      <p className="empty">
+        Nothing can run here yet. Agents run on <strong>your</strong> machine, not on ours — run
+        this on the one you want to use.
+      </p>
+      <ShellCommand command="handover connect" />
+      {/* Nobody has to come back and look: the list above keeps asking, so a machine that
+          finishes connecting appears where this message was. */}
+      <p className="note">This page is watching. It will appear here.</p>
+    </div>
+  )
+}
+
+/**
+ * A key for a machine with no browser to open, asked for from here.
+ *
+ * The same key onboarding hands out, from the same place — see `machine-key.ts`. What differs is
+ * only when somebody is offered it: there, on the way in; here, when a Space already has machines
+ * and one more has no browser on it.
  */
 function MachineKey() {
-  const [key, setKey] = useState<string>()
+  const [asked, setAsked] = useState(false)
+  const key = useMachineKey(asked)
 
-  const make = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await api.POST('/me/machine-keys', {})
-      if (data === undefined) throw new Error(error.reason)
-      return data.key
-    },
-    onSuccess: setKey,
-  })
-
-  if (key !== undefined) {
+  if (asked && key.state === 'ready') {
     return (
       <div className="stack-tight" style={{ marginTop: '0.75rem' }}>
-        <p className="label">Run this on that machine, within 15 minutes</p>
-        <code className="command">handover connect --key {key}</code>
+        <p className="label">Run this on that machine, within {minutes(key.secondsLeft)}</p>
+        <ShellCommand command={key.command} />
         {/*
           Said because it is true and cannot be undone: only the hash is kept, so this is the one
           moment it can be read. Somebody who closes this without copying it needs another key,
@@ -226,19 +245,44 @@ function MachineKey() {
     )
   }
 
+  // Expired reads differently from never made: one is a command that has stopped working, and
+  // leaving it on screen invites somebody to run it and be turned away with no explanation.
+  const gone = asked && (key.state === 'expired' || key.state === 'unavailable')
+
   return (
-    <button
-      className="button button-quiet"
-      type="button"
-      style={{ marginTop: '0.75rem' }}
-      disabled={make.isPending}
-      onClick={() => {
-        make.mutate()
-      }}
-    >
-      <span className="button-label">
-        {make.isError ? 'Could not make a key. Try again.' : 'Add a machine with no browser'}
-      </span>
-    </button>
+    <>
+      {asked && key.state === 'expired' && (
+        <p className="note" style={{ marginTop: '0.75rem' }}>
+          That key can no longer connect a machine.
+        </p>
+      )}
+      <button
+        className="button button-quiet"
+        type="button"
+        style={{ marginTop: '0.75rem' }}
+        disabled={asked && key.state === 'making'}
+        onClick={() => {
+          if (gone) key.again()
+          setAsked(true)
+        }}
+      >
+        <span className="button-label">{wording(asked ? key.state : 'idle')}</span>
+      </button>
+    </>
   )
+}
+
+/** What the button says, which is a different sentence for each way it can be pressed. */
+function wording(state: Keyed['state'] | 'idle'): string {
+  if (state === 'expired') return 'Make another key'
+  if (state === 'unavailable') return 'Could not make a key. Try again.'
+
+  return 'Add a machine with no browser'
+}
+
+/** How long is left, in the words a person reads on a command they are about to run. */
+function minutes(seconds: number): string {
+  const left = Math.max(1, Math.ceil(seconds / 60))
+
+  return left === 1 ? '1 minute' : `${String(left)} minutes`
 }

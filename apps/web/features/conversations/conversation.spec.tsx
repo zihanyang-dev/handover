@@ -53,6 +53,11 @@ function transcript(
 ) {
   return [
     signedIn(),
+    // The conversation is shown in the Space's frame, so the frame's own read is answered too.
+    http.get('*/spaces/acme', () =>
+      HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+    ),
+    http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
     http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
       const after = new URL(request.url).searchParams.get('after')
       const tail = after === null ? messages : messages.filter((one) => one.seq > Number(after))
@@ -120,6 +125,10 @@ describe('reading a conversation again while it works', () => {
     const asked: (string | null)[] = []
     server.use(
       signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
       http.get('*/spaces/acme/conversations/c-1', ({ request }) => {
         const after = new URL(request.url).searchParams.get('after')
         asked.push(after)
@@ -279,6 +288,10 @@ describe('reading a conversation', () => {
   it('says the same thing about a conversation that is not there as about one that is not yours', async () => {
     server.use(
       signedIn(),
+      http.get('*/spaces/acme', () =>
+        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
+      ),
+      http.get('*/spaces/acme/conversations', () => HttpResponse.json({ conversations: [] })),
       http.get('*/spaces/acme/conversations/c-1', () =>
         HttpResponse.json({ reason: 'unavailable', recovery: 'start-over' }, { status: 404 }),
       ),
@@ -318,6 +331,25 @@ describe('watching it work', () => {
     })
 
     expect(await screen.findByText(/ran rg timeout src\//i)).toBeDefined()
+  })
+
+  it('shows the whole of what a command printed while it is still running', async () => {
+    // `prd.md` 03 ⑦ is a table with one row that differs between watching and coming back. The
+    // transcript keeps a first paragraph; this is where the rest of it exists at all.
+    server.use(...working())
+    open('/s/acme/c/c-1')
+    await screen.findByRole('button', { name: 'Stop' })
+
+    serverSends(LIVE, {
+      seen: 'moment',
+      moment: { said: 'doing', name: 'Bash', verb: 'ran', arg: 'cat big.log' },
+    })
+    // In pieces, because this crosses instances through a NOTIFY payload that stops at 8000 bytes.
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'output', text: 'line one\n' } })
+    serverSends(LIVE, { seen: 'moment', moment: { said: 'output', text: 'line two\n' } })
+
+    expect(await screen.findByText(/line one/u)).toBeDefined()
+    expect(await screen.findByText(/line two/u)).toBeDefined()
   })
 
   it('still says it is thinking when the agent keeps no readable thought', async () => {
@@ -891,7 +923,23 @@ describe('what a piece of work shows beside the conversation', () => {
   it('takes it back, and says that takes back what it handed out too', async () => {
     let asked = false
     server.use(
-      ...transcript([say(1, 'user', { text: 'go' })], 'idle', [], underway()),
+      ...transcript(
+        [say(1, 'user', { text: 'go' })],
+        'idle',
+        [],
+        underway({
+          handedOff: [
+            {
+              conversationId: 'c-2',
+              goal: 'Add an integration test',
+              state: 'working',
+              machineName: 'build-server-1',
+              agentKind: 'codex',
+              presence: { state: 'here' as const },
+            },
+          ],
+        }),
+      ),
       http.delete('*/spaces/acme/conversations/c-1/task', () => {
         asked = true
         return new HttpResponse(null, { status: 204 })
@@ -899,7 +947,11 @@ describe('what a piece of work shows beside the conversation', () => {
     )
     open('/s/acme/c/c-1')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Take it back' }))
+    // Said before it is pressed. Somebody who finds out afterwards that a second agent stopped
+    // has been told something they could have decided on.
+    expect(await screen.findByText(/also stops the one it handed out/i)).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
 
     await waitFor(() => {
       expect(asked).toBe(true)

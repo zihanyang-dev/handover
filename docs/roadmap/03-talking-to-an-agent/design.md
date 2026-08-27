@@ -86,7 +86,7 @@ adapter 是**边界**,住在常驻进程里,不是 owner。
 
 ## 数据
 
-**两张表。** 这不是我们设计的,是三家独立收敛出来的形状:
+**消息的形状是两张表。** 这不是我们设计的,是三家独立收敛出来的形状(执行的账另外一张,见 ⑥):
 
 ```
 AG-UI              一个扁平的 Message[],用 role 区分
@@ -283,15 +283,27 @@ codex 会把它传给正在跑的命令。abort 退成兜底:**只在压根没�
 { activityType: 'unknown' }
 ```
 
-所以「它还在答吗」是**派生**的:
-
-```
-最后一条不是终止 activity  +  机器在线      →  在答
-最后一条不是终止 activity  +  机器离线      →  不知道
-最后一条是终止 activity                     →  空闲
-```
-
 不存 `status`:存了就要在崩溃时去改它,而崩溃改不掉 —— 上一片不存 `machines.status` 是同一条理由。
+
+**但「它还在答吗」不是从最后一条消息读出来的,是读 `turns`。** 这一节最早写的是「最后一条不是
+终止 activity + 机器在线 = 在答」,那条派生规则**已经废弃**,原因是它对一条刚被人说出来、还没有
+任何机器领走的 user 消息会答「在答」—— 而那时候根本没有人在跑它。
+
+```
+turns(conversation_id, after_seq, machine_id, claimed_at, ended_at)
+  一行 = 一台机器领走了「这条消息之后的那一轮」
+  唯一索引 (machine_id) where ended_at is null —— 一台机器同时只有一轮
+```
+
+于是:
+
+```
+这段对话有没有开着的 turn        →  在答 / 空闲
+它的机器在线吗                   →  在答 / 不知道
+```
+
+**判断读 `turns`,不读 transcript**(`docs/review.md` 2.3)。transcript 仍然是那一轮**长什么样**的
+唯一记录 —— 两者写在同一个事务里,不是两份拷贝:一个说「现在归谁」,另一个说「当时发生了什么」。
 
 **这一步是我们自己拼的,不是照抄,所以说清楚:** AG-UI 有 `activity` 这个 role 和自由的
 `activityType`,但它实际用来装 agent 产的 UI 内容(`"PLAN"`、`"mcp-apps"`);
@@ -352,11 +364,18 @@ dsh 把同一条写死在类型上:
 我们分两条:
 
 ```
-页面上    什么都不写。没有终止 activity + 机器离线 = 显示「不知道」,纯派生
-机器回来  常驻进程发现有一轮是它自己没收尾的
-          → 先按④去读 agent 那份文件。读到了就照实收尾(done / failed),并把漏掉的补进来
-          → 文件没了、读不出来、或者那一轮在它那儿也没收尾 → 才是 unknown
+页面上    什么都不写。开着的 turn + 机器离线 = 显示「不知道」,纯派生
+机器回来  常驻进程报到时说自己刚启动 → 服务端把它名下所有开着的 turn 记成 unknown,
+          并把那件交办的事停成「在等你」
 ```
+
+**回来之后不去读 agent 那份文件。** 这一节早先写的是「先读 agent 的记录,读到了就照实收尾」——
+**那条已经废弃**,而且它和上面那句「adapter 永远说不出 unknown」自相矛盾:一次证不实的边界会被
+展示成已经证实的成功。杀掉一个驱动 agent 的进程并不会杀掉 agent,它那一轮之后做了什么,这里
+无从得知,所以只说 unknown。
+
+**`unknown` 还要把那件事停下来**,不只是收尾那一轮:留着 `working`,下一次派活立刻把它再发出去,
+而这一轮可能已经做完了它要做的事 —— 那正是 unknown 存在的意义。
 
 **先查证,查不出来才说不知道。** 直接判 `unknown` 是把举证责任反过来:
 一次崩溃里 agent 多半已经把活干完了,凭空丢掉是不诚实的。
@@ -426,10 +445,10 @@ Multica 为这件事专门加了一个字段,注释值得抄:
 ```
 succeeded   activityType = 'done'      它明确做完了这一轮
 failed      activityType = 'failed'    起不来、明确报错、被卸载。再说一遍是安全的
-unknown     activityType = 'unknown'   查证之后仍然说不清它那边做到哪了
+unknown     activityType = 'unknown'   没有人能说清它那边做到哪了
 ```
 
-`unknown` 是**查证失败之后**的结论,不是「没看见就算」—— 崩溃回来先读 agent 那份文件(决定⑧)。
+`unknown` 是**说不出口的时候**才用的词 —— adapter 能说话就说明它还活着,所以它永远说不出 unknown(决定⑧)。
 
 **SDK 报了成功而我们写库失败,那一轮是 `unknown`,不是 `succeeded`。**
 
@@ -440,16 +459,19 @@ unknown     activityType = 'unknown'   查证之后仍然说不清它那边做�
 ```
 POST   /spaces/{slug}/conversations              挑一台机器上的一个 agent → 一段对话
 GET    /spaces/{slug}/conversations              列表。在答没答是算出来的
-GET    /conversations/{id}                       对话 + 消息,按 seq
-POST   /conversations/{id}/messages              幂等键;说一句
-GET    /conversations/{id}/live                  SSE。两种:此刻在想/在跑,以及「到第 N 条了」
-POST   /machines/current/conversations/{id}/live  机器只推留不下的那两种
+GET    /spaces/{slug}/conversations/{id}         对话 + 消息,按 seq
+POST   /spaces/{slug}/conversations/{id}/messages  幂等键;说一句
+POST   /spaces/{slug}/conversations/{id}/stop      叫停,说清是哪一轮
+GET    /spaces/{slug}/conversations/{id}/live      SSE。此刻在想/在跑,以及「到第 N 条了」
 
 POST   /machines/current/poll                    (上一片)返回值里多了一件活
 POST   /machines/current/conversations/{id}/messages   机器追加一条
+POST   /machines/current/conversations/{id}/live       机器只推留不下的那两种
+PUT    /machines/current/conversations/{id}/session     agent 给这一轮起的名字,记下来
 ```
 
-`/machines/current/…` 用机器凭据,`/conversations/…` 用人的会话。**两种 401 各一个中间件**,
+`/machines/current/…` 用机器凭据,`/spaces/{slug}/…` 用人的会话 **加那道成员门** —— 对话在
+Space 里,路径就得说是哪个 Space,不然那道门没有东西可管。**两种 401 各一个中间件**,
 和上一片同一条。机器只能写它自己那段对话:`machine_id` 从凭据来,不从路径来。
 
 **契约从路由本身导出**,zod 是真相,OpenAPI 是产物。

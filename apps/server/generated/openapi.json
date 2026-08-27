@@ -187,6 +187,14 @@
               "$ref": "#/components/schemas/Credential"
             }
           },
+          "startedWith": {
+            "type": "string",
+            "enum": [
+              "email",
+              "google",
+              "github"
+            ]
+          },
           "spaces": {
             "type": "array",
             "items": {
@@ -197,6 +205,7 @@
         "required": [
           "displayName",
           "credentials",
+          "startedWith",
           "spaces"
         ]
       },
@@ -1602,6 +1611,25 @@
               "name",
               "verb",
               "arg"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "said": {
+                "type": "string",
+                "enum": [
+                  "output"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "required": [
+              "said",
+              "text"
             ]
           }
         ]

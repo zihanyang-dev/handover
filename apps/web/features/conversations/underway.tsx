@@ -41,7 +41,7 @@ export function Underway({
       <div className="panel">
         <p className="rail-goal">{underway.goal}</p>
         <p className="note">{whereItIs(underway, open.length)}</p>
-        <TakeBack slug={slug} id={id} />
+        <TakeBack slug={slug} id={id} alsoStops={open.length} />
       </div>
 
       <div className="panel">
@@ -120,21 +120,37 @@ function when(at: string | null): string {
   return at === null ? 'later' : new Date(at).toLocaleString()
 }
 
-function TakeBack({ slug, id }: { readonly slug: string; readonly id: string }) {
+function TakeBack({
+  slug,
+  id,
+  alsoStops,
+}: {
+  readonly slug: string
+  readonly id: string
+  readonly alsoStops: number
+}) {
   const back = useTakeBack(slug, id)
 
   return (
-    <button
-      className="button button-quiet"
-      type="button"
-      disabled={back.isPending}
-      onClick={() => {
-        back.mutate()
-      }}
-    >
-      {/* What it does, said before it is pressed: whatever it handed out stops as well. */}
-      <span className="button-label">Take it back</span>
-    </button>
+    <>
+      <button
+        className="button button-quiet"
+        type="button"
+        disabled={back.isPending}
+        onClick={() => {
+          back.mutate()
+        }}
+      >
+        <span className="button-label">Take it back</span>
+      </button>
+      {/* What it does, said before it is pressed rather than discovered after. Only when there is
+          something to stop: a caution about nothing teaches people to ignore cautions. */}
+      {alsoStops > 0 && (
+        <p className="note">
+          This also stops {alsoStops === 1 ? 'the one' : `the ${String(alsoStops)}`} it handed out.
+        </p>
+      )}
+    </>
   )
 }
 

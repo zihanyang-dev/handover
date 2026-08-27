@@ -2279,6 +2279,8 @@ export interface components {
         Me: {
             displayName: string;
             credentials: components["schemas"]["Credential"][];
+            /** @enum {string} */
+            startedWith: "email" | "google" | "github";
             spaces: components["schemas"]["Space"][];
         };
         Credential: {
@@ -2631,6 +2633,10 @@ export interface components {
             name: string;
             verb: string;
             arg: string;
+        } | {
+            /** @enum {string} */
+            said: "output";
+            text: string;
         };
         HandOver: {
             key: string;

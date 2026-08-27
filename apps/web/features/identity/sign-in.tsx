@@ -1,16 +1,18 @@
 /**
  * Choosing a way in.
  *
- * The sentence about one address meaning one account sits above the choice, not below it. It is
- * what decides whether somebody dares click a different button than they did last time, and
- * saying it after they have chosen is the same as not saying it.
+ * The brand names the place and the provider and email controls make the task obvious. The form
+ * keeps an accessible name without repeating a visible “Sign in” heading.
  */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState } from 'react'
-import { ExclamationCircleFill } from 'react-bootstrap-icons'
 import { api, retryKey } from '../../api.ts'
+import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
+import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
+import { Mark } from '../../mark.tsx'
+import { HANDOVER_WORDMARK } from './handover-wordmark.ts'
 import { isProvider, PROVIDERS } from './providers.tsx'
 
 const SAID: Record<string, string> = {
@@ -25,7 +27,7 @@ async function offeredKinds(): Promise<readonly string[]> {
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
-function OtherWays({ next }: { readonly next: string | undefined }) {
+function OtherWays() {
   const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
   const providers = (offered.data ?? []).filter(isProvider)
 
@@ -33,9 +35,7 @@ function OtherWays({ next }: { readonly next: string | undefined }) {
     mutationFn: async (provider: string) => {
       const { data } = await api.POST('/auth/{provider}/start', {
         params: { path: { provider } },
-        // The server puts it through `returnPath` again on the way back. Both sides check it,
-        // because by then it has been through a site neither of them controls.
-        body: { next: next ?? '/' },
+        body: { next: '/onboarding' },
       })
       // The browser goes; a page cannot read where a redirect points.
       if (data !== undefined) globalThis.location.href = data.url
@@ -46,19 +46,21 @@ function OtherWays({ next }: { readonly next: string | undefined }) {
 
   return (
     <>
-      {providers.map((provider) => (
-        <button
-          key={provider}
-          className="button button-secondary"
-          type="button"
-          onClick={() => {
-            leaveFor.mutate(provider)
-          }}
-        >
-          {PROVIDERS[provider].icon}
-          <span className="button-label">Continue with {PROVIDERS[provider].label}</span>
-        </button>
-      ))}
+      <div className="auth-ways">
+        {providers.map((provider) => (
+          <button
+            key={provider}
+            className="button button-secondary"
+            type="button"
+            onClick={() => {
+              leaveFor.mutate(provider)
+            }}
+          >
+            {PROVIDERS[provider].icon}
+            <span className="button-label">Continue with {PROVIDERS[provider].label}</span>
+          </button>
+        ))}
+      </div>
       <div className="or">or</div>
     </>
   )
@@ -74,6 +76,8 @@ export function SignIn({
 }) {
   const navigate = useNavigate()
   const [email, setEmail] = useState(initial)
+  /** A format the form itself can rule out; anything subtler is the server's to say. */
+  const [refused, setRefused] = useState(false)
   const field = useId()
 
   const askForCode = useMutation({
@@ -91,52 +95,85 @@ export function SignIn({
       }),
   })
 
+  const invalid = refused || askForCode.isError
+
   return (
-    <main className="sheet">
-      <form
-        className="card stack"
-        onSubmit={(event) => {
-          event.preventDefault()
-          askForCode.mutate(email)
-        }}
-      >
-        <div className="stack-tight">
-          <h1>Sign in or sign up</h1>
-          <p className="lede">However you sign in, the same address reaches the same account.</p>
-        </div>
+    <GradientBlur>
+      <main className="auth auth-on-gradient-blur">
+        <form
+          aria-label="Sign in"
+          className="auth-stack"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            const address = email.trim()
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+              setRefused(true)
+              return
+            }
+            askForCode.mutate(address)
+          }}
+        >
+          <div className="auth-head">
+            <div className="auth-brand">
+              <Mark size={54} state={askForCode.isPending ? 'working' : 'thinking'} />
+              <HandwritingSvg
+                path={HANDOVER_WORDMARK}
+                width={217}
+                height={50}
+                strokeWidth={1.1}
+                duration={2.2}
+                delay={0.1}
+                className="auth-wordmark"
+              />
+            </div>
+            {/* Before the buttons, not after them. `prd.md` 01 ①: whether somebody dares click a
+                different one than last time is decided by reading this — said afterwards it is
+                the same as not saying it. */}
+            <p className="lede">The same address reaches the same account, whichever way in.</p>
+          </div>
 
-        {askForCode.isError && (
-          <p className="said said-bad" role="alert">
-            <ExclamationCircleFill aria-hidden />
-            {SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.'}
-          </p>
-        )}
+          <OtherWays />
 
-        <OtherWays next={next} />
+          <div className="stack-tight">
+            <label className="label" htmlFor={field}>
+              Email address
+            </label>
+            <input
+              id={field}
+              className="field"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              aria-invalid={invalid}
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                // The red lifts as they retype; it described what they sent, not what is there.
+                setRefused(false)
+                askForCode.reset()
+              }}
+            />
+            <p className="auth-error" data-shown={invalid ? '' : undefined}>
+              {invalid
+                ? refused || askForCode.error === null
+                  ? SAID['malformed-request']
+                  : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
+                : null}
+            </p>
 
-        <div className="stack-tight">
-          <label className="label" htmlFor={field}>
-            Email address
-          </label>
-          <input
-            id={field}
-            className="field"
-            type="email"
-            name="email"
-            autoComplete="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value)
-            }}
-          />
-        </div>
-
-        <button className="button button-primary" type="submit" disabled={askForCode.isPending}>
-          <span className="button-label">{askForCode.isPending ? 'Sending…' : 'Send a code'}</span>
-        </button>
-      </form>
-    </main>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={email.trim() === '' || askForCode.isPending}
+            >
+              <span className="button-label">Continue</span>
+            </button>
+          </div>
+        </form>
+      </main>
+    </GradientBlur>
   )
 }

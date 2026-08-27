@@ -7,9 +7,9 @@
  * this, because two copies of a list of two is how one of them ends up with three.
  */
 
-import { Github, Google } from 'react-bootstrap-icons'
 import type { ReactElement } from 'react'
 import type { components } from '../../generated/api.ts'
+import { GitHubMark, GoogleMark } from './provider-marks.tsx'
 
 /** Everything a stranger can use to get in, minus the one that is not a provider. */
 export type Provider = Exclude<
@@ -19,8 +19,8 @@ export type Provider = Exclude<
 
 export const PROVIDERS: Record<Provider, { readonly label: string; readonly icon: ReactElement }> =
   {
-    google: { label: 'Google', icon: <Google aria-hidden /> },
-    github: { label: 'GitHub', icon: <Github aria-hidden /> },
+    google: { label: 'Google', icon: <GoogleMark /> },
+    github: { label: 'GitHub', icon: <GitHubMark /> },
   }
 
 export function isProvider(kind: string): kind is Provider {

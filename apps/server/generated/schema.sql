@@ -267,6 +267,14 @@ ALTER TABLE ONLY public.browser_sessions
 
 
 --
+-- Name: conversations conversations_id_machine_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_id_machine_id_key UNIQUE (id, machine_id);
+
+
+--
 -- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -304,6 +312,14 @@ ALTER TABLE ONLY public.email_codes
 
 ALTER TABLE ONLY public.email_codes
     ADD CONSTRAINT email_codes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: enrolments enrolments_id_approved_by_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_id_approved_by_key UNIQUE (id, approved_by);
 
 
 --
@@ -527,10 +543,10 @@ CREATE INDEX tasks_waiting_on_owner ON public.tasks USING btree (owner_user_id) 
 
 
 --
--- Name: turns_open_on_machine; Type: INDEX; Schema: public; Owner: -
+-- Name: turns_one_open_per_machine; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX turns_open_on_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
+CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
 
 
 --
@@ -582,11 +598,11 @@ ALTER TABLE ONLY public.enrolments
 
 
 --
--- Name: machines machines_enrolled_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: machines machines_owned_by_whoever_approved_it; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.machines
-    ADD CONSTRAINT machines_enrolled_from_fkey FOREIGN KEY (enrolled_from) REFERENCES public.enrolments(id);
+    ADD CONSTRAINT machines_owned_by_whoever_approved_it FOREIGN KEY (enrolled_from, owner_user_id) REFERENCES public.enrolments(id, approved_by);
 
 
 --
@@ -670,11 +686,11 @@ ALTER TABLE ONLY public.turns
 
 
 --
--- Name: turns turns_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: turns turns_on_its_conversations_machine; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.turns
-    ADD CONSTRAINT turns_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id);
+    ADD CONSTRAINT turns_on_its_conversations_machine FOREIGN KEY (conversation_id, machine_id) REFERENCES public.conversations(id, machine_id);
 
 
 --

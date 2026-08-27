@@ -65,6 +65,18 @@ async function approved(name = 'mina-mbp'): Promise<string> {
   return secret.hash
 }
 
+/** Somebody who did not approve this machine, and never will. */
+async function someoneElse(): Promise<string> {
+  const address = `rui-${RUN}@example.com`
+  const arrived = await db
+    .transaction()
+    .execute(async (tx) =>
+      arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+    )
+
+  return arrived.userId
+}
+
 async function attached(name = 'mina-mbp'): Promise<string> {
   const collected = await collectEnrolment(db, {
     secretHash: await approved(name),
@@ -74,6 +86,25 @@ async function attached(name = 'mina-mbp'): Promise<string> {
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
   return collected.machineId
 }
+
+describe('who a machine belongs to', () => {
+  it('cannot be somebody other than whoever approved it', async () => {
+    // Written twice on purpose — the copy on `machines` carries the index every question about a
+    // machine goes through. Two copies are only safe while they cannot disagree, and if they did,
+    // the approval would say one person while reachability, the name on the row and the Disconnect
+    // button all said another.
+    const machine = await attached()
+    const stranger = await someoneElse()
+
+    await expect(
+      db
+        .updateTable('machines')
+        .set({ owner_user_id: stranger })
+        .where('id', '=', machine)
+        .execute(),
+    ).rejects.toThrow(/violates foreign key constraint/u)
+  })
+})
 
 describe('collecting an approved enrolment', () => {
   it('turns it into a machine in that Space', async () => {

@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Handover",
+    "productType": "Developer-tool onboarding for handing work to named agents",
+    "stack": ["React", "TypeScript", "Vite", "TanStack Router", "plain CSS"]
+  },
+  "sources": {
+    "tokens": ["apps/web/style.css"],
+    "components": [
+      "apps/web/features/onboarding/onboarding.tsx",
+      "apps/web/features/onboarding/steps.tsx",
+      "apps/web/features/identity/sign-in.tsx"
+    ],
+    "assets": ["apps/web/mark.tsx", "apps/web/features/identity/handover-wordmark.ts"],
+    "instructions": ["AGENTS.md", "docs/code-style.md"]
+  },
+  "design": {
+    "colorMode": "light",
+    "colors": {
+      "background": "#ffffff",
+      "surface": "#ffffff",
+      "surfaceMuted": "#f7f7f5",
+      "ink": "#34322d",
+      "mutedInk": "#858481",
+      "border": "#e7e6e4",
+      "primary": "#0075de",
+      "primarySoft": "rgba(0, 117, 222, 0.06)",
+      "focus": "#2383e2"
+    },
+    "typography": {
+      "interface": "Outfit, NotionInter, Inter, system-ui, sans-serif",
+      "mono": "ui-monospace, SFMono-Regular, Consolas, monospace",
+      "weight": "400 body, 500 labels and titles, 600 only for compact emphasis"
+    },
+    "spacing": {
+      "controlHeight": "40px",
+      "taskGap": "20px",
+      "panelPadding": "24px desktop, 16px mobile",
+      "onboardingWidth": "progress rail 50vw (max 768px), content 480px desktop"
+    },
+    "radius": {
+      "control": "8px",
+      "row": "12px",
+      "panel": "16px"
+    },
+    "shadows": {
+      "default": "none",
+      "floating": "0 12px 36px rgba(0, 0, 0, 0.06)"
+    },
+    "motion": {
+      "duration": "180–420ms",
+      "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+      "principle": "Animate continuity and status only; never delay navigation for decoration"
+    },
+    "density": "compact"
+  },
+  "components": {
+    "installed": ["HandwritingSvg", "Mark", "Steps", "ShellCommand"],
+    "preferredPrimitives": [
+      "native button",
+      "native input",
+      "semantic form",
+      "CSS transitions",
+      "Framer Motion layout"
+    ],
+    "patterns": [
+      "clickable four-layer Space deck with a pronounced hover fan that uses one smooth Motion layout transition to become a compact, completely aligned single column",
+      "Notion public Card surface for Spaces: white, 10% black keyline, 12px radius, no top strip, and interaction-only layered shadow",
+      "always-expanded New Space trigger",
+      "Transitions.dev-style bottom sheet fixed to the viewport edge, rising from positive Y with 400ms open, 350ms close, opacity, and 2px blur",
+      "full-viewport Canvas confetti launched by the final Host action that enters the Space — independent of whether its label is Skip, Open, or Continue — persisting across immediate navigation and respecting reduced motion",
+      "Motion UI-inspired single white sheet surface with a grab handle, no header divider, a bare close control, a white editable field plus a soft-grey disabled URL field sharing the Notion focus language, and a full-width CTA",
+      "single-line copyable shell snippet as the only Notion Card in an otherwise unboxed Host setup group",
+      "read-only agent result cards with vendor SVG mark, agent name, and version after a machine arrives",
+      "live-Notion-measured 270px Home sidebar with a static 32px Workspace identity pill; the Space switcher popup is deferred",
+      "Notion sidebar micro-interactions: hover-revealed 24px collapse control, 6px-radius closed hamburger, 20ms hover and pressed fills, compound 200ms width/fade/translate motion, 12px pointer/keyboard resize rail, and hover scrollbar",
+      "two-step progress rail",
+      "disabled human-readable Space URL preview"
+    ]
+  },
+  "constraints": {
+    "must": [
+      "Keep all onboarding copy concise and task-oriented.",
+      "Use Notion's white, warm-grey surfaces, hairline borders, compact controls, and blue accent.",
+      "Keep onboarding top-anchored: a centered half-viewport progress rail above a centered 480px content column; do not add an outer task card.",
+      "Keep the existing two-step journey and top progress indicator.",
+      "New Space is always shown as a full-width labelled trigger; hover does not change its width.",
+      "The bottom sheet closes on Escape, its close control, or a pointer press anywhere outside the sheet.",
+      "Several existing Spaces start as a card deck and expand through a normal height transition into a compact aligned single column; do not deal, stagger, rotate, or use bento. One Space stays directly selectable.",
+      "Space cards use Notion's public white Card surface, 10% black keyline, 12px radius, and interaction-only layered shadow; do not add coloured accents or top strips.",
+      "The create form does not ask for or modify the person's name; it only asks for Workspace name.",
+      "Workspace URL is disabled and preserves readable Unicode.",
+      "Host defaults to `handover connect`; the key command remains an explicit fallback.",
+      "The command is the only Notion Card surface; the key fallback is a quiet text action on its label row, while Skip is an equally quiet text action with a right arrow aligned opposite the waiting status.",
+      "Regular and key setups occupy the same fixed grid cell and switch instantly without fades or reflow; title, command card, and status coordinates stay identical, and long keys scroll only inside the command text.",
+      "After a machine arrives, each discovered agent is a read-only card with its SVG mark, name, and version; agents are never links, buttons, hover targets, or tab stops, and Open Space is the only control.",
+      "Home reproduces the live Notion sidebar's measured DOM hierarchy, dimensions, computed colors, shadow, and extracted SVG paths rather than approximating them.",
+      "The Workspace icon/name pill is static until the deferred Space switcher is deliberately resumed; the sidebar never exposes a permanent Spaces list.",
+      "Home sidebar interactions reproduce Notion's measured hover, pressed, collapse/reopen width-fade-translate motion, resize, scrollbar, and focus states rather than stopping at a static screenshot.",
+      "Existing Space selection enters that Space immediately. Creating a Space advances immediately to Host."
+    ],
+    "avoid": [
+      "Do not add Tailwind or shadcn dependencies; adapt inspiration to the existing CSS system.",
+      "Do not use modal dialogs for Space creation, carousel onboarding, illustrations, coachmarks, or a four-step wizard.",
+      "Do not use heavy black terminal windows, shimmer text, decorative percentages, avatars, or excessive helper copy.",
+      "Do not create multiple equal-weight primary buttons.",
+      "Do not turn a request to reproduce a reference UI into an impressionistic restyling; inspect the live DOM, computed CSS, SVGs, and interaction hierarchy.",
+      "Do not invent user-visible nouns or change the public protocol."
+    ]
+  },
+  "decisions": [
+    "The login page is approved and must not be redesigned.",
+    "The progress rail spans half the desktop viewport while the task content remains a centered 480px column.",
+    "New Space is always a full-width labelled trigger and opens a non-modal sheet fixed to the viewport bottom; it never expands beneath the trigger or replaces the card list.",
+    "The progress rail remains visually persistent while task content changes in place.",
+    "Multiple Spaces form a compact deck with a pronounced hover fan before a normal Motion height transition restores a completely aligned single column; the deck is composition, while the card surface follows Notion's public Card component.",
+    "21st components are references, not packages to install."
+  ],
+  "evidence": [
+    { "fact": "project.instructions", "source": "AGENTS.md" },
+    { "fact": "design.tokens", "source": "apps/web/style.css" },
+    { "fact": "journey.space", "source": "apps/web/features/onboarding/onboarding.tsx" },
+    { "fact": "journey.host", "source": "apps/web/features/machines/machines.tsx" },
+    { "fact": "notion.card-surface", "source": "https://www.notion.com/templates" },
+    { "fact": "notion.sidebar-live", "source": "https://app.notion.com" }
+  ],
+  "generatedAt": "2026-08-26T09:11:52.141Z"
+}
