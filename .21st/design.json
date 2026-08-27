@@ -9,7 +9,6 @@
     "tokens": ["apps/web/style.css"],
     "components": [
       "apps/web/features/onboarding/onboarding.tsx",
-      "apps/web/features/onboarding/steps.tsx",
       "apps/web/features/identity/sign-in.tsx"
     ],
     "assets": ["apps/web/mark.tsx", "apps/web/features/identity/handover-wordmark.ts"],
@@ -56,7 +55,7 @@
     "density": "compact"
   },
   "components": {
-    "installed": ["HandwritingSvg", "Mark", "Steps", "ShellCommand"],
+    "installed": ["HandwritingSvg", "Mark", "ShellCommand"],
     "preferredPrimitives": [
       "native button",
       "native input",
@@ -69,9 +68,8 @@
       "Notion public Card surface for Spaces: white, 10% black keyline, 12px radius, no top strip, and interaction-only layered shadow",
       "always-expanded New Space trigger",
       "Transitions.dev-style bottom sheet fixed to the viewport edge, rising from positive Y with 400ms open, 350ms close, opacity, and 2px blur",
-      "full-viewport Canvas confetti launched by the final Host action that enters the Space — independent of whether its label is Skip, Open, or Continue — persisting across immediate navigation and respecting reduced motion",
       "Motion UI-inspired single white sheet surface with a grab handle, no header divider, a bare close control, a white editable field plus a soft-grey disabled URL field sharing the Notion focus language, and a full-width CTA",
-      "single-line copyable shell snippet as the only Notion Card in an otherwise unboxed Host setup group",
+      "single-line copyable shell snippet as the only Notion Card in an otherwise unboxed group",
       "read-only agent result cards with vendor SVG mark, agent name, and version after a machine arrives",
       "live-Notion-measured 270px Home sidebar with a static 32px Workspace identity pill; the Space switcher popup is deferred",
       "Notion sidebar micro-interactions: hover-revealed 24px collapse control, 6px-radius closed hamburger, 20ms hover and pressed fills, compound 200ms width/fade/translate motion, 12px pointer/keyboard resize rail, and hover scrollbar",
@@ -91,14 +89,13 @@
       "Space cards use Notion's public white Card surface, 10% black keyline, 12px radius, and interaction-only layered shadow; do not add coloured accents or top strips.",
       "The create form does not ask for or modify the person's name; it only asks for Workspace name.",
       "Workspace URL is disabled and preserves readable Unicode.",
-      "Host defaults to `handover connect`; the key command remains an explicit fallback.",
       "The command is the only Notion Card surface; the key fallback is a quiet text action on its label row, while Skip is an equally quiet text action with a right arrow aligned opposite the waiting status.",
       "Regular and key setups occupy the same fixed grid cell and switch instantly without fades or reflow; title, command card, and status coordinates stay identical, and long keys scroll only inside the command text.",
       "After a machine arrives, each discovered agent is a read-only card with its SVG mark, name, and version; agents are never links, buttons, hover targets, or tab stops, and Open Space is the only control.",
       "Home reproduces the live Notion sidebar's measured DOM hierarchy, dimensions, computed colors, shadow, and extracted SVG paths rather than approximating them.",
       "The Workspace icon/name pill is static until the deferred Space switcher is deliberately resumed; the sidebar never exposes a permanent Spaces list.",
       "Home sidebar interactions reproduce Notion's measured hover, pressed, collapse/reopen width-fade-translate motion, resize, scrollbar, and focus states rather than stopping at a static screenshot.",
-      "Existing Space selection enters that Space immediately. Creating a Space advances immediately to Host."
+      "Existing Space selection enters that Space immediately. Creating a Space enters it too — there is no step between, and connecting a machine happens inside the Space."
     ],
     "avoid": [
       "Do not add Tailwind or shadcn dependencies; adapt inspiration to the existing CSS system.",
@@ -118,12 +115,30 @@
     "21st components are references, not packages to install."
   ],
   "evidence": [
-    { "fact": "project.instructions", "source": "AGENTS.md" },
-    { "fact": "design.tokens", "source": "apps/web/style.css" },
-    { "fact": "journey.space", "source": "apps/web/features/onboarding/onboarding.tsx" },
-    { "fact": "journey.host", "source": "apps/web/features/machines/machines.tsx" },
-    { "fact": "notion.card-surface", "source": "https://www.notion.com/templates" },
-    { "fact": "notion.sidebar-live", "source": "https://app.notion.com" }
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    },
+    {
+      "fact": "design.tokens",
+      "source": "apps/web/style.css"
+    },
+    {
+      "fact": "journey.space",
+      "source": "apps/web/features/onboarding/onboarding.tsx"
+    },
+    {
+      "fact": "journey.host",
+      "source": "apps/web/features/machines/machines.tsx"
+    },
+    {
+      "fact": "notion.card-surface",
+      "source": "https://www.notion.com/templates"
+    },
+    {
+      "fact": "notion.sidebar-live",
+      "source": "https://app.notion.com"
+    }
   ],
   "generatedAt": "2026-08-26T09:11:52.141Z"
 }

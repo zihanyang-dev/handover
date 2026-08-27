@@ -861,6 +861,19 @@ describe('the Inbox', () => {
   })
 })
 
+describe('a machine taken out between the door and the claim', () => {
+  it('is handed no turn, which is what the poll route says happens', async () => {
+    // The credential was read in an earlier transaction; removing the machine commits between
+    // that and this one. Asked only at the door, this hands one more turn to a laptop nobody can
+    // reach — and the comment above the poll handler says it cannot.
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'where does the timeout live?')
+    await removeMachine(db, { machine: MACHINE, owner: PERSON })
+
+    expect(await takeOne(db, MACHINE)).toBeUndefined()
+  })
+})
+
 describe('somebody who was taken out of a Space', () => {
   it('still has their name on what they said and what they handed over', async () => {
     // `prd.md` 05 ⑦, and it is true today only because nothing tidies up on removal — which is
@@ -905,6 +918,26 @@ describe('handing a piece of work to another person', () => {
 
     expect(await waitingOn(db, PERSON)).toEqual([])
     expect(await waitingOn(db, rui)).toMatchObject([{ conversationId: conversation }])
+  })
+
+  it('refuses a piece of work that is in another Space, however good the caller looks', async () => {
+    // The path says which Space and the body says which piece of work, and until both are checked
+    // *together* an owner of one Space who has seen an id from another can move that other
+    // Space's work. Everything about the answer looks right: the caller is an owner here, the
+    // person handed to is a member here, one row changed.
+    const rui = await alsoHere()
+    const elsewhere = await inAnotherSpace()
+
+    expect(
+      await handWorkTo(db, { spaceId: SPACE, conversationId: elsewhere, userId: rui }),
+    ).toEqual({ kind: 'not-a-member' })
+
+    const still = await db
+      .selectFrom('tasks')
+      .select('owner_user_id as owner')
+      .where('conversation_id', '=', elsewhere)
+      .executeTakeFirstOrThrow()
+    expect(still.owner).toBe(PERSON)
   })
 
   it('refuses somebody who is not in this Space, so it cannot be handed out of one', async () => {

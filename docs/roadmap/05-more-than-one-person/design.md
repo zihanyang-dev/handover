@@ -195,7 +195,7 @@ machines 的复合外键                        「机器不能和批准它的�
 **「排掉被撤销的」这一条是这一片最容易漏的地方,而且漏了不会报错** ——
 一个被移除的人还能看见机器、还能收到 Inbox。所以它由一条机械规则守:
 **每一处 `memberships` 的读都必须带 `revoked_at is null`**,一个测试扫全库,
-和 `db/sql.spec.ts` 守裸 SQL 是同一个做法。
+和 `rules/sql.spec.ts` 守裸 SQL 是同一个做法。
 
 ---
 

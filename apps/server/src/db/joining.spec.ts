@@ -7,11 +7,18 @@
 
 import { randomUUID } from 'node:crypto'
 import { sql } from 'kysely'
+import { Client } from 'pg'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeSlug, type Slug } from '@handover/universal'
 import { loadEnv } from '../env.ts'
 import { connect, type Database } from './connection.ts'
-import { inviteInto, invitationsInto, revokeInvitation, whatItOpens } from './invitation.ts'
+import {
+  inviteInto,
+  invitationsInto,
+  joinWith,
+  revokeInvitation,
+  whatItOpens,
+} from './invitation.ts'
 import { becomes, isOwner, joins, membersOf, removes, ROLE, whatTheyHold } from './membership.ts'
 import { createSpace, spaceForMember, spacesOf } from './space.ts'
 import { arrive } from './user.ts'
@@ -181,6 +188,75 @@ describe('the last owner', () => {
     expect(await removes(db, { spaceId: SPACE, userId: KAI })).toEqual({ kind: 'moved' })
     expect(await isOwner(db, SPACE, MINA)).toBe(true)
   })
+})
+
+describe('a link revoked while somebody is following it', () => {
+  it('does not let them in, however close the two moments are', async () => {
+    // Read and written separately, this is a link somebody watched go dark on their own screen
+    // and that worked anyway. The row is locked by the transaction that joins, so a revoke either
+    // commits before the read — and this refuses — or waits behind it and stops the next person.
+    const secret = await invited()
+    const holder = new Client({ connectionString: loadEnv().DATABASE_URL })
+    await holder.connect()
+    await holder.query('begin')
+    // Whoever is revoking has the invitation row. The join must wait rather than read past it.
+    await holder.query('update invitations set revoked_at = now() where space_id = $1', [SPACE])
+
+    let done = false
+    const following = joinWith(db, { secret, userId: MINA }).then((joined) => {
+      done = true
+      return joined
+    })
+
+    try {
+      await new Promise((wake) => setTimeout(wake, 200))
+      expect(done).toBe(false)
+    } finally {
+      await holder.query('commit')
+      await holder.end()
+    }
+
+    expect(await following).toEqual({ kind: 'no-invitation' })
+    expect(await spaceForMember(db, SLUG, MINA)).toBeUndefined()
+  }, 20_000)
+})
+
+describe('two owners changing hands at the same moment', () => {
+  it('takes the Space\u2019s turn first, so the deferred rule is asked about reality', async () => {
+    // The rule that a Space keeps an owner is a deferred trigger, and a deferred trigger runs at
+    // commit \u2014 where it cannot see a transaction that has not committed. Two owners demoting
+    // each other each look across, each sees the other still an owner, both pass, and the Space is
+    // left with nobody who can let anybody in. No unique index can say "at least one", so nothing
+    // else catches it.
+    //
+    // Written by holding the Space's turn from another connection rather than by racing two
+    // calls: a race either interleaves or it does not, and a test that passes because the timing
+    // did not line up proves nothing at all.
+    await joins(db, { userId: MINA, spaceId: SPACE, slug: SLUG })
+    await becomes(db, { spaceId: SPACE, userId: MINA }, ROLE.owner)
+
+    const holder = new Client({ connectionString: loadEnv().DATABASE_URL })
+    await holder.connect()
+    await holder.query('begin')
+    await holder.query('select pg_advisory_xact_lock(hashtext($1))', [`owners:${SPACE}`])
+
+    let done = false
+    const waiting = becomes(db, { spaceId: SPACE, userId: KAI }, ROLE.member).then((moved) => {
+      done = true
+      return moved
+    })
+
+    try {
+      await new Promise((wake) => setTimeout(wake, 200))
+      // Still waiting: it has not read who the owners are yet, let alone decided.
+      expect(done).toBe(false)
+    } finally {
+      await holder.query('commit')
+      await holder.end()
+    }
+
+    expect(await waiting).toEqual({ kind: 'moved' })
+  }, 20_000)
 })
 
 describe('somebody who was removed', () => {

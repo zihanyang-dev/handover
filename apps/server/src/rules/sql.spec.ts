@@ -71,6 +71,7 @@ describe('where SQL may be written by hand', () => {
       'db/credential.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/email-code.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/live.ts  select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})',
+      'db/membership.ts  select pg_advisory_xact_lock(hashtext(${',
       'db/space.ts  select pg_advisory_xact_lock(hashtext(${request.requestKey}))',
       'db/task.ts  with due as (',
       'db/task.ts  with recursive tree as',

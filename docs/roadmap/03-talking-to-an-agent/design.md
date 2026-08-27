@@ -132,7 +132,7 @@ tool       { name, verb, arg, ok, excerpt }      ← 已经是人话了,不是�
 activity   { activityType, ... }                 ← 开放的槽,不认识的东西落这儿
 ```
 
-**不建**:`conversations.status`(派生)· `cwd` 列 · `turns` 表(Codex SDK 有,我们没有)·
+**不建**:`conversations.status`(派生)· `cwd` 列 ·
 `state` 列 · `updated_at`(写一次,不改)· 每个 token 一行 · 工具输出全文 ·
 **`role` 里没有 `reasoning`**。
 

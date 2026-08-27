@@ -22,7 +22,6 @@
    - Its non-modal sheet is fixed to the browser's bottom edge and rises into view with coordinated 400ms open / 350ms close positive-Y translate, opacity, and 2px blur transitions; it never expands below the trigger.
    - Follow Motion UI's surface hierarchy: one white sheet, a quiet grab handle, no header divider, a bare close control, a white editable field plus a soft-grey disabled URL field sharing the Notion focus language, and a full-width CTA.
    - The sheet closes through its close control, Escape, or a pointer press anywhere outside its surface.
-   - Creating a Space does not celebrate yet; the final Host action that enters the Space — currently Skip or Open, and later possibly Continue — launches the saturated full-viewport Canvas confetti from the page top. It survives immediate navigation, cleans itself up, and does nothing under reduced motion.
    - The form asks only for `Workspace name`; it never asks for or changes `Your name`.
    - Several existing Spaces begin as a clickable four-layer card deck with a pronounced hover fan, then use one smooth Motion layout transition to become a compact, completely aligned single column; there is no dealing, stagger, rotation, or bento layout. One Space stays directly selectable.
    - Space cards copy Notion's public Card surface rather than inventing decoration: white, a 10% black keyline, 12px radius, and Notion's interaction-only layered shadow. They have no coloured accents or top strips, no avatars, and retain `/s/<slug>` plus a right arrow.

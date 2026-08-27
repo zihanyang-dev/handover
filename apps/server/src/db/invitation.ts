@@ -12,6 +12,7 @@
 
 import { sql } from 'kysely'
 import type { Database } from './connection.ts'
+import { joins } from './membership.ts'
 import { hashSecret, mint } from '../secret.ts'
 
 /** So one found in a shell history says which door it opens. */
@@ -117,4 +118,42 @@ export async function whatItOpens(db: Database, secret: string): Promise<Held> {
     .executeTakeFirst()
 
   return row === undefined ? { kind: 'no-invitation' } : { kind: 'open', ...row }
+}
+
+/**
+ * Following a link, all the way, in one transaction.
+ *
+ * Locks, in the order this path takes them:
+ *   1. the invitation row, for update, by its hash
+ *   2. the membership row, through its unique on (space_id, user_id)
+ *
+ * Read and then written separately, a link that was stopped between the two still lets somebody
+ * in: whoever revoked it watched it go dark on their screen and it worked anyway. Locking the row
+ * first is what makes the answer true at the moment it is acted on — a revoke either commits
+ * before this reads, and this refuses, or waits behind it, and stops the *next* person.
+ *
+ * The membership write lives here rather than the invitation read living in `membership.ts`,
+ * because a transaction across two owners belongs in one file with its lock order written down.
+ */
+export async function joinWith(
+  db: Database,
+  who: { readonly secret: string; readonly userId: string },
+): Promise<{ kind: 'no-invitation' } | { kind: 'joined'; slug: string }> {
+  return db.transaction().execute(async (tx) => {
+    const open = await tx
+      .selectFrom('invitations')
+      .innerJoin('spaces', 'spaces.id', 'invitations.space_id')
+      .select(['spaces.id as spaceId', 'spaces.slug as slug'])
+      .where('invitations.secret_hash', '=', hashSecret(who.secret))
+      .where('invitations.revoked_at', 'is', null)
+      .where('invitations.expires_at', '>', sql<Date>`now()`)
+      .forUpdate()
+      .executeTakeFirst()
+
+    if (open === undefined) return { kind: 'no-invitation' }
+
+    const joined = await joins(tx, { userId: who.userId, spaceId: open.spaceId, slug: open.slug })
+
+    return { kind: 'joined', slug: joined.slug }
+  })
 }

@@ -9,13 +9,18 @@
 
 import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
-import { inviteInto, invitationsInto, revokeInvitation, whatItOpens } from '../db/invitation.ts'
+import {
+  inviteInto,
+  invitationsInto,
+  joinWith,
+  revokeInvitation,
+  whatItOpens,
+} from '../db/invitation.ts'
 import {
   becomes,
   type Handed,
   handMachineTo,
   handWorkTo,
-  joins,
   membersOf,
   removes,
   ROLE,
@@ -315,14 +320,13 @@ function joining(deps: JoiningApi) {
     }),
 
     handler: async (c) => {
-      const opens = await whatItOpens(deps.db, c.req.valid('json').secret)
-      if (opens.kind === 'no-invitation') return c.json(body(NO_INVITATION), NO_INVITATION.status)
-
-      const joined = await joins(deps.db, {
+      // One transaction, which is what makes the answer true at the moment it is acted on: read
+      // and written separately, a link stopped in between still lets somebody in.
+      const joined = await joinWith(deps.db, {
+        secret: c.req.valid('json').secret,
         userId: c.get('userId'),
-        spaceId: opens.spaceId,
-        slug: opens.slug,
       })
+      if (joined.kind === 'no-invitation') return c.json(body(NO_INVITATION), NO_INVITATION.status)
 
       // Already in answers the same as just in: what was asked for is true either way, and a
       // second click on a link somebody kept is not a mistake worth a different screen.

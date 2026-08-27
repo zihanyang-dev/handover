@@ -14,6 +14,7 @@
 import { expressionBuilder, sql, type Expression, type SqlBool } from 'kysely'
 import type { DB } from '../../generated/db.ts'
 import type { Database, Tx } from './connection.ts'
+import { reachableFrom } from './machine.ts'
 
 export const ROLE = {
   /** Asks people in, takes them out, names the Space, and makes other owners. */
@@ -124,6 +125,25 @@ export type Moved =
   | { readonly kind: 'the-last-owner' }
 
 /** Changes what somebody may do, or says why it would leave the Space without an owner. */
+/**
+ * Takes the Space's turn to change who owns it.
+ *
+ * The rule that a Space keeps an owner is a deferred trigger, and a deferred trigger runs at
+ * commit — where it cannot see another transaction that has not committed yet. Two owners
+ * demoting each other at the same moment each look across and see the other still an owner, both
+ * pass, and the Space is left with none. No unique index can say "at least one", so nothing else
+ * catches it.
+ *
+ * An advisory lock keyed on the Space, taken before the write, is what makes the trigger's
+ * question meaningful: the second transaction waits, and asks after the first has committed. Same
+ * shape and same reason as the lock `issueCode` takes on an address.
+ *
+ * Only the paths that can *take an owner away* need it. Joining and promoting can only add.
+ */
+async function itsTurnToChangeOwners(tx: Tx, spaceId: string): Promise<void> {
+  await sql`select pg_advisory_xact_lock(hashtext(${`owners:${spaceId}`}))`.execute(tx)
+}
+
 export async function becomes(
   db: Database,
   who: { readonly spaceId: string; readonly userId: string },
@@ -131,6 +151,8 @@ export async function becomes(
 ): Promise<Moved> {
   return orTheLastOwner(async () =>
     db.transaction().execute(async (tx) => {
+      await itsTurnToChangeOwners(tx, who.spaceId)
+
       const moved = await tx
         .updateTable('memberships')
         .set({ role })
@@ -158,6 +180,8 @@ export async function removes(
 ): Promise<Moved> {
   return orTheLastOwner(async () =>
     db.transaction().execute(async (tx) => {
+      await itsTurnToChangeOwners(tx, who.spaceId)
+
       const out = await tx
         .updateTable('memberships')
         .set({ revoked_at: sql<Date>`clock_timestamp()` })
@@ -221,6 +245,26 @@ export type Held = {
 }
 
 /**
+ * That the conversation being handed over is in the Space the request named.
+ *
+ * The path says which Space; the body says which piece of work. Without this the two are only
+ * checked separately — the person is here, the id exists — and an owner of one Space who has seen
+ * an id from another can move that other Space's work. Everything about the answer would look
+ * right: the caller is an owner, the target is a member, one row changed.
+ */
+function inThisSpace(spaceId: string, conversationId: string): Expression<SqlBool> {
+  const eb = expressionBuilder<DB>()
+
+  return eb.exists(
+    eb
+      .selectFrom('conversations')
+      .select('conversations.id')
+      .where('conversations.id', '=', conversationId)
+      .where('conversations.space_id', '=', spaceId),
+  )
+}
+
+/**
  * That the person being handed something is still in the Space it is in.
  *
  * A condition rather than a read, so it is checked in the statement that writes. Asked first and
@@ -269,6 +313,7 @@ export async function handWorkTo(
     .set({ owner_user_id: moving.userId })
     .where('conversation_id', '=', moving.conversationId)
     .where('ended_at', 'is', null)
+    .where(inThisSpace(moving.spaceId, moving.conversationId))
     .where(stillAMember(moving.spaceId, moving.userId))
     .executeTakeFirst()
 
@@ -290,6 +335,7 @@ export async function handMachineTo(
     .set({ owner_user_id: moving.userId })
     .where('id', '=', moving.machineId)
     .where('removed_at', 'is', null)
+    .where(reachableFrom(moving.spaceId))
     .where(stillAMember(moving.spaceId, moving.userId))
     .executeTakeFirst()
 

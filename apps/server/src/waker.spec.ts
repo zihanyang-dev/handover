@@ -11,7 +11,6 @@ import { pino } from 'pino'
 import { connect, type Database } from './db/connection.ts'
 import { loadEnv } from './env.ts'
 import { LOG_OPTIONS } from './log.ts'
-import { wakeWhoseTimeHasCome } from './db/task.ts'
 import { keepWaking } from './waker.ts'
 
 const env = loadEnv()
@@ -63,11 +62,5 @@ describe('looking for work whose moment has come', () => {
     await new Promise((wake) => setTimeout(wake, 20))
 
     expect(broken.rounds()).toBe(after)
-  })
-
-  it('comes back with a count rather than throwing at a deployment it has nothing to do on', async () => {
-    // Never an exact number: it looks across the whole deployment, and what else is asleep there
-    // is nothing this test put down.
-    expect(await wakeWhoseTimeHasCome(db)).toBeGreaterThanOrEqual(0)
   })
 })
