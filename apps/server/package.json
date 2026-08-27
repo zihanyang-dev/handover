@@ -23,7 +23,7 @@
     "start": "node src/main.ts",
     "migrate": "node --env-file=../../.env scripts/migrate.ts",
     "release": "node scripts/release.ts",
-    "test:db": "node --env-file=../../.env.test scripts/migrate.ts",
+    "test:db": "node --env-file=../../.env.test scripts/migrate.ts && node --env-file=../../.env.test scripts/empty-test-database.ts",
     "generate": "node --env-file=../../.env.test scripts/generate.ts"
   }
 }

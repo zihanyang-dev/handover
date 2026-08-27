@@ -152,17 +152,38 @@ another turn as soon as this one ends, for as long as it takes.`
  * stop — an agent that cannot say "I am waiting on you" carries on for ever instead.
  */
 function whatToDo(asking: Asking, handover: string): Asked {
-  if (asking.goal === null) return asking.asked ?? { text: '' }
+  const chosen = {
+    ...(asking.model === null ? {} : { model: asking.model }),
+    ...(asking.effort === null ? {} : { effort: asking.effort }),
+  }
 
-  const said = asking.asked === null ? [] : [`They have just said: ${asking.asked.text}`]
+  if (asking.goal === null) return { text: whatWasSaid(asking.asked), ...chosen }
+
+  const said =
+    asking.asked.length === 0 ? [] : [`They have just said: ${whatWasSaid(asking.asked)}`]
 
   return {
     text: [`You are carrying this on by yourself: ${asking.goal}`, ...said, canSay(handover)].join(
       '\n\n',
     ),
-    ...(asking.asked?.model === undefined ? {} : { model: asking.asked.model }),
-    ...(asking.asked?.effort === undefined ? {} : { effort: asking.asked.effort }),
+    ...chosen,
   }
+}
+
+/**
+ * The lines of this turn, as one thing to read.
+ *
+ * Named only when there is more than one of them. Two people asked two things and the agent has
+ * to be able to answer each of them to the person who asked — unnamed, it gets one run-on
+ * question from nobody. One line needs no name: there is nobody it could be confused with, and
+ * `Kai: ` in front of every message a person sends to their own agent is noise.
+ *
+ * A line from before names had a `who` of null, and then it goes in as itself.
+ */
+function whatWasSaid(said: Asking['asked']): string {
+  if (said.length === 1) return said[0]?.text ?? ''
+
+  return said.map((one) => (one.who === null ? one.text : `${one.who}: ${one.text}`)).join('\n\n')
 }
 
 async function closing(writing: Writing, asking: Asking, content: Happened): Promise<void> {

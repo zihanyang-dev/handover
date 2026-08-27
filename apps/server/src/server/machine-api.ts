@@ -10,7 +10,6 @@ import { createRoute, z } from '@hono/zod-openapi'
 import type { Database } from '../db/connection.ts'
 import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import { checkIn, machinesIn, removeMachine, sayGoodbye } from '../db/machine.ts'
-import { Asked } from '../conversation/transcript.ts'
 import {
   agentsFound,
   AGENT_COMMANDS,
@@ -130,8 +129,18 @@ const askingBody = z
      * forgot everything still has to know what it is doing.
      */
     goal: z.string().nullable(),
-    /** What a person said, when the line this turn begins after is one. Null when it is not. */
-    asked: Asked.nullable(),
+    /**
+     * Everything a person said since the turn before this one, oldest first.
+     *
+     * A list because two people can each say something before either is answered, and both have
+     * to reach the agent — one of them dropped is a message that sits on a screen looking queued
+     * and is never answered. Empty on a turn nobody asked for.
+     */
+    asked: z.array(z.object({ text: z.string(), who: z.string().nullable() })).readonly(),
+    /** Which model to run, when the last person to speak chose one. */
+    model: z.string().nullable(),
+    /** How hard to think, when the last person to speak chose. */
+    effort: z.string().nullable(),
   })
   .openapi('SomethingToAnswer')
 
@@ -212,6 +221,9 @@ const machinesBody = z.object({ machines: z.array(machineBody).readonly() }).ope
  * an older build is exactly the case where a shape can be wrong. A row that will not parse is one
  * this machine cannot act on, and pretending otherwise sends it a turn it cannot take.
  */
+/** The lines as a row holds them, checked before they are handed to a machine. */
+const SAID = z.array(z.object({ text: z.string(), who: z.string().nullable() })).readonly()
+
 function asAsking(taken: Taken) {
   return {
     conversationId: taken.conversationId,
@@ -219,7 +231,11 @@ function asAsking(taken: Taken) {
     agentSession: taken.agentSession,
     afterSeq: taken.afterSeq,
     goal: taken.goal,
-    asked: taken.asked === null || taken.asked === undefined ? null : Asked.parse(taken.asked),
+    // Parsed on the way out rather than trusted: it went in as JSON, and a row written by an
+    // older build is a shape this one has never seen.
+    asked: SAID.parse(taken.asked),
+    model: taken.model,
+    effort: taken.effort,
   }
 }
 

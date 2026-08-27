@@ -316,7 +316,7 @@ describe('handing the question to the machine', () => {
       asking: {
         conversationId: conversation,
         agentKind: 'claude-code',
-        asked: { text: 'read notes.txt' },
+        asked: [{ text: 'read notes.txt' }],
       },
     })
   })

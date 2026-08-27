@@ -143,6 +143,20 @@ export const Message = z.discriminatedUnion('role', [
 
 export type Message = z.infer<typeof Message>
 
+/**
+ * The three a machine may write.
+ *
+ * Not the fourth. A person's line carries a person's name, and that name comes from the session
+ * that sent it — so a route which accepted `role: 'user'` from a machine would let an agent write
+ * a line under somebody's name. While no line had a name this was invisible and harmless; the
+ * moment one does, it is forgery, and a name that can be forged is worse than no name at all.
+ *
+ * `prd.md` 06 ⑤.
+ */
+export const Reported = z.discriminatedUnion('role', [FROM.agent, FROM.tool, FROM.nobody])
+
+export type Reported = z.infer<typeof Reported>
+
 /** Where a line sits in its conversation, and when it landed. Added when it is read back. */
 const PLACE = { seq: z.number().int(), at: z.iso.datetime() }
 

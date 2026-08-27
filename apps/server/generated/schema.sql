@@ -228,6 +228,7 @@ CREATE TABLE public.messages (
     role text NOT NULL,
     content jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    said_by uuid,
     CONSTRAINT messages_role_check CHECK ((role = ANY (ARRAY['user'::text, 'assistant'::text, 'tool'::text, 'activity'::text])))
 );
 
@@ -458,6 +459,14 @@ ALTER TABLE ONLY public.memberships
 
 
 --
+-- Name: messages messages_a_person_has_a_name; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE public.messages
+    ADD CONSTRAINT messages_a_person_has_a_name CHECK (((role = 'user'::text) = (said_by IS NOT NULL))) NOT VALID;
+
+
+--
 -- Name: messages messages_in_order; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -605,6 +614,13 @@ CREATE INDEX memberships_here ON public.memberships USING btree (space_id, user_
 --
 
 CREATE INDEX messages_asked ON public.messages USING btree (conversation_id, seq) WHERE (role = 'user'::text);
+
+
+--
+-- Name: messages_said_by; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX messages_said_by ON public.messages USING btree (said_by) WHERE (said_by IS NOT NULL);
 
 
 --
@@ -758,6 +774,14 @@ ALTER TABLE ONLY public.memberships
 
 ALTER TABLE ONLY public.messages
     ADD CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: messages messages_said_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_said_by_fkey FOREIGN KEY (said_by) REFERENCES public.users(id);
 
 
 --

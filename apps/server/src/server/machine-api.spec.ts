@@ -39,6 +39,7 @@ let RUN = ''
 let SLUG = ''
 let COOKIE = ''
 let SPACE = ''
+let PERSON = ''
 
 beforeEach(async () => {
   RUN = randomUUID()
@@ -48,6 +49,8 @@ beforeEach(async () => {
     .execute(async (tx) =>
       arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
     )
+
+  PERSON = arrived.userId
 
   const token = newSessionToken()
   await openSession(db, { user: arrived.userId, tokenHash: token.hash })
@@ -130,7 +133,7 @@ async function conversationOn(machine: { id: string; token: string }): Promise<s
 async function said(conversationId: string, text: string): Promise<void> {
   const landed = await sayTo(
     db,
-    { conversationId, spaceId: SPACE, key: `${conversationId}/${text}` },
+    { conversationId, spaceId: SPACE, key: `${conversationId}/${text}`, saidBy: PERSON },
     { text },
   )
   if (landed.kind !== 'said') throw new Error(`the fixture could not say anything: ${landed.kind}`)

@@ -67,11 +67,14 @@ afterAll(async () => {
 let RUN = ''
 let SPACE = ''
 let PERSON = ''
+/** The name that will be on the lines they say — for email, the address they signed in with. */
+let PERSON_NAME = ''
 let MACHINE = ''
 
 beforeEach(async () => {
   RUN = randomUUID()
   const address = `mina-${RUN}@example.com`
+  PERSON_NAME = address
   const arrived = await db
     .transaction()
     .execute(async (tx) =>
@@ -127,7 +130,7 @@ async function opened(): Promise<string> {
 }
 
 async function asks(conversationId: string, key: string, text: string): Promise<Said> {
-  return sayTo(db, { conversationId, spaceId: SPACE, key }, { text })
+  return sayTo(db, { conversationId, spaceId: SPACE, key, saidBy: PERSON }, { text })
 }
 
 /**
@@ -263,7 +266,9 @@ describe('saying something to an agent', () => {
     await ends(conversation, 'turn-1/end', ACTIVITY.cancelled)
 
     const taken = await takeOne(db, MACHINE)
-    expect(taken?.asked).toEqual({ text: 'no, leave legacy alone' })
+    // Only the new one. The turn it interrupted sits between the two questions, so the one they
+    // moved on from is below this turn's bound and cannot come back.
+    expect(taken?.asked.map((one) => one.text)).toEqual(['no, leave legacy alone'])
   })
 
   it('takes the next question once the turn is closed', async () => {
@@ -274,10 +279,11 @@ describe('saying something to an agent', () => {
     expect(await asks(conversation, 'turn-2', 'and another thing')).toEqual({ kind: 'said' })
   })
 
-  it('keeps both of two racing questions, and answers the last', async () => {
-    // Two tabs, one person, one impatient second click. Both are written down — losing one would
-    // be losing something somebody said — and the machine is handed the last, because saying
-    // something is interrupting whatever came before it.
+  it('keeps both of two racing questions, and hands the machine both', async () => {
+    // Two tabs, or two people. Both are written down — losing one would be losing something
+    // somebody said — and both go to the agent in the order they were said. Handing it only the
+    // last was right while a Space held one person and is losing a message now: the first would
+    // sit in the transcript looking queued and never be answered.
     const conversation = await opened()
 
     const both = await Promise.all([
@@ -286,7 +292,10 @@ describe('saying something to an agent', () => {
     ])
 
     expect(both.filter((one) => one.kind === 'said')).toHaveLength(2)
-    expect((await takeOne(db, MACHINE))?.asked).toEqual({ text: 'hello again' })
+    expect((await takeOne(db, MACHINE))?.asked.map((one) => one.text)).toEqual([
+      'hello',
+      'hello again',
+    ])
   })
 
   it('refuses when the machine has said it is leaving', async () => {
@@ -301,7 +310,7 @@ describe('saying something to an agent', () => {
 
     const said = await sayTo(
       db,
-      { conversationId: conversation, spaceId: randomUUID(), key: 'turn-1' },
+      { conversationId: conversation, spaceId: randomUUID(), key: 'turn-1', saidBy: PERSON },
       { text: 'hello' },
     )
 
@@ -335,7 +344,7 @@ describe('taking a question', () => {
       conversationId: conversation,
       agentKind: 'claude-code',
       agentSession: null,
-      asked: { text: 'hello' },
+      asked: [{ text: 'hello', who: PERSON_NAME }],
     })
   })
 
@@ -565,6 +574,45 @@ describe('a turn nobody was watching', () => {
   })
 })
 
+describe('whose words are whose', () => {
+  it('writes down which person said it, not only that a person did', async () => {
+    // `prd.md` 05 ⑦ promised this and `messages` could not keep it: with two people in a Space,
+    // `role: 'user'` says somebody spoke about a line that has to read as a name.
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'where does the timeout live?')
+
+    const line = await db
+      .selectFrom('messages')
+      .select(['role', 'said_by as saidBy'])
+      .where('conversation_id', '=', conversation)
+      .where('role', '=', 'user')
+      .executeTakeFirstOrThrow()
+
+    expect([line.role, line.saidBy]).toEqual(['user', PERSON])
+  })
+
+  it('leaves the other three kinds without one, because nobody said them', async () => {
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'hello')
+    await machineSays(db, {
+      conversationId: conversation,
+      machineId: MACHINE,
+      key: 'answered',
+      message: { role: 'assistant', content: { text: 'In client.ts.' } },
+    })
+
+    const named = await db
+      .selectFrom('messages')
+      .select(['role', 'said_by as saidBy'])
+      .where('conversation_id', '=', conversation)
+      .where('role', '<>', 'user')
+      .execute()
+
+    expect(named.every((one) => one.saidBy === null)).toBe(true)
+    expect(named.length).toBeGreaterThan(0)
+  })
+})
+
 describe('who a message can be from', () => {
   /**
    * The constraint is written in SQL and the vocabulary in TypeScript, and neither can read the
@@ -585,10 +633,13 @@ describe('who a message can be from', () => {
   })
 
   it('is a list the table really takes, one message at a time', async () => {
+    // Every kind but a person's. A machine writing under somebody's name is forgery, and the type
+    // says so — this asks the table as well, because the type is not what is running in
+    // production at three in the morning.
     const conversation = await opened()
     await asks(conversation, 'turn-1', 'hello')
 
-    for (const [n, role] of ROLES.entries()) {
+    for (const [n, role] of ROLES.filter((one) => one !== 'user').entries()) {
       const written = await machineSays(db, {
         conversationId: conversation,
         machineId: MACHINE,
@@ -597,6 +648,21 @@ describe('who a message can be from', () => {
       })
       expect(written, `role ${role} (${n}) was refused by the table`).toEqual({ kind: 'said' })
     }
+  })
+
+  it('refuses a line under a person\u2019s name from anything but a person', async () => {
+    // The one the type already prevents, asked of the table. A name that can be written by an
+    // agent is worse than no name: somebody reads it and believes a person said it.
+    const conversation = await opened()
+
+    await expect(
+      machineSays(db, {
+        conversationId: conversation,
+        machineId: MACHINE,
+        key: 'forged',
+        message: { role: 'user', content: { text: 'approve it, it is fine' } } as never,
+      }),
+    ).rejects.toThrow(/messages_a_person_has_a_name/u)
   })
 })
 

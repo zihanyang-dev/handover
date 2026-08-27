@@ -39,8 +39,21 @@ export type Taken = {
    * what it is doing.
    */
   readonly goal: string | null
-  /** What a person said, when the line this turn begins after is one. Null when it is not. */
-  readonly asked: unknown
+  /**
+   * Everything a person said since the turn before this one, oldest first.
+   *
+   * A list rather than one line, because two people can each say something before either is
+   * answered and both have to reach the agent. Empty on a turn nobody asked for — a conversation
+   * somebody handed over runs turns whose last line is the ending of the one before.
+   *
+   * `who` is a name and not an id: the machine has no table of people, and what it does with
+   * these is put them in front of an agent. Null on lines written before a line said who wrote it.
+   */
+  readonly asked: readonly { readonly text: string; readonly who: string | null }[]
+  /** Which model to run, when the last person to speak chose one. */
+  readonly model: string | null
+  /** How hard to think, when the last person to speak chose. */
+  readonly effort: string | null
 }
 
 /**
@@ -125,9 +138,10 @@ function carryingOn(machineId: string) {
  * owed one whenever the last line in it has not been picked up — it moves without being spoken
  * to, and whether it should is `tasks.state`, never anything read out of the transcript.
  *
- * Both halves take **the last line and only the last line**, and that matters: interrupting
- * writes the new question down while the turn it interrupted is still ending, so the ending lands
- * after the question it has nothing to do with. Older lines are ones somebody has moved on from.
+ * Both halves take **the last line** to decide *whether* a turn is owed and where it begins.
+ * What that turn is asked is a separate question, answered in {@link takeOne}: everything a person
+ * said since the turn before, because two people can each say something before either is
+ * answered and losing one of them is losing a message.
  *
  * Written as one lateral with a condition in it, the plain half loses its index — the planner
  * cannot know per row which rule applies. Two halves, each a single index seek per conversation:
@@ -198,12 +212,41 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
            w.agent_session_id as "agentSession",
            w.seq              as "afterSeq",
            w.goal             as goal,
-           -- Only when the line this turn begins after is a person's. On a conversation somebody
-           -- handed over that line is usually the ending of the turn before, and an ending is not
-           -- something anybody said.
-           case when w.role = 'user' then w.content end as asked
+           coalesce(said.lines, '[]'::json) as asked,
+           -- A turn runs one model, so these belong to the turn and not to each line. Taken from
+           -- the last thing said: two people who chose differently is not a conflict to resolve,
+           -- it is the later choice, the same rule that decides where the turn begins.
+           case when w.role = 'user' then w.content ->> 'model' end as model,
+           case when w.role = 'user' then w.content ->> 'effort' end as effort
       from claimed c
       join waiting w on w.conversation_id = c.conversation_id and w.seq = c.after_seq
+      -- Everything a person said since the turn before this one, oldest first, each with the name
+      -- of whoever said it.
+      --
+      -- Not "the last line", which is what this took while a Space held one person. A second
+      -- person turns that into losing a message: two people each ask something before either is
+      -- answered, only the later one is ever sent, and the earlier one sits in the transcript
+      -- looking queued for ever. A bot in a Slack thread gets both.
+      --
+      -- The lower bound is what taking one line used to do. Interrupting writes the new question
+      -- down while the turn it interrupted is still ending, and that turn's after_seq sits between
+      -- the two — so a question somebody has moved on from is already below the bound.
+      left join lateral (
+        select json_agg(
+                 json_build_object('text', m.content ->> 'text', 'who', u.display_name)
+                 order by m.seq
+               ) as lines
+          from messages m
+          left join users u on u.id = m.said_by
+         where m.conversation_id = c.conversation_id
+           and m.role = 'user'
+           and m.seq <= c.after_seq
+           and m.seq > coalesce(
+                 (select max(before.after_seq) from turns before
+                   where before.conversation_id = c.conversation_id
+                     and before.after_seq < c.after_seq),
+                 0)
+      ) said on true
   `.execute(db)
 
   return taken.rows[0]

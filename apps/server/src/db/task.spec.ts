@@ -138,7 +138,7 @@ async function opened(machineId = MACHINE): Promise<string> {
 
 /** Somebody says something, and the machine takes the turn it is owed. */
 async function asks(conversationId: string, key: string, text: string): Promise<void> {
-  const said = await sayTo(db, { conversationId, spaceId: SPACE, key }, { text })
+  const said = await sayTo(db, { conversationId, spaceId: SPACE, key, saidBy: PERSON }, { text })
   if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
 }
 
@@ -164,7 +164,12 @@ async function inAnotherSpace(): Promise<string> {
 
   const said = await sayTo(
     db,
-    { conversationId: opened.conversationId, spaceId: made.space.id, key: `beta-ask-${RUN}` },
+    {
+      conversationId: opened.conversationId,
+      spaceId: made.space.id,
+      key: `beta-ask-${RUN}`,
+      saidBy: PERSON,
+    },
     { text: 'take it from here' },
   )
   if (said.kind !== 'said') throw new Error('the fixture could not ask there')
@@ -889,6 +894,54 @@ describe('what the second person in a Space can see', () => {
     expect(seen.map((one) => one.id)).toContain(conversation)
     // And it is not because they own it: it is still the person who handed it over.
     expect(await waitingOn(db, rui)).toEqual([])
+  })
+})
+
+describe('two people saying something before either is answered', () => {
+  it('sends both to the agent, oldest first, each with a name', async () => {
+    // Measured before this existed: only the second line was ever sent, and the first sat in the
+    // transcript looking queued for ever. `prd.md` 06 「为什么是现在」.
+    const rui = await alsoHere()
+    const conversation = await opened()
+    await asks(conversation, 'k-1', 'where does the timeout live?')
+    await sayTo(
+      db,
+      { conversationId: conversation, spaceId: SPACE, key: 'm-1', saidBy: rui },
+      { text: 'and does it affect retries?' },
+    )
+
+    const taken = await takeOne(db, MACHINE)
+
+    expect(taken?.asked.map((one) => one.text)).toEqual([
+      'where does the timeout live?',
+      'and does it affect retries?',
+    ])
+    expect(new Set(taken?.asked.map((one) => one.who)).size).toBe(2)
+  })
+
+  it('does not carry back a question the turn before it already answered', async () => {
+    // The bound is what taking one line used to do. Interrupting writes the new question while
+    // the turn it interrupted is still ending, and that turn sits between the two.
+    const conversation = await opened()
+    await asks(conversation, 'k-1', 'where does the timeout live?')
+    const first = await takeOne(db, MACHINE)
+    await ends(conversation, '1/end')
+    await asks(conversation, 'k-2', 'and the retries?')
+
+    const second = await takeOne(db, MACHINE)
+
+    expect(first?.asked.map((one) => one.text)).toEqual(['where does the timeout live?'])
+    expect(second?.asked.map((one) => one.text)).toEqual(['and the retries?'])
+  })
+
+  it('gives a turn nobody asked for nothing to answer', async () => {
+    // Handed over: it carries on by itself, and the line it begins after is the ending of the
+    // turn before — which nobody said.
+    const conversation = await handedOver()
+    await nextTurn()
+    await ends(conversation, '1/end')
+
+    expect((await takeOne(db, MACHINE))?.asked).toEqual([])
   })
 })
 

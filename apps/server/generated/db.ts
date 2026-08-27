@@ -123,6 +123,7 @@ export interface Messages {
   id: Generated<string>;
   key: string;
   role: string;
+  said_by: string | null;
   seq: number;
 }
 

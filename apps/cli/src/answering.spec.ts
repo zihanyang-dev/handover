@@ -26,7 +26,9 @@ const ASKING: Asking = {
   agentSession: null,
   goal: null,
   afterSeq: 4,
-  asked: { text: 'read notes.txt' },
+  asked: [{ text: 'read notes.txt', who: 'Kai' }],
+  model: null,
+  effort: null,
 }
 
 type Written = { readonly key: string; readonly message: { role: string; content: unknown } }

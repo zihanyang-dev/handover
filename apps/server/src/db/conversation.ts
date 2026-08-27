@@ -13,15 +13,21 @@ import { sql } from 'kysely'
 import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
 import { working, type Working } from '../conversation/busy.ts'
-import { ACTIVITY, ENDINGS, type Asked, type Message } from '../conversation/transcript.ts'
+import {
+  ACTIVITY,
+  ENDINGS,
+  type Asked,
+  type Message,
+  type Reported,
+} from '../conversation/transcript.ts'
 import type { Database, Tx } from './connection.ts'
-import { append, alreadySaid, held, type Saying, type Said } from './message.ts'
+import { append, alreadySaid, held, type Saying, type Said, type Speaking } from './message.ts'
 import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
 import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
 import { reachableFrom, stillItsToWriteOn } from './machine.ts'
 import { wakeMachine } from './waking.ts'
 
-export type { Saying, Said } from './message.ts'
+export type { Saying, Said, Speaking } from './message.ts'
 
 export type Opening = {
   readonly spaceId: string
@@ -86,7 +92,7 @@ export async function openConversation(db: Database, opening: Opening): Promise<
  * stop, and the words. Each of those stops being true the moment anybody else writes, and a stop
  * written without the message it was written for would be an agent stopped for no reason.
  */
-export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise<Said> {
+export async function sayTo(db: Database, saying: Speaking, asked: Asked): Promise<Said> {
   return db.transaction().execute(async (tx) => {
     const conversation = await held(tx, saying)
     if (conversation === undefined) return { kind: 'no-conversation' }
@@ -111,7 +117,11 @@ export async function sayTo(db: Database, saying: Saying, asked: Asked): Promise
     // and the message keeps the name its sender gave it.
     if (busy.state === 'working') await askItToStop(tx, saying, `${saying.key}/stop`)
 
-    const said = await append(tx, { ...saying, message: { role: 'user', content: asked } })
+    const said = await append(tx, {
+      ...saying,
+      message: { role: 'user', content: asked },
+      saidBy: saying.saidBy,
+    })
     // In the same transaction as the message, so it is delivered when that commits: woken any
     // earlier, the machine would look, find nothing, and go back to waiting for the very thing it
     // was woken for. And a piece of work that was waiting on this person is waiting no longer —
@@ -183,7 +193,8 @@ async function askItToStop(tx: Tx, saying: Saying, key: string): Promise<void> {
 export type Reporting = {
   readonly conversationId: string
   readonly key: string
-  readonly message: Message
+  /** Three kinds, not four. A machine cannot write a line under a person's name — {@link Reported}. */
+  readonly message: Reported
   readonly machineId: string
 }
 

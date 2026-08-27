@@ -939,23 +939,31 @@
             "nullable": true
           },
           "asked": {
-            "type": "object",
-            "nullable": true,
-            "properties": {
-              "text": {
-                "type": "string",
-                "minLength": 1
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "who": {
+                  "type": "string",
+                  "nullable": true
+                }
               },
-              "model": {
-                "type": "string"
-              },
-              "effort": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "text"
-            ]
+              "required": [
+                "text",
+                "who"
+              ]
+            }
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "effort": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -964,7 +972,9 @@
           "agentSession",
           "afterSeq",
           "goal",
-          "asked"
+          "asked",
+          "model",
+          "effort"
         ]
       },
       "StopWanted": {
@@ -1541,39 +1551,6 @@
           },
           "message": {
             "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "role": {
-                    "type": "string",
-                    "enum": [
-                      "user"
-                    ]
-                  },
-                  "content": {
-                    "type": "object",
-                    "properties": {
-                      "text": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "model": {
-                        "type": "string"
-                      },
-                      "effort": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "text"
-                    ]
-                  }
-                },
-                "required": [
-                  "role",
-                  "content"
-                ]
-              },
               {
                 "type": "object",
                 "properties": {

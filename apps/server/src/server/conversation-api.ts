@@ -8,7 +8,7 @@
  */
 
 import { createRoute, z } from '@hono/zod-openapi'
-import { Asked, Message, Spoken, unreadable } from '../conversation/transcript.ts'
+import { Asked, Reported, Spoken, unreadable } from '../conversation/transcript.ts'
 import type { Database } from '../db/connection.ts'
 import type { Reading, Standing } from '../db/conversation.ts'
 import {
@@ -181,7 +181,7 @@ const sayingBody = z.object({ key: z.string().min(1).max(200), asked: Asked }).o
 const stoppingBody = z.object({ key: z.string().min(1).max(200) }).openapi('StopThis')
 
 const reportingBody = z
-  .object({ key: z.string().min(1).max(200), message: Message })
+  .object({ key: z.string().min(1).max(200), message: Reported })
   .openapi('MachineMessage')
 
 const namingBody = z.object({ session: z.string().min(1).max(200) }).openapi('AgentSession')
@@ -389,7 +389,14 @@ function saying(deps: ConversationApi) {
       const asked = c.req.valid('json')
       const landed = await sayTo(
         deps.db,
-        { conversationId: c.req.valid('param').id, spaceId: c.get('space').id, key: asked.key },
+        {
+          conversationId: c.req.valid('param').id,
+          spaceId: c.get('space').id,
+          key: asked.key,
+          // From the session, never from the body: an endpoint that reads the author out of what
+          // it was sent is an endpoint that lets the caller say who they are.
+          saidBy: c.get('userId'),
+        },
         asked.asked,
       )
 

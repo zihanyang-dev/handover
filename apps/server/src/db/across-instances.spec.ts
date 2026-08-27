@@ -224,8 +224,8 @@ describe('two instances at once', () => {
     // claims a different conversation — two rows, no key in common, and two agents running in one
     // directory. prd 04 says a machine does exactly one thing at once, and this is where that has
     // to be decided.
-    const { machineId, spaceId } = await aQuestion()
-    await aSecondQuestion(machineId, spaceId)
+    const { machineId, spaceId, userId } = await aQuestion()
+    await aSecondQuestion(machineId, spaceId, userId)
 
     const [first, second] = await Promise.all([takeOne(one, machineId), takeOne(two, machineId)])
 
@@ -238,6 +238,7 @@ async function aQuestion(): Promise<{
   machineId: string
   conversationId: string
   spaceId: string
+  userId: string
 }> {
   const userId = await someone('asking')
   const made = await createSpace(one, {
@@ -277,7 +278,12 @@ async function aQuestion(): Promise<{
 
   const said = await sayTo(
     one,
-    { conversationId: conversation.conversationId, spaceId: made.space.id, key: `${RUN}-turn` },
+    {
+      conversationId: conversation.conversationId,
+      spaceId: made.space.id,
+      key: `${RUN}-turn`,
+      saidBy: userId,
+    },
     { text: 'take your time' },
   )
   if (said.kind !== 'said') throw new Error('the fixture could not ask')
@@ -286,17 +292,22 @@ async function aQuestion(): Promise<{
     machineId: collected.machineId,
     conversationId: conversation.conversationId,
     spaceId: made.space.id,
+    userId,
   }
 }
 
 /** A second conversation on the same machine, with its own unanswered question. */
-async function aSecondQuestion(machineId: string, spaceId: string): Promise<string> {
+async function aSecondQuestion(
+  machineId: string,
+  spaceId: string,
+  saidBy: string,
+): Promise<string> {
   const opened = await openConversation(one, { spaceId, machineId, agentKind: 'claude-code' })
   if (opened.kind !== 'opened') throw new Error('the fixture could not open a second conversation')
 
   const said = await sayTo(
     one,
-    { conversationId: opened.conversationId, spaceId, key: `${RUN}-turn-2` },
+    { conversationId: opened.conversationId, spaceId, key: `${RUN}-turn-2`, saidBy },
     { text: 'and this one too' },
   )
   if (said.kind !== 'said') throw new Error('the fixture could not ask a second time')

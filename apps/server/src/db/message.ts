@@ -25,6 +25,9 @@ export type Saying = {
   readonly key: string
 }
 
+/** Somebody saying something: a {@link Saying}, and the person doing it. */
+export type Speaking = Saying & { readonly saidBy: string }
+
 export type Said =
   | { readonly kind: 'said' }
   /** The same message again. Nothing was written the second time, and nothing needs to be. */
@@ -34,12 +37,22 @@ export type Said =
   | { readonly kind: 'machine-away' }
 
 /** One message and where it goes. Everything a writer needs and nothing about who they are. */
+/**
+ * A line to add, and — when a person said it — which person.
+ *
+ * The two are given together or not at all, because the database says the same thing: a `user`
+ * line has an author and no other kind has one. Written as two optional fields, the one call that
+ * forgot would fail at run time in SQL, which is the right place for it to fail and the wrong
+ * place to find out. `code-style.md` 4.4.
+ */
 export type Appending = {
   readonly conversationId: string
   /** This message's name in this conversation. A repeat of it is the same message, not a second. */
   readonly key: string
-  readonly message: Message
-}
+} & (
+  | { readonly message: Extract<Message, { role: 'user' }>; readonly saidBy: string }
+  | { readonly message: Exclude<Message, { role: 'user' }>; readonly saidBy?: undefined }
+)
 
 /**
  * The conversation, held for the rest of the transaction, and where its machine was as of now.
@@ -109,6 +122,7 @@ export async function append(tx: Tx, appending: Appending): Promise<Said> {
       key: appending.key,
       role: appending.message.role,
       content: JSON.stringify(appending.message.content),
+      said_by: appending.saidBy ?? null,
     })
     .onConflict((conflict) => conflict.columns(['conversation_id', 'key']).doNothing())
     .returning('id')

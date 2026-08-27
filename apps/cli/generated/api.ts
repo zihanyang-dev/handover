@@ -3154,9 +3154,10 @@ export interface components {
             goal: string | null;
             asked: {
                 text: string;
-                model?: string;
-                effort?: string;
-            } | null;
+                who: string | null;
+            }[];
+            model: string | null;
+            effort: string | null;
         };
         StopWanted: {
             /** Format: uuid */
@@ -3305,14 +3306,6 @@ export interface components {
         MachineMessage: {
             key: string;
             message: {
-                /** @enum {string} */
-                role: "user";
-                content: {
-                    text: string;
-                    model?: string;
-                    effort?: string;
-                };
-            } | {
                 /** @enum {string} */
                 role: "assistant";
                 content: {
