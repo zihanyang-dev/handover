@@ -8,6 +8,20 @@
 
 import { Terminal } from 'react-bootstrap-icons'
 
+/**
+ * The colour an agent is written in, which is its maker's.
+ *
+ * A class rather than a `data-kind` selector in a stylesheet: three screens showed the same agent
+ * and each had to repeat the same three rules to tint it, so a fourth kind meant finding all of
+ * them. Anything this build has not heard of is written in the ordinary ink.
+ */
+export function agentTint(kind: string): string {
+  if (kind === 'claude-code') return 'text-agent-claude'
+  if (kind === 'codex') return 'text-agent-codex'
+
+  return 'text-agent-other'
+}
+
 export function AgentMark({ kind }: { readonly kind: string }) {
   switch (kind) {
     case 'claude-code':

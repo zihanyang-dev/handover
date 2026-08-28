@@ -8,7 +8,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { SendButton, StopButton } from './composer-buttons.tsx'
+import { Composer, ComposerError, SendButton, StopButton } from './composer.tsx'
 import { askedWithChoices, ModelChoices, type Model } from './model-choices.tsx'
 import {
   useConversation,
@@ -47,7 +47,7 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
       </ol>
       <Live slug={slug} id={id} turn={turnOf(messages)} show={working.state === 'working'} />
       <WorkingState working={working} />
-      <Composer
+      <SayInto
         slug={slug}
         id={id}
         offers={offers}
@@ -110,7 +110,8 @@ function Live({
   )
 }
 
-function Composer({
+/** The composer as this screen wires it: what is said goes into the conversation it is under. */
+function SayInto({
   slug,
   id,
   offers,
@@ -132,65 +133,48 @@ function Composer({
   const stop = useStop(slug, id)
 
   return (
-    <form
-      className="chat-composer"
-      onSubmit={(event) => {
-        event.preventDefault()
-        const asked = text.trim()
-        if (asked === '' || working) return
-        say.mutate(askedWithChoices(asked, model, effort), {
+    <Composer
+      className="sticky bottom-6 mt-8"
+      label="Message agent"
+      placeholder="Say something…"
+      text={text}
+      onText={setText}
+      onSend={() => {
+        if (working) return
+        say.mutate(askedWithChoices(text.trim(), model, effort), {
           onSuccess: () => {
             setText('')
           },
         })
       }}
     >
-      <textarea
-        aria-label="Message agent"
-        placeholder="Say something…"
-        rows={3}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value)
+      {say.isError && <ComposerError>{whyNot(say.error.reason)}</ComposerError>}
+      {stop.isError && <ComposerError>Could not stop it. Try again.</ComposerError>}
+      <ModelChoices
+        offers={offers}
+        agentKind={agentKind}
+        model={model}
+        effort={effort}
+        onModel={(next) => {
+          setModel(next)
+          setEffort('')
         }}
+        onEffort={setEffort}
       />
-      <div className="chat-composer-actions">
-        {say.isError && (
-          <span className="composer-error" role="alert">
-            {whyNot(say.error.message)}
-          </span>
-        )}
-        {stop.isError && (
-          <span className="composer-error" role="alert">
-            Could not stop it. Try again.
-          </span>
-        )}
-        <ModelChoices
-          offers={offers}
-          agentKind={agentKind}
-          model={model}
-          effort={effort}
-          onModel={(next) => {
-            setModel(next)
-            setEffort('')
+      {working ? (
+        <StopButton
+          disabled={stop.isPending}
+          onStop={() => {
+            stop.mutate({
+              params: { path: { slug, id } },
+              body: { key: `${String(turn)}/stop` },
+            })
           }}
-          onEffort={setEffort}
         />
-        {working ? (
-          <StopButton
-            disabled={stop.isPending}
-            onStop={() => {
-              stop.mutate({
-                params: { path: { slug, id } },
-                body: { key: `${String(turn)}/stop` },
-              })
-            }}
-          />
-        ) : (
-          <SendButton disabled={say.isPending || text.trim() === ''} />
-        )}
-      </div>
-    </form>
+      ) : (
+        <SendButton disabled={say.isPending || text.trim() === ''} />
+      )}
+    </Composer>
   )
 }
 

@@ -9,9 +9,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { AgentMark } from '../machines/agent-mark.tsx'
+import { AgentMark, agentTint } from '../machines/agent-mark.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
-import { SendButton } from './composer-buttons.tsx'
+import { Composer, ComposerError, SendButton } from './composer.tsx'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
 import { useBeginConversation } from './talking.ts'
 
@@ -25,14 +25,28 @@ export function StartChat({
   readonly agentKind: string
 }) {
   const machines = useQuery(machinesIn(slug))
-  if (machines.isPending) return <p className="agent-start-state">Looking…</p>
+  if (machines.isPending)
+    return (
+      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
+        Looking…
+      </p>
+    )
   if (machines.isError)
-    return <p className="agent-start-state">Could not read this agent. Try again.</p>
+    return (
+      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
+        Could not read this agent. Try again.
+      </p>
+    )
 
   const agent = agentsOn(machines.data).find(
     (one) => one.machineId === machineId && one.kind === agentKind,
   )
-  if (agent === undefined) return <p className="agent-start-state">This agent is not available.</p>
+  if (agent === undefined)
+    return (
+      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
+        This agent is not available.
+      </p>
+    )
 
   return <ReadyStart slug={slug} agent={agent} />
 }
@@ -48,27 +62,42 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
   const online = agent.isHere
 
   return (
-    <section className="agent-start" aria-labelledby="agent-start-title">
-      <div className="agent-start-avatar" aria-hidden="true">
-        <img src={agent.avatarUrl} alt="" width="64" height="64" />
-        <span className="agent-start-kind" data-kind={agent.kind}>
+    <section
+      className="mx-auto flex min-h-full w-[min(44rem,calc(100%-3rem))] flex-col items-center pt-[clamp(5rem,16vh,7.5rem)] pb-8"
+      aria-labelledby="agent-start-title"
+    >
+      <div
+        className="relative grid size-16 place-items-center rounded-full border border-[#37352f24] bg-base shadow-[var(--surface-raised-shadow)]"
+        aria-hidden="true"
+      >
+        <img
+          className="size-[72%] object-contain"
+          src={agent.avatarUrl}
+          alt=""
+          width="64"
+          height="64"
+        />
+        <span
+          className={`absolute -right-1 -bottom-1 grid size-5.5 place-items-center rounded-full border-2 border-base bg-base shadow-[0_1px_3px_#0f0f0f2e] [&>svg]:size-3.5 ${agentTint(agent.kind)}`}
+        >
           <AgentMark kind={agent.kind} />
         </span>
       </div>
-      <h1 id="agent-start-title">
-        How can{' '}
-        <span className="agent-start-name" data-kind={agent.kind}>
-          {name}
-        </span>{' '}
-        help?
+      <h1
+        className="mt-5 mb-8 text-center text-3xl/9 font-semibold text-ink"
+        id="agent-start-title"
+      >
+        How can <span className={tintOf(agent.kind)}>{name}</span> help?
       </h1>
 
-      <form
-        className="agent-start-composer"
-        onSubmit={(event) => {
-          event.preventDefault()
-          const asked = text.trim()
-          if (asked === '' || !online) return
+      <Composer
+        label={`Message ${name}`}
+        placeholder={`Ask ${name} anything…`}
+        text={text}
+        onText={setText}
+        takesFocus
+        disabled={!online}
+        onSend={() => {
           begin.mutate(
             {
               params: { path: { slug } },
@@ -76,7 +105,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
                 id,
                 machineId: agent.machineId,
                 agentKind: agent.kind,
-                asked: askedWithChoices(asked, model, effort),
+                asked: askedWithChoices(text.trim(), model, effort),
               },
             },
             {
@@ -87,42 +116,21 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
           )
         }}
       >
-        <textarea
-          autoFocus
-          aria-label={`Message ${name}`}
-          placeholder={`Ask ${name} anything…`}
-          rows={3}
-          value={text}
-          disabled={!online}
-          onChange={(event) => {
-            setText(event.target.value)
+        {!online && <ComposerError>{name} is offline.</ComposerError>}
+        {begin.isError && <ComposerError>{whyNot(begin.error.reason, name)}</ComposerError>}
+        <ModelChoices
+          offers={agent.models}
+          agentKind={agent.kind}
+          model={model}
+          effort={effort}
+          onModel={(next) => {
+            setModel(next)
+            setEffort('')
           }}
+          onEffort={setEffort}
         />
-        <div className="agent-start-actions">
-          {!online && (
-            <span className="composer-error" role="alert">
-              {name} is offline.
-            </span>
-          )}
-          {begin.isError && (
-            <span className="composer-error" role="alert">
-              {whyNot(begin.error.reason, name)}
-            </span>
-          )}
-          <ModelChoices
-            offers={agent.models}
-            agentKind={agent.kind}
-            model={model}
-            effort={effort}
-            onModel={(next) => {
-              setModel(next)
-              setEffort('')
-            }}
-            onEffort={setEffort}
-          />
-          <SendButton disabled={!online || begin.isPending || text.trim() === ''} />
-        </div>
-      </form>
+        <SendButton disabled={!online || begin.isPending || text.trim() === ''} />
+      </Composer>
     </section>
   )
 }
@@ -133,6 +141,14 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
  * The names are the server's own, from `conversation-api.ts`. Opening one is the last moment a
  * different machine can be chosen, so it is the only place `machine-not-here` is ever an answer.
  */
+/** The agent's name in its maker's colour, which is the one flash of colour on this screen. */
+function tintOf(kind: string): string {
+  if (kind === 'claude-code') return 'text-agent-claude'
+  if (kind === 'codex') return 'text-agent-codex'
+
+  return 'text-focus'
+}
+
 function whyNot(reason: string, name: string): string {
   if (reason === 'machine-not-here') return `${name} is offline.`
   if (reason === 'agent-not-on-machine') return `${name} is no longer available.`

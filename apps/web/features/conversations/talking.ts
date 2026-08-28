@@ -260,7 +260,7 @@ export function useBeginConversation(slug: string) {
 export function useSay(slug: string, id: string) {
   const client = useQueryClient()
 
-  return useMutation({
+  return useMutation<void, { reason: string }, Saying>({
     mutationFn: async (asked: Saying) => {
       // The whole of what was asked, not only the words. Named by the text alone, somebody whose
       // first attempt was lost and who then picked a different model would send the same name —
@@ -270,7 +270,7 @@ export function useSay(slug: string, id: string) {
         params: { path: { slug, id } },
         body: { key: retryKey(intention), asked },
       })
-      if (error !== undefined) throw new Error(error.reason)
+      if (error !== undefined) throw error
       retryKeyDone(intention)
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: transcriptOf(slug, id) }),
