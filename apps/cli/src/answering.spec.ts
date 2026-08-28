@@ -124,6 +124,7 @@ describe('what a turn leaves behind', () => {
       saying(
         said({
           said: 'did',
+          callId: 'long-command',
           name: 'Bash',
           verb: 'ran',
           arg: 'cat big.log',
@@ -151,6 +152,7 @@ describe('what a turn leaves behind', () => {
       saying(
         said({
           said: 'did',
+          callId: 'short-command',
           name: 'Bash',
           verb: 'ran',
           arg: 'echo hi',
@@ -167,8 +169,16 @@ describe('what a turn leaves behind', () => {
   it('never writes down that it had started something, only that it did it', async () => {
     const kept = await answered(
       saying(
-        said({ said: 'doing', name: 'Bash', verb: 'ran', arg: 'ls' }),
-        said({ said: 'did', name: 'Bash', verb: 'ran', arg: 'ls', ok: true, excerpt: 'a b' }),
+        said({ said: 'doing', callId: 'list', name: 'Bash', verb: 'ran', arg: 'ls' }),
+        said({
+          said: 'did',
+          callId: 'list',
+          name: 'Bash',
+          verb: 'ran',
+          arg: 'ls',
+          ok: true,
+          excerpt: 'a b',
+        }),
         { told: 'ended', why: { why: 'done' } },
       ),
     )
@@ -178,10 +188,17 @@ describe('what a turn leaves behind', () => {
 
   it('keeps a tool that never said how it went as one that never said', async () => {
     const kept = await answered(
-      saying(said({ said: 'did', name: 'web_search', verb: '', arg: 'x', excerpt: '' }), {
-        told: 'ended',
-        why: { why: 'done' },
-      }),
+      saying(
+        said({
+          said: 'did',
+          callId: 'search',
+          name: 'web_search',
+          verb: '',
+          arg: 'x',
+          excerpt: '',
+        }),
+        { told: 'ended', why: { why: 'done' } },
+      ),
     )
 
     expect(kept[0]?.message.content).not.toHaveProperty('ok')
@@ -265,7 +282,7 @@ describe('what a turn leaves behind', () => {
     await answered(
       saying(
         said({ said: 'thinking', text: 'let me look at the file' }),
-        said({ said: 'doing', name: 'Bash', verb: 'ran', arg: 'ls' }),
+        said({ said: 'doing', callId: 'list', name: 'Bash', verb: 'ran', arg: 'ls' }),
         said({ said: 'text', text: 'done' }),
         { told: 'ended', why: { why: 'done' } },
       ),

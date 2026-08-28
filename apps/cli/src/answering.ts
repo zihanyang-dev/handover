@@ -31,6 +31,9 @@ const KEEP_TRYING_MS = 120_000
 
 const BETWEEN_TRIES_SECONDS = 2
 
+/** Batches noisy provider updates before each cross-instance NOTIFY without making them feel late. */
+const LIVE_OUTPUT_EVERY_MS = 75
+
 /** What the server handed over: one question, and what is needed to answer it. */
 export type Asking = components['schemas']['SomethingToAnswer']
 
@@ -349,7 +352,7 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
   // a tool that never said.
   const { said: _kind, output, ...what } = said
 
-  return { now: pieces(output), written: { role: 'tool', content: what } }
+  return { now: pieces(what.callId, output), written: { role: 'tool', content: what } }
 }
 
 /**
@@ -359,12 +362,12 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
  * into the transcript — pushing it then would be the same words arriving twice, which is the one
  * thing {@link where} exists to prevent.
  */
-function pieces(output: string | undefined): readonly Unkept[] {
-  if (output === undefined || output.length <= EXCERPT) return []
+function pieces(callId: string | undefined, output: string | undefined): readonly Unkept[] {
+  if (callId === undefined || output === undefined || output.length <= EXCERPT) return []
 
   const said: Unkept[] = []
   for (let at = 0; at < output.length; at += PIECE) {
-    said.push({ said: 'output', text: output.slice(at, at + PIECE) })
+    said.push({ said: 'output', callId, at, text: output.slice(at, at + PIECE) })
   }
 
   return said
@@ -382,9 +385,68 @@ function pieces(output: string | undefined): readonly Unkept[] {
  * message is, and every line of every turn will vanish the same way. Silence there would be a
  * machine that looks like it is working and writes nothing down.
  */
+type LiveWriter = {
+  readonly push: (said: Unkept) => void
+  readonly drain: () => Promise<void>
+}
+
+/** A serial, short-cadence writer for ephemeral events, bounded by transport-sized pieces. */
+function liveWriter(send: (said: Unkept) => Promise<void>): LiveWriter {
+  let sending = Promise.resolve()
+  let pending: Extract<Unkept, { readonly said: 'output' }>[] = []
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const enqueue = (said: Unkept): void => {
+    sending = sending
+      .then(async () => {
+        await send(said)
+      })
+      .catch(() => undefined)
+  }
+
+  const flush = (): void => {
+    if (timer !== undefined) clearTimeout(timer)
+    timer = undefined
+    const batch = pending
+    pending = []
+    for (const output of batch) enqueue(output)
+  }
+
+  const output = (next: Extract<Unkept, { readonly said: 'output' }>): void => {
+    const previous = pending.at(-1)
+    const joins =
+      previous?.callId === next.callId &&
+      previous.at + previous.text.length === next.at &&
+      previous.text.length + next.text.length <= PIECE
+    if (joins) pending[pending.length - 1] = { ...previous, text: `${previous.text}${next.text}` }
+    else pending.push(next)
+
+    if (timer !== undefined) return
+    timer = setTimeout(flush, LIVE_OUTPUT_EVERY_MS)
+    timer.unref()
+  }
+
+  return {
+    push: (said) => {
+      if (said.said === 'output') output(said)
+      else {
+        flush()
+        enqueue(said)
+      }
+    },
+    drain: async () => {
+      flush()
+      await sending
+    },
+  }
+}
+
 function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
   const path = { params: { path: { id: asking.conversationId } } }
   const { say, until } = machine
+  const live = liveWriter(async (said) => {
+    await api.POST('/machines/current/conversations/{id}/live', { ...path, body: said })
+  })
 
   /**
    * Sends one thing until it is in, or until it is certain it never will be.
@@ -412,13 +474,17 @@ function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
   }
 
   return {
-    message: async (key, message) =>
-      sent(async () =>
+    message: async (key, message) => {
+      // A durable result must not overtake the live fragments that explain it. Waiting happens
+      // here, not in the adapter loop: moments are still accepted without holding up the agent.
+      await live.drain()
+      return sent(async () =>
         api.POST('/machines/current/conversations/{id}/messages', {
           ...path,
           body: { key, message },
         }),
-      ),
+      )
+    },
 
     session: async (id) => {
       // Same treatment: losing it means the next turn starts over and says so, which is honest but
@@ -428,8 +494,6 @@ function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
       )
     },
 
-    moment: (said) => {
-      void api.POST('/machines/current/conversations/{id}/live', { ...path, body: said })
-    },
+    moment: live.push,
   }
 }

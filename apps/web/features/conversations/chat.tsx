@@ -6,22 +6,61 @@
  * moment and is kept nowhere. They come from different places on purpose — see `talking.ts`.
  */
 
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { Composer, ComposerError, SendButton, StopButton } from './composer.tsx'
+import { ArrowDown, Check, ChevronRight, FileDiff, X } from 'lucide-react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  Composer,
+  ComposerError,
+  SendButton,
+  StopButton,
+} from '../../components/ui/chat-composer.tsx'
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from '../../components/ui/message-scroller.tsx'
+import { AgentMark, agentName as agentKindName, agentTint } from '../machines/agent.tsx'
+import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
+import { ChatActivity } from './chat-activity.tsx'
+import { ChatMessage, ChatMessageText } from './chat-message.tsx'
+import { consumeMessageArrival } from './message-transition.ts'
 import { askedWithChoices, ModelChoices, type Model } from './model-choices.tsx'
 import {
+  conversationsIn,
   useConversation,
   useSay,
   useStop,
   useWatching,
+  type LiveOutput,
+  type LiveTurn,
   type Message,
-  type Moment,
   type Working,
 } from './talking.ts'
+import {
+  getLatestUserPrompt,
+  shouldPinForNewPrompt,
+  type LatestUserPrompt,
+  type TranscriptRow,
+} from './transcript-scroll.ts'
+
+const AT_END_THRESHOLD_PX = 48
+const PROMPT_TOP_GAP_PX = 24
+
+type UserMessage = Extract<Message, { readonly role: 'user' }>
 
 export function Chat({ slug, id }: { readonly slug: string; readonly id: string }) {
   const conversation = useConversation(slug, id)
+  const conversationTitle = useQuery({
+    ...conversationsIn(slug),
+    select: (answer) => answer.conversations.find((one) => one.id === id)?.opening,
+  })
+  const machines = useQuery(machinesIn(slug))
+  const [animateArrival] = useState(() => consumeMessageArrival(id))
 
   if (conversation.isPending) return <p className="chat-screen-state">Looking…</p>
   if (conversation.isError)
@@ -37,77 +76,596 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
     )
   }
 
-  const { agentKind, messages, offers, working } = conversation.data
+  const { agentKind, machineName } = conversation.data
+  const installed = agentsOn(machines.data ?? []).find(
+    (agent) => agent.kind === agentKind && agent.machineName === machineName,
+  )
+  const agent = agentPresentation(installed, agentKind)
+  const title =
+    conversationTitle.data ??
+    conversation.data.messages.find((message) => message.role === 'user')?.content.text ??
+    'Chat'
+
   return (
-    <section className="chat-screen" aria-label="Chat">
-      <ol className="chat-transcript">
-        {messages.map((message) => (
-          <Line key={message.seq} message={message} />
-        ))}
-      </ol>
-      <Live slug={slug} id={id} turn={turnOf(messages)} show={working.state === 'working'} />
-      <WorkingState working={working} />
-      <SayInto
+    <MessageScrollerProvider autoScroll scrollEdgeThreshold={AT_END_THRESHOLD_PX}>
+      <ConversationSurface
         slug={slug}
         id={id}
-        offers={offers}
-        agentKind={agentKind}
-        working={working.state === 'working'}
-        turn={turnOf(messages)}
+        conversation={conversation.data}
+        agent={agent}
+        title={title}
+        animateArrival={animateArrival}
       />
+    </MessageScrollerProvider>
+  )
+}
+
+function ConversationSurface({
+  slug,
+  id,
+  conversation,
+  agent,
+  title,
+  animateArrival,
+}: {
+  readonly slug: string
+  readonly id: string
+  readonly conversation: NonNullable<ReturnType<typeof useConversation>['data']>
+  readonly agent: { readonly avatarSrc: string; readonly name: string }
+  readonly title: string
+  readonly animateArrival: boolean
+}) {
+  const { agentKind, messages, offers, working } = conversation
+  const [pendingMessage, setPendingMessage] = useState<UserMessage>()
+  const turns = useMemo(() => transcriptTurns(messages), [messages])
+  const rows = useMemo(() => rowsWithPending(turns, pendingMessage), [pendingMessage, turns])
+  const liveTurn = useWatching(slug, id, turnOf(messages))
+  const { scrollToEnd, scrollToMessage } = useMessageScroller()
+  const viewport = useRef<HTMLDivElement>(null)
+  const latestPrompt = useRef<LatestUserPrompt | null>(null)
+  const positionedConversation = useRef<string | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
+
+  useLayoutEffect(() => {
+    const nextPrompt = getLatestUserPrompt(rows)
+    if (positionedConversation.current !== id) {
+      positionedConversation.current = id
+      latestPrompt.current = nextPrompt
+      if (animateArrival && nextPrompt !== null) {
+        scrollToMessage(nextPrompt.rowId, {
+          align: 'start',
+          scrollMargin: PROMPT_TOP_GAP_PX,
+        })
+      } else {
+        scrollToEnd()
+      }
+      return
+    }
+
+    const previousPrompt = latestPrompt.current
+    latestPrompt.current = nextPrompt
+    if (!shouldPinForNewPrompt(previousPrompt, nextPrompt) || nextPrompt === null) return
+    scrollToMessage(nextPrompt.rowId, {
+      align: 'start',
+      scrollMargin: PROMPT_TOP_GAP_PX,
+    })
+  }, [animateArrival, id, rows, scrollToEnd, scrollToMessage])
+
+  const noteScrollPosition = () => {
+    const element = viewport.current
+    if (element === null) return
+    const distance = element.scrollHeight - element.clientHeight - element.scrollTop
+    setShowScrollButton(distance > AT_END_THRESHOLD_PX)
+  }
+
+  return (
+    <section className="chat-screen" aria-label="Chat">
+      <header className="chat-conversation-header">
+        <strong>{title}</strong>
+      </header>
+      <MessageScroller className="chat-scroll-root">
+        <MessageScrollerViewport
+          ref={viewport}
+          className="chat-scroll"
+          onScroll={noteScrollPosition}
+        >
+          <MessageScrollerContent className="chat-scroll-content">
+            <Transcript
+              messages={messages}
+              turns={turns}
+              agent={agent}
+              animateArrival={animateArrival}
+              working={working.state === 'working'}
+              liveTurn={liveTurn}
+              pendingMessage={pendingMessage}
+            />
+            {working.state === 'unknown' && (
+              <div className="chat-transcript-footer">
+                <WorkingState working={working} />
+              </div>
+            )}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <ScrollToLatest
+          show={showScrollButton}
+          onClick={() => {
+            scrollToEnd({ behavior: 'smooth' })
+          }}
+        />
+      </MessageScroller>
+
+      <div className="chat-input-dock">
+        <div className="chat-input-wash" aria-hidden />
+        <div className="chat-input-surface">
+          <SayInto
+            slug={slug}
+            id={id}
+            offers={offers}
+            agentKind={agentKind}
+            agentName={agent.name}
+            avatarSrc={agent.avatarSrc}
+            working={working.state === 'working'}
+            turn={turnOf(messages)}
+            afterSeq={messages.at(-1)?.seq ?? 0}
+            onPending={setPendingMessage}
+          />
+        </div>
+      </div>
     </section>
   )
 }
 
-function Line({ message }: { readonly message: Message }) {
-  if (message.role === 'user')
-    return <li className="chat-line chat-line-person">{message.content.text}</li>
-  if (message.role === 'assistant')
-    return <li className="chat-line chat-line-agent">{message.content.text}</li>
-  if (message.role === 'tool') {
-    return (
-      <li className="chat-line chat-line-tool">
-        <strong>{message.content.verb || message.content.name}</strong>
-        <span>{message.content.arg}</span>
-        {message.content.excerpt !== '' && <pre>{message.content.excerpt}</pre>}
-      </li>
-    )
-  }
-
-  const happened = activityText(message)
-  return happened === null ? null : <li className="chat-line chat-line-activity">{happened}</li>
+/** The jump back to the live edge, offered only when the reader has left it. */
+function ScrollToLatest({
+  show,
+  onClick,
+}: {
+  readonly show: boolean
+  readonly onClick: () => void
+}) {
+  return (
+    <div className="chat-scroll-to-bottom" data-visible={show || undefined}>
+      <button type="button" aria-label="Scroll to latest message" onClick={onClick}>
+        <ArrowDown aria-hidden />
+      </button>
+    </div>
+  )
 }
 
-/**
- * What is happening right now, which is kept nowhere and shown only while it happens.
- *
- * The turn is passed in rather than made into a key on this component. Keyed, a new turn would
- * unmount this and close the stream at the very moment that turn's first moments arrive — they
- * are sent once, so each one that landed in the gap was gone, and a turn appeared to begin in
- * silence. The list is cleared inside instead, and the connection is never touched.
- */
-function Live({
-  slug,
-  id,
-  turn,
-  show,
+function agentPresentation(agent: InstalledAgent | undefined, kind: string) {
+  if (agent === undefined) return { avatarSrc: '', name: agentKindName(kind) }
+  return { avatarSrc: agent.avatarUrl, name: agent.name?.trim() || agentKindName(kind) }
+}
+
+type ToolMessage = Message & { readonly role: 'tool' }
+type AssistantMessage = Message & { readonly role: 'assistant' }
+type ReplyBlock =
+  | { readonly kind: 'assistant'; readonly message: AssistantMessage }
+  | { readonly kind: 'tools'; readonly messages: ToolMessage[] }
+
+function replyBlocks(messages: readonly Message[]): ReplyBlock[] {
+  const blocks: ReplyBlock[] = []
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      blocks.push({ kind: 'assistant', message })
+      continue
+    }
+    if (message.role !== 'tool') continue
+
+    const previous = blocks.at(-1)
+    if (previous?.kind === 'tools') previous.messages.push(message)
+    else blocks.push({ kind: 'tools', messages: [message] })
+  }
+  return blocks
+}
+
+type TranscriptTurn =
+  | { readonly key: string; readonly user: Message & { readonly role: 'user' } }
+  | { readonly key: string; readonly reply: Message[] }
+
+function transcriptTurns(messages: readonly Message[]): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = []
+  for (const message of messages) addTranscriptTurn(turns, message)
+  return turns
+}
+
+function transcriptRows(turns: readonly TranscriptTurn[]): TranscriptRow[] {
+  return turns.map(transcriptRow)
+}
+
+function rowsWithPending(
+  turns: readonly TranscriptTurn[],
+  pending: UserMessage | undefined,
+): readonly TranscriptRow[] {
+  const written = transcriptRows(turns)
+  return pending === undefined
+    ? written
+    : [...written, { id: 'pending-user', kind: 'user', seq: pending.seq }]
+}
+
+function transcriptRow(turn: TranscriptTurn): TranscriptRow {
+  if ('user' in turn) {
+    return { id: turn.key, kind: 'user', seq: turn.user.seq }
+  }
+  return { id: turn.key, kind: 'reply', seq: turn.reply[0]?.seq ?? 0 }
+}
+
+function Transcript({
+  messages,
+  turns,
+  agent,
+  animateArrival,
+  working,
+  liveTurn,
+  pendingMessage,
 }: {
-  readonly slug: string
-  readonly id: string
-  readonly turn: number
-  readonly show: boolean
+  readonly messages: readonly Message[]
+  readonly turns: readonly TranscriptTurn[]
+  readonly agent: { readonly avatarSrc: string; readonly name: string }
+  readonly animateArrival: boolean
+  readonly working: boolean
+  readonly liveTurn: LiveTurn
+  readonly pendingMessage: UserMessage | undefined
 }) {
-  const moments = useWatching(slug, id, turn)
-  if (!show || moments.length === 0) return null
+  const [firstPaintEndsAt] = useState(() => messages.at(-1)?.seq)
+  const activeCallId = liveTurn.activity?.said === 'doing' ? liveTurn.activity.callId : undefined
+  const activeCallIsWritten =
+    activeCallId !== undefined &&
+    messages.some((message) => message.role === 'tool' && message.content.callId === activeCallId)
+  const activeOutput = activeCallId === undefined ? undefined : liveTurn.outputs.get(activeCallId)
 
   return (
-    <ul className="chat-live" aria-label="Happening now">
-      {moments.map((moment, index) => (
-        <li key={index}>{momentText(moment)}</li>
-      ))}
-      <li>Thinking and full output are shown now and are not kept.</li>
-    </ul>
+    <>
+      {turns.map((turn) => {
+        const row = transcriptRow(turn)
+        return (
+          <MessageScrollerItem key={turn.key} messageId={row.id}>
+            <div className="chat-transcript-row" data-transcript-row-id={row.id}>
+              {'user' in turn ? (
+                <ChatMessage placement="right" at={turn.user.at} copyText={turn.user.content.text}>
+                  <ChatMessageText
+                    message={turn.user}
+                    animate={
+                      turn.user.seq > (firstPaintEndsAt ?? 0) ||
+                      (animateArrival && turn.user.seq === firstPaintEndsAt)
+                    }
+                  />
+                </ChatMessage>
+              ) : (
+                <AgentReply messages={turn.reply} agent={agent} liveOutputs={liveTurn.outputs} />
+              )}
+            </div>
+          </MessageScrollerItem>
+        )
+      })}
+      {pendingMessage !== undefined && (
+        <MessageScrollerItem messageId="pending-user">
+          <div className="chat-transcript-row" data-transcript-row-id="pending-user">
+            <ChatMessage
+              placement="right"
+              at={pendingMessage.at}
+              copyText={pendingMessage.content.text}
+            >
+              <ChatMessageText message={pendingMessage} animate />
+            </ChatMessage>
+          </div>
+        </MessageScrollerItem>
+      )}
+      {working && !activeCallIsWritten && (
+        <MessageScrollerItem messageId={`live-${String(turnOf(messages))}`}>
+          <div className="chat-transcript-row chat-live-row">
+            <ChatActivity activity={liveTurn.activity} output={activeOutput} />
+          </div>
+        </MessageScrollerItem>
+      )}
+    </>
   )
+}
+
+function addTranscriptTurn(turns: TranscriptTurn[], message: Message) {
+  if (message.role === 'user') {
+    turns.push({ key: `user-${String(message.seq)}`, user: message })
+    return
+  }
+
+  const previous = turns.at(-1)
+  if (previous !== undefined && 'reply' in previous) previous.reply.push(message)
+  else turns.push({ key: `reply-${String(message.seq)}`, reply: [message] })
+}
+
+function AgentReply({
+  messages,
+  agent,
+  liveOutputs,
+}: {
+  readonly messages: readonly Message[]
+  readonly agent: { readonly avatarSrc: string; readonly name: string }
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  const blocks = replyBlocks(messages)
+  const first = blocks[0]
+  if (first === undefined) return null
+  const beganAt = first.kind === 'assistant' ? first.message.at : first.messages[0]?.at
+  if (beganAt === undefined) return null
+  const copyText = blocks
+    .filter(
+      (block): block is Extract<ReplyBlock, { readonly kind: 'assistant' }> =>
+        block.kind === 'assistant',
+    )
+    .map((block) => block.message.content.text)
+    .join('\n\n')
+
+  return (
+    <ChatMessage
+      placement="left"
+      at={beganAt}
+      avatarSrc={agent.avatarSrc}
+      agentName={agent.name}
+      copyText={copyText || undefined}
+    >
+      <div className="chat-agent-reply">
+        <ReplyContent blocks={blocks} liveOutputs={liveOutputs} />
+      </div>
+    </ChatMessage>
+  )
+}
+
+function ReplyContent({
+  blocks,
+  liveOutputs,
+}: {
+  readonly blocks: readonly ReplyBlock[]
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  return (
+    <div className="chat-agent-reply-content">
+      {blocks.map((block) =>
+        block.kind === 'tools' ? (
+          <ToolRun
+            key={`tools-${String(block.messages[0]?.seq ?? 0)}`}
+            messages={block.messages}
+            liveOutputs={liveOutputs}
+          />
+        ) : (
+          <ChatMessageText key={`answer-${String(block.message.seq)}`} message={block.message} />
+        ),
+      )}
+    </div>
+  )
+}
+
+function ToolRun({
+  messages,
+  liveOutputs,
+}: {
+  readonly messages: readonly ToolMessage[]
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  const hasLiveOutput = messages.some((message) => outputFor(message, liveOutputs) !== undefined)
+  const [open, setOpen] = useState(hasLiveOutput)
+  const label = `Ran ${String(messages.length)} ${messages.length === 1 ? 'step' : 'steps'}`
+
+  return (
+    <div className="chat-tool-run">
+      <button
+        type="button"
+        className="chat-tool-run-toggle"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((current) => !current)
+        }}
+      >
+        <span className="chat-tool-run-label">
+          {label}
+          <AccordionChevron />
+        </span>
+      </button>
+      <div
+        className="chat-tool-run-body"
+        data-open={open || undefined}
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div>
+          <div className="chat-tool-rows">
+            {messages.map((message) => (
+              <ToolRow key={message.seq} message={message} liveOutputs={liveOutputs} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function toolLabel(message: ToolMessage) {
+  const { name, verb } = message.content
+  if (/^agent/iu.test(name)) return 'Delegating work'
+  if (/toolsearch/iu.test(name)) return 'Finding a tool'
+  if (/websearch/iu.test(name)) return 'Searching the web'
+  if (/webfetch/iu.test(name)) return 'Fetching a page'
+  return toolTone(`${verb} ${name}`) === 'run' ? 'Run' : verb || name
+}
+
+function ToolRow({
+  message,
+  liveOutputs,
+}: {
+  readonly message: ToolMessage
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  const liveOutput = outputFor(message, liveOutputs)
+  const [expanded, setExpanded] = useState(liveOutput !== undefined)
+  const { arg, name, ok } = message.content
+  const label = toolLabel(message)
+  const changed = toolCounts(message).changed
+
+  return (
+    <div className="chat-tool-row" data-ok={ok === false ? 'false' : 'true'}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => {
+          setExpanded((current) => !current)
+        }}
+      >
+        <span className="chat-tool-row-icon" aria-hidden>
+          {ok === false ? <X /> : <Check />}
+        </span>
+        <span className="chat-tool-row-copy">
+          <strong>{label}</strong>
+          <span className="chat-tool-chip">{arg || name}</span>
+        </span>
+        {!changed && <AccordionChevron />}
+      </button>
+      {changed && (
+        <DiffChip
+          message={message}
+          expanded={expanded}
+          onToggle={() => {
+            setExpanded((current) => !current)
+          }}
+        />
+      )}
+      <div
+        className="chat-tool-detail"
+        data-open={expanded || undefined}
+        aria-hidden={!expanded}
+        inert={!expanded}
+      >
+        <div>
+          <ToolOutput message={message} liveOutput={liveOutput} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function outputFor(
+  message: ToolMessage,
+  liveOutputs: ReadonlyMap<string, LiveOutput>,
+): LiveOutput | undefined {
+  const { callId } = message.content
+  return callId === undefined ? undefined : liveOutputs.get(callId)
+}
+
+function ToolOutput({
+  message,
+  liveOutput,
+}: {
+  readonly message: ToolMessage
+  readonly liveOutput: LiveOutput | undefined
+}) {
+  const durable = message.content.excerpt
+  const preferDurable = liveOutput?.truncated === true && durable.length > liveOutput.text.length
+  const text = preferDurable ? durable : liveOutput?.text || durable
+  if (text === '') return null
+  return (
+    <ToolDetail
+      excerpt={text}
+      command={message.content.arg}
+      truncated={!preferDurable && liveOutput?.truncated === true}
+    />
+  )
+}
+
+function ToolDetail({
+  excerpt,
+  command,
+  truncated = false,
+}: {
+  readonly excerpt: string
+  readonly command: string
+  readonly truncated?: boolean
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const lines = excerpt.split('\n')
+  const visibleLines =
+    command.trim() !== '' && lines[0]?.trim() === command.trim() ? lines.slice(1) : lines
+  const long = visibleLines.length > 7 || visibleLines.join('\n').length > 500
+
+  return (
+    <div className="chat-tool-output" data-clamped={(long && !showAll) || undefined}>
+      <span className="chat-tool-output-truncated" hidden={!truncated}>
+        Earlier output truncated
+      </span>
+      <code>
+        {visibleLines.map((line, index) => (
+          <span className="chat-tool-output-line" data-tone={toolLineTone(line)} key={index}>
+            {line === '' ? ' ' : line}
+          </span>
+        ))}
+      </code>
+      {long && (
+        <button
+          type="button"
+          className="chat-tool-show-all"
+          aria-expanded={showAll}
+          onClick={() => {
+            setShowAll((current) => !current)
+          }}
+        >
+          {showAll ? 'Show less' : 'Show all'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function toolLineTone(line: string) {
+  if (line.startsWith('+') && !line.startsWith('+++')) return 'add'
+  if (line.startsWith('-') && !line.startsWith('---')) return 'delete'
+  if (/^(?:✓|✔|passed\b|success\b)/iu.test(line.trim())) return 'success'
+  if (/^(?:✗|✘|error\b|failed\b)/iu.test(line.trim())) return 'failure'
+  return 'plain'
+}
+
+function toolTone(label: string) {
+  if (/edit|write|patch/iu.test(label)) return 'edit'
+  if (/run|bash|command|exec/iu.test(label)) return 'run'
+  if (/read|search|find|list/iu.test(label)) return 'read'
+  return 'plain'
+}
+
+function AccordionChevron() {
+  return <ChevronRight className="chat-accordion-chevron" aria-hidden />
+}
+
+function DiffChip({
+  message,
+  expanded,
+  onToggle,
+}: {
+  readonly message: ToolMessage
+  readonly expanded: boolean
+  readonly onToggle: () => void
+}) {
+  const counts = toolCounts(message)
+  const file = message.content.arg || message.content.name
+
+  return (
+    <div className="chat-diff-chip-wrap">
+      <button
+        type="button"
+        aria-label={`Show diff for ${file}`}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <FileDiff className="chat-diff-icon" aria-hidden />
+        <span>{file}</span>
+        {counts.additions > 0 && <b>+{counts.additions}</b>}
+        {counts.deletions > 0 && <i>−{counts.deletions}</i>}
+        <AccordionChevron />
+      </button>
+    </div>
+  )
+}
+
+function toolCounts(message: ToolMessage) {
+  const lines = message.content.excerpt.split('\n')
+  const additions = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
+  const deletions = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length
+  return { additions, deletions, changed: additions > 0 || deletions > 0 }
 }
 
 /** The composer as this screen wires it: what is said goes into the conversation it is under. */
@@ -116,15 +674,23 @@ function SayInto({
   id,
   offers,
   agentKind,
+  agentName,
+  avatarSrc,
   working,
   turn,
+  afterSeq,
+  onPending,
 }: {
   readonly slug: string
   readonly id: string
   readonly offers: readonly Model[]
   readonly agentKind: string
+  readonly agentName: string
+  readonly avatarSrc: string
   readonly working: boolean
   readonly turn: number
+  readonly afterSeq: number
+  readonly onPending: (message: UserMessage | undefined) => void
 }) {
   const [text, setText] = useState('')
   const [model, setModel] = useState('')
@@ -134,59 +700,85 @@ function SayInto({
 
   return (
     <Composer
-      className="sticky bottom-6 mt-8"
-      label="Message agent"
-      placeholder="Say something…"
+      label={`Message ${agentName}`}
+      placeholder={`Ask ${agentName} anything…`}
       text={text}
       onText={setText}
+      disabled={say.isPending}
+      leading={<ComposerAvatar avatarSrc={avatarSrc} agentKind={agentKind} />}
+      action={
+        working ? (
+          <StopButton
+            disabled={stop.isPending}
+            onStop={() => {
+              stop.mutate({
+                params: { path: { slug, id } },
+                body: { key: `${String(turn)}/stop` },
+              })
+            }}
+          />
+        ) : (
+          <SendButton disabled={say.isPending || text.trim() === ''} />
+        )
+      }
       onSend={() => {
         if (working) return
-        say.mutate(askedWithChoices(text.trim(), model, effort), {
+        const sentText = text.trim()
+        const asked = askedWithChoices(sentText, model, effort)
+        onPending({
+          role: 'user',
+          seq: afterSeq + 1,
+          at: new Date().toISOString(),
+          said: null,
+          content: asked,
+        })
+        setText('')
+        say.mutate(asked, {
           onSuccess: () => {
-            setText('')
+            onPending(undefined)
+          },
+          onError: () => {
+            onPending(undefined)
+            setText(sentText)
           },
         })
       }}
     >
       {say.isError && <ComposerError>{whyNot(say.error.reason)}</ComposerError>}
       {stop.isError && <ComposerError>Could not stop it. Try again.</ComposerError>}
-      <div className="ml-auto flex min-w-0 items-center gap-1.5">
-        <ModelChoices
-          offers={offers}
-          agentKind={agentKind}
-          model={model}
-          effort={effort}
-          onModel={(next) => {
-            setModel(next)
-            setEffort('')
-          }}
-          onEffort={setEffort}
-        />
-      </div>
-      {working ? (
-        <StopButton
-          disabled={stop.isPending}
-          onStop={() => {
-            stop.mutate({
-              params: { path: { slug, id } },
-              body: { key: `${String(turn)}/stop` },
-            })
-          }}
-        />
-      ) : (
-        <SendButton disabled={say.isPending || text.trim() === ''} />
-      )}
+      <ModelChoices
+        offers={offers}
+        agentKind={agentKind}
+        model={model}
+        effort={effort}
+        onModel={(next) => {
+          setModel(next)
+          setEffort('')
+        }}
+        onEffort={setEffort}
+      />
     </Composer>
   )
 }
 
+function ComposerAvatar({
+  avatarSrc,
+  agentKind,
+}: {
+  readonly avatarSrc: string
+  readonly agentKind: string
+}) {
+  return (
+    <span className="chat-composer-avatar" aria-hidden>
+      {avatarSrc !== '' && <img src={avatarSrc} alt="" />}
+      <span className={`chat-composer-avatar-mark ${agentTint(agentKind)}`}>
+        <AgentMark kind={agentKind} />
+      </span>
+    </span>
+  )
+}
+
 function WorkingState({ working }: { readonly working: Working }) {
-  if (working.state === 'working')
-    return (
-      <p className="chat-working" role="status" aria-live="polite">
-        Working…
-      </p>
-    )
   if (working.state === 'unknown')
     return (
       <p className="chat-working" role="status" aria-live="polite">
@@ -204,20 +796,7 @@ function turnOf(messages: readonly Message[]): number {
   return latest
 }
 
-function momentText(moment: Moment): string {
-  if (moment.said === 'thinking') return moment.text
-  if (moment.said === 'output') return moment.text
-  return `${moment.verb} ${moment.arg}`.trim()
-}
-
-/**
- * What an activity says, for the ones this screen has words for.
- *
- * `done` alone shows nothing: a turn that simply ended says so by the next thing being said.
- * Everything else is shown — anything without words here appears as its own name rather than
- * disappearing. A transcript is an account of what happened, and a page that quietly dropped the
- * kinds it had not heard of would leave one looking like it skipped.
- */
+/** Words for durable activity lines that do not carry their own text. */
 const ACTIVITY_TEXT = new Map<string, string>([
   ['cancelled', 'Stopped'],
   ['failed', 'That turn failed'],
@@ -228,15 +807,12 @@ const ACTIVITY_TEXT = new Map<string, string>([
   ['unreadable', 'One event could not be read'],
 ])
 
-function activityText(what: Message & { role: 'activity' }): string | null {
+function activityText(what: Extract<Message, { readonly role: 'activity' }>): string | null {
   if (what.content.activityType === 'done') return null
   const said: unknown = what.content['text']
+  if (typeof said === 'string' && said !== '') return said
 
-  return (
-    (typeof said === 'string' && said !== '' ? said : undefined) ??
-    ACTIVITY_TEXT.get(what.content.activityType) ??
-    what.content.activityType
-  )
+  return ACTIVITY_TEXT.get(what.content.activityType) ?? what.content.activityType
 }
 
 /**

@@ -280,7 +280,23 @@ describe('entering a Space', () => {
       }),
       http.post(`*/spaces/acme/conversations/${id}/messages`, async ({ request }) => {
         continued = await request.json()
-        return new HttpResponse(null, { status: 204 })
+        const body = continued as { asked: { text: string; model?: string; effort?: string } }
+        return HttpResponse.json({
+          id,
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [],
+          messages: [
+            {
+              seq: 2,
+              at: new Date().toISOString(),
+              role: 'user',
+              said: null,
+              content: body.asked,
+            },
+          ],
+        })
       }),
       http.get(`*/spaces/acme/conversations/${id}`, ({ request }) =>
         HttpResponse.json({
@@ -334,9 +350,10 @@ describe('entering a Space', () => {
       asked: { text: 'Read notes.txt', model: 'sonnet', effort: 'high' },
     })
     expect(opened).toHaveProperty('id')
-    expect(await screen.findByText('Read notes.txt')).toBeDefined()
+    const firstMessage = await within(screen.getByRole('log')).findByText('Read notes.txt')
+    expect(firstMessage.closest('.chat-line-person')?.getAttribute('data-entering')).toBe('true')
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Message agent' }), 'And summarize')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'And summarize')
     await userEvent.click(screen.getByRole('button', { name: 'Model: Auto' }))
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Sonnet' }))
     await userEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
@@ -349,6 +366,8 @@ describe('entering a Space', () => {
       })
     })
     expect(continued).toHaveProperty('key')
+    expect(continued).toHaveProperty('after', 1)
+    expect(within(screen.getByRole('log')).getByText('And summarize')).toBeTruthy()
   })
 
   it('keeps Workspace actions to Settings', async () => {

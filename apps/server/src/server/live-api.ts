@@ -27,8 +27,58 @@ export type LiveApi = {
  */
 const HEARTBEAT_MS = 20_000
 
+/** Enough transient frames for a slow tab without allowing a disconnected socket to grow forever. */
+const MAX_PENDING_FRAMES = 128
+
+type Frame = { readonly data: string; readonly event?: string }
+type PendingFrame = { readonly frame: Frame; readonly disposable: boolean }
+
+type FrameWriter = {
+  readonly push: (frame: Frame, disposable?: boolean) => void
+  readonly drain: () => Promise<void>
+}
+
 export function liveApi(deps: LiveApi) {
   return [watching(deps), typing(deps), reporting(deps)]
+}
+
+/** One active write and a bounded queue, instead of one retained Promise per event. */
+function frameWriter(write: (frame: Frame) => Promise<unknown>): FrameWriter {
+  const pending: PendingFrame[] = []
+  let writing: Promise<void> | undefined
+
+  async function writePending(): Promise<void> {
+    try {
+      for (let next = pending.shift(); next !== undefined; next = pending.shift()) {
+        await write(next.frame)
+      }
+    } catch {
+      // A closed stream has no reader for queued frames; Hono owns the socket cleanup.
+      pending.length = 0
+    } finally {
+      writing = undefined
+    }
+  }
+
+  function push(frame: Frame, disposable = false): void {
+    if (pending.length === MAX_PENDING_FRAMES) {
+      const disposableAt = pending.findIndex((one) => one.disposable)
+      pending.splice(disposableAt < 0 ? 0 : disposableAt, 1)
+    }
+
+    pending.push({ frame, disposable })
+    if (writing === undefined) writing = writePending()
+  }
+
+  async function drain(): Promise<void> {
+    while (writing !== undefined) await writing
+  }
+
+  return { push, drain }
+}
+
+function mayDrop(watched: Watched): boolean {
+  return watched.seen === 'moment' && watched.moment.said !== 'doing'
 }
 
 /** What is happening right now, for as long as somebody is looking. */
@@ -53,9 +103,9 @@ function watching({ db, live }: LiveApi) {
       if (!reachable) return refused(c, UNAVAILABLE)
 
       return streamSSE(c, async (stream) => {
-        const sending: Promise<unknown>[] = []
+        const writer = frameWriter(async (frame) => stream.writeSSE(frame))
         const stop = live.watch(conversationId, (watched) => {
-          sending.push(stream.writeSSE({ data: JSON.stringify(watched) }))
+          writer.push({ data: JSON.stringify(watched) }, mayDrop(watched))
         })
 
         stream.onAbort(stop)
@@ -64,11 +114,12 @@ function watching({ db, live }: LiveApi) {
         // and a handler that returned would close the stream under everybody watching it.
         while (!stream.closed && !stream.aborted) {
           await stream.sleep(HEARTBEAT_MS)
-          await stream.writeSSE({ data: '', event: 'still-here' })
+          writer.push({ data: '', event: 'still-here' }, true)
+          await writer.drain()
         }
 
         stop()
-        await Promise.allSettled(sending)
+        await writer.drain()
       })
     },
   })

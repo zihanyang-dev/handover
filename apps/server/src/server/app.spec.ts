@@ -132,7 +132,7 @@ describe('a request that never parsed', () => {
     const nonsense = await app.request('/spaces', { ...bad, body: JSON.stringify({}) })
     const fine = await app.request('/spaces', {
       ...bad,
-      body: JSON.stringify({ displayName: 'Acme', requestKey: `${RUN}-k1` }),
+      body: JSON.stringify({ displayName: 'Acme', emoji: '🏠', requestKey: `${RUN}-k1` }),
     })
 
     // Who is asking is settled before what they sent is looked at, so a stranger cannot use the

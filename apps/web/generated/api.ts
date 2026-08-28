@@ -2252,12 +2252,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Said, or said already — either way it is in there once */
-                204: {
+                /** @description The authoritative tail containing what just landed */
+                200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Transcript"];
+                    };
                 };
                 /** @description The body was not the shape it claims */
                 400: {
@@ -3398,6 +3400,7 @@ export interface components {
         NewSpace: {
             /** @example 徐悦泰 Studio */
             displayName: string;
+            emoji: string;
             requestKey: string;
         };
         NewSpaceEmoji: {
@@ -3698,6 +3701,7 @@ export interface components {
             text: string;
         };
         Did: {
+            callId?: string;
             name: string;
             verb: string;
             arg: string;
@@ -3758,6 +3762,7 @@ export interface components {
         SayThis: {
             key: string;
             asked: components["schemas"]["Asked"];
+            after?: number;
         };
         StopThis: {
             key: string;
@@ -3801,12 +3806,15 @@ export interface components {
         } | {
             /** @enum {string} */
             said: "doing";
+            callId: string;
             name: string;
             verb: string;
             arg: string;
         } | {
             /** @enum {string} */
             said: "output";
+            callId: string;
+            at: number;
             text: string;
         };
         HandOver: {

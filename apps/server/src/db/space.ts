@@ -22,6 +22,8 @@ export type SpaceRequest = {
   readonly requestKey: string
   readonly userId: string
   readonly displayName: string
+  /** Internal callers may keep the default; the browser chooses one when a person makes it. */
+  readonly emoji?: string
   /** Already normalised. Whether a name is usable at all is decided before this is called. */
   readonly slug: Slug
 }
@@ -94,7 +96,11 @@ export async function createSpace(db: Database, request: SpaceRequest): Promise<
 
     const created = await tx
       .insertInto('spaces')
-      .values({ display_name: request.displayName, slug: request.slug })
+      .values({
+        display_name: request.displayName,
+        emoji: request.emoji ?? '🏠',
+        slug: request.slug,
+      })
       .onConflict((clash) => clash.column('slug').doNothing())
       .returning(['id', 'slug', 'display_name as displayName', 'emoji'])
       .executeTakeFirst()

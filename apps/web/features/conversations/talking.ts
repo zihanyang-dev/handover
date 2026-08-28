@@ -11,7 +11,13 @@
  * see {@link useConversation}.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
@@ -47,45 +53,177 @@ type Transcript = components['schemas']['Transcript']
 /** Whether it is being worked on, in the contract's own words. Three states, and no fourth. */
 export type Working = components['schemas']['Working']
 
-/**
- * What is happening in this conversation right now, and when to go and read what was written.
- *
- * Both come down one stream because they are one thing to a person: the agent moved. Only the
- * first is shown from here — what it is thinking, and that it has started something, neither of
- * which ever reaches the transcript. The second carries no words, only that there are some, and
- * the answer to it is to ask for the tail of the transcript.
- *
- * Nothing is ever cleared here. What starts a fresh list is the caller mounting a fresh component
- * for a fresh turn, which is what a key is for — clearing it from inside would be a state change
- * during the render that noticed the turn had moved on.
- */
-/**
- * The connection itself, opened once per conversation.
- *
- * Its own function so the hook above stays readable, and because what it does is one thing: a
- * browser reconnects on its own, and everything about *what* arrives belongs to the caller.
- */
+type Activity = Exclude<Moment, { readonly said: 'output' }>
+
+/** A bounded piece of output held only by this browser tab. */
+export type LiveOutput = {
+  readonly text: string
+  readonly from: number
+  readonly truncated: boolean
+}
+
+/** The current status and temporary output buffers for one turn. */
+export type LiveTurn = {
+  readonly activity: Activity | undefined
+  readonly outputs: ReadonlyMap<string, LiveOutput>
+}
+
+const MAX_LIVE_OUTPUT = 256 * 1024
+
+function emptyLiveTurn(): LiveTurn {
+  return { activity: undefined, outputs: new Map() }
+}
+
+type OutputMoment = Extract<Moment, { readonly said: 'output' }>
+
+function updatedOutput(previous: LiveOutput, moment: OutputMoment): LiveOutput {
+  if (moment.at < previous.from) return previous
+
+  const relativeAt = moment.at - previous.from
+  const hasGap = relativeAt > previous.text.length
+  const restarts = moment.at === 0
+  const before = hasGap || restarts ? '' : previous.text.slice(0, relativeAt)
+  const after = hasGap || restarts ? '' : previous.text.slice(relativeAt + moment.text.length)
+  let text = `${before}${moment.text}${after}`
+  let from = hasGap ? moment.at : restarts ? 0 : previous.from
+  let truncated = previous.truncated || hasGap
+
+  if (text.length <= MAX_LIVE_OUTPUT) return { text, from, truncated }
+  const dropped = text.length - MAX_LIVE_OUTPUT
+  text = text.slice(dropped)
+  from += dropped
+  truncated = true
+  return { text, from, truncated }
+}
+
+/** Applies one ordered live event without retaining an ever-growing event history. */
+export function nextLiveTurn(current: LiveTurn, moment: Moment): LiveTurn {
+  if (moment.said !== 'output') return { ...current, activity: moment }
+
+  const previous = current.outputs.get(moment.callId) ?? {
+    text: '',
+    from: 0,
+    truncated: false,
+  }
+  const output = updatedOutput(previous, moment)
+  if (output === previous) return current
+
+  const outputs = new Map(current.outputs)
+  outputs.set(moment.callId, output)
+  return { ...current, outputs }
+}
+
+function jsonRecord(raw: string): Record<string, unknown> | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function isDoing(moment: Record<string, unknown>): boolean {
+  const fields = ['callId', 'name', 'verb', 'arg']
+  return fields.every((field) => typeof moment[field] === 'string')
+}
+
+function isOutput(moment: Record<string, unknown>): boolean {
+  return (
+    typeof moment['callId'] === 'string' &&
+    Number.isInteger(moment['at']) &&
+    Number(moment['at']) >= 0 &&
+    typeof moment['text'] === 'string'
+  )
+}
+
+function liveMoment(value: unknown): Moment | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const moment = value as Record<string, unknown>
+  if (moment['said'] === 'thinking')
+    return typeof moment['text'] === 'string' ? (value as Moment) : undefined
+  if (moment['said'] === 'doing') return isDoing(moment) ? (value as Moment) : undefined
+  if (moment['said'] === 'output') return isOutput(moment) ? (value as Moment) : undefined
+  return undefined
+}
+
+/** Reads one live event defensively; a broken or newer event cannot break the stream handler. */
+export function readWatched(raw: string): Watched | undefined {
+  const value = jsonRecord(raw)
+  if (value === undefined) return undefined
+
+  if (value['seen'] === 'written') {
+    const upTo = value['upTo']
+    return Number.isInteger(upTo) && Number(upTo) > 0
+      ? { seen: 'written', upTo: Number(upTo) }
+      : undefined
+  }
+  if (value['seen'] === 'typing' && typeof value['who'] === 'string')
+    return { seen: 'typing', who: value['who'] }
+  if (value['seen'] !== 'moment') return undefined
+
+  const moment = liveMoment(value['moment'])
+  return moment === undefined ? undefined : { seen: 'moment', moment }
+}
+
+/** Opens one reconnecting connection for one conversation. */
 function watch(slug: string, id: string): EventSource {
   return new EventSource(`/spaces/${slug}/conversations/${id}/live`, { withCredentials: true })
 }
 
-/**
- * Nothing of the last turn stays on screen when a new one begins.
- *
- * Not a key on the component, which is what this used to be: that closed the stream and opened
- * another at the start of every turn — exactly when the first moments of that turn arrive. They
- * are sent once and kept nowhere, so each one that landed in the gap was gone for good, and what
- * a person saw was a turn that began in silence.
- *
- * Remembering the last turn in state is React's own way of resetting when a prop changes: it
- * re-renders before anything is shown, and the connection above is untouched.
- */
-function useStartsAgainEachTurn(turn: number, clear: (moments: readonly Moment[]) => void): void {
+/** Clears ephemeral state only when a new user turn begins, without reopening the stream. */
+function useStartsAgainEachTurn(turn: number, clear: (live: LiveTurn) => void): void {
   const [showing, setShowing] = useState(turn)
 
   if (showing !== turn) {
     setShowing(turn)
-    clear([])
+    clear(emptyLiveTurn())
+  }
+}
+
+export function transcriptReader(client: QueryClient, queryKey: QueryKey): (upTo?: number) => void {
+  let queued = false
+  let reading = false
+  let forceRead = false
+  let targetSeq = 0
+
+  const lastRead = (): number =>
+    client.getQueryData<Transcript | null>(queryKey)?.messages.at(-1)?.seq ?? 0
+
+  const drain = async (): Promise<void> => {
+    while (queued) {
+      queued = false
+      const shouldRead = forceRead || lastRead() < targetSeq
+      forceRead = false
+      if (!shouldRead) continue
+      await client.invalidateQueries(
+        { queryKey, exact: true, refetchType: 'active' },
+        { cancelRefetch: false },
+      )
+    }
+  }
+
+  const start = (): void => {
+    if (reading) return
+    reading = true
+    void drain()
+      .catch(() => undefined)
+      .finally(() => {
+        reading = false
+        if (queued) start()
+      })
+  }
+
+  return (upTo?: number) => {
+    if (upTo === undefined) forceRead = true
+    else {
+      targetSeq = Math.max(targetSeq, upTo)
+      if (!forceRead && lastRead() >= targetSeq) return
+    }
+    queued = true
+    start()
   }
 }
 
@@ -94,30 +232,31 @@ export function useWatching(
   id: string,
   /** Which turn is running. A new one shows nothing of the last, and the list starts again. */
   turn: number,
-): readonly Moment[] {
-  const [moments, setMoments] = useState<readonly Moment[]>([])
+): LiveTurn {
+  const [liveTurn, setLiveTurn] = useState<LiveTurn>(emptyLiveTurn)
   const client = useQueryClient()
 
-  useStartsAgainEachTurn(turn, setMoments)
+  useStartsAgainEachTurn(turn, setLiveTurn)
 
   useEffect(() => {
     const live = watch(slug, id)
-
-    const read = (): void => {
-      void client.invalidateQueries({ queryKey: transcriptOf(slug, id) })
-    }
+    const read = transcriptReader(client, transcriptOf(slug, id))
 
     // Whatever arrived while this browser was not connected arrived while it was not connected. A
     // stream that reconnects without catching up is a page that stays behind by however long it
     // was away, and neither end can tell that from an agent that went quiet.
-    live.onopen = read
+    live.onopen = () => {
+      read()
+    }
 
     live.onmessage = (event: MessageEvent<string>) => {
       if (event.data === '') return
-      const watched = JSON.parse(event.data) as Watched
+      const watched = readWatched(event.data)
+      if (watched === undefined) return
 
-      if (watched.seen === 'written') read()
-      else if (watched.seen === 'moment') setMoments((sofar) => [...sofar, watched.moment])
+      if (watched.seen === 'written') read(watched.upTo)
+      else if (watched.seen === 'moment')
+        setLiveTurn((current) => nextLiveTurn(current, watched.moment))
     }
 
     return () => {
@@ -125,7 +264,7 @@ export function useWatching(
     }
   }, [slug, id, client])
 
-  return moments
+  return liveTurn
 }
 
 /**
@@ -194,7 +333,7 @@ export function useConversation(slug: string, id: string) {
     // Named by the read, but not the generated read itself: what is kept here is the whole
     // transcript, and what is asked for is the part of it this page does not have.
     queryKey: transcriptOf(slug, id),
-    queryFn: async ({ client, queryKey }) => {
+    queryFn: async ({ client, queryKey, signal }) => {
       // The client running this query, not the module's: a component may be under another one,
       // and reading the wrong cache would ask for a tail of something this screen never had.
       const sofar = client.getQueryData<Transcript | null>(queryKey)
@@ -203,6 +342,7 @@ export function useConversation(slug: string, id: string) {
 
       const { data, response } = await api.GET('/spaces/{slug}/conversations/{id}', {
         params: { path: { slug, id }, ...(last === undefined ? {} : { query: { after: last } }) },
+        signal,
       })
       // Null is "there is no such conversation here", and only a 404 means that. Everything else —
       // a session that ran out, a server that broke, a network that went — is this page failing to
@@ -257,23 +397,39 @@ export function useBeginConversation(slug: string) {
  * pressing Send again, and a fresh name each time would make one thing said twice. It is retired
  * once the message is in, so saying the same words again is a second message and not a repeat.
  */
+export function mergeTranscript(
+  current: Transcript | null | undefined,
+  tail: Transcript,
+): Transcript {
+  if (current === null || current === undefined) return tail
+
+  const bySeq = new Map(current.messages.map((message) => [message.seq, message]))
+  for (const message of tail.messages) bySeq.set(message.seq, message)
+  const messages = [...bySeq.values()].sort((left, right) => left.seq - right.seq)
+  return { ...current, ...tail, messages }
+}
+
 export function useSay(slug: string, id: string) {
   const client = useQueryClient()
+  const queryKey = transcriptOf(slug, id)
 
-  return useMutation<void, { reason: string }, Saying>({
+  return useMutation<Transcript, { reason: string }, Saying>({
     mutationFn: async (asked: Saying) => {
       // The whole of what was asked, not only the words. Named by the text alone, somebody whose
       // first attempt was lost and who then picked a different model would send the same name —
       // and be told it was said already, with the choice they had just made thrown away.
       const intention = `say:${id}:${JSON.stringify([asked.text, asked.model, asked.effort])}`
-      const { error } = await api.POST('/spaces/{slug}/conversations/{id}/messages', {
+      const held = client.getQueryData<Transcript | null>(queryKey)
+      const after = held?.messages.at(-1)?.seq
+      const { data, error } = await api.POST('/spaces/{slug}/conversations/{id}/messages', {
         params: { path: { slug, id } },
-        body: { key: retryKey(intention), asked },
+        body: { key: retryKey(intention), asked, ...(after === undefined ? {} : { after }) },
       })
       if (error !== undefined) throw error
       retryKeyDone(intention)
+      client.setQueryData<Transcript | null>(queryKey, (current) => mergeTranscript(current, data))
+      return data
     },
-    onSuccess: async () => client.invalidateQueries({ queryKey: transcriptOf(slug, id) }),
   })
 }
 

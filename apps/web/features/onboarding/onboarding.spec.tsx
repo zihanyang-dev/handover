@@ -72,6 +72,8 @@ describe('the first step — a Space', () => {
     open('/onboarding')
 
     expect(await screen.findByLabelText(/workspace name/i)).toHaveProperty('value', '')
+    expect(screen.getByRole('button', { name: /choose workspace emoji.*🏠/i })).toBeDefined()
+    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
     expect(screen.queryByLabelText(/your name/i)).toBeNull()
   })
 
@@ -120,11 +122,26 @@ describe('the first step — a Space', () => {
     open('/onboarding')
 
     await userEvent.type(await screen.findByLabelText(/workspace name/i), 'Acme')
+    const between: { readonly heading: string | null; readonly success: boolean }[] = []
+    const observer = new MutationObserver(() => {
+      between.push({
+        heading: document.querySelector('h1')?.textContent ?? null,
+        success: document.querySelector('.mark-success') !== null,
+      })
+    })
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true })
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
 
-    expect(made).toEqual({ displayName: 'Acme', requestKey: expect.any(String) as unknown })
+    expect(made).toEqual({
+      displayName: 'Acme',
+      emoji: '🏠',
+      requestKey: expect.any(String) as unknown,
+    })
     expect(renamed).toBe(false)
     expect(await screen.findByRole('heading', { name: /connect a machine/i })).toBeDefined()
+    observer.disconnect()
+    expect(between.some((frame) => frame.heading === 'Choose a Space')).toBe(false)
+    expect(between.some((frame) => frame.success)).toBe(false)
     expect(screen.getByRole('img', { name: /step 2 of 2/i })).toBeDefined()
   })
 
@@ -176,7 +193,9 @@ describe('the first step — a Space', () => {
       screen.getByRole('button', { name: /open beta/i }),
     ]
 
+    expect(shown[0]?.textContent).toContain('🏠')
     expect(shown[0]?.textContent).toContain('/s/acme')
+    expect(shown[1]?.textContent).toContain('🪴')
     expect(shown[1]?.textContent).toContain('/s/beta')
     // Made first, shown first. Nothing here has a notion of recent.
     expect(shown[0]?.compareDocumentPosition(shown[1] as Node)).toBe(
@@ -215,14 +234,19 @@ describe('the first step — a Space', () => {
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(make.getAttribute('aria-expanded')).toBe('true')
 
-    expect(screen.getByRole('button', { name: /close new space/i })).toBeDefined()
-    await userEvent.click(drawer)
+    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /close new space/i }))
     expect(screen.queryByRole('textbox', { name: /workspace name/i })).toBeNull()
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(make.getAttribute('aria-expanded')).toBe('false')
     await waitFor(() => {
       expect(document.activeElement).toBe(make)
     })
+
+    await userEvent.click(make)
+    await screen.findByRole('textbox', { name: /workspace name/i })
+    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
   })
 
   it('says once that this way now reaches an account that was already there', async () => {

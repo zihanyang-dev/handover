@@ -348,6 +348,11 @@
             "maxLength": 200,
             "example": "徐悦泰 Studio"
           },
+          "emoji": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
           "requestKey": {
             "type": "string",
             "minLength": 1,
@@ -356,6 +361,7 @@
         },
         "required": [
           "displayName",
+          "emoji",
           "requestKey"
         ]
       },
@@ -1542,6 +1548,10 @@
       "Did": {
         "type": "object",
         "properties": {
+          "callId": {
+            "type": "string",
+            "maxLength": 200
+          },
           "name": {
             "type": "string"
           },
@@ -1759,6 +1769,10 @@
           },
           "asked": {
             "$ref": "#/components/schemas/Asked"
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -1954,6 +1968,10 @@
                   "doing"
                 ]
               },
+              "callId": {
+                "type": "string",
+                "maxLength": 200
+              },
               "name": {
                 "type": "string",
                 "maxLength": 200
@@ -1969,6 +1987,7 @@
             },
             "required": [
               "said",
+              "callId",
               "name",
               "verb",
               "arg"
@@ -1983,6 +2002,14 @@
                   "output"
                 ]
               },
+              "callId": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "at": {
+                "type": "integer",
+                "minimum": 0
+              },
               "text": {
                 "type": "string",
                 "maxLength": 3000
@@ -1990,6 +2017,8 @@
             },
             "required": [
               "said",
+              "callId",
+              "at",
               "text"
             ]
           }
@@ -4372,8 +4401,15 @@
           }
         },
         "responses": {
-          "204": {
-            "description": "Said, or said already — either way it is in there once"
+          "200": {
+            "description": "The authoritative tail containing what just landed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcript"
+                }
+              }
+            }
           },
           "400": {
             "description": "The body was not the shape it claims",

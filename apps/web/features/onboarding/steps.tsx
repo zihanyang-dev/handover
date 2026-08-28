@@ -65,8 +65,8 @@ export function Steps({
         className="relative h-1.5 rounded-full bg-primary/10 data-[progress=25]:[--at:25%] data-[progress=25]:[--scale:0.25] data-[progress=50]:[--at:50%] data-[progress=50]:[--scale:0.5] data-[progress=75]:[--at:75%] data-[progress=75]:[--scale:0.75] data-[progress=100]:[--at:100%] data-[progress=100]:[--scale:1]"
         data-progress={at}
       >
-        <div className="absolute inset-0 origin-left rounded-full bg-primary transition-transform duration-[420ms] ease-settle will-change-transform [transform:scaleX(var(--scale))]" />
-        <div className="pointer-events-none absolute inset-0 transition-transform duration-[420ms] ease-settle will-change-transform [transform:translate3d(var(--at),0,0)]">
+        <div className="absolute inset-0 origin-left rounded-full bg-primary transition-transform duration-[320ms] ease-settle will-change-transform [transform:scaleX(var(--scale))]" />
+        <div className="pointer-events-none absolute inset-0 transition-transform duration-[320ms] ease-settle will-change-transform [transform:translate3d(var(--at),0,0)]">
           <Mark
             className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2"
             size={26}

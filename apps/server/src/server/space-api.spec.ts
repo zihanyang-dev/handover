@@ -72,18 +72,26 @@ async function as(cookie: string, path: string, method = 'GET', json?: unknown):
   })
 }
 
-async function makeSpace(cookie: string, displayName: string, key: string): Promise<Response> {
-  return as(cookie, '/spaces', 'POST', { displayName, requestKey: key })
+async function makeSpace(
+  cookie: string,
+  displayName: string,
+  key: string,
+  emoji = '🏠',
+): Promise<Response> {
+  return as(cookie, '/spaces', 'POST', { displayName, emoji, requestKey: key })
 }
 
 describe('making a Space', () => {
   it('creates it and shows the address it got', async () => {
     const cookie = await signedIn(`mina-${RUN}@example.com`)
 
-    const response = await makeSpace(cookie, `徐悦泰 ${RUN.slice(0, 8)}`, `${RUN}-r1`)
+    const response = await makeSpace(cookie, `徐悦泰 ${RUN.slice(0, 8)}`, `${RUN}-r1`, '🎨')
 
     expect(response.status).toBe(201)
-    expect(await response.json()).toMatchObject({ slug: `徐悦泰-${RUN.slice(0, 8)}` })
+    expect(await response.json()).toMatchObject({
+      slug: `徐悦泰-${RUN.slice(0, 8)}`,
+      emoji: '🎨',
+    })
   })
 
   it('makes only one when the same request arrives twice', async () => {

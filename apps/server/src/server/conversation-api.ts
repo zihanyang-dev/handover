@@ -178,7 +178,12 @@ const Transcript = named('Transcript', {
  * The name is the caller's, not ours: only they know that the message they are sending now is the
  * one they already sent and never heard back about.
  */
-const SayThis = named('SayThis', { ...CALLED, asked: Asked })
+const SayThis = named('SayThis', {
+  ...CALLED,
+  asked: Asked,
+  /** The last line the sender already has, so the answer is only the authoritative tail. */
+  after: z.number().int().nonnegative().optional(),
+})
 
 const StopThis = named('StopThis', CALLED)
 
@@ -376,7 +381,7 @@ function saying({ db }: ConversationApi) {
     params: { id: rowId },
     body: SayThis,
     answers: {
-      204: 'Said, or said already — either way it is in there once',
+      200: sends(Transcript, 'The authoritative tail containing what just landed'),
       404: NOT_THERE,
       409: refuses(NO_AGENT, 'Its agent is not on that machine any more'),
     },
@@ -399,7 +404,14 @@ function saying({ db }: ConversationApi) {
       if (landed.kind === 'no-conversation') return refused(c, UNAVAILABLE)
       if (landed.kind === 'no-agent') return refused(c, NO_AGENT)
 
-      return nothing(c, 204)
+      const reading = await conversationWith(db, {
+        conversationId: c.req.valid('param').id,
+        spaceId: c.get('space').id,
+        after: asked.after,
+      })
+      if (reading === undefined) return refused(c, UNAVAILABLE)
+
+      return c.json(asTranscript(reading), 200)
     },
   })
 }

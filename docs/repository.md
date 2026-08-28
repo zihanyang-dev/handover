@@ -21,7 +21,8 @@ apps/web/           浏览器应用
                     进这里的标准是「它不知道 Handover 是什么」
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
   mark.tsx mark.css 那个标识,和它的几种状态;关键帧留在相邻的 CSS
-  style.css         Tailwind 入口、theme,和语义化的 component utilities,整个产品一份
+  style.css         Tailwind 入口、theme、全局 token 和最小的 base;不放 feature class
+  styles/           按屏幕拥有实测的状态选择器、响应式布局和动画;静态几何用 Tailwind `@apply`
   pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、登录方式、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为

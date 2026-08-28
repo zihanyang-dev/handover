@@ -9,13 +9,13 @@
 import { normalizeSlug } from '@handover/universal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { motion } from 'framer-motion'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, Plus, X } from 'react-bootstrap-icons'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import { FieldError } from '../../components/ui/field-error.tsx'
 import { Arrival } from '../identity/arrival.tsx'
 import { ME, meQuery, type Me } from '../identity/me.ts'
+import { SpaceEmojiPicker } from '../spaces/emoji-picker.tsx'
 import { spaceRefusal } from '../spaces/refusal.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
@@ -29,7 +29,55 @@ function SpaceFormHeading({ embedded }: { readonly embedded: boolean }) {
   return (
     <div className="auth-head">
       <h1>Name your workspace</h1>
-      <p className="lede">Machines and agents gather here.</p>
+    </div>
+  )
+}
+
+function SpaceEmojiField({
+  emoji,
+  choose,
+}: {
+  readonly emoji: string
+  readonly choose: (emoji: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const control = useRef<HTMLButtonElement>(null)
+
+  return (
+    <div className="space-create-emoji-field">
+      <button
+        ref={control}
+        className="space-create-emoji"
+        type="button"
+        aria-label={`Choose workspace emoji, currently ${emoji}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((shown) => !shown)
+        }}
+      >
+        {emoji}
+      </button>
+      {open && (
+        <div
+          className="space-create-emoji-popover"
+          role="dialog"
+          aria-label="Choose a workspace emoji"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            setOpen(false)
+            control.current?.focus()
+          }}
+        >
+          <SpaceEmojiPicker
+            choose={(chosen) => {
+              choose(chosen)
+              setOpen(false)
+              control.current?.focus()
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -39,16 +87,19 @@ function MakeSpace({
   me,
   onMade,
   embedded = false,
+  active = true,
 }: {
   readonly me: Me
   readonly onMade: (slug: string) => void
   readonly embedded?: boolean
+  readonly active?: boolean
 }) {
   const client = useQueryClient()
   const spaceField = useId()
   const urlField = useId()
   const error = `${spaceField}-error`
   const [space, setSpace] = useState('')
+  const [emoji, setEmoji] = useState('🏠')
   const presentation = spaceFormPresentation(embedded, me.spaces.length > 0)
   const slug = normalizeSlug(space)
   // This is for a person to read, not an HTTP client to serialize. URL.href percent-encodes
@@ -58,7 +109,11 @@ function MakeSpace({
   const begin = useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST('/spaces', {
-        body: { displayName: space.trim(), requestKey: retryKey(`space:${space.trim()}`) },
+        body: {
+          displayName: space.trim(),
+          emoji,
+          requestKey: retryKey(`space:${space.trim()}`),
+        },
       })
       // The refusal itself, not a sentence with it stringified inside. `409` carries a free
       // address in `suggestion`, and that has to survive being thrown.
@@ -96,22 +151,27 @@ function MakeSpace({
           begin.mutate()
         }}
       >
-        <label className="label" htmlFor={spaceField}>
-          Workspace name
-        </label>
-        <input
-          id={spaceField}
-          className="field"
-          autoFocus={presentation.autoFocus}
-          placeholder="Acme"
-          aria-invalid={said !== undefined}
-          aria-describedby={error}
-          value={space}
-          onChange={(event) => {
-            setSpace(event.target.value)
-            begin.reset()
-          }}
-        />
+        <div className="space-create-name-field">
+          <label className="label" htmlFor={spaceField}>
+            Workspace name
+          </label>
+          <div className="space-create-name-control">
+            <SpaceEmojiField key={active ? 'active' : 'inactive'} emoji={emoji} choose={setEmoji} />
+            <input
+              id={spaceField}
+              className="field"
+              autoFocus={presentation.autoFocus}
+              placeholder="Acme"
+              aria-invalid={said !== undefined}
+              aria-describedby={error}
+              value={space}
+              onChange={(event) => {
+                setSpace(event.target.value)
+                begin.reset()
+              }}
+            />
+          </div>
+        </div>
         <label className="label" htmlFor={urlField}>
           Workspace URL
         </label>
@@ -209,7 +269,7 @@ function SpaceCreateDrawer({
             <X size={20} aria-hidden />
           </button>
         </div>
-        <MakeSpace me={me} embedded onMade={onMade} />
+        <MakeSpace me={me} embedded active={open} onMade={onMade} />
       </div>
     </div>
   )
@@ -232,6 +292,7 @@ function PickSpace({
   const spaces = me.spaces
   const canStack = spaces.length > 1
   const [spacesExpanded, setSpacesExpanded] = useState(!canStack)
+  const expandedDeckHeight = `${String(spaces.length * 4.53125 - 0.5)}rem`
   return (
     <>
       <div className="auth-head">
@@ -274,9 +335,12 @@ function PickSpace({
           )}
         </div>
 
-        <div className="space-choice-deck" data-expanded={spacesExpanded}>
-          <motion.div
-            layout
+        <div
+          className="space-choice-deck"
+          data-expanded={spacesExpanded}
+          style={{ height: spacesExpanded ? expandedDeckHeight : '5.78125rem' }}
+        >
+          <div
             id="space-choice-list"
             className="space-choice-list"
             data-expanded={spacesExpanded}
@@ -284,12 +348,7 @@ function PickSpace({
             inert={!spacesExpanded}
           >
             {spaces.map((space) => (
-              <motion.div
-                key={space.id}
-                layout="position"
-                className="space-choice-position"
-                transition={{ layout: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } }}
-              >
+              <div key={space.id} className="space-choice-position">
                 <button
                   className="space-choice"
                   type="button"
@@ -298,15 +357,18 @@ function PickSpace({
                     onPick(space.slug)
                   }}
                 >
+                  <span className="space-choice-existing-emoji" aria-hidden>
+                    {space.emoji}
+                  </span>
                   <span className="space-choice-copy">
                     <strong>{space.displayName}</strong>
                     <small>/s/{space.slug}</small>
                   </span>
                   <ChevronRight className="space-choice-arrow" aria-hidden />
                 </button>
-              </motion.div>
+              </div>
             ))}
-          </motion.div>
+          </div>
 
           {canStack && !spacesExpanded && (
             <button
@@ -322,6 +384,12 @@ function PickSpace({
       </div>
     </>
   )
+}
+
+function useArrivalHadSpaces(me: Me | undefined): boolean | undefined {
+  const [choosing, setChoosing] = useState<boolean>()
+  if (me !== undefined && choosing === undefined) setChoosing(me.spaces.length > 0)
+  return choosing
 }
 
 export function Onboarding({ result }: { readonly result: string | undefined }) {
@@ -341,9 +409,14 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
     }
   }, [])
 
-  const spaces = me.data?.spaces ?? []
-  const choosing = spaces.length > 0
-  const done = leave !== undefined
+  // Which entrance somebody arrived through does not change when creating updates /me. Deriving
+  // this on every render replaced the current form with the other entrance for one paint before
+  // the Machine route mounted — the flash a person saw after Continue.
+  const choosing = useArrivalHadSpaces(me.data)
+
+  // The Host route owns the second half of the rail. Flashing success here for one paint changed
+  // the rider's face immediately before that route mounted it in its working state.
+  const done = leave?.to === 'space'
 
   useEffect(() => {
     if (leave === undefined) return
@@ -365,7 +438,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
       <div className="onboarding-shell">
         <Steps step={1} done={done} mark={done ? 'success' : 'thinking'} />
 
-        <section className="onboarding-content">
+        <section className="onboarding-content onboarding-step-card">
           <Arrival result={result} />
 
           {me.isPending && (

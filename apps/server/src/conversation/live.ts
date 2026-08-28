@@ -31,6 +31,7 @@ export const Unkept = z
     z.object({ said: z.literal('thinking'), text: z.string().max(20_000) }),
     z.object({
       said: z.literal('doing'),
+      callId: z.string().max(200),
       name: z.string().max(200),
       verb: z.string().max(50),
       arg: z.string().max(2000),
@@ -44,9 +45,15 @@ export const Unkept = z
      * nobody scrolls back through ten kilobytes of a command they watched finish.
      *
      * In pieces because this crosses instances through Postgres `NOTIFY`, whose payload stops at
-     * 8000 bytes. They arrive in order on one connection and belong to whatever is running now.
+     * 8000 bytes. `callId` attaches interleaved output to the tool that produced it without ever
+     * putting the output itself in the transcript.
      */
-    z.object({ said: z.literal('output'), text: z.string().max(PIECE) }),
+    z.object({
+      said: z.literal('output'),
+      callId: z.string().max(200),
+      at: z.number().int().nonnegative(),
+      text: z.string().max(PIECE),
+    }),
   ])
   .openapi('Unkept')
 

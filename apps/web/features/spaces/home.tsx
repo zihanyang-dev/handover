@@ -173,7 +173,7 @@ function SidebarViewButton({
       className="home-tab"
       type="button"
       aria-pressed={active}
-      title={label}
+      aria-label={label}
       onClick={() => {
         select(view)
       }}

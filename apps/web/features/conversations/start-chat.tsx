@@ -9,9 +9,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { Composer, ComposerError, SendButton } from '../../components/ui/chat-composer.tsx'
+import { Mark } from '../../mark.tsx'
 import { AgentMark, agentTint } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
-import { Composer, ComposerError, SendButton } from './composer.tsx'
+import { markMessageArrival } from './message-transition.ts'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
 import { useBeginConversation } from './talking.ts'
 import { WhereChoice } from './where-choice.tsx'
@@ -80,22 +82,8 @@ function ReadyStart({
       className="mx-auto flex min-h-full w-[min(44rem,calc(100%-3rem))] flex-col items-center pt-[clamp(5rem,16vh,7.5rem)] pb-8"
       aria-labelledby="agent-start-title"
     >
-      <div
-        className="relative grid size-16 place-items-center rounded-full border border-[#37352f24] bg-base shadow-[var(--surface-raised-shadow)]"
-        aria-hidden="true"
-      >
-        <img
-          className="size-[72%] object-contain"
-          src={agent.avatarUrl}
-          alt=""
-          width="64"
-          height="64"
-        />
-        <span
-          className={`absolute -right-1 -bottom-1 grid size-5.5 place-items-center rounded-full border-2 border-base bg-base shadow-[0_1px_3px_#0f0f0f2e] [&>svg]:size-3.5 ${agentTint(agent.kind)}`}
-        >
-          <AgentMark kind={agent.kind} />
-        </span>
+      <div className="chat-starter-mark" aria-hidden="true">
+        <Mark state="idle" size={44} />
       </div>
       <h1
         className="mt-5 mb-8 text-center text-3xl/9 font-semibold text-ink"
@@ -111,6 +99,15 @@ function ReadyStart({
         onText={setText}
         takesFocus
         disabled={!online}
+        leading={
+          <span className="chat-composer-avatar" aria-hidden>
+            <img src={agent.avatarUrl} alt="" />
+            <span className={`chat-composer-avatar-mark ${agentTint(agent.kind)}`}>
+              <AgentMark kind={agent.kind} />
+            </span>
+          </span>
+        }
+        action={<SendButton disabled={!online || begin.isPending || text.trim() === ''} />}
         onSend={() => {
           begin.mutate(
             {
@@ -125,7 +122,11 @@ function ReadyStart({
             },
             {
               onSuccess: (opened) => {
-                void navigate({ to: '/s/$slug/c/$id', params: { slug, id: opened.id } })
+                markMessageArrival(opened.id)
+                void navigate({
+                  to: '/s/$slug/c/$id',
+                  params: { slug, id: opened.id },
+                })
               },
             },
           )
@@ -147,7 +148,6 @@ function ReadyStart({
             onEffort={setEffort}
           />
         </div>
-        <SendButton disabled={!online || begin.isPending || text.trim() === ''} />
       </Composer>
     </section>
   )

@@ -128,7 +128,7 @@ messages                    一条一行,写下去再也不改
 ```
 user       { text }
 assistant  { text }
-tool       { name, verb, arg, ok, excerpt }      ← 已经是人话了,不是原始参数
+tool       { callId?, name, verb, arg, ok, excerpt } ← 已经是人话了;callId 只关联同页实时输出
 activity   { activityType, ... }                 ← 开放的槽,不认识的东西落这儿
 ```
 
@@ -138,11 +138,11 @@ activity   { activityType, ... }                 ← 开放的槽,不认识的�
 
 ## 决定
 
-**① 用两家的官方 SDK,不用 ACP**
+**① 用两家的官方原生接口,不用 ACP**
 
 ```
-@anthropic-ai/claude-agent-sdk   pathToClaudeCodeExecutable → 用户自己装的那个
-@openai/codex-sdk                codexPathOverride          → 同上
+Claude Code   @anthropic-ai/claude-agent-sdk → pathToClaudeCodeExecutable
+Codex         codex app-server 的 stdio JSON-RPC → 用户自己装的 codex
 ```
 
 两个都实测跑通了,驱动的是机器上已装的二进制,**登录态和订阅全走用户自己的 CLI,我们不碰任何 key**。
@@ -151,8 +151,8 @@ activity   { activityType, ... }                 ← 开放的槽,不认识的�
 不用 ACP 不是因为它不好,是**它的价值在长尾,而我们只接两个头部**。实测对比:
 
 ```
-                 ACP                              官方 SDK
-一段说完了       messageId 可选,claude 不发        content_block_stop / ItemCompleted
+                 ACP                              官方原生接口
+一段说完了       messageId 可选,claude 不发        content_block_stop / item/completed
 工具调用         同一个 id 发两次 + 稀疏补丁        一条,状态往前推
 装配好的消息     没有                              有
 思考             没测到                            claude 的 thinking block,测到了
@@ -161,6 +161,12 @@ activity   { activityType, ... }                 ← 开放的槽,不认识的�
 
 Multica 驱动 20 个 agent 也是这么分的:**claude 和 codex 走原生,其余十一个走 ACP。**
 要接长尾时,ACP 是**第三个** adapter,不是唯一那个。
+
+两家的「实时」不假装一样。Codex 高层 SDK 的 turn stream 实测只在命令结束时给输出,但同一二进制
+的官方 app-server 会在命令还在跑时发 `item/commandExecution/outputDelta`;adapter 按 `callId`
+和 offset 原样转发。Claude Code 的 `tool_progress` 只有运行时间、没有 stdout,所以它实时显示还在跑,
+到 `tool_result` 才一次给输出。**没有 provider 给的片段就不造片段**,更不按字符重放一份已经完成
+的结果。
 
 **② 一条消息一行,append-only,写下去不改**
 
@@ -176,7 +182,7 @@ Postgres 是 MVCC —— 150 个死元组,`content` 进了 TOAST 还要连着 ch
 **③ 「它做了什么」落表的是翻译过的一行,不是原始调用**
 
 ```
-tool  { name: 'Read', verb: '读', arg: 'payment/timeout.ts', ok: true, excerpt: '…' }
+tool  { callId: '…', name: 'Read', verb: '读', arg: 'payment/timeout.ts', ok: true, excerpt: '…' }
 ```
 
 不落:完整参数、完整输出、原始 JSON。**页面拿到就能画,不需要再认识任何 agent 的格式。**
@@ -468,7 +474,7 @@ unknown     activityType = 'unknown'   没有人能说清它那边做到哪了
 POST   /spaces/{slug}/conversations              第一条消息 + 客户端生成的 conversation id → 原子地创建对话并写下这句话
 GET    /spaces/{slug}/conversations              列表。在答没答是算出来的
 GET    /spaces/{slug}/conversations/{id}         对话 + 消息,按 seq
-POST   /spaces/{slug}/conversations/{id}/messages  幂等键;说一句
+POST   /spaces/{slug}/conversations/{id}/messages  幂等键 + 已知 seq;返回包含这句话的权威 tail
 POST   /spaces/{slug}/conversations/{id}/stop      叫停,说清是哪一轮
 GET    /spaces/{slug}/conversations/{id}/live      SSE。此刻在想/在跑,以及「到第 N 条了」
 
@@ -488,8 +494,10 @@ Space 里,路径就得说是哪个 Space,不然那道门没有东西可管。**�
 在一个机群里通常不是同一个进程,而一个进程内存里的东西到不了另一个。Postgres 本来就站在
 所有实例中间、本来就是这套系统信任的东西 —— 不用多跑一件基础设施,也没有第二份状态要同步。
 它**故意**不是 transcript:没人在听的通知就是没了,而这正是「只在发生的时候才值钱」的东西
-该有的样子。超过 8000 字节 Postgres 会拒绝 —— 能撞到这条的只有「它在想什么」,而那东西值一秒钟
-且不留档,截断不损失任何东西;「到第 N 条了」是一个数字。
+该有的样子。超过 8000 字节 Postgres 会拒绝,所以输出带 `callId + at` 并切成 `PIECE` 以内的片段;
+CLI 以 75ms 的短周期合并 provider 的高频更新,浏览器每个调用最多留 256 KiB,超过就明确写
+`Earlier output truncated`。这些界限控制的是通知频率和内存,**没有一片输出进 messages 表**;
+「到第 N 条了」仍只是一个数字。
 
 **浏览器因此不再按秒轮询。** 流说有新的就去取一次尾巴,断线重连也取一次(不取的话,断开那段
 时间的东西就永远补不回来了)。下面还压着一个很慢的节拍作为兜底 —— 一条流可以被中间的什么东西

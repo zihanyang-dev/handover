@@ -93,7 +93,6 @@ function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: I
         to="/s/$slug/a/$machineId/$agentKind"
         params={{ slug, machineId: agent.machineId, agentKind: agent.kind }}
         aria-label={`${name}, ${type} on ${agent.machineName}, ${availability}`}
-        title={`${name} · ${type} on ${agent.machineName} — ${availability}`}
         data-online={agent.isHere}
       >
         <span className="chat-agent-avatar">
@@ -131,7 +130,6 @@ function ConversationRow({
         className="chat-history-summary"
         to="/s/$slug/c/$id"
         params={{ slug, id: conversation.id }}
-        title={titleOf(conversation)}
       >
         <ChatIcon />
         <span className="chat-history-title">{titleOf(conversation)}</span>
@@ -141,7 +139,6 @@ function ConversationRow({
         className="chat-pin"
         type="button"
         aria-label={`${action} ${titleOf(conversation)}`}
-        title={action}
         disabled={mark.isPending}
         onClick={() => {
           mark.mutate(!conversation.pinned)

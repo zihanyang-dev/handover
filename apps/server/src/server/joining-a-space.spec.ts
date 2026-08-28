@@ -88,7 +88,11 @@ async function aSpace(): Promise<string> {
   const made = await spaces.request('/spaces', {
     method: 'POST',
     headers: { cookie: KAI, 'content-type': 'application/json' },
-    body: JSON.stringify({ displayName: `Acme ${RUN.slice(0, 8)}`, requestKey: `s-${RUN}` }),
+    body: JSON.stringify({
+      displayName: `Acme ${RUN.slice(0, 8)}`,
+      emoji: '🏠',
+      requestKey: `s-${RUN}`,
+    }),
   })
 
   return ((await made.json()) as { slug: string }).slug
