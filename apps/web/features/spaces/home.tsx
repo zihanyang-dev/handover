@@ -9,7 +9,7 @@
  * inside it.
  */
 
-import { useMatches } from '@tanstack/react-router'
+import { Link, useMatches } from '@tanstack/react-router'
 import {
   useCallback,
   useEffect,
@@ -173,7 +173,7 @@ function SidebarViewButton({
       className="home-tab"
       type="button"
       aria-pressed={active}
-      title={label}
+      aria-label={label}
       onClick={() => {
         select(view)
       }}
@@ -189,9 +189,11 @@ function SidebarViewButton({
 }
 
 function SidebarViews({
+  slug,
   active,
   select,
 }: {
+  readonly slug: string
   readonly active: SidebarView
   readonly select: (view: SidebarView) => void
 }) {
@@ -211,13 +213,22 @@ function SidebarViews({
         active={active === 'chat'}
         select={select}
       />
-      <SidebarViewButton
-        view="inbox"
-        label="Inbox"
-        icon={<InboxIcon />}
-        active={active === 'inbox'}
-        select={select}
-      />
+      <Link
+        className="home-tab"
+        to="/s/$slug/inbox"
+        params={{ slug }}
+        aria-current={active === 'inbox' ? 'page' : undefined}
+        aria-label="Inbox"
+      >
+        <span className="home-tab-icon">
+          <InboxIcon />
+        </span>
+        <span className="home-tab-label">
+          <span className="home-tab-label-clip">
+            <span className="home-tab-label-text">Inbox</span>
+          </span>
+        </span>
+      </Link>
     </div>
   )
 }
@@ -380,7 +391,7 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
           aria-label={`${space.displayName} sidebar`}
         >
           <WorkspaceHeader space={space} closeSidebar={close} closeButton={closeButton} />
-          <SidebarViews active={view} select={setChosenView} />
+          <SidebarViews slug={space.slug} active={view} select={setChosenView} />
           <SidebarPanel view={view} slug={space.slug} />
         </aside>
 

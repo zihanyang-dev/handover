@@ -9,26 +9,29 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircleFill, ChevronRight } from 'react-bootstrap-icons'
+import {
+  ArrowClockwise,
+  Check2,
+  CheckCircleFill,
+  ChevronRight,
+  Pencil,
+} from 'react-bootstrap-icons'
 import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { ShellCommand } from '../../components/ui/shell-command.tsx'
 import { meQuery } from '../identity/me.ts'
-import { AgentMark, agentName } from '../machines/agent.tsx'
+import { AgentMark, agentKindName } from '../machines/agent.tsx'
 import { useMachineKey } from '../machines/machine-key.tsx'
-import { machinesIn, WHILE_WAITING_FOR_ONE_MS } from '../machines/machine-list.ts'
+import {
+  type Machine,
+  machinesIn,
+  useNameAgent,
+  WHILE_WAITING_FOR_ONE_MS,
+} from '../machines/machine-list.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 function countdown(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   return `${String(minutes)}:${String(seconds % 60).padStart(2, '0')}`
-}
-
-function RegularCommandChoice({ onBack }: { readonly onBack: () => void }) {
-  return (
-    <button className="host-method" type="button" onClick={onBack}>
-      Use the regular command
-    </button>
-  )
 }
 
 function SkipChoice({ onSkip }: { readonly onSkip: () => void }) {
@@ -40,59 +43,21 @@ function SkipChoice({ onSkip }: { readonly onSkip: () => void }) {
   )
 }
 
-function KeySetupTitle({
-  status,
-  onBack,
-}: {
-  readonly status: string | undefined
-  readonly onBack: () => void
-}) {
-  return (
-    <div className="host-setup-title">
-      <span className="host-setup-title-copy">
-        <strong>One-time key</strong>
-        {status !== undefined && <small>{status}</small>}
-      </span>
-      <RegularCommandChoice onBack={onBack} />
-    </div>
-  )
-}
-
 /** The direct way in, disclosed only when somebody asks for the fallback. */
-function KeyCommand({
-  active,
-  onBack,
-  onSkip,
-}: {
-  readonly active: boolean
-  readonly onBack: () => void
-  readonly onSkip: () => void
-}) {
+function KeyCommand({ active, onSkip }: { readonly active: boolean; readonly onSkip: () => void }) {
   const key = useMachineKey(active)
 
   if (key.state === 'expired' || key.state === 'unavailable') {
     const expired = key.state === 'expired'
-    const makeAnother = key.again
 
     return (
       <div className="host-setup">
         <div className="host-setup-body">
-          <KeySetupTitle status={expired ? 'Expired' : 'Unavailable'} onBack={onBack} />
-          <p className="host-key-message">
-            {expired
-              ? 'This key can no longer connect a machine.'
-              : 'A one-time key could not be generated.'}
-          </p>
-          <button
-            className="button button-primary host-key-refresh"
-            type="button"
-            onClick={makeAnother}
-          >
-            <span className="button-label">{expired ? 'Generate a new key' : 'Try again'}</span>
+          <button className="host-key-refresh" type="button" onClick={key.again}>
+            <ArrowClockwise aria-hidden />
+            <span>{expired ? 'Generate a new key' : 'Try again'}</span>
           </button>
-        </div>
-        <div className="host-method-row">
-          <SkipChoice onSkip={onSkip} />
+          <StatusLine message={expired ? 'Key expired' : 'Key unavailable'} onSkip={onSkip} quiet />
         </div>
       </div>
     )
@@ -102,7 +67,6 @@ function KeyCommand({
     return (
       <div className="host-setup">
         <div className="host-setup-body">
-          <KeySetupTitle status={undefined} onBack={onBack} />
           <div className="shell-snippet host-key-placeholder" aria-hidden />
           <StatusLine message="Preparing a one-time key…" onSkip={onSkip} />
         </div>
@@ -113,9 +77,8 @@ function KeyCommand({
   return (
     <div className="host-setup">
       <div className="host-setup-body">
-        <KeySetupTitle status={`Expires in ${countdown(key.secondsLeft)}`} onBack={onBack} />
         <ShellCommand command={key.command} />
-        <Waiting onSkip={onSkip} />
+        <StatusLine message={`Waiting · ${countdown(key.secondsLeft)} left`} onSkip={onSkip} />
       </div>
     </div>
   )
@@ -124,23 +87,21 @@ function KeyCommand({
 function StatusLine({
   message,
   onSkip,
+  quiet = false,
 }: {
   readonly message: string
   readonly onSkip: () => void
+  readonly quiet?: boolean
 }) {
   return (
     <div className="host-status-row">
-      <div className="host-waiting" role="status">
+      <div className="host-waiting" data-quiet={quiet || undefined} role="status">
         <span className="host-waiting-dot" aria-hidden />
         <span>{message}</span>
       </div>
       <SkipChoice onSkip={onSkip} />
     </div>
   )
-}
-
-function Waiting({ onSkip }: { readonly onSkip: () => void }) {
-  return <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
 }
 
 /** The normal code-and-approval path first; a key is an explicit fallback. */
@@ -150,46 +111,203 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
   return (
     <div className="host-command-switch">
       <div
-        className="host-command-pane"
-        data-active={!usingKey}
-        aria-hidden={usingKey}
-        inert={usingKey}
+        className="host-method-picker"
+        data-method={usingKey ? 'key' : 'terminal'}
+        role="group"
+        aria-label="Connection method"
       >
-        <div className="host-setup">
-          <div className="host-setup-body">
-            <div className="host-setup-title">
-              <strong>Run in Terminal</strong>
-              <button
-                className="host-method"
-                type="button"
-                onClick={() => {
-                  setUsingKey(true)
-                }}
-              >
-                Use a key instead
-              </button>
-            </div>
-            <ShellCommand command="handover connect" />
-            <Waiting onSkip={onSkip} />
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="host-command-pane"
-        data-active={usingKey}
-        aria-hidden={!usingKey}
-        inert={!usingKey}
-      >
-        <KeyCommand
-          active={usingKey}
-          onBack={() => {
+        <button
+          type="button"
+          aria-label="Use the regular command"
+          aria-pressed={!usingKey}
+          data-active={!usingKey}
+          onClick={() => {
             setUsingKey(false)
           }}
-          onSkip={onSkip}
-        />
+        >
+          Terminal
+        </button>
+        <button
+          type="button"
+          aria-label="Use a key instead"
+          aria-pressed={usingKey}
+          data-active={usingKey}
+          onClick={() => {
+            setUsingKey(true)
+          }}
+        >
+          One-time key
+        </button>
+      </div>
+
+      <div className="host-command-panes">
+        <div
+          className="host-command-pane"
+          data-active={!usingKey}
+          aria-hidden={usingKey}
+          inert={usingKey}
+        >
+          <div className="host-setup">
+            <div className="host-setup-body">
+              <ShellCommand command="handover connect" />
+              <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="host-command-pane"
+          data-active={usingKey}
+          aria-hidden={!usingKey}
+          inert={!usingKey}
+        >
+          <KeyCommand active={usingKey} onSkip={onSkip} />
+        </div>
       </div>
     </div>
+  )
+}
+
+function HostAgentCard({
+  slug,
+  machine,
+  agent,
+}: {
+  readonly slug: string
+  readonly machine: Machine
+  readonly agent: Machine['agents'][number]
+}) {
+  const kindName = agentKindName(agent.kind)
+
+  return (
+    <li className="host-agent" data-agent={agent.kind}>
+      <span className="host-agent-avatar" aria-hidden>
+        <img src={agent.avatarUrl} alt="" width="48" height="48" />
+        <span className="host-agent-mark">
+          <AgentMark kind={agent.kind} />
+        </span>
+      </span>
+      <span className="host-agent-copy">
+        {machine.yours ? (
+          <AgentName slug={slug} machineId={machine.id} agent={agent} />
+        ) : (
+          <strong>{agent.name?.trim() || 'Unnamed agent'}</strong>
+        )}
+        <small>
+          {kindName} · {agent.version}
+        </small>
+      </span>
+    </li>
+  )
+}
+
+function AgentName({
+  slug,
+  machineId,
+  agent,
+}: {
+  readonly slug: string
+  readonly machineId: string
+  readonly agent: Machine['agents'][number]
+}) {
+  const kindName = agentKindName(agent.kind)
+  const [name, setName] = useState(agent.name ?? '')
+  const [editing, setEditing] = useState(false)
+  const naming = useNameAgent(slug)
+
+  const control = editing ? (
+    <AgentNameForm
+      type={kindName}
+      name={name}
+      pending={naming.isPending}
+      onName={setName}
+      onCancel={() => {
+        setName(agent.name ?? '')
+        setEditing(false)
+      }}
+      onSave={() => {
+        if (name.trim() === (agent.name ?? '')) {
+          setEditing(false)
+          return
+        }
+        naming.mutate(
+          {
+            params: { path: { id: machineId, kind: agent.kind } },
+            body: { name: name.trim() || null },
+          },
+          {
+            onSuccess: () => {
+              setEditing(false)
+            },
+          },
+        )
+      }}
+    />
+  ) : (
+    <span className="host-agent-name-view">
+      <strong data-empty={name.trim() === '' || undefined}>
+        {name.trim() || 'Name this agent'}
+      </strong>
+      <button
+        type="button"
+        aria-label={`Edit ${kindName} name`}
+        onClick={() => {
+          setEditing(true)
+        }}
+      >
+        <Pencil aria-hidden />
+      </button>
+    </span>
+  )
+
+  return (
+    <>
+      {control}
+      {naming.isError && <span className="host-agent-name-error">Could not save.</span>}
+    </>
+  )
+}
+
+function AgentNameForm({
+  type,
+  name,
+  pending,
+  onName,
+  onCancel,
+  onSave,
+}: {
+  readonly type: string
+  readonly name: string
+  readonly pending: boolean
+  readonly onName: (name: string) => void
+  readonly onCancel: () => void
+  readonly onSave: () => void
+}) {
+  return (
+    <form
+      className="host-agent-name"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSave()
+      }}
+    >
+      <input
+        autoFocus
+        aria-label={`Name ${type}`}
+        maxLength={48}
+        placeholder={`Name ${type}`}
+        value={name}
+        onChange={(event) => {
+          onName(event.target.value)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      />
+      <button type="submit" aria-label={`Save ${type} name`} disabled={pending}>
+        <Check2 aria-hidden />
+      </button>
+    </form>
   )
 }
 
@@ -220,15 +338,12 @@ function Arrived({ slug }: { readonly slug: string }) {
               <p className="host-agents-label">Agents found</p>
               <ul className="host-agent-list" aria-label={`Agents found on ${machine.name}`}>
                 {machine.agents.map((agent) => (
-                  <li key={agent.kind} className="host-agent" data-agent={agent.kind}>
-                    <span className="host-agent-mark" aria-hidden>
-                      <AgentMark kind={agent.kind} />
-                    </span>
-                    <span className="host-agent-copy">
-                      <strong>{agentName(agent.kind)}</strong>
-                      <small>{agent.version}</small>
-                    </span>
-                  </li>
+                  <HostAgentCard
+                    key={`${agent.kind}:${agent.name ?? ''}`}
+                    slug={slug}
+                    machine={machine}
+                    agent={agent}
+                  />
                 ))}
               </ul>
             </>
@@ -263,26 +378,6 @@ function useHostSpace(forSlug: string | undefined): {
   return { slug, name: spaces.find((one) => one.slug === slug)?.displayName }
 }
 
-/** The way out: the Space once a machine is in, looking around first when it is not. */
-function Leave({
-  arrived,
-  spaceName,
-  onGo,
-}: {
-  readonly arrived: boolean
-  readonly spaceName: string | undefined
-  readonly onGo: () => void
-}) {
-  if (arrived) {
-    return (
-      <button className="button button-primary" type="button" onClick={onGo}>
-        <span className="button-label">Open {spaceName ?? 'your Space'}</span>
-      </button>
-    )
-  }
-  return null
-}
-
 export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined }) {
   const navigate = useNavigate()
   const { slug, name } = useHostSpace(forSlug)
@@ -315,7 +410,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
       <div className="onboarding-shell">
         <Steps step={2} done={leaving} mark={leaving || arrived ? 'success' : 'working'} />
 
-        <section className="onboarding-content host-stack">
+        <section className="onboarding-content onboarding-step-card host-stack">
           <div className="auth-head host-head">
             <h1>Connect a machine</h1>
           </div>
@@ -327,7 +422,11 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
             </div>
           )}
 
-          <Leave arrived={arrived} spaceName={name} onGo={goIn} />
+          {arrived && (
+            <button className="button button-primary" type="button" onClick={goIn}>
+              <span className="button-label">Open {name ?? 'your Space'}</span>
+            </button>
+          )}
         </section>
       </div>
     </main>

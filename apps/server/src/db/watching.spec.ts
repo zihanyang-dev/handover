@@ -98,14 +98,14 @@ describe('something said on one instance', () => {
 
   it('is cut rather than refused when it is longer than a notification may be', async () => {
     // Postgres refuses a payload over 8000 bytes, and a refused notify would take down the write
-    // that carried it. Thinking is the only thing here that can come near it, and cutting it
-    // costs nothing — it is worth something for a second and is kept nowhere.
+    // that carried it. Cutting transient thinking costs nothing: it is worth something for a
+    // second and is kept nowhere. Non-ASCII proves the bound is bytes rather than characters.
     const conversationId = randomUUID()
     const arriving = seen(conversationId)
 
     await liveThrough(machineSide, watchers()).say({
       conversationId,
-      watched: { seen: 'moment', moment: { said: 'thinking', text: 'x'.repeat(20_000) } },
+      watched: { seen: 'moment', moment: { said: 'thinking', text: '界'.repeat(20_000) } },
     })
 
     const watched = await arriving

@@ -44,8 +44,11 @@ function open(at: string) {
 
 describe('entering a Space', () => {
   it('shows the one at that address', async () => {
-    server.use(...theSpace())
-    open('/s/acme')
+    server.use(
+      ...theSpace(),
+      http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
+    )
+    const router = open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
@@ -53,12 +56,12 @@ describe('entering a Space', () => {
     const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
     const home = within(switches).getByRole('button', { name: 'Home' })
     const chat = within(switches).getByRole('button', { name: 'Chat' })
-    const inbox = within(switches).getByRole('button', { name: 'Inbox' })
+    const inbox = within(switches).getByRole('link', { name: 'Inbox' })
 
-    expect(within(switches).getAllByRole('button')).toHaveLength(3)
+    expect(within(switches).getAllByRole('button')).toHaveLength(2)
     expect(home.getAttribute('aria-pressed')).toBe('true')
     expect(chat.getAttribute('aria-pressed')).toBe('false')
-    expect(inbox.getAttribute('aria-pressed')).toBe('false')
+    expect(inbox.getAttribute('aria-current')).toBeNull()
 
     await userEvent.click(chat)
 
@@ -69,6 +72,11 @@ describe('entering a Space', () => {
     expect(within(sidebar).queryByText('Conversations')).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Machines' })).toBeNull()
     expect(screen.queryByText('handover connect')).toBeNull()
+
+    await userEvent.click(inbox)
+
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined()
+    expect(router.state.location.pathname).toBe('/s/acme/inbox')
   })
 
   it('keeps pinned conversations directly under Home', async () => {
@@ -94,7 +102,7 @@ describe('entering a Space', () => {
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(within(sidebar).getByRole('button', { name: 'Pin' })).toBeDefined()
     expect(
-      await within(sidebar).findByRole('link', { name: 'keep the release moving' }),
+      await within(sidebar).findByRole('link', { name: /Mina · keep the release moving/i }),
     ).toBeDefined()
   })
 
@@ -154,7 +162,7 @@ describe('entering a Space', () => {
     expect(await screen.findByRole('heading', { name: 'How can Scout help?' })).toBeDefined()
     expect(within(sidebar).queryByRole('button', { name: /new agent/i })).toBeNull()
     expect(within(sidebar).getByRole('heading', { name: 'Today' })).toBeDefined()
-    expect(within(sidebar).getByText('ship the sidebar')).toBeDefined()
+    expect(within(sidebar).getByRole('link', { name: /Mina · ship the sidebar/i })).toBeDefined()
     expect(within(sidebar).queryByRole('button', { name: /new chat/i })).toBeNull()
   })
 
@@ -280,7 +288,23 @@ describe('entering a Space', () => {
       }),
       http.post(`*/spaces/acme/conversations/${id}/messages`, async ({ request }) => {
         continued = await request.json()
-        return new HttpResponse(null, { status: 204 })
+        const body = continued as { asked: { text: string; model?: string; effort?: string } }
+        return HttpResponse.json({
+          id,
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [],
+          messages: [
+            {
+              seq: 2,
+              at: new Date().toISOString(),
+              role: 'user',
+              said: null,
+              content: body.asked,
+            },
+          ],
+        })
       }),
       http.get(`*/spaces/acme/conversations/${id}`, ({ request }) =>
         HttpResponse.json({
@@ -334,9 +358,10 @@ describe('entering a Space', () => {
       asked: { text: 'Read notes.txt', model: 'sonnet', effort: 'high' },
     })
     expect(opened).toHaveProperty('id')
-    expect(await screen.findByText('Read notes.txt')).toBeDefined()
+    const firstMessage = await within(screen.getByRole('log')).findByText('Read notes.txt')
+    expect(firstMessage.closest('.chat-line-person')?.getAttribute('data-entering')).toBe('true')
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Message agent' }), 'And summarize')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'And summarize')
     await userEvent.click(screen.getByRole('button', { name: 'Model: Auto' }))
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Sonnet' }))
     await userEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
@@ -349,6 +374,8 @@ describe('entering a Space', () => {
       })
     })
     expect(continued).toHaveProperty('key')
+    expect(continued).toHaveProperty('after', 1)
+    expect(within(screen.getByRole('log')).getByText('And summarize')).toBeTruthy()
   })
 
   it('keeps Workspace actions to Settings', async () => {

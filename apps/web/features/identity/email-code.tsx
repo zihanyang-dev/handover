@@ -217,7 +217,11 @@ export function EmailCode({
         </div>
 
         {/* Going back carries the address, so nobody retypes what they just typed. */}
-        <Link className="note auth-alt" to="/sign-in" search={{ email }}>
+        <Link
+          className="note auth-alt"
+          to="/sign-in"
+          search={{ email, ...(next === undefined ? {} : { next }) }}
+        >
           Use a different address
         </Link>
       </form>

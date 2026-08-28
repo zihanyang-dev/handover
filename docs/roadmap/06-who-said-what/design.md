@@ -100,7 +100,8 @@ select ... from messages m
 ```
 Watched  = { seen: 'moment', moment: Unkept }
          | { seen: 'written', upTo: number }
-       + | { seen: 'typing', who: string }        ← 新增一支,who 是名字
+       + | { seen: 'typing', userId: UUID, who: string }
+                                              ← userId 去重和排除自己;who 只负责显示
 ```
 
 **新增一条只发不存的路:**
@@ -108,6 +109,8 @@ Watched  = { seen: 'moment', moment: Unkept }
 ```
 POST /spaces/{slug}/conversations/{id}/typing     什么都不返回,什么都不写
 ```
+
+名字不唯一,所以浏览器不能拿 `who` 判断「是不是我」或给 timeout 起 key;那两件事只看 `userId`。
 
 **没有「停止输入」这条路,而且不能有。**浏览器关掉、网断了、人走开了 —— 这三件事都发不出
 「我不打了」。所以做法是[和 Slack 一样的心跳](https://slack.com/help/articles/33076000248851-Work-with-AI-agents-in-Slack):

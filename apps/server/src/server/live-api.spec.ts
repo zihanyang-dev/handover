@@ -19,6 +19,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { watchers } from '../conversation/watchers.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { beginConversation } from '../db/conversation.ts'
+import { becomes, joins, removes, ROLE } from '../db/membership.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
 import { arrive } from '../db/user.ts'
@@ -59,6 +60,8 @@ let SLUG = ''
 let COOKIE = ''
 let TOKEN = ''
 let CONVERSATION = ''
+let SPACE = ''
+let USER = ''
 
 beforeEach(async () => {
   await listening.listening
@@ -69,6 +72,7 @@ beforeEach(async () => {
     .execute(async (tx) =>
       arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
     )
+  USER = arrived.userId
 
   const session = newSessionToken()
   await openSession(db, { user: arrived.userId, tokenHash: session.hash })
@@ -80,9 +84,11 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: arrived.userId,
     displayName: name,
+    emoji: '🏠',
     slug: SLUG as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
+  SPACE = made.space.id
 
   TOKEN = `hm_${randomUUID()}`
   const asked = (await (
@@ -187,6 +193,43 @@ describe('watching a conversation', () => {
     } finally {
       await stream.close()
     }
+  }, 20_000)
+
+  it('refuses moments and typing aimed at another conversation', async () => {
+    const otherConversation = randomUUID()
+    const machine = await app.request(`/machines/current/conversations/${otherConversation}/live`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ said: 'thinking', text: 'not yours' }),
+    })
+    const person = await app.request(`/spaces/${SLUG}/conversations/${otherConversation}/typing`, {
+      method: 'POST',
+      headers: { cookie: COOKIE },
+    })
+
+    expect(machine.status).toBe(404)
+    expect(person.status).toBe(404)
+  })
+
+  it('closes an open stream when its membership is revoked', async () => {
+    const stream = await watch()
+    const address = `owner-${RUN}@example.com`
+    const other = await db
+      .transaction()
+      .execute(async (tx) =>
+        arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
+      )
+    await joins(db, { userId: other.userId, spaceId: SPACE, slug: SLUG })
+    await becomes(db, { spaceId: SPACE, userId: other.userId }, ROLE.owner)
+    await removes(db, { spaceId: SPACE, userId: USER })
+
+    await app.request(`/machines/current/conversations/${CONVERSATION}/live`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ said: 'thinking', text: 'no longer visible' }),
+    })
+
+    expect(await stream.read()).toBe('')
   }, 20_000)
 
   it('carries somebody else having the box open', async () => {

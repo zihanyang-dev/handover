@@ -20,10 +20,14 @@ function emptyBucket() {
   return { objects, kept, writes: () => writes }
 }
 
+function avatarApp(bucket: ReturnType<typeof emptyBucket>, exists = true) {
+  return mounted(avatarApi({ objects: bucket.objects, exists: async () => exists }))
+}
+
 describe('a stored avatar', () => {
   it('is generated into the bucket once, then served from those bytes', async () => {
     const bucket = emptyBucket()
-    const app = mounted(avatarApi({ objects: bucket.objects }))
+    const app = avatarApp(bucket)
     const path = `/avatars/users/${randomUUID()}`
 
     const first = await app.request(path)
@@ -40,7 +44,7 @@ describe('a stored avatar', () => {
 
   it('uses the immutable key as its validator', async () => {
     const bucket = emptyBucket()
-    const app = mounted(avatarApi({ objects: bucket.objects }))
+    const app = avatarApp(bucket)
     const path = `/avatars/users/${randomUUID()}`
     const first = await app.request(path)
 
@@ -55,7 +59,7 @@ describe('a stored avatar', () => {
 
   it('renders an agent as crisp Pixel Art', async () => {
     const bucket = emptyBucket()
-    const app = mounted(avatarApi({ objects: bucket.objects }))
+    const app = avatarApp(bucket)
     const response = await app.request(`/avatars/agents/${randomUUID()}/codex`)
     const svg = await response.text()
 
@@ -65,11 +69,19 @@ describe('a stored avatar', () => {
 
   it('gives two installations of the same agent two identities', async () => {
     const bucket = emptyBucket()
-    const app = mounted(avatarApi({ objects: bucket.objects }))
+    const app = avatarApp(bucket)
     const first = await app.request(`/avatars/agents/${randomUUID()}/codex`)
     const second = await app.request(`/avatars/agents/${randomUUID()}/codex`)
 
     expect(await first.text()).not.toBe(await second.text())
     expect(bucket.kept.size).toBe(2)
+  })
+
+  it('does not create permanent bytes for a made-up identity', async () => {
+    const bucket = emptyBucket()
+    const response = await avatarApp(bucket, false).request(`/avatars/users/${randomUUID()}`)
+
+    expect(response.status).toBe(404)
+    expect(bucket.writes()).toBe(0)
   })
 })

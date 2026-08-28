@@ -19,6 +19,7 @@ type PretendPerson = Omit<Partial<Me>, 'spaces'> & { readonly spaces?: readonly 
 
 export function signedIn(who: PretendPerson = {}) {
   const {
+    id = '00000000-0000-4000-8000-000000000001',
     avatarUrl = '/avatars/users/00000000-0000-4000-8000-000000000001',
     spaces = [],
     ...rest
@@ -26,6 +27,7 @@ export function signedIn(who: PretendPerson = {}) {
 
   return http.get('*/me', () =>
     HttpResponse.json<Me>({
+      id,
       displayName: 'mina@example.com',
       avatarUrl,
       credentials: [],

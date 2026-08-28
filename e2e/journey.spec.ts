@@ -50,7 +50,7 @@ test('talk to an agent, and read what it answers', async ({ page, context }) => 
   await expect(page.getByText('In client.ts, hard-coded.')).toBeVisible({ timeout: 15_000 })
 
   // ⑥ And saying something into the conversation that already exists reaches the same agent.
-  await page.getByLabel('Message agent').fill('and on retries?')
+  await page.getByLabel(/^Message /u).fill('and on retries?')
   await page.getByRole('button', { name: 'Send' }).click()
   const second = await waitsForATurn(machine)
   expect(second.asked.map((one) => one.text)).toEqual(['and on retries?'])
@@ -83,6 +83,21 @@ test('a machine that goes away stops the page saying its agent is ready', async 
   })
 })
 
+test('a resized sidebar still closes at 320 CSS pixels', async ({ page }) => {
+  await signsIn(page, 'narrow')
+  await makesASpace(page)
+
+  const resize = page.getByRole('separator', { name: /resize with left and right/i })
+  await resize.focus()
+  for (let step = 0; step < 30; step += 1) await resize.press('ArrowRight')
+
+  await page.setViewportSize({ width: 320, height: 720 })
+  const close = page.getByRole('button', { name: 'Close sidebar' })
+  await expect(close).toBeVisible()
+  await close.click()
+  await expect(page.getByRole('button', { name: 'Open sidebar' })).toBeVisible()
+})
+
 test('what an agent is doing right now reaches a browser that is watching', async ({
   page,
   context,
@@ -106,10 +121,16 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
   // turn, and one sent before that browser had opened its stream would simply be gone. A real
   // agent says what it is doing continuously, which is what this imitates.
   const saying = setInterval(() => {
-    void machine.happening(turn, { said: 'thinking', text: 'looking for notes.txt' })
+    void machine.happening(turn, {
+      said: 'doing',
+      callId: 'read-notes',
+      name: 'Read',
+      verb: 'Reading',
+      arg: 'notes.txt',
+    })
   }, 500)
   try {
-    await expect(page.getByLabel('Happening now')).toContainText('looking for notes.txt', {
+    await expect(page.getByLabel('Happening now')).toContainText('Reading notes.txt', {
       timeout: 15_000,
     })
   } finally {

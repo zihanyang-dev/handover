@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fold } from './claude-code.ts'
+import { fold, toldFrom } from './claude-code.ts'
 
 /** One of Claude's messages, as the SDK hands it over: a list of blocks and nothing else read. */
 const message = (...content: readonly Record<string, unknown>[]) => ({ content })
@@ -15,7 +15,9 @@ describe('turning what Claude says into what a page shows', () => {
       message({ type: 'tool_use', id: 't1', name: 'mcp__notion__search', input: { query: 'q' } }),
     )
 
-    expect(doing).toEqual([{ said: 'doing', name: 'mcp__notion__search', verb: '', arg: '' }])
+    expect(doing).toEqual([
+      { said: 'doing', callId: 't1', name: 'mcp__notion__search', verb: '', arg: '' },
+    ])
   })
 
   it('says in a word what a tool it does know just did', async () => {
@@ -23,7 +25,7 @@ describe('turning what Claude says into what a page shows', () => {
 
     expect(
       translate(message({ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls -a' } })),
-    ).toEqual([{ said: 'doing', name: 'Bash', verb: 'ran', arg: 'ls -a' }])
+    ).toEqual([{ said: 'doing', callId: 't1', name: 'Bash', verb: 'ran', arg: 'ls -a' }])
   })
 
   it('waits for the result before writing the line down', async () => {
@@ -37,11 +39,13 @@ describe('turning what Claude says into what a page shows', () => {
 
     const did = translate(
       message({ type: 'tool_result', tool_use_id: 't1', content: 'the first line' }),
+      'user',
     )
 
     expect(did).toEqual([
       {
         said: 'did',
+        callId: 't1',
         name: 'Read',
         verb: 'read',
         arg: 'b.ts',
@@ -60,6 +64,7 @@ describe('turning what Claude says into what a page shows', () => {
 
     const [did] = translate(
       message({ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'exit 1' }),
+      'user',
     )
 
     expect(did).toMatchObject({ said: 'did', ok: false, excerpt: 'exit 1' })
@@ -72,9 +77,58 @@ describe('turning what Claude says into what a page shows', () => {
     // here.
     const translate = fold()
 
-    expect(translate(message({ type: 'tool_result', tool_use_id: 'gone', content: 'x' }))).toEqual(
-      [],
+    expect(
+      translate(message({ type: 'tool_result', tool_use_id: 'gone', content: 'x' }), 'user'),
+    ).toEqual([])
+  })
+
+  it('does not promote nested agent traffic into the top-level transcript', () => {
+    const translate = fold()
+    const sdk = (value: unknown) => value as Parameters<typeof toldFrom>[0]
+
+    toldFrom(
+      sdk({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: message({ type: 'tool_use', id: 'agent-1', name: 'Agent', input: {} }),
+      }),
+      translate,
     )
+
+    expect(
+      toldFrom(
+        sdk({
+          type: 'assistant',
+          parent_tool_use_id: 'agent-1',
+          message: message({ type: 'text', text: 'Internal subagent answer' }),
+        }),
+        translate,
+      ),
+    ).toEqual([])
+    expect(
+      toldFrom(
+        sdk({
+          type: 'user',
+          parent_tool_use_id: 'agent-1',
+          message: message({ type: 'tool_result', tool_use_id: 'nested', content: 'internal' }),
+        }),
+        translate,
+      ),
+    ).toEqual([])
+    expect(
+      toldFrom(
+        sdk({
+          type: 'user',
+          parent_tool_use_id: null,
+          message: message({
+            type: 'tool_result',
+            tool_use_id: 'agent-1',
+            content: 'final report',
+          }),
+        }),
+        translate,
+      ),
+    ).toMatchObject([{ told: 'said', said: { said: 'did', callId: 'agent-1' } }])
   })
 
   it('carries thinking through as thinking, for the live stream to show and drop', async () => {

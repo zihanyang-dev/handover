@@ -172,6 +172,27 @@ export function GradientBlur({
       canvas.style.height = `${size.height}px`
       context.setTransform(ratio, 0, 0, ratio, 0, 0)
     }
+    const animation = { frame: 0, previousAt: performance.now() }
+
+    const draw = (now: number) => {
+      animation.frame = 0
+      const elapsedFrames = Math.min((now - animation.previousAt) / (1000 / 60), 3)
+      animation.previousAt = now
+      clearCanvas(context, size, backgroundColor)
+      drawTrail(context, circles, radius, opacityDecay * elapsedFrames)
+      if (circles.length === 0) {
+        clearCanvas(context, size, backgroundColor)
+        return
+      }
+      animation.frame = requestAnimationFrame(draw)
+    }
+
+    const startDrawing = () => {
+      if (animation.frame !== 0) return
+      animation.previousAt = performance.now()
+      animation.frame = requestAnimationFrame(draw)
+    }
+
     const emitAt = (clientX: number, clientY: number) => {
       const bounds = root.getBoundingClientRect()
       emitTrail({
@@ -182,6 +203,7 @@ export function GradientBlur({
         color,
         colorGenerator,
       })
+      startDrawing()
     }
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       emitAt(event.clientX, event.clientY)
@@ -197,25 +219,17 @@ export function GradientBlur({
     resizeCanvas()
     const observer = new ResizeObserver(resizeCanvas)
     observer.observe(root)
-    globalThis.addEventListener('mousemove', handleMouseMove)
-    globalThis.addEventListener('mouseleave', endTrail)
-    globalThis.addEventListener('touchmove', handleTouchMove, { passive: true })
-    globalThis.addEventListener('touchend', endTrail)
-
-    let animationFrame = 0
-    let previous = performance.now()
-    const draw = (now: number) => {
-      const elapsedFrames = Math.min((now - previous) / (1000 / 60), 3)
-      previous = now
-      clearCanvas(context, size, backgroundColor)
-      drawTrail(context, circles, radius, opacityDecay * elapsedFrames)
-      animationFrame = requestAnimationFrame(draw)
+    const reducedMotion = globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!reducedMotion) {
+      globalThis.addEventListener('mousemove', handleMouseMove)
+      globalThis.addEventListener('mouseleave', endTrail)
+      globalThis.addEventListener('touchmove', handleTouchMove, { passive: true })
+      globalThis.addEventListener('touchend', endTrail)
     }
-    animationFrame = requestAnimationFrame(draw)
 
     return () => {
       observer.disconnect()
-      cancelAnimationFrame(animationFrame)
+      cancelAnimationFrame(animation.frame)
       globalThis.removeEventListener('mousemove', handleMouseMove)
       globalThis.removeEventListener('mouseleave', endTrail)
       globalThis.removeEventListener('touchmove', handleTouchMove)

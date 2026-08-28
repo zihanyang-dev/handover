@@ -7,7 +7,7 @@
  */
 
 import type { components } from '../../generated/api.ts'
-import { AgentMark, agentName, agentTint } from '../machines/agent.tsx'
+import { AgentMark, agentKindName, agentTint } from '../machines/agent.tsx'
 import { ChoiceMenu, compactAbout, type Choice } from './choice-menu.tsx'
 
 export type Model = components['schemas']['Model']
@@ -51,7 +51,7 @@ export function ModelChoices({
     <div className="flex min-w-0 gap-1.5">
       <ChoiceMenu
         label="Model"
-        section={agentName(agentKind)}
+        section={agentKindName(agentKind)}
         saysNothing={auto}
         alternatives={offers.map(asModelChoice)}
         value={model}

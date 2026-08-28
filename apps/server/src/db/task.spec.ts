@@ -38,7 +38,7 @@ import {
   wakeWhoseTimeHasCome,
   writesOutput,
 } from './task.ts'
-import { forgetStranded, openTurn, takeOne } from './turn.ts'
+import { forgetStranded, openTurn, stopsWantedOn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
 
 const env = loadEnv()
@@ -68,6 +68,7 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: PERSON,
     displayName: name,
+    emoji: '🏠',
     slug: normalizeSlug(name) as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
@@ -174,6 +175,7 @@ async function inAnotherSpace(): Promise<string> {
     requestKey: `beta-${RUN}`,
     userId: PERSON,
     displayName: name,
+    emoji: '🏠',
     slug: normalizeSlug(name) as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a second Space')
@@ -778,6 +780,17 @@ describe('taking it back', () => {
     expect(back).toEqual({ kind: 'taken-back', alsoStopped: 2 })
     expect(await underwayIn(db, first)).toBeUndefined()
     expect(await underwayIn(db, second)).toBeUndefined()
+  })
+
+  it('asks the running turn to stop instead of only taking it out of the queue', async () => {
+    const conversation = await handedOver()
+    await nextTurn()
+
+    await takeBack(db, { conversationId: conversation, spaceId: SPACE, key: 'back-running' })
+
+    expect(await stopsWantedOn(db, MACHINE)).toContainEqual(
+      expect.objectContaining({ conversationId: conversation }),
+    )
   })
 
   it('takes back what it handed off as well, so nothing is left running unwatched', async () => {

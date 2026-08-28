@@ -6,22 +6,55 @@
  * moment and is kept nowhere. They come from different places on purpose — see `talking.ts`.
  */
 
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { Composer, ComposerError, SendButton, StopButton } from './composer.tsx'
-import { askedWithChoices, ModelChoices, type Model } from './model-choices.tsx'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown } from 'react-bootstrap-icons'
 import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from '../../components/ui/message-scroller.tsx'
+import { meQuery } from '../identity/me.ts'
+import { agentKindName } from '../machines/agent.tsx'
+import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
+import { ChatActivity } from './chat-activity.tsx'
+import { ChatMessage, ChatMessageText } from './chat-message.tsx'
+import { ToolRun, type ToolMessage } from './chat-tools.tsx'
+import { ConversationComposer, type PendingUserMessage } from './conversation-composer.tsx'
+import { consumeMessageArrival } from './message-transition.ts'
+import {
+  conversationsIn,
   useConversation,
-  useSay,
-  useStop,
   useWatching,
+  type LiveOutput,
+  type LiveTurn,
   type Message,
-  type Moment,
-  type Working,
 } from './talking.ts'
+import {
+  getLatestUserPrompt,
+  promptToPin,
+  type LatestUserPrompt,
+  type TranscriptRow,
+} from './transcript-scroll.ts'
+
+const AT_END_THRESHOLD_PX = 48
+const PROMPT_TOP_GAP_PX = 24
+
+type ChatAgent = { readonly avatarSrc: string; readonly name: string }
 
 export function Chat({ slug, id }: { readonly slug: string; readonly id: string }) {
   const conversation = useConversation(slug, id)
+  const conversationTitle = useQuery({
+    ...conversationsIn(slug),
+    select: (answer) => answer.conversations.find((one) => one.id === id)?.opening,
+  })
+  const machines = useQuery(machinesIn(slug))
+  const me = useQuery(meQuery)
+  const [animateArrival] = useState(() => consumeMessageArrival(id))
 
   if (conversation.isPending) return <p className="chat-screen-state">Looking…</p>
   if (conversation.isError)
@@ -37,163 +70,413 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
     )
   }
 
-  const { agentKind, messages, offers, working } = conversation.data
+  const { agentKind, machineName } = conversation.data
+  const installed = agentsOn(machines.data ?? []).find(
+    (agent) => agent.kind === agentKind && agent.machineName === machineName,
+  )
+  const agent = agentPresentation(installed, agentKind)
+  const title =
+    conversationTitle.data ??
+    conversation.data.messages.find((message) => message.role === 'user')?.content.text ??
+    'Chat'
+
   return (
-    <section className="chat-screen" aria-label="Chat">
-      <ol className="chat-transcript">
-        {messages.map((message) => (
-          <Line key={message.seq} message={message} />
-        ))}
-      </ol>
-      <Live slug={slug} id={id} turn={turnOf(messages)} show={working.state === 'working'} />
-      <WorkingState working={working} />
-      <SayInto
+    <MessageScrollerProvider autoScroll scrollEdgeThreshold={AT_END_THRESHOLD_PX}>
+      <ConversationSurface
         slug={slug}
         id={id}
-        offers={offers}
-        agentKind={agentKind}
-        working={working.state === 'working'}
-        turn={turnOf(messages)}
+        conversation={conversation.data}
+        agent={agent}
+        ownUserId={me.data?.id}
+        title={title}
+        animateArrival={animateArrival}
       />
+    </MessageScrollerProvider>
+  )
+}
+
+type ConversationSurfaceProps = {
+  readonly slug: string
+  readonly id: string
+  readonly conversation: NonNullable<ReturnType<typeof useConversation>['data']>
+  readonly agent: ChatAgent
+  readonly ownUserId: string | undefined
+  readonly title: string
+  readonly animateArrival: boolean
+}
+
+function ConversationSurface({
+  slug,
+  id,
+  conversation,
+  agent,
+  ownUserId,
+  title,
+  animateArrival,
+}: ConversationSurfaceProps) {
+  const { agentKind, messages, offers, working } = conversation
+  const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>()
+  const currentTurn = turnOf(messages)
+  const turns = useMemo(() => transcriptTurns(messages), [messages])
+  const rows = useMemo(() => rowsWithPending(turns, pendingMessage), [pendingMessage, turns])
+  const watching = useWatching(slug, id, currentTurn, ownUserId)
+  const { scrollToEnd, scrollToMessage } = useMessageScroller()
+  const viewport = useRef<HTMLDivElement>(null)
+  const latestPrompt = useRef<LatestUserPrompt | null>(null)
+  const positionedConversation = useRef<string | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
+
+  useLayoutEffect(() => {
+    const nextPrompt = getLatestUserPrompt(rows)
+    if (positionedConversation.current !== id) {
+      positionedConversation.current = id
+      latestPrompt.current = nextPrompt
+      if (animateArrival && nextPrompt !== null) {
+        scrollToMessage(nextPrompt.rowId, {
+          align: 'start',
+          scrollMargin: PROMPT_TOP_GAP_PX,
+        })
+      } else {
+        scrollToEnd()
+      }
+      return
+    }
+
+    const previousPrompt = latestPrompt.current
+    latestPrompt.current = nextPrompt
+    const prompt = promptToPin(previousPrompt, nextPrompt)
+    if (prompt === null) return
+    scrollToMessage(prompt.rowId, {
+      align: 'start',
+      scrollMargin: PROMPT_TOP_GAP_PX,
+    })
+  }, [animateArrival, id, rows, scrollToEnd, scrollToMessage])
+
+  const noteScrollPosition = () => {
+    const element = viewport.current
+    if (element === null) return
+    const distance = element.scrollHeight - element.clientHeight - element.scrollTop
+    setShowScrollButton(distance > AT_END_THRESHOLD_PX)
+  }
+
+  return (
+    <section className="chat-screen" aria-label="Chat">
+      <header className="chat-conversation-header">
+        <strong>{title}</strong>
+      </header>
+      <MessageScroller className="chat-scroll-root">
+        <MessageScrollerViewport
+          ref={viewport}
+          className="chat-scroll"
+          onScroll={noteScrollPosition}
+        >
+          <MessageScrollerContent className="chat-scroll-content">
+            <Transcript
+              messages={messages}
+              turns={turns}
+              turn={currentTurn}
+              agent={agent}
+              animateArrival={animateArrival}
+              working={working.state === 'working'}
+              liveTurn={watching.liveTurn}
+              pendingMessage={pendingMessage}
+            />
+            {working.state === 'unknown' && (
+              <div className="chat-transcript-footer">
+                <p className="chat-working">Nobody knows how that turn ended.</p>
+              </div>
+            )}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <ScrollToLatest
+          show={showScrollButton}
+          onClick={() => {
+            scrollToEnd({ behavior: 'smooth' })
+          }}
+        />
+      </MessageScroller>
+
+      <div className="chat-input-dock">
+        <div className="chat-input-wash" aria-hidden />
+        <div className="chat-input-surface">
+          <ConversationComposer
+            slug={slug}
+            id={id}
+            offers={offers}
+            agentKind={agentKind}
+            agentName={agent.name}
+            avatarSrc={agent.avatarSrc}
+            working={working.state === 'working'}
+            turn={currentTurn}
+            afterSeq={messages.at(-1)?.seq ?? 0}
+            onPending={(message) => {
+              if (message !== undefined) watching.startTurn(message.seq)
+              setPendingMessage(message)
+            }}
+          />
+        </div>
+      </div>
     </section>
   )
 }
 
-function Line({ message }: { readonly message: Message }) {
-  if (message.role === 'user')
-    return <li className="chat-line chat-line-person">{message.content.text}</li>
-  if (message.role === 'assistant')
-    return <li className="chat-line chat-line-agent">{message.content.text}</li>
-  if (message.role === 'tool') {
-    return (
-      <li className="chat-line chat-line-tool">
-        <strong>{message.content.verb || message.content.name}</strong>
-        <span>{message.content.arg}</span>
-        {message.content.excerpt !== '' && <pre>{message.content.excerpt}</pre>}
-      </li>
-    )
+/** The jump back to the live edge, offered only when the reader has left it. */
+function ScrollToLatest({
+  show,
+  onClick,
+}: {
+  readonly show: boolean
+  readonly onClick: () => void
+}) {
+  return (
+    <div className="chat-scroll-to-bottom" data-visible={show || undefined}>
+      <button type="button" aria-label="Scroll to latest message" onClick={onClick}>
+        <ArrowDown aria-hidden />
+      </button>
+    </div>
+  )
+}
+
+function agentPresentation(agent: InstalledAgent | undefined, kind: string): ChatAgent {
+  if (agent === undefined) return { avatarSrc: '', name: agentKindName(kind) }
+  return { avatarSrc: agent.avatarUrl, name: agent.name?.trim() || agentKindName(kind) }
+}
+
+type AssistantMessage = Extract<Message, { readonly role: 'assistant' }>
+type ReplyBlock =
+  | { readonly kind: 'assistant'; readonly message: AssistantMessage }
+  | { readonly kind: 'tools'; readonly messages: ToolMessage[] }
+  | { readonly kind: 'activity'; readonly seq: number; readonly at: string; readonly text: string }
+
+function replyBlocks(messages: readonly Message[]): ReplyBlock[] {
+  const blocks: ReplyBlock[] = []
+  for (const message of messages) addReplyBlock(blocks, message)
+  return blocks
+}
+
+function addReplyBlock(blocks: ReplyBlock[], message: Message): void {
+  if (message.role === 'assistant') {
+    blocks.push({ kind: 'assistant', message })
+    return
+  }
+  if (message.role === 'activity') {
+    const text = activityText(message)
+    if (text !== null) blocks.push({ kind: 'activity', seq: message.seq, at: message.at, text })
+    return
+  }
+  if (message.role !== 'tool') return
+
+  const previous = blocks.at(-1)
+  if (previous?.kind === 'tools') previous.messages.push(message)
+  else blocks.push({ kind: 'tools', messages: [message] })
+}
+
+type TranscriptTurn =
+  | { readonly key: string; readonly user: Extract<Message, { readonly role: 'user' }> }
+  | { readonly key: string; readonly reply: Message[] }
+
+function transcriptTurns(messages: readonly Message[]): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = []
+  for (const message of messages) addTranscriptTurn(turns, message)
+  return turns
+}
+
+function rowsWithPending(
+  turns: readonly TranscriptTurn[],
+  pending: PendingUserMessage | undefined,
+): readonly TranscriptRow[] {
+  const rows = turns.map(transcriptRow)
+  if (pending === undefined) return rows
+  return [...rows, { id: 'pending-user', kind: 'user', seq: pending.seq }]
+}
+
+function transcriptRow(turn: TranscriptTurn): TranscriptRow {
+  if ('user' in turn) {
+    return { id: turn.key, kind: 'user', seq: turn.user.seq }
+  }
+  return { id: turn.key, kind: 'reply', seq: turn.reply[0]?.seq ?? 0 }
+}
+
+function Transcript({
+  messages,
+  turns,
+  turn,
+  agent,
+  animateArrival,
+  working,
+  liveTurn,
+  pendingMessage,
+}: {
+  readonly messages: readonly Message[]
+  readonly turns: readonly TranscriptTurn[]
+  readonly turn: number
+  readonly agent: ChatAgent
+  readonly animateArrival: boolean
+  readonly working: boolean
+  readonly liveTurn: LiveTurn
+  readonly pendingMessage: PendingUserMessage | undefined
+}) {
+  const [firstPaintEndsAt] = useState(() => messages.at(-1)?.seq)
+  const activeCallId = liveTurn.activity?.said === 'doing' ? liveTurn.activity.callId : undefined
+  const activeCallIsWritten =
+    activeCallId !== undefined &&
+    messages.some((message) => message.role === 'tool' && message.content.callId === activeCallId)
+  const activeOutput = activeCallId === undefined ? undefined : liveTurn.outputs.get(activeCallId)
+
+  return (
+    <>
+      {turns.map((turn) => {
+        const row = transcriptRow(turn)
+        return (
+          <MessageScrollerItem key={turn.key} messageId={row.id}>
+            <div className="chat-transcript-row" data-transcript-row-id={row.id}>
+              {'user' in turn ? (
+                <ChatMessage
+                  placement="right"
+                  at={turn.user.at}
+                  author={turn.user.said ?? 'Unknown person'}
+                  copyText={turn.user.content.text}
+                >
+                  <ChatMessageText
+                    message={turn.user}
+                    animate={
+                      turn.user.seq > (firstPaintEndsAt ?? 0) ||
+                      (animateArrival && turn.user.seq === firstPaintEndsAt)
+                    }
+                  />
+                </ChatMessage>
+              ) : (
+                <AgentReply messages={turn.reply} agent={agent} liveOutputs={liveTurn.outputs} />
+              )}
+            </div>
+          </MessageScrollerItem>
+        )
+      })}
+      {pendingMessage !== undefined && (
+        <MessageScrollerItem messageId="pending-user">
+          <div className="chat-transcript-row" data-transcript-row-id="pending-user">
+            <ChatMessage
+              placement="right"
+              at={pendingMessage.at}
+              copyText={pendingMessage.content.text}
+            >
+              <ChatMessageText message={pendingMessage} animate />
+            </ChatMessage>
+          </div>
+        </MessageScrollerItem>
+      )}
+      {liveTurn.typing.length > 0 && (
+        <MessageScrollerItem messageId="typing">
+          <div className="chat-transcript-row">
+            <p className="chat-typing" role="status" aria-live="polite">
+              {typingText(liveTurn.typing)}
+            </p>
+          </div>
+        </MessageScrollerItem>
+      )}
+      {working && !activeCallIsWritten && (
+        <MessageScrollerItem messageId={`live-${String(turn)}`}>
+          <div className="chat-transcript-row chat-live-row">
+            <ChatActivity activity={liveTurn.activity} output={activeOutput} />
+          </div>
+        </MessageScrollerItem>
+      )}
+    </>
+  )
+}
+
+function addTranscriptTurn(turns: TranscriptTurn[], message: Message) {
+  if (message.role === 'user') {
+    turns.push({ key: `user-${String(message.seq)}`, user: message })
+    return
   }
 
-  const happened = activityText(message)
-  return happened === null ? null : <li className="chat-line chat-line-activity">{happened}</li>
+  const previous = turns.at(-1)
+  if (previous !== undefined && 'reply' in previous) previous.reply.push(message)
+  else turns.push({ key: `reply-${String(message.seq)}`, reply: [message] })
 }
 
-/**
- * What is happening right now, which is kept nowhere and shown only while it happens.
- *
- * The turn is passed in rather than made into a key on this component. Keyed, a new turn would
- * unmount this and close the stream at the very moment that turn's first moments arrive — they
- * are sent once, so each one that landed in the gap was gone, and a turn appeared to begin in
- * silence. The list is cleared inside instead, and the connection is never touched.
- */
-function Live({
-  slug,
-  id,
-  turn,
-  show,
+function AgentReply({
+  messages,
+  agent,
+  liveOutputs,
 }: {
-  readonly slug: string
-  readonly id: string
-  readonly turn: number
-  readonly show: boolean
+  readonly messages: readonly Message[]
+  readonly agent: ChatAgent
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
 }) {
-  const moments = useWatching(slug, id, turn)
-  if (!show || moments.length === 0) return null
+  const blocks = replyBlocks(messages)
+  const first = blocks[0]
+  if (first === undefined) return null
+  const beganAt = blockStartedAt(first)
+  if (beganAt === undefined) return null
+  const copyText = blocks
+    .filter(
+      (block): block is Extract<ReplyBlock, { readonly kind: 'assistant' }> =>
+        block.kind === 'assistant',
+    )
+    .map((block) => block.message.content.text)
+    .join('\n\n')
 
   return (
-    <ul className="chat-live" aria-label="Happening now">
-      {moments.map((moment, index) => (
-        <li key={index}>{momentText(moment)}</li>
-      ))}
-      <li>Thinking and full output are shown now and are not kept.</li>
-    </ul>
-  )
-}
-
-/** The composer as this screen wires it: what is said goes into the conversation it is under. */
-function SayInto({
-  slug,
-  id,
-  offers,
-  agentKind,
-  working,
-  turn,
-}: {
-  readonly slug: string
-  readonly id: string
-  readonly offers: readonly Model[]
-  readonly agentKind: string
-  readonly working: boolean
-  readonly turn: number
-}) {
-  const [text, setText] = useState('')
-  const [model, setModel] = useState('')
-  const [effort, setEffort] = useState('')
-  const say = useSay(slug, id)
-  const stop = useStop(slug, id)
-
-  return (
-    <Composer
-      className="sticky bottom-6 mt-8"
-      label="Message agent"
-      placeholder="Say something…"
-      text={text}
-      onText={setText}
-      onSend={() => {
-        if (working) return
-        say.mutate(askedWithChoices(text.trim(), model, effort), {
-          onSuccess: () => {
-            setText('')
-          },
-        })
-      }}
+    <ChatMessage
+      placement="left"
+      at={beganAt}
+      avatarSrc={agent.avatarSrc}
+      author={agent.name}
+      {...(copyText === '' ? {} : { copyText })}
     >
-      {say.isError && <ComposerError>{whyNot(say.error.reason)}</ComposerError>}
-      {stop.isError && <ComposerError>Could not stop it. Try again.</ComposerError>}
-      <div className="ml-auto flex min-w-0 items-center gap-1.5">
-        <ModelChoices
-          offers={offers}
-          agentKind={agentKind}
-          model={model}
-          effort={effort}
-          onModel={(next) => {
-            setModel(next)
-            setEffort('')
-          }}
-          onEffort={setEffort}
-        />
+      <div className="chat-agent-reply">
+        <ReplyContent blocks={blocks} liveOutputs={liveOutputs} />
       </div>
-      {working ? (
-        <StopButton
-          disabled={stop.isPending}
-          onStop={() => {
-            stop.mutate({
-              params: { path: { slug, id } },
-              body: { key: `${String(turn)}/stop` },
-            })
-          }}
-        />
-      ) : (
-        <SendButton disabled={say.isPending || text.trim() === ''} />
-      )}
-    </Composer>
+    </ChatMessage>
   )
 }
 
-function WorkingState({ working }: { readonly working: Working }) {
-  if (working.state === 'working')
-    return (
-      <p className="chat-working" role="status" aria-live="polite">
-        Working…
-      </p>
-    )
-  if (working.state === 'unknown')
-    return (
-      <p className="chat-working" role="status" aria-live="polite">
-        Nobody knows how that turn ended.
-      </p>
-    )
-  return null
+function blockStartedAt(block: ReplyBlock): string | undefined {
+  if (block.kind === 'assistant') return block.message.at
+  if (block.kind === 'activity') return block.at
+  return block.messages[0]?.at
+}
+
+function ReplyContent({
+  blocks,
+  liveOutputs,
+}: {
+  readonly blocks: readonly ReplyBlock[]
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  return (
+    <div className="chat-agent-reply-content">
+      {blocks.map((block) => {
+        if (block.kind === 'tools') {
+          return (
+            <ToolRun
+              key={`tools-${String(block.messages[0]?.seq ?? 0)}`}
+              messages={block.messages}
+              liveOutputs={liveOutputs}
+            />
+          )
+        }
+        if (block.kind === 'activity') {
+          return (
+            <p className="chat-line-activity" key={`activity-${String(block.seq)}`}>
+              {block.text}
+            </p>
+          )
+        }
+        return (
+          <ChatMessageText key={`answer-${String(block.message.seq)}`} message={block.message} />
+        )
+      })}
+    </div>
+  )
+}
+
+function typingText(people: LiveTurn['typing']): string {
+  const names = people.map((person) => person.name)
+  if (names.length === 1) return `${names[0]} is typing…`
+  return `${names.join(', ')} are typing…`
 }
 
 function turnOf(messages: readonly Message[]): number {
@@ -204,20 +487,7 @@ function turnOf(messages: readonly Message[]): number {
   return latest
 }
 
-function momentText(moment: Moment): string {
-  if (moment.said === 'thinking') return moment.text
-  if (moment.said === 'output') return moment.text
-  return `${moment.verb} ${moment.arg}`.trim()
-}
-
-/**
- * What an activity says, for the ones this screen has words for.
- *
- * `done` alone shows nothing: a turn that simply ended says so by the next thing being said.
- * Everything else is shown — anything without words here appears as its own name rather than
- * disappearing. A transcript is an account of what happened, and a page that quietly dropped the
- * kinds it had not heard of would leave one looking like it skipped.
- */
+/** Words for durable activity lines that do not carry their own text. */
 const ACTIVITY_TEXT = new Map<string, string>([
   ['cancelled', 'Stopped'],
   ['failed', 'That turn failed'],
@@ -228,27 +498,10 @@ const ACTIVITY_TEXT = new Map<string, string>([
   ['unreadable', 'One event could not be read'],
 ])
 
-function activityText(what: Message & { role: 'activity' }): string | null {
+function activityText(what: Extract<Message, { readonly role: 'activity' }>): string | null {
   if (what.content.activityType === 'done') return null
   const said: unknown = what.content['text']
+  if (typeof said === 'string' && said !== '') return said
 
-  return (
-    (typeof said === 'string' && said !== '' ? said : undefined) ??
-    ACTIVITY_TEXT.get(what.content.activityType) ??
-    what.content.activityType
-  )
-}
-
-/**
- * Why what was said did not land.
- *
- * A machine that is not here is deliberately not among these: words said into a conversation that
- * already exists are written down whether or not its laptop is open, and the turn carries them
- * when it asks again. Only opening one can be refused for that — see `start-chat.tsx`.
- */
-function whyNot(reason: string): string {
-  if (reason === 'agent-not-on-machine') return 'This agent is no longer installed.'
-  if (reason === 'unavailable') return 'This conversation is not here any more.'
-
-  return 'Could not send that. Try again.'
+  return ACTIVITY_TEXT.get(what.content.activityType) ?? what.content.activityType
 }

@@ -6,6 +6,7 @@
 
 ```
 Dockerfile          服务器 + 它托管的那些页面,一个镜像
+THIRD_PARTY_NOTICES.md  改编代码的原始授权文本;评审许可证时只信这里的逐字文本
 apps/server/        API
   src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
                     住在这里的是 db/ 和 server/ 都要用、而谁都不该拥有的那些
@@ -21,7 +22,8 @@ apps/web/           浏览器应用
                     进这里的标准是「它不知道 Handover 是什么」
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
   mark.tsx mark.css 那个标识,和它的几种状态;关键帧留在相邻的 CSS
-  style.css         Tailwind 入口、theme,和语义化的 component utilities,整个产品一份
+  style.css         Tailwind 入口、theme、全局 token 和最小的 base;不放 feature class
+  styles/           按屏幕拥有实测的状态选择器、响应式布局和动画;静态几何用 Tailwind `@apply`
   pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、登录方式、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
@@ -158,9 +160,15 @@ RESEND_API_KEY        没有它且 NODE_ENV≠development 时进程拒绝启动
 MAIL_FROM             发信域名要先在 Resend 那边过 DNS 验证
 TRUSTED_PROXY_HOPS    真实代理层数。这是唯一一个填错了不报错、只是静默失效的:
                       填 0 而前面有代理,发信限流就能被 X-Forwarded-For 绕过
+OBJECT_STORE_BUCKET   存确定性头像的 S3-compatible bucket
+OBJECT_STORE_REGION   bucket 所在 region
 GOOGLE / GITHUB 的     可选,但要成对;回调地址填 <PUBLIC_ORIGIN>/auth/<provider>/callback
 CLIENT_ID / SECRET
 ```
+
+对象存储在本地或非 AWS provider 上时再给 `OBJECT_STORE_ENDPOINT` 和
+`OBJECT_STORE_FORCE_PATH_STYLE`;静态凭据的 `OBJECT_STORE_ACCESS_KEY` /
+`OBJECT_STORE_SECRET_KEY` 必须成对。托管环境不填这对值时,SDK 使用 workload role。
 
 **健康检查用 `GET /auth/credentials`** —— 它公开、便宜、不碰数据库。不为此单开一个 `/health`:
 一个只有平台在读的路由,是一个没有人负责的用户可见名词。

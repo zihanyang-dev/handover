@@ -12,4 +12,4 @@
 
 export { normalizeSlug, nextFreeSlug, type Slug } from './slug.ts'
 export { returnPath } from './return-path.ts'
-export { PIECE } from './piece.ts'
+export { fitsInPiece, PIECE, textPieces, utf8Length, type TextPiece } from './piece.ts'

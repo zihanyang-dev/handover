@@ -6,7 +6,7 @@
  * conversation on it would read as "nobody knows" while it was busy working.
  */
 
-import { PIECE } from '@handover/universal'
+import { fitsInPiece, textPieces } from '@handover/universal'
 import type { components } from '../generated/api.ts'
 import {
   type Agent,
@@ -30,6 +30,9 @@ import { sleep } from './sleeping.ts'
 const KEEP_TRYING_MS = 120_000
 
 const BETWEEN_TRIES_SECONDS = 2
+
+/** Batches noisy provider updates before each cross-instance NOTIFY without making them feel late. */
+const LIVE_OUTPUT_EVERY_MS = 75
 
 /** What the server handed over: one question, and what is needed to answer it. */
 export type Asking = components['schemas']['SomethingToAnswer']
@@ -244,14 +247,6 @@ export async function sayItStartedOver(api: Api, asking: Asking, machine: Machin
   })
 }
 
-/**
- * Writes down everything one turn produced.
- *
- * Every message carries a name built from the turn it belongs to and its place in it, so a write
- * whose answer was lost can be sent again and land in the same place. The count is local to this
- * turn: a turn that is being answered a second time is a turn nobody saw the end of, and that is
- * recovered by reading the agent's own record rather than by guessing where it got to.
- */
 /** How a turn the agent finished is closed, and what is said about it out loud. */
 async function ended(
   writing: Writing,
@@ -266,6 +261,12 @@ async function ended(
   await closing(writing, asking, how.whole ? ending(how.why) : LOST)
 }
 
+/**
+ * Writes down everything one turn produced.
+ *
+ * Every message carries a name built from the turn and its place in it, so a response lost after
+ * the write can be retried without making a second line.
+ */
 async function write(
   writing: Writing,
   asking: Asking,
@@ -349,7 +350,7 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
   // a tool that never said.
   const { said: _kind, output, ...what } = said
 
-  return { now: pieces(output), written: { role: 'tool', content: what } }
+  return { now: pieces(what.callId, output), written: { role: 'tool', content: what } }
 }
 
 /**
@@ -359,32 +360,84 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
  * into the transcript — pushing it then would be the same words arriving twice, which is the one
  * thing {@link where} exists to prevent.
  */
-function pieces(output: string | undefined): readonly Unkept[] {
-  if (output === undefined || output.length <= EXCERPT) return []
+function pieces(callId: string | undefined, output: string | undefined): readonly Unkept[] {
+  if (callId === undefined || output === undefined || output.length <= EXCERPT) return []
 
-  const said: Unkept[] = []
-  for (let at = 0; at < output.length; at += PIECE) {
-    said.push({ said: 'output', text: output.slice(at, at + PIECE) })
-  }
-
-  return said
+  return textPieces(output).map(({ at, text }) => ({ said: 'output', callId, at, text }))
 }
 
-/**
- * Writes into one conversation, and tells the difference between not reaching the server and
- * being refused.
- *
- * Not reaching it is nothing to do about: the agent is already working, and stopping it over a
- * dropped connection would throw away the work. One line of a transcript is lost, and the turn
- * ending unclosed is what says so.
- *
- * Being refused is different in kind — it means this build and that server disagree about what a
- * message is, and every line of every turn will vanish the same way. Silence there would be a
- * machine that looks like it is working and writes nothing down.
- */
+type LiveWriter = {
+  readonly push: (said: Unkept) => void
+  readonly drain: () => Promise<void>
+}
+
+/** A serial, short-cadence writer for ephemeral events, bounded by transport-sized pieces. */
+function liveWriter(send: (said: Unkept) => Promise<void>): LiveWriter {
+  let sent = Promise.resolve()
+  let pendingOutput: Extract<Unkept, { readonly said: 'output' }>[] = []
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+
+  function enqueue(said: Unkept): void {
+    const sendOne = async (): Promise<void> => {
+      await send(said)
+    }
+    sent = sent.then(sendOne).catch(() => undefined)
+  }
+
+  function flush(): void {
+    if (flushTimer !== undefined) clearTimeout(flushTimer)
+    flushTimer = undefined
+
+    const batch = pendingOutput
+    pendingOutput = []
+    for (const output of batch) enqueue(output)
+  }
+
+  function hold(next: Extract<Unkept, { readonly said: 'output' }>): void {
+    const previous = pendingOutput.at(-1)
+    const joinsPrevious =
+      previous?.callId === next.callId &&
+      previous.at + previous.text.length === next.at &&
+      fitsInPiece(`${previous.text}${next.text}`)
+
+    if (joinsPrevious) {
+      pendingOutput[pendingOutput.length - 1] = {
+        ...previous,
+        text: `${previous.text}${next.text}`,
+      }
+    } else {
+      pendingOutput.push(next)
+    }
+
+    if (flushTimer !== undefined) return
+    flushTimer = setTimeout(flush, LIVE_OUTPUT_EVERY_MS)
+    flushTimer.unref()
+  }
+
+  function push(said: Unkept): void {
+    if (said.said === 'output') {
+      hold(said)
+      return
+    }
+
+    flush()
+    enqueue(said)
+  }
+
+  async function drain(): Promise<void> {
+    flush()
+    await sent
+  }
+
+  return { push, drain }
+}
+
 function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
   const path = { params: { path: { id: asking.conversationId } } }
   const { say, until } = machine
+  const live = liveWriter(async (said) => {
+    await api.POST('/machines/current/conversations/{id}/live', { ...path, body: said })
+  })
 
   /**
    * Sends one thing until it is in, or until it is certain it never will be.
@@ -412,13 +465,17 @@ function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
   }
 
   return {
-    message: async (key, message) =>
-      sent(async () =>
+    message: async (key, message) => {
+      // A durable result must not overtake the live fragments that explain it. Waiting happens
+      // here, not in the adapter loop: moments are still accepted without holding up the agent.
+      await live.drain()
+      return sent(async () =>
         api.POST('/machines/current/conversations/{id}/messages', {
           ...path,
           body: { key, message },
         }),
-      ),
+      )
+    },
 
     session: async (id) => {
       // Same treatment: losing it means the next turn starts over and says so, which is honest but
@@ -428,8 +485,6 @@ function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
       )
     },
 
-    moment: (said) => {
-      void api.POST('/machines/current/conversations/{id}/live', { ...path, body: said })
-    },
+    moment: live.push,
   }
 }

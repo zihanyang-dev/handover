@@ -41,19 +41,20 @@ const PICTURE = /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u
  * A flag is two code points and a family with skin tones is well over ten, so what is counted is
  * graphemes and not length. The 32 is only there so nothing unbounded reaches the segmenter.
  */
-const NewEmoji = named('NewSpaceEmoji', {
-  emoji: z
-    .string()
-    .min(1)
-    .max(32)
-    .refine(
-      (value) => [...GRAPHEMES.segment(value)].length === 1 && PICTURE.test(value),
-      'Choose one emoji',
-    ),
-})
+const Emoji = z
+  .string()
+  .min(1)
+  .max(32)
+  .refine(
+    (value) => [...GRAPHEMES.segment(value)].length === 1 && PICTURE.test(value),
+    'Choose one emoji',
+  )
+
+const NewEmoji = named('NewSpaceEmoji', { emoji: Emoji })
 
 const NewSpace = named('NewSpace', {
   displayName: z.string().min(1).max(200).openapi({ example: '徐悦泰 Studio' }),
+  emoji: Emoji,
   requestKey: z.string().min(1).max(200),
 })
 
@@ -88,6 +89,7 @@ function making({ db }: SpaceApi) {
         requestKey: asked.requestKey,
         userId: c.get('userId'),
         displayName: asked.displayName.trim(),
+        emoji: asked.emoji,
         slug,
       })
 

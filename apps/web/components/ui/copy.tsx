@@ -26,7 +26,6 @@ export function Copy({ text, what }: { readonly text: string; readonly what: str
       className="shell-copy"
       type="button"
       aria-label={says}
-      title={says}
       onClick={() => {
         void navigator.clipboard.writeText(text)
         setCopied(true)

@@ -43,6 +43,8 @@ const Answered = z.object({ text: z.string() }).openapi('Answered')
  */
 const Did = z
   .object({
+    /** Provider-local identity used only to reconcile a live tool row with this final record. */
+    callId: z.string().max(200).optional(),
     name: z.string(),
     verb: z.string(),
     arg: z.string(),
@@ -54,6 +56,8 @@ const Did = z
      */
     ok: z.boolean().optional(),
     excerpt: z.string(),
+    /** The provider could not expose the beginning of this output. */
+    truncated: z.boolean().optional(),
   })
   .openapi('Did')
 

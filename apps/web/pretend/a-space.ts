@@ -79,5 +79,9 @@ export function theSpace({
         conversations: conversations.map((conversation) => ({ pinned: false, ...conversation })),
       }),
     ),
+    http.post(
+      `*/spaces/${slug}/conversations/:id/typing`,
+      () => new HttpResponse(null, { status: 204 }),
+    ),
   ]
 }

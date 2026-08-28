@@ -57,18 +57,6 @@ function answering(bodies: Record<string, unknown>[]) {
 }
 
 describe('choosing a way in', () => {
-  it('says one address is one account before anything is chosen', async () => {
-    server.use(waysIn('google'))
-    open('/sign-in')
-
-    const said = await screen.findByText(/the same address reaches the same account/i)
-    const google = await screen.findByRole('button', { name: /continue with google/i })
-
-    // Whether somebody dares click a different button than last time is decided by reading this
-    // first. After the choice it is the same as not saying it.
-    expect(said.compareDocumentPosition(google)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
-  })
-
   it('labels the form without repeating the obvious task on the page', async () => {
     server.use(waysIn('google'))
     open('/sign-in')
@@ -78,6 +66,24 @@ describe('choosing a way in', () => {
 
     expect(form.contains(google)).toBe(true)
     expect(screen.queryByRole('heading', { name: /^sign in$/i })).toBeNull()
+  })
+
+  it('keeps where someone was going when they choose a provider', async () => {
+    let started: unknown
+    server.use(
+      waysIn('google'),
+      http.post('*/auth/google/start', async ({ request }) => {
+        started = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/sign-in?next=%2Fs%2Facme')
+
+    await userEvent.click(await screen.findByRole('button', { name: /continue with google/i }))
+
+    await waitFor(() => {
+      expect(started).toEqual({ next: '/s/acme' })
+    })
   })
 
   it('offers only what this deployment has keys for', async () => {

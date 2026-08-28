@@ -62,6 +62,7 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: arrived.userId,
     displayName: name,
+    emoji: '🏠',
     slug: SLUG as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
@@ -272,8 +273,17 @@ describe('saying something', () => {
     const said = { key: 'turn-1', asked: { text: 'read notes.txt' } }
     const path = `/spaces/${SLUG}/conversations/${conversation}/messages`
 
-    expect((await asPerson(path, 'POST', said)).status).toBe(204)
-    expect((await asPerson(path, 'POST', said)).status).toBe(204)
+    const first = await asPerson(path, 'POST', said)
+    const repeated = await asPerson(path, 'POST', said)
+    expect(first.status).toBe(200)
+    expect(repeated.status).toBe(200)
+    const firstTail = (await first.json()) as { messages: readonly { role: string; seq: number }[] }
+    const repeatedTail = (await repeated.json()) as {
+      messages: readonly { role: string; seq: number }[]
+    }
+    expect(firstTail.messages.filter((one) => one.role === 'user').at(-1)?.seq).toBe(
+      repeatedTail.messages.filter((one) => one.role === 'user').at(-1)?.seq,
+    )
 
     const read = (await (
       await asPerson(`/spaces/${SLUG}/conversations/${conversation}`)
@@ -295,7 +305,7 @@ describe('saying something', () => {
 
     const response = await asPerson(path, 'POST', { key: 'turn-2', asked: { text: 'second' } })
 
-    expect(response.status).toBe(204)
+    expect(response.status).toBe(200)
     // And the machine is told to stop, on the very next thing it asks.
     const told = await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     expect(await told.json()).toMatchObject({

@@ -34,7 +34,7 @@ async function someone(label: string): Promise<string> {
 }
 
 async function request(userId: string, requestKey: string, slug: Slug): Promise<SpaceCreation> {
-  return createSpace(db, { requestKey, userId, displayName: 'Acme', slug })
+  return createSpace(db, { requestKey, userId, displayName: 'Acme', emoji: '🏠', slug })
 }
 
 /** Only the names this test asked for: the table holds every other test's Spaces too. */
@@ -148,6 +148,7 @@ describe('createSpace', () => {
       requestKey: `${RUN}-shared`,
       userId: await someone('owner'),
       displayName: `Acme ${RUN.slice(0, 6)}`,
+      emoji: '🏠',
       slug: normalizeSlug(`Acme ${RUN.slice(0, 6)}`) as Slug,
     })
     expect(mine.kind).toBe('created')
@@ -156,6 +157,7 @@ describe('createSpace', () => {
       requestKey: `${RUN}-shared`,
       userId: await someone('stranger'),
       displayName: `Beta ${RUN.slice(0, 6)}`,
+      emoji: '🏠',
       slug: normalizeSlug(`Beta ${RUN.slice(0, 6)}`) as Slug,
     })
 

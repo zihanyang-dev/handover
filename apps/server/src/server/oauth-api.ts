@@ -14,7 +14,7 @@ import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie'
 import type { Database } from '../db/connection.ts'
 import { connectProvider } from '../db/credential.ts'
 import { signInWithProvider } from '../db/sign-in.ts'
-import type { ProviderClient } from '../identity/provider-client.ts'
+import type { Identified, ProviderClient } from '../identity/provider-client.ts'
 import { PROVIDERS, type Provider } from '../identity/provider.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { type Failure, refused } from './failure.ts'
@@ -147,14 +147,8 @@ async function settle(
   // exchange, and after the handoff was taken because the trip is over either way.
   if (returned.searchParams.get('error') !== null) return { to: landing('cancelled') }
 
-  // Anything the provider does that this side did not plan for — an expired code, a token endpoint
-  // that broke, a signature that will not verify — ends at a page. The browser got here by being
-  // redirected: there is nobody to read a 500, and what it would show is the router's own error
-  // page on our domain, at the end of a sign-in.
-  const identified = await found.client
-    .identify({ url: returned, state: taken.state, pkceVerifier: taken.pkceVerifier })
-    .catch(() => ({ kind: 'no-verified-email' }) as const)
-  if (identified.kind === 'no-verified-email') return { to: landing('no-verified-email') }
+  const identified = await identityFrom(found.client, returned, taken)
+  if (identified.kind !== 'identified') return { to: landing(identified.kind) }
 
   if (taken.purpose === 'connect') {
     // The session that started this has to be the session finishing it — not merely some session.
@@ -170,6 +164,17 @@ async function settle(
   const session = newSessionToken()
   const signedIn = await signInWithProvider(deps.db, identified.identity, session.hash)
   return { to: landing(signedIn.merged ? 'merged' : undefined), sessionToken: session.token }
+}
+
+/** A provider failure has the same recovery as an expired trip, not a missing-email diagnosis. */
+async function identityFrom(
+  client: ProviderClient,
+  returned: URL,
+  taken: Handoff,
+): Promise<Identified | { readonly kind: 'expired' }> {
+  return client
+    .identify({ url: returned, state: taken.state, pkceVerifier: taken.pkceVerifier })
+    .catch(() => ({ kind: 'expired' }))
 }
 
 /**

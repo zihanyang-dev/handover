@@ -9,8 +9,9 @@
 import { streamSSE } from 'hono/streaming'
 import { Unkept, Watched, type Live } from '../conversation/live.ts'
 import type { Database } from '../db/connection.ts'
-import { conversationInSpace } from '../db/conversation.ts'
+import { conversationReachableBy } from '../db/conversation.ts'
 import { nameOf } from '../db/user.ts'
+import { sayLiveFromMachine } from '../db/watching.ts'
 import { UNAVAILABLE, refused } from './failure.ts'
 import { aMachine, aMember, nothing, refuses, rowId, streams } from './route.ts'
 
@@ -27,8 +28,58 @@ export type LiveApi = {
  */
 const HEARTBEAT_MS = 20_000
 
+/** Enough transient frames for a slow tab without allowing a disconnected socket to grow forever. */
+const MAX_PENDING_FRAMES = 128
+
+type Frame = { readonly data: string; readonly event?: string }
+type PendingFrame = { readonly frame: Frame; readonly disposable: boolean }
+
+type FrameWriter = {
+  readonly push: (frame: Frame, disposable?: boolean) => void
+  readonly drain: () => Promise<void>
+}
+
 export function liveApi(deps: LiveApi) {
   return [watching(deps), typing(deps), reporting(deps)]
+}
+
+/** One active write and a bounded queue, instead of one retained Promise per event. */
+function frameWriter(write: (frame: Frame) => Promise<unknown>): FrameWriter {
+  const pending: PendingFrame[] = []
+  let writing: Promise<void> | undefined
+
+  async function writePending(): Promise<void> {
+    try {
+      for (let next = pending.shift(); next !== undefined; next = pending.shift()) {
+        await write(next.frame)
+      }
+    } catch {
+      // A closed stream has no reader for queued frames; Hono owns the socket cleanup.
+      pending.length = 0
+    } finally {
+      writing = undefined
+    }
+  }
+
+  function push(frame: Frame, disposable = false): void {
+    if (pending.length === MAX_PENDING_FRAMES) {
+      const disposableAt = pending.findIndex((one) => one.disposable)
+      pending.splice(disposableAt < 0 ? 0 : disposableAt, 1)
+    }
+
+    pending.push({ frame, disposable })
+    if (writing === undefined) writing = writePending()
+  }
+
+  async function drain(): Promise<void> {
+    while (writing !== undefined) await writing
+  }
+
+  return { push, drain }
+}
+
+function mayDrop(watched: Watched): boolean {
+  return watched.seen === 'moment' && watched.moment.said !== 'doing'
 }
 
 /** What is happening right now, for as long as somebody is looking. */
@@ -46,16 +97,26 @@ function watching({ db, live }: LiveApi) {
       // and whether it is reachable is the same question every other route here asks. Only that,
       // though — what has been said in it is the transcript's to answer, and this never shows it.
       const conversationId = c.req.valid('param').id
-      const reachable = await conversationInSpace(db, {
+      const canWatch = {
         conversationId,
         spaceId: c.get('space').id,
-      })
+        userId: c.get('userId'),
+      }
+      const reachable = await conversationReachableBy(db, canWatch)
       if (!reachable) return refused(c, UNAVAILABLE)
 
       return streamSSE(c, async (stream) => {
-        const sending: Promise<unknown>[] = []
-        const stop = live.watch(conversationId, (watched) => {
-          sending.push(stream.writeSSE({ data: JSON.stringify(watched) }))
+        let stop = (): void => undefined
+        const writer = frameWriter(async (frame) => {
+          if (!(await conversationReachableBy(db, canWatch))) {
+            stop()
+            await stream.close()
+            throw new Error('live stream access ended')
+          }
+          await stream.writeSSE(frame)
+        })
+        stop = live.watch(conversationId, (watched) => {
+          writer.push({ data: JSON.stringify(watched) }, mayDrop(watched))
         })
 
         stream.onAbort(stop)
@@ -64,11 +125,12 @@ function watching({ db, live }: LiveApi) {
         // and a handler that returned would close the stream under everybody watching it.
         while (!stream.closed && !stream.aborted) {
           await stream.sleep(HEARTBEAT_MS)
-          await stream.writeSSE({ data: '', event: 'still-here' })
+          writer.push({ data: '', event: 'still-here' }, true)
+          await writer.drain()
         }
 
         stop()
-        await Promise.allSettled(sending)
+        await writer.drain()
       })
     },
   })
@@ -81,23 +143,24 @@ function watching({ db, live }: LiveApi) {
  * the transcript announces itself when it is written — sending it here as well would be the same
  * sentence crossing the network twice and arriving in two orders.
  */
-function reporting({ db, live }: LiveApi) {
+function reporting({ db }: LiveApi) {
   return aMachine(db).post('/machines/current/conversations/{id}/live', {
     summary: 'Say what is happening right now, which is kept nowhere',
     params: { id: rowId },
     body: Unkept,
-    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
+    answers: {
+      204: 'Said to whoever is watching, and to nobody if nobody is',
+      404: refuses(UNAVAILABLE, 'That conversation was not given to this machine'),
+    },
 
     run: async (c) => {
-      // No check that this machine owns the conversation, and none that it exists: a moment is
-      // shown to whoever is already watching that id and kept nowhere, so the worst a wrong id can
-      // do is say something to a screen its own machine is not driving — and only a live machine
-      // credential can say anything at all. Checking would put a query in front of every fragment
-      // of every turn, to guard nothing that lasts.
-      await live.say({
-        conversationId: c.req.valid('param').id,
+      const conversationId = c.req.valid('param').id
+      const said = await sayLiveFromMachine(db, {
+        conversationId,
+        machineId: c.get('machineId'),
         watched: { seen: 'moment', moment: c.req.valid('json') },
       })
+      if (!said) return refused(c, UNAVAILABLE)
 
       return nothing(c, 204)
     },
@@ -122,15 +185,27 @@ function typing({ db, live }: LiveApi) {
   return aMember(db).post('/spaces/{slug}/conversations/{id}/typing', {
     summary: 'Say that you are typing, which is kept nowhere',
     params: { id: rowId },
-    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
+    answers: {
+      204: 'Said to whoever is watching, and to nobody if nobody is',
+      404: refuses(UNAVAILABLE, 'No such Space, or no such conversation in it'),
+    },
 
     run: async (c) => {
-      // The same reasoning as a machine's moment: shown to whoever is already watching that id and
-      // kept nowhere, so a wrong id costs a line on a screen and nothing else. Membership has
-      // already been asked, which is the part that matters.
+      const conversationId = c.req.valid('param').id
+      const reachable = await conversationReachableBy(db, {
+        conversationId,
+        spaceId: c.get('space').id,
+        userId: c.get('userId'),
+      })
+      if (!reachable) return refused(c, UNAVAILABLE)
+
       await live.say({
-        conversationId: c.req.valid('param').id,
-        watched: { seen: 'typing', who: await nameOf(db, c.get('userId')) },
+        conversationId,
+        watched: {
+          seen: 'typing',
+          userId: c.get('userId'),
+          who: await nameOf(db, c.get('userId')),
+        },
       })
 
       return nothing(c, 204)

@@ -8,11 +8,11 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { EmojiPicker } from 'frimousse'
 import { useEffect, useRef, useState } from 'react'
 import type { components } from '../../generated/api.ts'
 import { meQuery } from '../identity/me.ts'
 import { useSignOut } from '../identity/sign-out.tsx'
+import { SpaceEmojiPicker } from './emoji-picker.tsx'
 import { peopleIn } from './people.ts'
 import { CheckIcon, PlusIcon, SettingsIcon } from './sidebar-icons.tsx'
 import { useChangeSpaceEmoji } from './space.ts'
@@ -36,24 +36,11 @@ function EmojiChooser({ slug, close }: { readonly slug: string; readonly close: 
 
   return (
     <div className="workspace-emoji-popover" role="dialog" aria-label="Choose a Space emoji">
-      <EmojiPicker.Root
-        className="workspace-emoji-picker"
-        columns={8}
-        locale="en"
-        onEmojiSelect={({ emoji }) => {
+      <SpaceEmojiPicker
+        choose={(emoji) => {
           change.mutate({ params: { path: { slug } }, body: { emoji } }, { onSuccess: close })
         }}
-      >
-        <div className="workspace-emoji-toolbar">
-          <EmojiPicker.Search autoFocus placeholder="Search emoji" aria-label="Search emoji" />
-          <EmojiPicker.SkinToneSelector aria-label="Change skin tone" />
-        </div>
-        <EmojiPicker.Viewport>
-          <EmojiPicker.Loading>Loading…</EmojiPicker.Loading>
-          <EmojiPicker.Empty>No emoji found.</EmojiPicker.Empty>
-          <EmojiPicker.List />
-        </EmojiPicker.Viewport>
-      </EmojiPicker.Root>
+      />
       {change.isError && <p role="alert">Could not change the emoji. Try again.</p>}
     </div>
   )

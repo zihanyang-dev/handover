@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -98,28 +98,67 @@ describe('the second onboarding step — a machine', () => {
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
   })
 
-  it('shows arrived agents as read-only cards and leaves Open Space as the action', async () => {
+  it('shows generated agent avatars, lets their owner name them, and leaves Open Space as the action', async () => {
+    const named: unknown[] = []
     server.use(
       signedIn({ spaces: [ACME] }),
       machinesAre([
         {
           id: 'm1',
           name: "Mina's MacBook",
+          yours: true,
           presence: { state: 'here' },
           agents: [
-            { kind: 'claude-code', version: '2.1.0' },
-            { kind: 'codex', version: '0.4.1' },
+            {
+              kind: 'claude-code',
+              name: null,
+              avatarUrl: '/avatars/agents/m1/claude-code?v=pixel-art-v1',
+              version: '2.1.0',
+              models: [],
+            },
+            {
+              kind: 'codex',
+              name: null,
+              avatarUrl: '/avatars/agents/m1/codex?v=pixel-art-v1',
+              version: '0.4.1',
+              models: [],
+            },
           ],
         },
       ]),
+      http.patch('*/me/machines/m1/agents/claude-code', async ({ request }) => {
+        named.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
     open('/onboarding/host?s=acme')
 
     expect(await screen.findByText(/Mina's MacBook/)).toBeDefined()
     const agents = screen.getByRole('list', { name: /agents found on Mina's MacBook/i })
-    expect(within(agents).getByText('Claude Code')).toBeDefined()
-    expect(within(agents).getByText('Codex')).toBeDefined()
-    expect(within(agents).queryByRole('button')).toBeNull()
+    expect(within(agents).getByText(/Claude Code · 2.1.0/u)).toBeDefined()
+    expect(within(agents).getByText(/Codex · 0.4.1/u)).toBeDefined()
+    expect(
+      [...agents.querySelectorAll<HTMLImageElement>('.host-agent-avatar > img')].map((avatar) =>
+        avatar.getAttribute('src'),
+      ),
+    ).toEqual([
+      '/avatars/agents/m1/claude-code?v=pixel-art-v1',
+      '/avatars/agents/m1/codex?v=pixel-art-v1',
+    ])
+
+    expect(within(agents).queryByRole('textbox', { name: /name claude code/i })).toBeNull()
+    await userEvent.click(within(agents).getByRole('button', { name: /edit claude code name/i }))
+    await userEvent.type(
+      within(agents).getByRole('textbox', { name: /name claude code/i }),
+      'Scout',
+    )
+    await userEvent.click(within(agents).getByRole('button', { name: /save claude code name/i }))
+    await waitFor(() => {
+      expect(named).toEqual([{ name: 'Scout' }])
+      expect(within(agents).queryByRole('textbox', { name: /name claude code/i })).toBeNull()
+      expect(within(agents).getByRole('button', { name: /edit claude code name/i })).toBeDefined()
+    })
+
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(screen.queryByRole('button', { name: /skip for now/i })).toBeNull()
   })

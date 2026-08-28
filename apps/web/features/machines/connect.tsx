@@ -10,6 +10,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { CheckCircleFill, ExclamationCircleFill, Laptop } from 'react-bootstrap-icons'
 import { api, cached, reasonOf } from '../../api.ts'
+import { Mark } from '../../mark.tsx'
 import { meQuery } from '../identity/me.ts'
 
 const SAID: Record<string, string> = {
@@ -49,7 +50,7 @@ function Answer({
   readonly onAnswer: (yes: boolean) => void
 }) {
   return (
-    <div className="stack-tight">
+    <div className="connect-answer">
       <p className="said said-good" role="status">
         <Laptop aria-hidden />
         <strong>{machineName}</strong> is asking to come in. Is that the machine you just ran the
@@ -94,8 +95,8 @@ function Answer({
 /** The screen after answering. Nothing of the form survives onto it, so it is not part of it. */
 function Answered({ letIn }: { readonly letIn: boolean }) {
   return (
-    <main className="sheet">
-      <section className="card stack">
+    <main className="connect-page">
+      <section className="connect-card connect-result">
         <p className="said said-good" role="status">
           <CheckCircleFill aria-hidden />
           {letIn ? 'That machine is in. Its terminal will say so.' : 'Turned away.'}
@@ -155,42 +156,48 @@ export function Connect({ typed }: { readonly typed: string }) {
   if (answer.isSuccess) return <Answered letIn={answer.data} />
 
   return (
-    <main className="sheet">
+    <main className="connect-page">
       <form
-        className="card stack"
+        className="connect-card"
         onSubmit={(event) => {
           event.preventDefault()
           setAsked(code.trim())
         }}
       >
-        <div className="stack-tight">
+        <header className="connect-head">
+          <Mark size={42} />
           <h1>Connect a machine</h1>
           <p className="lede">Type the code shown in the terminal you ran the command in.</p>
-        </div>
+        </header>
 
         <Trouble error={waiting.error} fallback="That could not be checked. Try again shortly." />
         <Trouble error={answer.error} fallback="That could not be done. Try again shortly." />
 
-        <div className="stack-tight">
+        <div className="connect-code">
           <label className="label" htmlFor={field}>
             Code
           </label>
-          <div className="beside">
-            <input
-              id={field}
-              className="field"
-              autoFocus
-              placeholder="WDJB-MJHT"
-              value={code}
-              onChange={(event) => {
-                setCode(event.target.value)
-              }}
-            />
-            <button className="button button-secondary" type="submit" disabled={code.trim() === ''}>
-              <span className="button-label">Find it</span>
-            </button>
-          </div>
+          <input
+            id={field}
+            className="field connect-code-field"
+            autoFocus
+            autoComplete="one-time-code"
+            spellCheck={false}
+            placeholder="WDJB-MJHT"
+            value={code}
+            onChange={(event) => {
+              setCode(event.target.value)
+            }}
+          />
         </div>
+
+        <button
+          className="button button-primary connect-submit"
+          type="submit"
+          disabled={code.trim() === ''}
+        >
+          <span className="button-label">Find it</span>
+        </button>
 
         {/* Only while the box still says what was looked up. Editing it and pressing approve
             would let go of a machine somebody is no longer looking at: the screen says code B and

@@ -84,27 +84,29 @@ function blocksOf(message: unknown): readonly Record<string, unknown>[] {
  * as one line is assembled here — a call is remembered until its result comes back. Nothing is
  * written until then: the row for a tool is written once, when there is something to say about it.
  */
-export function fold(): (message: unknown) => readonly Said[] {
+export function fold(): (message: unknown, source?: 'assistant' | 'user') => readonly Said[] {
   const started = new Map<string, Call>()
 
-  return (message) =>
+  return (message, source = 'assistant') =>
     blocksOf(message).flatMap((block): Said[] => {
-      if (block['type'] === 'text') return [{ said: 'text', text: plain(block['text']) }]
-      if (block['type'] === 'thinking')
+      if (source === 'assistant' && block['type'] === 'text')
+        return [{ said: 'text', text: plain(block['text']) }]
+      if (source === 'assistant' && block['type'] === 'thinking')
         return [{ said: 'thinking', text: plain(block['thinking']) }]
-      if (block['type'] === 'tool_use') return [beginning(started, block)]
-      if (block['type'] === 'tool_result') return finishing(started, block)
+      if (source === 'assistant' && block['type'] === 'tool_use') return [beginning(started, block)]
+      if (source === 'user' && block['type'] === 'tool_result') return finishing(started, block)
 
       return []
     })
 }
 
 function beginning(started: Map<string, Call>, block: Record<string, unknown>): Said {
+  const callId = plain(block['id'])
   const name = plain(block['name'])
   const { verb, arg } = asDoing(name, (block['input'] ?? {}) as Input)
-  started.set(plain(block['id']), { name, verb, arg })
+  started.set(callId, { name, verb, arg })
 
-  return { said: 'doing', name, verb, arg }
+  return { said: 'doing', callId, name, verb, arg }
 }
 
 function finishing(started: Map<string, Call>, block: Record<string, unknown>): Said[] {
@@ -116,6 +118,7 @@ function finishing(started: Map<string, Call>, block: Record<string, unknown>): 
   return [
     {
       said: 'did',
+      callId: id,
       ...call,
       ok: block['is_error'] !== true,
       excerpt: shorten(readable(block['content'])),
@@ -221,12 +224,18 @@ function whyItFailed(message: SDKResultMessage): string {
  * and the rest are ignored, which is what keeps a newer CLI from breaking this — but the four are
  * read through the SDK's fields, not through guesses about them.
  */
-function toldFrom(message: SDKMessage, translate: (message: unknown) => readonly Said[]): Told[] {
+export function toldFrom(
+  message: SDKMessage,
+  translate: (message: unknown, source?: 'assistant' | 'user') => readonly Said[],
+): Told[] {
   if (message.type === 'system' && message.subtype === 'init') {
     return [{ told: 'session', id: message.session_id }]
   }
   if (message.type === 'assistant' || message.type === 'user') {
-    return translate(message.message).map((said) => ({ told: 'said', said }) as const)
+    // Nested agent traffic belongs inside the Agent tool that owns it. Promoting its prompts,
+    // answers or tool calls would expose internal instructions as top-level conversation lines.
+    if (message.parent_tool_use_id !== null) return []
+    return translate(message.message, message.type).map((said) => ({ told: 'said', said }) as const)
   }
   if (message.type === 'result') {
     // `is_error` on a success-shaped result is the CLI saying the turn failed anyway. Reading only

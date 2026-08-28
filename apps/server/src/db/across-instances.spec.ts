@@ -80,6 +80,7 @@ describe('two instances at once', () => {
     const asked = {
       userId: person.userId,
       displayName: 'Acme',
+      emoji: '🏠',
       slug: `acme-${RUN.slice(0, 8)}` as Slug,
     }
 
@@ -277,6 +278,7 @@ async function aQuestion(): Promise<{
     requestKey: `${RUN}-space`,
     userId,
     displayName: `Acme ${RUN.slice(0, 6)}`,
+    emoji: '🏠',
     slug: normalizeSlug(`Acme ${RUN.slice(0, 6)}`) as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')

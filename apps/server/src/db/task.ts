@@ -233,13 +233,13 @@ export async function takeBack(db: Database, saying: Saying): Promise<Stopped> {
     `.execute(tx)
 
     for (const one of stopped.rows) {
-      // Named after the piece of work rather than after the request, so the one conversation the
-      // person is looking at and the ones underneath it each get their line exactly once.
+      await note(tx, one.conversationId, `${saying.key}/${one.id}/stop`, {
+        activityType: ACTIVITY.stopAsked,
+      })
+      // Named after the piece of work, so every conversation in the subtree gets this line once.
       await note(tx, one.conversationId, `${saying.key}/${one.id}`, {
         activityType: ACTIVITY.takenBack,
       })
-      // Woken, not asked to stop: whatever is running on it is a turn, and a turn on a piece of
-      // work that is over is one nobody will read. The machine finds nothing owed and lets go.
       await wakeMachine(tx, one.machineId)
     }
 

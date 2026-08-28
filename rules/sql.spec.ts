@@ -78,7 +78,7 @@ describe('where SQL may be written by hand', () => {
       'db/turn.ts  select pg_advisory_xact_lock(hashtextextended(${machineId}, 0))',
       'db/turn.ts  with ${owedATurn(machineId)}, claimed as',
       'db/waking.ts  select pg_notify(${CHANNEL}, ${machineId})',
-      'db/watching.ts  select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})',
+      'db/watching.ts  select pg_notify(${CHANNEL}, ${payload})',
     ])
   })
 })

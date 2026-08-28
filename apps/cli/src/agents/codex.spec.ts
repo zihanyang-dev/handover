@@ -1,119 +1,256 @@
-import type { ThreadEvent, ThreadItem } from '@openai/codex-sdk'
 import { describe, expect, it } from 'vitest'
-import { reader, stream } from './codex.ts'
+import { EXCERPT } from './agent.ts'
+import type { AppNotification } from './codex-app-server.ts'
+import { toldFromNotification, type OutputProgress } from './codex.ts'
 
-/** What `codex app-server` answers `model/list` with, cut down to what is read out of it. */
-const REPLY = JSON.stringify({
-  jsonrpc: '2.0',
-  id: 2,
-  result: { data: [{ id: 'gpt-5.1-codex', displayName: 'GPT-5.1 Codex' }] },
-})
+const TURN = { threadId: 'thread-1', turnId: 'turn-1' }
 
-const NOTIFICATION = JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: {} })
+function notification(method: string, params: Record<string, unknown>): AppNotification {
+  return { method, params: { ...TURN, ...params } }
+}
 
-describe('reading what codex says over its own protocol', () => {
-  it('takes the one reply out of a stream that also carries notifications', () => {
-    const read = reader()
+describe('Codex app-server events', () => {
+  it('marks the prefix that app-server could not expose and keeps its available excerpt', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const started = toldFromNotification(
+      notification('item/started', {
+        item: {
+          type: 'commandExecution',
+          id: 'command-1',
+          command: 'printf lines',
+          status: 'inProgress',
+        },
+      }),
+      TURN,
+      outputs,
+    )
+    const second = toldFromNotification(
+      notification('item/commandExecution/outputDelta', {
+        itemId: 'command-1',
+        delta: 'second\n',
+      }),
+      TURN,
+      outputs,
+    )
+    const completed = toldFromNotification(
+      notification('item/completed', {
+        item: {
+          type: 'commandExecution',
+          id: 'command-1',
+          command: 'printf lines',
+          status: 'completed',
+          exitCode: 0,
+          aggregatedOutput: 'second\n',
+        },
+      }),
+      TURN,
+      outputs,
+    )
 
-    expect(read(`${NOTIFICATION}\n${REPLY}\n`)).toEqual([
-      [{ id: 'gpt-5.1-codex', displayName: 'GPT-5.1 Codex' }],
+    expect(started).toEqual([
+      {
+        told: 'said',
+        said: {
+          said: 'doing',
+          callId: 'command-1',
+          name: 'command_execution',
+          verb: 'ran',
+          arg: 'printf lines',
+        },
+      },
+    ])
+    expect(second).toEqual([
+      {
+        told: 'said',
+        said: {
+          said: 'output',
+          callId: 'command-1',
+          at: 0,
+          text: 'second\n',
+          truncated: true,
+        },
+      },
+    ])
+    expect(completed).toEqual([
+      {
+        told: 'said',
+        said: {
+          said: 'did',
+          callId: 'command-1',
+          name: 'command_execution',
+          verb: 'ran',
+          arg: 'printf lines',
+          ok: true,
+          excerpt: 'second\n',
+          truncated: true,
+        },
+      },
+    ])
+    expect(outputs.has('command-1')).toBe(false)
+  })
+
+  it('keeps output already present when the command-start notification arrives', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const started = toldFromNotification(
+      notification('item/started', {
+        item: {
+          type: 'commandExecution',
+          id: 'fast-command',
+          command: 'printf fast',
+          status: 'inProgress',
+          aggregatedOutput: 'first\n',
+        },
+      }),
+      TURN,
+      outputs,
+    )
+    const next = toldFromNotification(
+      notification('item/commandExecution/outputDelta', {
+        itemId: 'fast-command',
+        delta: 'second\n',
+      }),
+      TURN,
+      outputs,
+    )
+
+    expect(started.at(-1)).toMatchObject({
+      said: { said: 'output', callId: 'fast-command', at: 0, text: 'first\n' },
+    })
+    expect(next).toEqual([
+      {
+        told: 'said',
+        said: { said: 'output', callId: 'fast-command', at: 6, text: 'second\n' },
+      },
     ])
   })
 
-  it('holds back half a line until the rest of it arrives', () => {
-    // A chunk is whatever the pipe handed over, so it can end mid-line. Read line by line without
-    // keeping the remainder, a reply that arrives in two pieces is two things that will not parse.
-    const read = reader()
-    const [first, second] = [REPLY.slice(0, 30), REPLY.slice(30)]
+  it('retains only a bounded completion excerpt after streaming a long command', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const delta = 'x'.repeat(EXCERPT * 4)
 
-    expect(read(first)).toEqual([])
-    expect(read(`${second}\n`)).toEqual([[{ id: 'gpt-5.1-codex', displayName: 'GPT-5.1 Codex' }]])
+    toldFromNotification(
+      notification('item/commandExecution/outputDelta', { itemId: 'long', delta }),
+      TURN,
+      outputs,
+    )
+
+    expect(outputs.get('long')).toMatchObject({ at: delta.length })
+    expect(outputs.get('long')?.excerpt).toHaveLength(EXCERPT)
   })
 
-  it('says nothing about a reply whose last line has not ended yet', () => {
-    const read = reader()
+  it('keeps interleaved command output under its own call id', () => {
+    const outputs = new Map<string, OutputProgress>()
 
-    expect(read(REPLY)).toEqual([])
-  })
-})
+    toldFromNotification(
+      notification('item/commandExecution/outputDelta', { itemId: 'one', delta: 'a' }),
+      TURN,
+      outputs,
+    )
+    const two = toldFromNotification(
+      notification('item/commandExecution/outputDelta', { itemId: 'two', delta: 'b' }),
+      TURN,
+      outputs,
+    )
+    const one = toldFromNotification(
+      notification('item/commandExecution/outputDelta', { itemId: 'one', delta: 'c' }),
+      TURN,
+      outputs,
+    )
 
-/** A thread whose events are these, and which then throws on the way out — as Codex really does. */
-function threadThat(events: ThreadEvent[], throws?: unknown) {
-  return {
-    runStreamed: async () => ({
-      events: (async function* () {
-        yield* events
-        if (throws !== undefined) throw throws
-      })(),
-    }),
-  } as never
-}
-
-const ASKED = { text: 'hello' }
-
-/** Whether this turn was asked to stop. The signal is the SDK's, and no test here reaches it. */
-const asking = (asked: boolean) => ({ asked: () => asked, signal: new AbortController().signal })
-
-describe('how a turn ends', () => {
-  it('ends once, even though Codex says a failure twice', async () => {
-    // It reports the failed turn as an event and then throws on the way out. Announcing both
-    // would close one turn twice, which today is invisible only because the caller stops reading
-    // at the first ending.
-    const failed = { type: 'turn.failed', error: { message: 'no' } } as ThreadEvent
-    const told = []
-    for await (const one of stream(
-      threadThat([failed], new Error('exited 1')),
-      ASKED,
-      asking(false),
-    )) {
-      told.push(one)
-    }
-
-    expect(told.filter((one) => one.told === 'ended')).toHaveLength(1)
+    expect(two[0]).toMatchObject({ said: { callId: 'two', at: 0, text: 'b' } })
+    expect(one[0]).toMatchObject({ said: { callId: 'one', at: 1, text: 'c' } })
+    expect(outputs).toEqual(
+      new Map([
+        ['one', { at: 2, excerpt: 'ac', prefixMissing: true }],
+        ['two', { at: 1, excerpt: 'b', prefixMissing: true }],
+      ]),
+    )
   })
 
-  it('still says how it went when it throws without having said', async () => {
-    const told = []
-    for await (const one of stream(threadThat([], new Error('boom')), ASKED, asking(false))) {
-      told.push(one)
-    }
+  it('preserves assistant blocks around a tool in source order', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const before = toldFromNotification(
+      notification('item/completed', {
+        item: { type: 'agentMessage', id: 'message-1', text: 'Before the tool' },
+      }),
+      TURN,
+      outputs,
+    )
+    const tool = toldFromNotification(
+      notification('item/completed', {
+        item: { type: 'webSearch', id: 'search-1', query: 'Handover' },
+      }),
+      TURN,
+      outputs,
+    )
+    const after = toldFromNotification(
+      notification('item/completed', {
+        item: { type: 'agentMessage', id: 'message-2', text: 'After the tool' },
+      }),
+      TURN,
+      outputs,
+    )
 
-    expect(told).toEqual([{ told: 'ended', why: { why: 'failed', said: 'boom' } }])
+    expect([...before, ...tool, ...after]).toMatchObject([
+      { said: { said: 'text', text: 'Before the tool' } },
+      { said: { said: 'did', callId: 'search-1' } },
+      { said: { said: 'text', text: 'After the tool' } },
+    ])
   })
 
-  it('keeps the name of an item it has never heard of', async () => {
-    // Tools are open, and a branch per tool would be this file keeping a list of what Codex can
-    // do — wrong the day Codex learns something new, and wrong in the quiet way, by showing
-    // nothing for it. No verb, because nobody can say in a word what an unknown tool just did.
-    // Deliberately not one of the SDK's own item types: what this tests is an item these types
-    // have no member for, which is what a newer Codex sends the day it learns something.
-    const item = { id: 'i1', item_type: 'web_search', type: 'web_search' } as unknown as ThreadItem
-    const told = []
-    for await (const one of stream(
-      threadThat([{ type: 'item.completed', item }]),
-      ASKED,
-      asking(false),
-    )) {
-      told.push(one)
-    }
+  it('keeps the name of a tool this build does not know', () => {
+    const told = toldFromNotification(
+      notification('item/completed', { item: { type: 'laterTool', id: 'later-1' } }),
+      TURN,
+      new Map(),
+    )
 
-    // And no verdict either: an item type this build has never seen has no field it can be read
-    // out of, and a tick beside a tool that never said how it went would be invented here.
-    expect(told).toContainEqual({
-      told: 'said',
-      said: { said: 'did', name: 'web_search', verb: '', arg: '', excerpt: '' },
-    })
+    expect(told).toEqual([
+      {
+        told: 'said',
+        said: { said: 'did', callId: 'later-1', name: 'laterTool', verb: '', arg: '', excerpt: '' },
+      },
+    ])
   })
 
-  it('calls a turn somebody stopped cancelled, not failed', async () => {
-    // What decides this is that somebody asked, not what came back. An interrupted Codex exits on
-    // a signal rather than throwing an abort, so reading the ending off the throw would write the
-    // one thing down as failed that a person is certain they did on purpose.
-    const told = []
-    for await (const one of stream(threadThat([], new Error('aborted')), ASKED, asking(true))) {
-      told.push(one)
-    }
+  it('does not promote notifications from a nested or unrelated thread', () => {
+    const told = toldFromNotification(
+      {
+        method: 'item/completed',
+        params: {
+          threadId: 'subagent-thread',
+          turnId: 'subagent-turn',
+          item: { type: 'agentMessage', id: 'internal', text: 'Internal prompt' },
+        },
+      },
+      TURN,
+      new Map(),
+    )
 
-    expect(told).toEqual([{ told: 'ended', why: { why: 'cancelled' } }])
+    expect(told).toEqual([])
+  })
+
+  it.each([
+    ['completed', { why: 'done' }],
+    ['interrupted', { why: 'cancelled' }],
+    ['failed', { why: 'failed', said: 'boom' }],
+  ])('maps a %s turn to one ending', (status, why) => {
+    const told = toldFromNotification(
+      {
+        method: 'turn/completed',
+        params: {
+          threadId: TURN.threadId,
+          turn: {
+            id: TURN.turnId,
+            status,
+            error: status === 'failed' ? { message: 'boom' } : null,
+          },
+        },
+      },
+      TURN,
+      new Map(),
+    )
+
+    expect(told).toEqual([{ told: 'ended', why }])
   })
 })

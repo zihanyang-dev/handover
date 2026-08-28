@@ -23,15 +23,16 @@ const SAID: Record<string, string> = {
 }
 
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
-function OtherWays() {
+function OtherWays({ next }: { readonly next: string | undefined }) {
   const offered = cached.useQuery('get', '/auth/credentials')
   const providers = (offered.data?.offered ?? []).filter(isProvider)
 
   const leaveFor = useMutation({
     mutationFn: async (provider: string) => {
+      const returnTo = next === undefined ? '/onboarding' : next
       const { data } = await api.POST('/auth/{provider}/start', {
         params: { path: { provider } },
-        body: { next: '/onboarding' },
+        body: { next: returnTo },
       })
       // The browser goes; a page cannot read where a redirect points.
       if (data !== undefined) globalThis.location.href = data.url
@@ -96,7 +97,7 @@ export function SignIn({
 
   return (
     <GradientBlur>
-      <main className="auth auth-on-gradient-blur">
+      <main className="auth auth-sign-in auth-on-gradient-blur">
         <form
           aria-label="Sign in"
           className="auth-stack"
@@ -124,13 +125,9 @@ export function SignIn({
                 className="auth-wordmark"
               />
             </div>
-            {/* Before the buttons, not after them. `prd.md` 01 ①: whether somebody dares click a
-                different one than last time is decided by reading this — said afterwards it is
-                the same as not saying it. */}
-            <p className="lede">The same address reaches the same account, whichever way in.</p>
           </div>
 
-          <OtherWays />
+          <OtherWays next={next} />
 
           <div className="stack-tight">
             <label className="label" htmlFor={field}>

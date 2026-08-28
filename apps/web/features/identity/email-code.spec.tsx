@@ -142,12 +142,14 @@ describe('handing the code back', () => {
     expect(again.hasAttribute('disabled')).toBe(true)
   })
 
-  it('carries the address back, so nobody retypes what they just typed', async () => {
-    open(codeScreen())
+  it('carries the address and destination back, so the interruption loses neither', async () => {
+    open(`${codeScreen()}&next=${encodeURIComponent('/s/acme')}`)
 
     const back = await screen.findByRole('link', { name: /use a different address/i })
+    const destination = new URL(back.getAttribute('href') ?? '', 'http://handover.test')
 
-    expect(back.getAttribute('href')).toContain(encodeURIComponent(EMAIL))
+    expect(destination.searchParams.get('email')).toBe(EMAIL)
+    expect(destination.searchParams.get('next')).toBe('/s/acme')
   })
 })
 

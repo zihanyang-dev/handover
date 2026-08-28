@@ -11,7 +11,7 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { PinAngle, PinAngleFill } from 'react-bootstrap-icons'
 import type { components } from '../../generated/api.ts'
-import { AgentMark, agentName } from '../machines/agent.tsx'
+import { AgentMark, agentKindName } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { ChatIcon } from '../spaces/sidebar-icons.tsx'
 import { conversationsIn, useSetPinned } from './talking.ts'
@@ -82,7 +82,7 @@ function titleOf(conversation: Conversation): string {
 }
 
 function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
-  const type = agentName(agent.kind)
+  const kindName = agentKindName(agent.kind)
   const name = agent.name?.trim() || 'Unnamed agent'
   const availability = agent.isHere ? 'ready' : 'offline'
 
@@ -92,8 +92,7 @@ function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: I
         className="chat-agent"
         to="/s/$slug/a/$machineId/$agentKind"
         params={{ slug, machineId: agent.machineId, agentKind: agent.kind }}
-        aria-label={`${name}, ${type} on ${agent.machineName}, ${availability}`}
-        title={`${name} · ${type} on ${agent.machineName} — ${availability}`}
+        aria-label={`${name}, ${kindName} on ${agent.machineName}, ${availability}`}
         data-online={agent.isHere}
       >
         <span className="chat-agent-avatar">
@@ -131,17 +130,17 @@ function ConversationRow({
         className="chat-history-summary"
         to="/s/$slug/c/$id"
         params={{ slug, id: conversation.id }}
-        title={titleOf(conversation)}
       >
         <ChatIcon />
-        <span className="chat-history-title">{titleOf(conversation)}</span>
+        <span className="chat-history-title">
+          {conversation.startedBy ?? 'Unknown person'} · {titleOf(conversation)}
+        </span>
         {showAge && <time dateTime={conversation.startedAt}>{ageOf(conversation.startedAt)}</time>}
       </Link>
       <button
         className="chat-pin"
         type="button"
         aria-label={`${action} ${titleOf(conversation)}`}
-        title={action}
         disabled={mark.isPending}
         onClick={() => {
           mark.mutate(!conversation.pinned)
