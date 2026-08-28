@@ -18,12 +18,13 @@ import {
   type QueryClient,
   type QueryKey,
 } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
 /** How often the browser says it is still typing, while somebody is. */
 const SAYS_SO_EVERY = 2000
+const TYPING_STAYS_FOR_MS = 5000
 
 /** Often enough that a person watching the list sees it move, rarely enough to be free at rest. */
 const WHILE_WORKING_MS = 1000
@@ -50,9 +51,6 @@ export type Message = components['schemas']['Message']
 /** One conversation as the server hands it over. The shape this page keeps and adds to. */
 type Transcript = components['schemas']['Transcript']
 
-/** Whether it is being worked on, in the contract's own words. Three states, and no fourth. */
-export type Working = components['schemas']['Working']
-
 type Activity = Exclude<Moment, { readonly said: 'output' }>
 
 /** A bounded piece of output held only by this browser tab. */
@@ -62,38 +60,51 @@ export type LiveOutput = {
   readonly truncated: boolean
 }
 
+type TypingPerson = { readonly id: string; readonly name: string }
+
 /** The current status and temporary output buffers for one turn. */
 export type LiveTurn = {
   readonly activity: Activity | undefined
   readonly outputs: ReadonlyMap<string, LiveOutput>
+  readonly typing: readonly TypingPerson[]
 }
 
 const MAX_LIVE_OUTPUT = 256 * 1024
 
 function emptyLiveTurn(): LiveTurn {
-  return { activity: undefined, outputs: new Map() }
+  return { activity: undefined, outputs: new Map(), typing: [] }
 }
 
 type OutputMoment = Extract<Moment, { readonly said: 'output' }>
 
 function updatedOutput(previous: LiveOutput, moment: OutputMoment): LiveOutput {
   if (moment.at < previous.from) return previous
+  if (moment.at === 0)
+    return boundedOutput({
+      text: moment.text,
+      from: 0,
+      truncated: moment.truncated === true,
+    })
 
   const relativeAt = moment.at - previous.from
-  const hasGap = relativeAt > previous.text.length
-  const restarts = moment.at === 0
-  const before = hasGap || restarts ? '' : previous.text.slice(0, relativeAt)
-  const after = hasGap || restarts ? '' : previous.text.slice(relativeAt + moment.text.length)
-  let text = `${before}${moment.text}${after}`
-  let from = hasGap ? moment.at : restarts ? 0 : previous.from
-  let truncated = previous.truncated || hasGap
+  if (relativeAt > previous.text.length) {
+    return boundedOutput({ text: moment.text, from: moment.at, truncated: true })
+  }
 
-  if (text.length <= MAX_LIVE_OUTPUT) return { text, from, truncated }
-  const dropped = text.length - MAX_LIVE_OUTPUT
-  text = text.slice(dropped)
-  from += dropped
-  truncated = true
-  return { text, from, truncated }
+  const before = previous.text.slice(0, relativeAt)
+  const after = previous.text.slice(relativeAt + moment.text.length)
+  return boundedOutput({
+    text: `${before}${moment.text}${after}`,
+    from: previous.from,
+    truncated: previous.truncated || moment.truncated === true,
+  })
+}
+
+function boundedOutput(output: LiveOutput): LiveOutput {
+  if (output.text.length <= MAX_LIVE_OUTPUT) return output
+
+  const dropped = output.text.length - MAX_LIVE_OUTPUT
+  return { text: output.text.slice(dropped), from: output.from + dropped, truncated: true }
 }
 
 /** Applies one ordered live event without retaining an ever-growing event history. */
@@ -160,8 +171,13 @@ export function readWatched(raw: string): Watched | undefined {
       ? { seen: 'written', upTo: Number(upTo) }
       : undefined
   }
-  if (value['seen'] === 'typing' && typeof value['who'] === 'string')
-    return { seen: 'typing', who: value['who'] }
+  if (
+    value['seen'] === 'typing' &&
+    typeof value['userId'] === 'string' &&
+    typeof value['who'] === 'string'
+  ) {
+    return { seen: 'typing', userId: value['userId'], who: value['who'] }
+  }
   if (value['seen'] !== 'moment') return undefined
 
   const moment = liveMoment(value['moment'])
@@ -173,58 +189,106 @@ function watch(slug: string, id: string): EventSource {
   return new EventSource(`/spaces/${slug}/conversations/${id}/live`, { withCredentials: true })
 }
 
-/** Clears ephemeral state only when a new user turn begins, without reopening the stream. */
-function useStartsAgainEachTurn(turn: number, clear: (live: LiveTurn) => void): void {
-  const [showing, setShowing] = useState(turn)
+type TranscriptWanted =
+  | { readonly kind: 'nothing' }
+  | { readonly kind: 'latest' }
+  | { readonly kind: 'through'; readonly seq: number }
 
-  if (showing !== turn) {
-    setShowing(turn)
-    clear(emptyLiveTurn())
+export function transcriptReader(client: QueryClient, queryKey: QueryKey): (upTo?: number) => void {
+  let wanted: TranscriptWanted = { kind: 'nothing' }
+  let reading: Promise<void> | undefined
+
+  function lastRead(): number {
+    return client.getQueryData<Transcript | null>(queryKey)?.messages.at(-1)?.seq ?? 0
+  }
+
+  function want(upTo: number | undefined): void {
+    if (upTo === undefined) {
+      wanted = { kind: 'latest' }
+      return
+    }
+    if (wanted.kind === 'latest') return
+
+    const previous = wanted.kind === 'through' ? wanted.seq : 0
+    wanted = { kind: 'through', seq: Math.max(previous, upTo) }
+  }
+
+  async function readOne(next: Exclude<TranscriptWanted, { readonly kind: 'nothing' }>) {
+    if (next.kind === 'through' && lastRead() >= next.seq) return
+    await client.invalidateQueries(
+      { queryKey, exact: true, refetchType: 'active' },
+      { cancelRefetch: false },
+    )
+  }
+
+  async function readWanted(): Promise<void> {
+    try {
+      while (wanted.kind !== 'nothing') {
+        const next = wanted
+        wanted = { kind: 'nothing' }
+        await readOne(next)
+      }
+    } catch {
+      // The five-second authoritative read remains underneath a transient failed notification read.
+    }
+  }
+
+  function start(): void {
+    if (reading !== undefined || wanted.kind === 'nothing') return
+    reading = readWanted().finally(() => {
+      reading = undefined
+      start()
+    })
+  }
+
+  return (upTo) => {
+    if (upTo !== undefined && wanted.kind !== 'latest' && lastRead() >= upTo) return
+    want(upTo)
+    start()
   }
 }
 
-export function transcriptReader(client: QueryClient, queryKey: QueryKey): (upTo?: number) => void {
-  let queued = false
-  let reading = false
-  let forceRead = false
-  let targetSeq = 0
+function useTypingPresence(ownUserId: string | undefined): {
+  readonly people: readonly TypingPerson[]
+  readonly show: (person: TypingPerson) => void
+  readonly clear: () => void
+} {
+  const [people, setPeople] = useState<readonly TypingPerson[]>([])
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
-  const lastRead = (): number =>
-    client.getQueryData<Transcript | null>(queryKey)?.messages.at(-1)?.seq ?? 0
+  const clear = useCallback(() => {
+    for (const timer of timers.current.values()) clearTimeout(timer)
+    timers.current.clear()
+    setPeople([])
+  }, [])
 
-  const drain = async (): Promise<void> => {
-    while (queued) {
-      queued = false
-      const shouldRead = forceRead || lastRead() < targetSeq
-      forceRead = false
-      if (!shouldRead) continue
-      await client.invalidateQueries(
-        { queryKey, exact: true, refetchType: 'active' },
-        { cancelRefetch: false },
+  const show = useCallback(
+    (person: TypingPerson) => {
+      if (person.id === ownUserId) return
+      const previous = timers.current.get(person.id)
+      if (previous !== undefined) clearTimeout(previous)
+
+      setPeople((current) =>
+        current.some((one) => one.id === person.id) ? current : [...current, person],
       )
-    }
-  }
+      const expire = (): void => {
+        timers.current.delete(person.id)
+        setPeople((current) => current.filter((one) => one.id !== person.id))
+      }
+      timers.current.set(person.id, setTimeout(expire, TYPING_STAYS_FOR_MS))
+    },
+    [ownUserId],
+  )
 
-  const start = (): void => {
-    if (reading) return
-    reading = true
-    void drain()
-      .catch(() => undefined)
-      .finally(() => {
-        reading = false
-        if (queued) start()
-      })
-  }
-
-  return (upTo?: number) => {
-    if (upTo === undefined) forceRead = true
-    else {
-      targetSeq = Math.max(targetSeq, upTo)
-      if (!forceRead && lastRead() >= targetSeq) return
+  useEffect(() => {
+    const active = timers.current
+    return () => {
+      for (const timer of active.values()) clearTimeout(timer)
+      active.clear()
     }
-    queued = true
-    start()
-  }
+  }, [])
+
+  return { people, show, clear }
 }
 
 export function useWatching(
@@ -232,11 +296,28 @@ export function useWatching(
   id: string,
   /** Which turn is running. A new one shows nothing of the last, and the list starts again. */
   turn: number,
-): LiveTurn {
+  ownUserId: string | undefined,
+): { readonly liveTurn: LiveTurn; readonly startTurn: (userSeq: number) => void } {
   const [liveTurn, setLiveTurn] = useState<LiveTurn>(emptyLiveTurn)
+  const showingTurn = useRef(turn)
+  const { people: typing, show: showTyping, clear: clearTyping } = useTypingPresence(ownUserId)
   const client = useQueryClient()
 
-  useStartsAgainEachTurn(turn, setLiveTurn)
+  useLayoutEffect(() => {
+    if (showingTurn.current === turn) return
+    showingTurn.current = turn
+    clearTyping()
+    setLiveTurn(emptyLiveTurn())
+  }, [clearTyping, turn])
+
+  const startTurn = useCallback(
+    (userSeq: number) => {
+      showingTurn.current = userSeq
+      clearTyping()
+      setLiveTurn(emptyLiveTurn())
+    },
+    [clearTyping],
+  )
 
   useEffect(() => {
     const live = watch(slug, id)
@@ -257,14 +338,15 @@ export function useWatching(
       if (watched.seen === 'written') read(watched.upTo)
       else if (watched.seen === 'moment')
         setLiveTurn((current) => nextLiveTurn(current, watched.moment))
+      else showTyping({ id: watched.userId, name: watched.who })
     }
 
     return () => {
       live.close()
     }
-  }, [slug, id, client])
+  }, [slug, id, client, showTyping])
 
-  return liveTurn
+  return { liveTurn: { ...liveTurn, typing }, startTurn }
 }
 
 /**
@@ -390,13 +472,7 @@ export function useBeginConversation(slug: string) {
   })
 }
 
-/**
- * Says one thing, under a name it can be said again by.
- *
- * The name belongs to the words, not to the click: an answer that never arrived leaves somebody
- * pressing Send again, and a fresh name each time would make one thing said twice. It is retired
- * once the message is in, so saying the same words again is a second message and not a repeat.
- */
+/** Merges an authoritative tail by its database sequence without dropping an intervening line. */
 export function mergeTranscript(
   current: Transcript | null | undefined,
   tail: Transcript,
@@ -409,6 +485,12 @@ export function mergeTranscript(
   return { ...current, ...tail, messages }
 }
 
+/**
+ * Says one thing under a stable intention, then merges the authoritative accepted tail.
+ *
+ * The intention belongs to the words and choices, not to the click: retrying after a lost response
+ * must land on the same line, while saying the same words later is a new intention.
+ */
 export function useSay(slug: string, id: string) {
   const client = useQueryClient()
   const queryKey = transcriptOf(slug, id)

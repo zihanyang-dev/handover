@@ -1,5 +1,5 @@
 // The composer structure is adapted from Kanna's ChatInput.
-// Its copyright and MIT attribution are retained in THIRD_PARTY_NOTICES.md.
+// Its copyright and source terms are retained in THIRD_PARTY_NOTICES.md.
 
 import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 

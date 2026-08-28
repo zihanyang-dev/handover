@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { Watched } from './live.ts'
 import { watchers } from './watchers.ts'
 
-const TYPING: Watched = { seen: 'typing', who: 'mina' }
+const TYPING: Watched = {
+  seen: 'typing',
+  userId: '11111111-1111-4111-8111-111111111111',
+  who: 'mina',
+}
 
 const WRITTEN: Watched = { seen: 'written', upTo: 7 }
 

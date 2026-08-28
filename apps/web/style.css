@@ -75,6 +75,8 @@
   --interaction-hover: rgba(33, 27, 23, 0.05);
   --interaction-hover-strong: rgba(33, 27, 23, 0.08);
   --interaction-pressed: rgba(33, 27, 23, 0.1);
+  --choice-hover: #37352f0f;
+  --choice-divider: #37352f17;
   --interaction-danger-bg: rgba(223, 22, 0, 0.094);
   --interaction-danger-text: #c9372c;
   --interaction-instant: 20ms;

@@ -47,6 +47,7 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: KAI,
     displayName: name,
+    emoji: '🏠',
     slug: SLUG as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
@@ -127,6 +128,7 @@ describe('a link somebody follows', () => {
       requestKey: `other-${RUN}`,
       userId: MINA,
       displayName: `Beta ${RUN.slice(0, 8)}`,
+      emoji: '🏠',
       slug: normalizeSlug(`Beta ${RUN.slice(0, 8)}`) as Slug,
     })
     if (elsewhere.kind !== 'created') throw new Error('the fixture could not make a second Space')

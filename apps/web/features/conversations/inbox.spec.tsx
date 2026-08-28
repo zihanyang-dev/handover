@@ -9,6 +9,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -38,11 +39,12 @@ function open() {
     context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: ['/s/acme/inbox'] }),
   })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return { router, view }
 }
 
 /**
@@ -68,10 +70,13 @@ describe('what is waiting on you', () => {
   it('shows the goal and what it asked, so nobody has to open it to find out', async () => {
     server.use(...waiting([ONE]))
 
-    open()
+    const { router } = open()
 
     expect(await screen.findByText(ONE.goal)).toBeDefined()
     expect(screen.getByText('Env var, or a field on the client options?')).toBeDefined()
+
+    await userEvent.click(screen.getByRole('link', { name: new RegExp(ONE.goal, 'u') }))
+    expect(router.state.location.pathname).toBe('/s/acme/c/c-1')
   })
 
   it('crosses Spaces, because work you handed out is yours wherever it lives', async () => {

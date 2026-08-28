@@ -11,12 +11,14 @@
  * which is exactly right for something that is only worth anything while it is happening.
  */
 
+import { textPieces, utf8Length } from '@handover/universal'
 import { sql } from 'kysely'
 import { Happening, type Live } from '../conversation/live.ts'
 import type { Watchers } from '../conversation/watchers.ts'
 import type { Env } from '../env.ts'
 import type { Log } from '../log.ts'
 import type { Database, Tx } from './connection.ts'
+import { stillItsToWriteOn } from './machine.ts'
 import { listenOn, type Listening } from './notifications.ts'
 
 /** One name for everything live, and each instance sorts its own watchers out. */
@@ -31,19 +33,27 @@ const CHANNEL = 'handover_live'
 const ROOM = 6000
 
 function shortened(happening: Happening): Happening {
-  if (JSON.stringify(happening).length <= ROOM) return happening
+  if (utf8Length(JSON.stringify(happening)) <= ROOM) return happening
   if (happening.watched.seen !== 'moment') return happening
 
   const moment = happening.watched.moment
-  const cut = (text: string): string => `${text.slice(0, 1000)}…`
-  const shorter = moment.said === 'thinking' ? { ...moment, text: cut(moment.text) } : moment
+  if (moment.said === 'output') return happening
 
-  return { conversationId: happening.conversationId, watched: { seen: 'moment', moment: shorter } }
+  const words = moment.said === 'thinking' ? moment.text : moment.arg
+  const firstPiece = textPieces(words)[0]?.text ?? ''
+  const shorter = `${firstPiece}…`
+  const cut =
+    moment.said === 'thinking' ? { ...moment, text: shorter } : { ...moment, arg: shorter }
+
+  return { conversationId: happening.conversationId, watched: { seen: 'moment', moment: cut } }
 }
 
 /** Says one thing to every instance, including this one. */
 async function announce(db: Database | Tx, happening: Happening): Promise<void> {
-  await sql`select pg_notify(${CHANNEL}, ${JSON.stringify(shortened(happening))})`.execute(db)
+  const payload = JSON.stringify(shortened(happening))
+  if (utf8Length(payload) > ROOM) throw new Error('live notification exceeds the PostgreSQL limit')
+
+  await sql`select pg_notify(${CHANNEL}, ${payload})`.execute(db)
 }
 
 /**
@@ -59,6 +69,27 @@ async function announce(db: Database | Tx, happening: Happening): Promise<void> 
  */
 export async function noteWritten(tx: Tx, conversationId: string, upTo: number): Promise<void> {
   await announce(tx, { conversationId, watched: { seen: 'written', upTo } })
+}
+
+/** Authorizes a machine and publishes its live moment under the same row lock. */
+export async function sayLiveFromMachine(
+  db: Database,
+  report: {
+    readonly conversationId: string
+    readonly machineId: string
+    readonly watched: Happening['watched']
+  },
+): Promise<boolean> {
+  return db.transaction().execute(async (tx) => {
+    const conversation = await stillItsToWriteOn(tx, {
+      conversationId: report.conversationId,
+      machineId: report.machineId,
+    })
+    if (conversation === undefined) return false
+
+    await announce(tx, { conversationId: report.conversationId, watched: report.watched })
+    return true
+  })
 }
 
 /**

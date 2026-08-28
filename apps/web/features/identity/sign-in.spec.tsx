@@ -68,6 +68,24 @@ describe('choosing a way in', () => {
     expect(screen.queryByRole('heading', { name: /^sign in$/i })).toBeNull()
   })
 
+  it('keeps where someone was going when they choose a provider', async () => {
+    let started: unknown
+    server.use(
+      waysIn('google'),
+      http.post('*/auth/google/start', async ({ request }) => {
+        started = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/sign-in?next=%2Fs%2Facme')
+
+    await userEvent.click(await screen.findByRole('button', { name: /continue with google/i }))
+
+    await waitFor(() => {
+      expect(started).toEqual({ next: '/s/acme' })
+    })
+  })
+
   it('offers only what this deployment has keys for', async () => {
     server.use(waysIn('google'))
     open('/sign-in')

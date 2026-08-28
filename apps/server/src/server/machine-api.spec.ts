@@ -66,6 +66,7 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: arrived.userId,
     displayName: name,
+    emoji: '🏠',
     slug: SLUG as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')
@@ -194,6 +195,7 @@ async function anotherSpace(): Promise<string> {
     requestKey: `other-${RUN}`,
     userId: answered.userId,
     displayName: name,
+    emoji: '🏠',
     slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a second Space')

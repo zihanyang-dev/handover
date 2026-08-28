@@ -1,5 +1,5 @@
-import { Check, Copy } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Check2, Copy } from 'react-bootstrap-icons'
 import { MessageMarkdown } from '../../components/ui/message-markdown.tsx'
 import type { Message } from './talking.ts'
 
@@ -9,15 +9,15 @@ export function ChatMessage({
   placement,
   at,
   avatarSrc,
-  agentName,
+  author,
   copyText,
   children,
 }: {
   readonly placement: Placement
   readonly at: string
   readonly avatarSrc?: string
-  readonly agentName?: string
-  readonly copyText?: string | undefined
+  readonly author?: string
+  readonly copyText?: string
   readonly children: ReactNode
 }) {
   return (
@@ -28,9 +28,7 @@ export function ChatMessage({
             <img src={avatarSrc} alt="" />
           </span>
         )}
-        {placement === 'left' && agentName !== undefined && (
-          <strong className="chat-message-author">{agentName}</strong>
-        )}
+        {author !== undefined && <strong className="chat-message-author">{author}</strong>}
         <time dateTime={at}>{relativeTime(at)}</time>
       </header>
       <div className="chat-message-body">{children}</div>
@@ -80,10 +78,9 @@ function CopyMessage({ text }: { readonly text: string }) {
   }, [])
 
   return (
-    <div className="chat-message-action-menu" role="menubar">
+    <div className="chat-message-action-menu">
       <button
         type="button"
-        role="menuitem"
         aria-label={copied ? 'Copied' : 'Copy message'}
         onClick={() => {
           void navigator.clipboard.writeText(text)
@@ -94,7 +91,7 @@ function CopyMessage({ text }: { readonly text: string }) {
           }, 1600)
         }}
       >
-        {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+        {copied ? <Check2 aria-hidden /> : <Copy aria-hidden />}
       </button>
     </div>
   )

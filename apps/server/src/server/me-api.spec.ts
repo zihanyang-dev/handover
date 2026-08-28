@@ -143,7 +143,7 @@ async function made(cookie: string, displayName: string, requestKey: string): Pr
   if (userId === undefined) throw new Error('the fixture is not signed in')
   const slug = normalizeSlug(displayName)
   if (slug === null) throw new Error('the fixture picked a name with no address')
-  await createSpace(db, { requestKey, userId, displayName, slug })
+  await createSpace(db, { requestKey, userId, displayName, emoji: '🏠', slug })
 }
 
 describe('the Spaces on it', () => {

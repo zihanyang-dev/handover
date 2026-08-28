@@ -56,6 +56,8 @@ const Did = z
      */
     ok: z.boolean().optional(),
     excerpt: z.string(),
+    /** The provider could not expose the beginning of this output. */
+    truncated: z.boolean().optional(),
   })
   .openapi('Did')
 

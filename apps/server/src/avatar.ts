@@ -47,7 +47,7 @@ export function avatarKey(subject: AvatarSubject): string {
  * API response nor cached markup; only the server-side adapter and copied objects move.
  */
 export function avatarPath(subject: AvatarSubject): string {
-  if (subject.kind === 'user') return `/avatars/users/${subject.userId}`
+  if (subject.kind === 'user') return `/avatars/users/${subject.userId}?v=${PERSON_KEY_VERSION}`
   return `/avatars/agents/${subject.machineId}/${subject.agentKind}?v=${AGENT_KEY_VERSION}`
 }
 

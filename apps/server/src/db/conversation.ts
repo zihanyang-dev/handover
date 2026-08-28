@@ -610,23 +610,19 @@ type Stored = {
   readonly at: Date
 }
 
-/**
- * Whether this conversation is one this Space can reach.
- *
- * The same question {@link conversationWith} answers on its way to reading a transcript, asked on
- * its own by whoever only needs the answer. Watching a turn is the case: holding a stream open
- * begins by asking whether there is anything to watch, and asking it by reading the whole
- * conversation would load an hour of somebody's history to throw all of it away.
- */
-export async function conversationInSpace(
+/** Whether this person can still reach this conversation through this Space. */
+export async function conversationReachableBy(
   db: Database,
-  reading: { readonly conversationId: string; readonly spaceId: string },
+  reading: { readonly conversationId: string; readonly spaceId: string; readonly userId: string },
 ): Promise<boolean> {
   const found = await db
     .selectFrom('conversations')
-    .select('id')
-    .where('id', '=', reading.conversationId)
-    .where('space_id', '=', reading.spaceId)
+    .innerJoin('memberships', 'memberships.space_id', 'conversations.space_id')
+    .select('conversations.id')
+    .where('conversations.id', '=', reading.conversationId)
+    .where('conversations.space_id', '=', reading.spaceId)
+    .where('memberships.user_id', '=', reading.userId)
+    .where('memberships.revoked_at', 'is', null)
     .executeTakeFirst()
 
   return found !== undefined

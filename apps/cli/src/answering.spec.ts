@@ -1,4 +1,4 @@
-import { PIECE } from '@handover/universal'
+import { PIECE, utf8Length } from '@handover/universal'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -119,7 +119,7 @@ describe('what a turn leaves behind', () => {
   it('shows the whole of what a command printed, and keeps only the beginning', async () => {
     // `prd.md` 03 ⑦ is a table with one row that differs between watching and coming back, and
     // this is that row: the full output while it runs, a first paragraph a day later.
-    const long = 'x'.repeat(EXCERPT * 3)
+    const long = '界'.repeat(EXCERPT * 3)
     const kept = await answered(
       saying(
         said({
@@ -138,7 +138,7 @@ describe('what a turn leaves behind', () => {
     // Watching: all of it, in pieces small enough to cross a NOTIFY payload.
     const printed = watched.filter((one) => one.said === 'output')
     expect(printed.map((one) => one.text).join('')).toBe(long)
-    for (const piece of printed) expect(piece.text.length).toBeLessThanOrEqual(PIECE)
+    for (const piece of printed) expect(utf8Length(piece.text)).toBeLessThanOrEqual(PIECE)
 
     // Coming back: the beginning, and no more than that.
     expect(JSON.stringify(kept)).toContain(shorten(long))

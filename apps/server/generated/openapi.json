@@ -188,6 +188,10 @@
       "Me": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "displayName": {
             "type": "string"
           },
@@ -216,6 +220,7 @@
           }
         },
         "required": [
+          "id",
           "displayName",
           "avatarUrl",
           "credentials",
@@ -1566,6 +1571,9 @@
           },
           "excerpt": {
             "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1927,12 +1935,17 @@
                   "typing"
                 ]
               },
+              "userId": {
+                "type": "string",
+                "format": "uuid"
+              },
               "who": {
                 "type": "string"
               }
             },
             "required": [
               "seen",
+              "userId",
               "who"
             ]
           }
@@ -2013,6 +2026,9 @@
               "text": {
                 "type": "string",
                 "maxLength": 3000
+              },
+              "truncated": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -4869,7 +4885,7 @@
             }
           },
           "404": {
-            "description": "No such Space",
+            "description": "No such Space, or no such conversation in it",
             "content": {
               "application/json": {
                 "schema": {
@@ -4926,6 +4942,16 @@
           },
           "401": {
             "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "That conversation was not given to this machine",
             "content": {
               "application/json": {
                 "schema": {
@@ -5459,6 +5485,9 @@
           },
           "304": {
             "description": "The browser already has this one, and it can never change"
+          },
+          "404": {
+            "description": "No such person"
           }
         }
       }
@@ -5502,6 +5531,9 @@
           },
           "304": {
             "description": "The browser already has this one, and it can never change"
+          },
+          "404": {
+            "description": "No such installed agent"
           }
         }
       }

@@ -27,6 +27,7 @@ const Credential = z
   .openapi('Credential')
 
 const Me = named('Me', {
+  id: z.uuid(),
   displayName: z.string(),
   /** Where the face is, not the face itself: a `<img src>` the browser caches like any other. */
   avatarUrl: z.string(),
@@ -67,6 +68,7 @@ function who({ db, providers }: MeApi) {
 
       return c.json(
         {
+          id: person.id,
           displayName: person.displayName,
           avatarUrl: avatarPath({ kind: 'user', userId: person.id }),
           credentials: shown(person.credentials, providers),

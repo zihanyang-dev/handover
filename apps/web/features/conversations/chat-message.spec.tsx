@@ -11,7 +11,7 @@ describe('chat message', () => {
         placement="left"
         at="2026-08-28T12:00:00.000Z"
         avatarSrc="/sam.png"
-        agentName="sam"
+        author="sam"
         copyText="Ready"
       >
         <p>Ready</p>
@@ -22,7 +22,7 @@ describe('chat message', () => {
     expect(screen.getByText('sam').textContent).toBe('sam')
     expect(document.querySelector('.chat-message-avatar img')).not.toBeNull()
     expect(screen.getByText('Ready').textContent).toBe('Ready')
-    expect(screen.getByRole('menuitem', { name: 'Copy message' }).tagName).toBe('BUTTON')
+    expect(screen.getByRole('button', { name: 'Copy message' }).tagName).toBe('BUTTON')
     expect(document.querySelector('time')?.getAttribute('datetime')).toBe(
       '2026-08-28T12:00:00.000Z',
     )
@@ -35,15 +35,16 @@ describe('chat message', () => {
       value: { writeText },
     })
     render(
-      <ChatMessage placement="right" at="2026-08-28T12:00:00.000Z" copyText="Hello">
+      <ChatMessage placement="right" at="2026-08-28T12:00:00.000Z" author="Kai" copyText="Hello">
         <p>Hello</p>
       </ChatMessage>,
     )
 
-    const copy = screen.getByRole('menuitem', { name: 'Copy message' })
+    expect(screen.getByText('Kai')).toBeDefined()
+    const copy = screen.getByRole('button', { name: 'Copy message' })
     expect(copy.hasAttribute('title')).toBe(false)
     fireEvent.click(copy)
     expect(writeText).toHaveBeenCalledWith('Hello')
-    expect(screen.getByRole('menuitem', { name: 'Copied' }).tagName).toBe('BUTTON')
+    expect(screen.getByRole('button', { name: 'Copied' }).tagName).toBe('BUTTON')
   })
 })

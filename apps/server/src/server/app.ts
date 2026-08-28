@@ -20,6 +20,7 @@ import type { OpenAPIHono } from '@hono/zod-openapi'
 import type { Context, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Live } from '../conversation/live.ts'
+import { avatarSubjectExists } from '../db/avatar.ts'
 import type { Provider } from '../identity/provider.ts'
 import type { Log } from '../log.ts'
 import type { Waiting } from '../machine/waiting.ts'
@@ -198,5 +199,13 @@ export function handoverApp(deps: App) {
     .route('/', mounted(conversationApi({ db: deps.db })))
     .route('/', mounted(liveApi({ db: deps.db, live: deps.live })))
     .route('/', mounted(taskApi({ db: deps.db })))
-    .route('/', mounted(avatarApi({ objects: deps.objects })))
+    .route(
+      '/',
+      mounted(
+        avatarApi({
+          objects: deps.objects,
+          exists: async (subject) => avatarSubjectExists(deps.db, subject),
+        }),
+      ),
+    )
 }

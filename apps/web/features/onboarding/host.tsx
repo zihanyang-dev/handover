@@ -19,7 +19,7 @@ import {
 import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { ShellCommand } from '../../components/ui/shell-command.tsx'
 import { meQuery } from '../identity/me.ts'
-import { AgentMark, agentName } from '../machines/agent.tsx'
+import { AgentMark, agentKindName } from '../machines/agent.tsx'
 import { useMachineKey } from '../machines/machine-key.tsx'
 import {
   type Machine,
@@ -104,10 +104,6 @@ function StatusLine({
   )
 }
 
-function Waiting({ onSkip }: { readonly onSkip: () => void }) {
-  return <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
-}
-
 /** The normal code-and-approval path first; a key is an explicit fallback. */
 function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
   const [usingKey, setUsingKey] = useState(false)
@@ -154,7 +150,7 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
           <div className="host-setup">
             <div className="host-setup-body">
               <ShellCommand command="handover connect" />
-              <Waiting onSkip={onSkip} />
+              <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
             </div>
           </div>
         </div>
@@ -181,11 +177,7 @@ function HostAgentCard({
   readonly machine: Machine
   readonly agent: Machine['agents'][number]
 }) {
-  const type = agentName(agent.kind)
-  const [name, setName] = useState(agent.name ?? '')
-  const [editing, setEditing] = useState(false)
-  const naming = useNameAgent(slug)
-  const changed = name.trim() !== (agent.name ?? '')
+  const kindName = agentKindName(agent.kind)
 
   return (
     <li className="host-agent" data-agent={agent.kind}>
@@ -197,72 +189,125 @@ function HostAgentCard({
       </span>
       <span className="host-agent-copy">
         {machine.yours ? (
-          editing ? (
-            <form
-              className="host-agent-name"
-              onSubmit={(event) => {
-                event.preventDefault()
-                if (!changed) {
-                  setEditing(false)
-                  return
-                }
-                naming.mutate(
-                  {
-                    params: { path: { id: machine.id, kind: agent.kind } },
-                    body: { name: name.trim() || null },
-                  },
-                  {
-                    onSuccess: () => {
-                      setEditing(false)
-                    },
-                  },
-                )
-              }}
-            >
-              <input
-                autoFocus
-                aria-label={`Name ${type}`}
-                maxLength={48}
-                placeholder={`Name ${type}`}
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return
-                  setName(agent.name ?? '')
-                  setEditing(false)
-                }}
-              />
-              <button type="submit" aria-label={`Save ${type} name`} disabled={naming.isPending}>
-                <Check2 aria-hidden />
-              </button>
-            </form>
-          ) : (
-            <span className="host-agent-name-view">
-              <strong data-empty={name.trim() === '' || undefined}>
-                {name.trim() || 'Name this agent'}
-              </strong>
-              <button
-                type="button"
-                aria-label={`Edit ${type} name`}
-                onClick={() => {
-                  setEditing(true)
-                }}
-              >
-                <Pencil aria-hidden />
-              </button>
-            </span>
-          )
+          <AgentName slug={slug} machineId={machine.id} agent={agent} />
         ) : (
           <strong>{agent.name?.trim() || 'Unnamed agent'}</strong>
         )}
         <small>
-          {type} · {agent.version}
+          {kindName} · {agent.version}
         </small>
-        {naming.isError && <span className="host-agent-name-error">Could not save.</span>}
       </span>
     </li>
+  )
+}
+
+function AgentName({
+  slug,
+  machineId,
+  agent,
+}: {
+  readonly slug: string
+  readonly machineId: string
+  readonly agent: Machine['agents'][number]
+}) {
+  const kindName = agentKindName(agent.kind)
+  const [name, setName] = useState(agent.name ?? '')
+  const [editing, setEditing] = useState(false)
+  const naming = useNameAgent(slug)
+
+  const control = editing ? (
+    <AgentNameForm
+      type={kindName}
+      name={name}
+      pending={naming.isPending}
+      onName={setName}
+      onCancel={() => {
+        setName(agent.name ?? '')
+        setEditing(false)
+      }}
+      onSave={() => {
+        if (name.trim() === (agent.name ?? '')) {
+          setEditing(false)
+          return
+        }
+        naming.mutate(
+          {
+            params: { path: { id: machineId, kind: agent.kind } },
+            body: { name: name.trim() || null },
+          },
+          {
+            onSuccess: () => {
+              setEditing(false)
+            },
+          },
+        )
+      }}
+    />
+  ) : (
+    <span className="host-agent-name-view">
+      <strong data-empty={name.trim() === '' || undefined}>
+        {name.trim() || 'Name this agent'}
+      </strong>
+      <button
+        type="button"
+        aria-label={`Edit ${kindName} name`}
+        onClick={() => {
+          setEditing(true)
+        }}
+      >
+        <Pencil aria-hidden />
+      </button>
+    </span>
+  )
+
+  return (
+    <>
+      {control}
+      {naming.isError && <span className="host-agent-name-error">Could not save.</span>}
+    </>
+  )
+}
+
+function AgentNameForm({
+  type,
+  name,
+  pending,
+  onName,
+  onCancel,
+  onSave,
+}: {
+  readonly type: string
+  readonly name: string
+  readonly pending: boolean
+  readonly onName: (name: string) => void
+  readonly onCancel: () => void
+  readonly onSave: () => void
+}) {
+  return (
+    <form
+      className="host-agent-name"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSave()
+      }}
+    >
+      <input
+        autoFocus
+        aria-label={`Name ${type}`}
+        maxLength={48}
+        placeholder={`Name ${type}`}
+        value={name}
+        onChange={(event) => {
+          onName(event.target.value)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      />
+      <button type="submit" aria-label={`Save ${type} name`} disabled={pending}>
+        <Check2 aria-hidden />
+      </button>
+    </form>
   )
 }
 
@@ -333,26 +378,6 @@ function useHostSpace(forSlug: string | undefined): {
   return { slug, name: spaces.find((one) => one.slug === slug)?.displayName }
 }
 
-/** The way out: the Space once a machine is in, looking around first when it is not. */
-function Leave({
-  arrived,
-  spaceName,
-  onGo,
-}: {
-  readonly arrived: boolean
-  readonly spaceName: string | undefined
-  readonly onGo: () => void
-}) {
-  if (arrived) {
-    return (
-      <button className="button button-primary" type="button" onClick={onGo}>
-        <span className="button-label">Open {spaceName ?? 'your Space'}</span>
-      </button>
-    )
-  }
-  return null
-}
-
 export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined }) {
   const navigate = useNavigate()
   const { slug, name } = useHostSpace(forSlug)
@@ -397,7 +422,11 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
             </div>
           )}
 
-          <Leave arrived={arrived} spaceName={name} onGo={goIn} />
+          {arrived && (
+            <button className="button button-primary" type="button" onClick={goIn}>
+              <span className="button-label">Open {name ?? 'your Space'}</span>
+            </button>
+          )}
         </section>
       </div>
     </main>

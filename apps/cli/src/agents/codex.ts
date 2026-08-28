@@ -6,9 +6,8 @@
  * the one place the bytes exist while the command is still running.
  */
 
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { PIECE } from '@handover/universal'
+import { textPieces } from '@handover/universal'
+import { terminateDescendants } from '../process-tree.ts'
 import {
   type Agent,
   type Asked,
@@ -19,7 +18,12 @@ import {
   plain,
   shorten,
 } from './agent.ts'
-import { openAppServer, type AppNotification, type AppServer } from './codex-app-server.ts'
+import {
+  asRecord,
+  openAppServer,
+  type AppNotification,
+  type AppServer,
+} from './codex-app-server.ts'
 import { onPath } from './on-path.ts'
 
 const COMMAND = 'codex'
@@ -27,12 +31,21 @@ const ANSWER_WITHIN_MS = 10_000
 
 type Item = Record<string, unknown> & { readonly id: string; readonly type: string }
 type TurnIdentity = { readonly threadId: string; readonly turnId: string }
-type ActiveTurn = {
-  readonly server: AppServer
-  threadId?: string
-  turnId?: string
+export type OutputProgress = {
+  readonly at: number
+  readonly excerpt: string
+  readonly prefixMissing: boolean
 }
+type ActiveTurn =
+  | { readonly phase: 'starting'; readonly server: AppServer }
+  | {
+      readonly phase: 'running'
+      readonly server: AppServer
+      readonly threadId: string
+      readonly turnId: string
+    }
 type RunControl = { active: ActiveTurn | undefined; interrupted: boolean }
+type TurnRun = 'done' | 'forgotten'
 type Running = {
   readonly where: string
   readonly env: NodeJS.ProcessEnv
@@ -53,14 +66,52 @@ type ModelList = { readonly data: readonly Listed[] }
 type ThreadAnswer = { readonly thread: { readonly id: string } }
 type TurnAnswer = { readonly turn: { readonly id: string } }
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined
+function threadAnswer(value: unknown): ThreadAnswer {
+  const id = text(asRecord(asRecord(value)?.['thread'])?.['id'])
+  if (id === '') throw new Error('Codex returned a thread without an id.')
+  return { thread: { id } }
+}
+
+function turnAnswer(value: unknown): TurnAnswer {
+  const id = text(asRecord(asRecord(value)?.['turn'])?.['id'])
+  if (id === '') throw new Error('Codex returned a turn without an id.')
+  return { turn: { id } }
+}
+
+function listedModel(value: unknown): Listed | undefined {
+  const model = asRecord(value)
+  const id = text(model?.['id'])
+  if (model === undefined || id === '') return undefined
+
+  const efforts = Array.isArray(model['supportedReasoningEfforts'])
+    ? model['supportedReasoningEfforts']
+        .map(asRecord)
+        .map((effort) => text(effort?.['reasoningEffort']))
+        .filter((effort) => effort !== '')
+        .map((reasoningEffort) => ({ reasoningEffort }))
+    : []
+
+  return {
+    id,
+    displayName: text(model['displayName']) || id,
+    description: text(model['description']),
+    supportedReasoningEfforts: efforts,
+    ...(typeof model['defaultReasoningEffort'] === 'string'
+      ? { defaultReasoningEffort: model['defaultReasoningEffort'] }
+      : {}),
+    ...(typeof model['isDefault'] === 'boolean' ? { isDefault: model['isDefault'] } : {}),
+    ...(typeof model['hidden'] === 'boolean' ? { hidden: model['hidden'] } : {}),
+  }
+}
+
+function modelList(value: unknown): ModelList {
+  const data = asRecord(value)?.['data']
+  if (!Array.isArray(data)) throw new Error('Codex returned no model list.')
+  return { data: data.map(listedModel).filter((model) => model !== undefined) }
 }
 
 function itemFrom(value: unknown): Item | undefined {
-  const item = record(value)
+  const item = asRecord(value)
   return typeof item?.['id'] === 'string' && typeof item['type'] === 'string'
     ? (item as Item)
     : undefined
@@ -94,15 +145,15 @@ function starting(item: Item): Said[] {
 function changedPaths(value: unknown): string {
   if (!Array.isArray(value)) return ''
   return value
-    .map(record)
+    .map(asRecord)
     .filter((change) => change !== undefined)
     .map((change) => text(change['path']).split('/').at(-1) ?? '')
     .filter(Boolean)
     .join(', ')
 }
 
-function commandFinished(item: Item, streamed: string | undefined): Said {
-  const complete = text(item['aggregatedOutput']) || streamed || ''
+function commandFinished(item: Item, streamed: OutputProgress | undefined): Said {
+  const complete = text(item['aggregatedOutput']) || streamed?.excerpt || ''
   return did({
     callId: item.id,
     name: 'command_execution',
@@ -110,11 +161,12 @@ function commandFinished(item: Item, streamed: string | undefined): Said {
     arg: shorten(text(item['command'])),
     ok: item['status'] === 'completed',
     excerpt: shorten(complete),
+    ...(streamed?.prefixMissing === true ? { truncated: true } : {}),
   })
 }
 
 function toolError(item: Item): string {
-  return text(record(item['error'])?.['message'])
+  return text(asRecord(item['error'])?.['message'])
 }
 
 function speechFrom(item: Item): Said[] | undefined {
@@ -129,7 +181,7 @@ function speechFrom(item: Item): Said[] | undefined {
 }
 
 /** One completed app-server tool in the provider-neutral transcript vocabulary. */
-function toolFrom(item: Item, streamedOutput: string | undefined): Said[] {
+function toolFrom(item: Item, streamedOutput: OutputProgress | undefined): Said[] {
   if (item.type === 'commandExecution') return [commandFinished(item, streamedOutput)]
   if (item.type === 'fileChange') {
     return [
@@ -175,55 +227,84 @@ function toolFrom(item: Item, streamedOutput: string | undefined): Said[] {
 }
 
 /** One completed app-server item in the provider-neutral transcript vocabulary. */
-function finished(item: Item, streamedOutput: string | undefined): Said[] {
+function finished(item: Item, streamedOutput: OutputProgress | undefined): Said[] {
   return speechFrom(item) ?? toolFrom(item, streamedOutput)
 }
 
-function outputPieces(callId: string, at: number, output: string): Said[] {
-  const pieces: Said[] = []
-  for (let offset = 0; offset < output.length; offset += PIECE) {
-    pieces.push({
-      said: 'output',
-      callId,
-      at: at + offset,
-      text: output.slice(offset, offset + PIECE),
-    })
-  }
-  return pieces
+function outputPieces(callId: string, at: number, output: string, prefixMissing = false): Said[] {
+  return textPieces(output, at).map((piece, index) => ({
+    said: 'output',
+    callId,
+    at: piece.at,
+    text: piece.text,
+    ...(prefixMissing && index === 0 ? { truncated: true } : {}),
+  }))
 }
 
 function sameTurn(params: Record<string, unknown>, turn: TurnIdentity): boolean {
-  const turnId = params['turnId'] ?? record(params['turn'])?.['id']
+  const turnId = params['turnId'] ?? asRecord(params['turn'])?.['id']
   return params['threadId'] === turn.threadId && turnId === turn.turnId
 }
 
 function turnEnding(params: Record<string, unknown>): Told {
-  const turn = record(params['turn'])
+  const turn = asRecord(params['turn'])
   const status = turn?.['status']
   if (status === 'completed') return { told: 'ended', why: { why: 'done' } }
   if (status === 'interrupted') return { told: 'ended', why: { why: 'cancelled' } }
-  const error = record(turn?.['error'])
+  const error = asRecord(turn?.['error'])
   const said = text(error?.['message']) || 'Codex could not finish this turn.'
   return { told: 'ended', why: { why: 'failed', said } }
 }
 
-function startedFrom(params: Record<string, unknown>): Told[] {
+function startedFrom(
+  params: Record<string, unknown>,
+  outputs: Map<string, OutputProgress>,
+): Told[] {
   const item = itemFrom(params['item'])
-  return item === undefined ? [] : starting(item).map((said) => ({ told: 'said', said }))
+  if (item === undefined) return []
+
+  const said = starting(item)
+  if (item.type !== 'commandExecution') return said.map((one) => ({ told: 'said', said: one }))
+
+  const initialOutput = text(item['aggregatedOutput'])
+  // App-server 0.148 can start listening after a fast command has already printed its first
+  // chunk. An empty start therefore cannot prove a known offset zero; the UI says so explicitly.
+  outputs.set(item.id, {
+    at: initialOutput.length,
+    excerpt: shorten(initialOutput),
+    prefixMissing: initialOutput === '',
+  })
+  if (initialOutput !== '') said.push(...outputPieces(item.id, 0, initialOutput))
+  return said.map((one) => ({ told: 'said', said: one }))
 }
 
-function outputFrom(params: Record<string, unknown>, outputs: Map<string, string>): Told[] {
+function outputFrom(params: Record<string, unknown>, outputs: Map<string, OutputProgress>): Told[] {
   const callId = text(params['itemId'])
   const delta = text(params['delta'])
   if (callId === '' || delta === '') return []
-  const before = outputs.get(callId) ?? ''
-  outputs.set(callId, `${before}${delta}`)
-  return outputPieces(callId, before.length, delta).map((said) => ({ told: 'said', said }))
+
+  const before = outputs.get(callId) ?? { at: 0, excerpt: '', prefixMissing: true }
+  outputs.set(callId, {
+    at: before.at + delta.length,
+    excerpt: shorten(`${before.excerpt}${delta}`),
+    prefixMissing: before.prefixMissing,
+  })
+
+  return outputPieces(callId, before.at, delta, before.prefixMissing && before.at === 0).map(
+    (said) => ({
+      told: 'said',
+      said,
+    }),
+  )
 }
 
-function completedFrom(params: Record<string, unknown>, outputs: Map<string, string>): Told[] {
+function completedFrom(
+  params: Record<string, unknown>,
+  outputs: Map<string, OutputProgress>,
+): Told[] {
   const item = itemFrom(params['item'])
   if (item === undefined) return []
+
   const said = finished(item, outputs.get(item.id)).map(
     (one) => ({ told: 'said', said: one }) as const,
   )
@@ -232,7 +313,7 @@ function completedFrom(params: Record<string, unknown>, outputs: Map<string, str
 }
 
 function troubleFrom(params: Record<string, unknown>): Told[] {
-  const said = text(record(params['error'])?.['message']) || text(params['message'])
+  const said = text(asRecord(params['error'])?.['message']) || text(params['message'])
   return said === '' ? [] : [{ told: 'said', said: { said: 'trouble', text: said } }]
 }
 
@@ -240,12 +321,12 @@ function troubleFrom(params: Record<string, unknown>): Told[] {
 export function toldFromNotification(
   notification: AppNotification,
   turn: TurnIdentity,
-  outputs: Map<string, string>,
+  outputs: Map<string, OutputProgress>,
 ): Told[] {
-  const params = record(notification.params)
+  const params = asRecord(notification.params)
   if (params === undefined || !sameTurn(params, turn)) return []
 
-  if (notification.method === 'item/started') return startedFrom(params)
+  if (notification.method === 'item/started') return startedFrom(params, outputs)
   if (notification.method === 'item/commandExecution/outputDelta')
     return outputFrom(params, outputs)
   if (notification.method === 'item/completed') return completedFrom(params, outputs)
@@ -260,6 +341,7 @@ function plainly(trouble: unknown): string {
   return said === '' ? 'Codex stopped without saying why.' : said
 }
 
+/** App-server reports a removed thread only in error prose; its protocol has no error code. */
 function isForgotten(trouble: unknown): boolean {
   return /(?:no rollout found for thread|thread[^\n]*not found)/iu.test(plainly(trouble))
 }
@@ -291,14 +373,16 @@ async function threadFor(
   asked: Asked,
 ): Promise<string | undefined> {
   try {
-    const answer =
-      resume === null
-        ? await server.request<ThreadAnswer>('thread/start', threadParams(where, asked))
-        : await server.request<ThreadAnswer>('thread/resume', {
-            threadId: resume,
-            ...threadParams(where, asked),
-          })
-    return answer.thread.id
+    if (resume === null) {
+      const answer = await server.request('thread/start', threadParams(where, asked))
+      return threadAnswer(answer).thread.id
+    }
+
+    const answer = await server.request('thread/resume', {
+      threadId: resume,
+      ...threadParams(where, asked),
+    })
+    return threadAnswer(answer).thread.id
   } catch (trouble) {
     if (resume !== null && isForgotten(trouble)) return undefined
     throw trouble
@@ -306,7 +390,7 @@ async function threadFor(
 }
 
 async function* watchTurn(server: AppServer, turn: TurnIdentity): AsyncGenerator<Told> {
-  const outputs = new Map<string, string>()
+  const outputs = new Map<string, OutputProgress>()
   for (;;) {
     const notification = await server.next()
     if (notification === undefined) throw new Error('Codex app server stopped during the turn.')
@@ -320,29 +404,25 @@ async function* driveTurn(
   running: Running,
   resume: string | null,
   asked: Asked,
-): AsyncGenerator<Told, boolean> {
+): AsyncGenerator<Told, TurnRun> {
   const { where, env, control } = running
   const binary = await onPath(COMMAND, env)
   if (binary === undefined) {
     yield { told: 'ended', why: { why: 'failed', said: 'Codex is no longer on this machine.' } }
-    return false
+    return 'done'
   }
 
   let server: AppServer | undefined
   try {
     server = await openAppServer(binary, env)
-    control.active = { server }
+    control.active = { phase: 'starting', server }
     const threadId = await threadFor(server, resume, where, asked)
-    if (threadId === undefined) return true
-    control.active.threadId = threadId
+    if (threadId === undefined) return 'forgotten'
     yield { told: 'session', id: threadId }
 
-    const started = await server.request<TurnAnswer>(
-      'turn/start',
-      turnParams(threadId, where, asked),
-    )
-    const turnId = started.turn.id
-    control.active.turnId = turnId
+    const started = await server.request('turn/start', turnParams(threadId, where, asked))
+    const turnId = turnAnswer(started).turn.id
+    control.active = { phase: 'running', server, threadId, turnId }
     if (control.interrupted)
       await server.request('turn/interrupt', { threadId, turnId }).catch(() => undefined)
     yield* watchTurn(server, { threadId, turnId })
@@ -354,52 +434,7 @@ async function* driveTurn(
     server?.close()
   }
 
-  return false
-}
-
-type RunningProcess = { readonly pid: number; readonly parent: number }
-
-function processRows(report: string): RunningProcess[] {
-  return report
-    .trim()
-    .split('\n')
-    .map((line) => line.trim().split(/\s+/u).map(Number))
-    .filter((row) => row.length >= 2 && row.every(Number.isInteger))
-    .map(([pid = 0, parent = 0]) => ({ pid, parent }))
-}
-
-function childrenOf(processes: readonly RunningProcess[], family: ReadonlySet<number>): number[] {
-  return processes
-    .filter((process) => family.has(process.parent) && !family.has(process.pid))
-    .map((process) => process.pid)
-}
-
-function descendants(processes: readonly RunningProcess[], root: number): number[] {
-  const family = new Set([root])
-  const found: number[] = []
-  for (;;) {
-    const children = childrenOf(processes, family)
-    if (children.length === 0) return found
-    for (const child of children) family.add(child)
-    found.push(...children)
-  }
-}
-
-function terminate(pid: number): void {
-  try {
-    process.kill(pid, 'SIGTERM')
-  } catch {
-    // It finished between `ps` and the signal; that is already the requested outcome.
-  }
-}
-
-async function terminateChildren(root: number): Promise<void> {
-  try {
-    const { stdout } = await promisify(execFile)('ps', ['-A', '-o', 'pid=,ppid='])
-    for (const pid of descendants(processRows(stdout), root).reverse()) terminate(pid)
-  } catch {
-    // The app-server interrupt still has a chance to stop a turn on a platform without this `ps`.
-  }
+  return 'done'
 }
 
 function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk {
@@ -410,8 +445,8 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
     say: async function* (asked: Asked): AsyncIterable<Told> {
       control.interrupted = false
       if (sofar !== null) {
-        const forgotten = yield* driveTurn(running, sofar, asked)
-        if (!forgotten) return
+        const first = yield* driveTurn(running, sofar, asked)
+        if (first === 'done') return
         yield { told: 'forgot' }
       }
       yield* driveTurn(running, null, asked)
@@ -419,8 +454,12 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
     stop: async () => {
       control.interrupted = true
       const current = control.active
-      if (current?.threadId === undefined || current.turnId === undefined) return
-      await terminateChildren(current.server.pid)
+      if (current === undefined) return
+      // `turn/interrupt` stops the turn but can leave its shell descendants alive; stop those first
+      // while the app-server process still gives us the root of the process tree.
+      await terminateDescendants(current.server.pid)
+      if (current.phase !== 'running') return
+
       await current.server
         .request('turn/interrupt', { threadId: current.threadId, turnId: current.turnId })
         .catch(() => undefined)
@@ -428,7 +467,10 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
   }
 }
 
-async function within<Answer>(promise: Promise<Answer>, milliseconds: number): Promise<Answer> {
+async function answerWithin<Answer>(
+  promise: Promise<Answer>,
+  milliseconds: number,
+): Promise<Answer> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error('Codex did not answer in time.'))
@@ -454,7 +496,8 @@ async function offers(env: NodeJS.ProcessEnv): Promise<readonly Model[]> {
   let server: AppServer | undefined
   try {
     server = await openAppServer(binary, env)
-    const listed = await within(server.request<ModelList>('model/list', {}), ANSWER_WITHIN_MS)
+    const answer = await answerWithin(server.request('model/list', {}), ANSWER_WITHIN_MS)
+    const listed = modelList(answer)
     return listed.data
       .filter((one) => one.hidden !== true)
       .map((one) => ({

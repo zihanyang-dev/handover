@@ -83,8 +83,6 @@ const NO_SCREEN_YET = new Set([
   '/me/machines/{id}/agents/{kind}',
   // Handing a conversation over as a piece of work, and taking it back.
   '/spaces/{slug}/conversations/{id}/task',
-  // Saying you are typing. Nothing on the rebuilt chat shows the other person's name.
-  '/spaces/{slug}/conversations/{id}/typing',
   // Everything the People screen did: inviting, stopping a link, changing a role, removing
   // somebody, and reading what they still hold.
   '/spaces/{slug}/invitations',

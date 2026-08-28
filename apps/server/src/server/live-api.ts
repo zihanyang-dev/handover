@@ -9,8 +9,9 @@
 import { streamSSE } from 'hono/streaming'
 import { Unkept, Watched, type Live } from '../conversation/live.ts'
 import type { Database } from '../db/connection.ts'
-import { conversationInSpace } from '../db/conversation.ts'
+import { conversationReachableBy } from '../db/conversation.ts'
 import { nameOf } from '../db/user.ts'
+import { sayLiveFromMachine } from '../db/watching.ts'
 import { UNAVAILABLE, refused } from './failure.ts'
 import { aMachine, aMember, nothing, refuses, rowId, streams } from './route.ts'
 
@@ -96,15 +97,25 @@ function watching({ db, live }: LiveApi) {
       // and whether it is reachable is the same question every other route here asks. Only that,
       // though — what has been said in it is the transcript's to answer, and this never shows it.
       const conversationId = c.req.valid('param').id
-      const reachable = await conversationInSpace(db, {
+      const canWatch = {
         conversationId,
         spaceId: c.get('space').id,
-      })
+        userId: c.get('userId'),
+      }
+      const reachable = await conversationReachableBy(db, canWatch)
       if (!reachable) return refused(c, UNAVAILABLE)
 
       return streamSSE(c, async (stream) => {
-        const writer = frameWriter(async (frame) => stream.writeSSE(frame))
-        const stop = live.watch(conversationId, (watched) => {
+        let stop = (): void => undefined
+        const writer = frameWriter(async (frame) => {
+          if (!(await conversationReachableBy(db, canWatch))) {
+            stop()
+            await stream.close()
+            throw new Error('live stream access ended')
+          }
+          await stream.writeSSE(frame)
+        })
+        stop = live.watch(conversationId, (watched) => {
           writer.push({ data: JSON.stringify(watched) }, mayDrop(watched))
         })
 
@@ -132,23 +143,24 @@ function watching({ db, live }: LiveApi) {
  * the transcript announces itself when it is written — sending it here as well would be the same
  * sentence crossing the network twice and arriving in two orders.
  */
-function reporting({ db, live }: LiveApi) {
+function reporting({ db }: LiveApi) {
   return aMachine(db).post('/machines/current/conversations/{id}/live', {
     summary: 'Say what is happening right now, which is kept nowhere',
     params: { id: rowId },
     body: Unkept,
-    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
+    answers: {
+      204: 'Said to whoever is watching, and to nobody if nobody is',
+      404: refuses(UNAVAILABLE, 'That conversation was not given to this machine'),
+    },
 
     run: async (c) => {
-      // No check that this machine owns the conversation, and none that it exists: a moment is
-      // shown to whoever is already watching that id and kept nowhere, so the worst a wrong id can
-      // do is say something to a screen its own machine is not driving — and only a live machine
-      // credential can say anything at all. Checking would put a query in front of every fragment
-      // of every turn, to guard nothing that lasts.
-      await live.say({
-        conversationId: c.req.valid('param').id,
+      const conversationId = c.req.valid('param').id
+      const said = await sayLiveFromMachine(db, {
+        conversationId,
+        machineId: c.get('machineId'),
         watched: { seen: 'moment', moment: c.req.valid('json') },
       })
+      if (!said) return refused(c, UNAVAILABLE)
 
       return nothing(c, 204)
     },
@@ -173,15 +185,27 @@ function typing({ db, live }: LiveApi) {
   return aMember(db).post('/spaces/{slug}/conversations/{id}/typing', {
     summary: 'Say that you are typing, which is kept nowhere',
     params: { id: rowId },
-    answers: { 204: 'Said to whoever is watching, and to nobody if nobody is' },
+    answers: {
+      204: 'Said to whoever is watching, and to nobody if nobody is',
+      404: refuses(UNAVAILABLE, 'No such Space, or no such conversation in it'),
+    },
 
     run: async (c) => {
-      // The same reasoning as a machine's moment: shown to whoever is already watching that id and
-      // kept nowhere, so a wrong id costs a line on a screen and nothing else. Membership has
-      // already been asked, which is the part that matters.
+      const conversationId = c.req.valid('param').id
+      const reachable = await conversationReachableBy(db, {
+        conversationId,
+        spaceId: c.get('space').id,
+        userId: c.get('userId'),
+      })
+      if (!reachable) return refused(c, UNAVAILABLE)
+
       await live.say({
-        conversationId: c.req.valid('param').id,
-        watched: { seen: 'typing', who: await nameOf(db, c.get('userId')) },
+        conversationId,
+        watched: {
+          seen: 'typing',
+          userId: c.get('userId'),
+          who: await nameOf(db, c.get('userId')),
+        },
       })
 
       return nothing(c, 204)

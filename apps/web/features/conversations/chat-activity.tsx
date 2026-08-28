@@ -1,8 +1,8 @@
 // The processing row is adapted from Kanna's ProcessingMessage.
-// Copyright (c) 2025 Jake Mor. Licensed under the MIT terms in THIRD_PARTY_NOTICES.md.
+// Copyright (c) 2025 Jake Mor. Used under the source terms reproduced in THIRD_PARTY_NOTICES.md.
 
-import { Loader2 } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
+import { ArrowRepeat } from 'react-bootstrap-icons'
 import { AnimatedShinyText } from '../../components/ui/animated-shiny-text.tsx'
 import type { LiveOutput, LiveTurn } from './talking.ts'
 
@@ -22,6 +22,7 @@ export function ChatActivity({
   readonly output: LiveOutput | undefined
 }) {
   const outputView = useRef<HTMLPreElement>(null)
+  const current = latestActivity(activity)
 
   useLayoutEffect(() => {
     const element = outputView.current
@@ -30,15 +31,15 @@ export function ChatActivity({
 
   return (
     <section className="chat-processing" aria-label="Happening now">
-      <div role="status" aria-live="polite">
-        <Loader2 aria-hidden />
-        <AnimatedShinyText className="text-copy-xs" shimmerWidth={44}>
-          {latestActivity(activity)}
+      <div role="status" aria-live="polite" aria-label={current}>
+        <ArrowRepeat aria-hidden />
+        <AnimatedShinyText className="text-copy-xs" shimmerWidthPx={44}>
+          {current}
         </AnimatedShinyText>
       </div>
       {output !== undefined && output.text !== '' && (
         <div className="chat-live-output-wrap">
-          {output.truncated && <span>Earlier output truncated</span>}
+          {output.truncated && <span>Earlier output unavailable</span>}
           <pre ref={outputView} className="chat-live-output" aria-label="Live tool output">
             <code>{output.text}</code>
           </pre>

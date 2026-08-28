@@ -9,7 +9,6 @@
     "@tanstack/react-router": "^1.170.32",
     "framer-motion": "^13.1.1",
     "frimousse": "^0.3.0",
-    "lucide-react": "^0.562.0",
     "openapi-fetch": "^0.17.0",
     "openapi-react-query": "^0.5.4",
     "opentype.js": "^2.0.0",

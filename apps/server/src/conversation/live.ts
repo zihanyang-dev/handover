@@ -13,7 +13,7 @@
  * was said in.
  */
 
-import { PIECE } from '@handover/universal'
+import { fitsInPiece, PIECE } from '@handover/universal'
 import { z } from '@hono/zod-openapi'
 
 /**
@@ -52,7 +52,8 @@ export const Unkept = z
       said: z.literal('output'),
       callId: z.string().max(200),
       at: z.number().int().nonnegative(),
-      text: z.string().max(PIECE),
+      text: z.string().max(PIECE).refine(fitsInPiece, 'Output piece exceeds the UTF-8 byte limit'),
+      truncated: z.boolean().optional(),
     }),
   ])
   .openapi('Unkept')
@@ -81,7 +82,7 @@ export const Watched = z
      * a browser that crashed cannot send one — whoever is typing says so every few seconds, and
      * whoever is watching gives up on their own. See `prd.md` 06 ③.
      */
-    z.object({ seen: z.literal('typing'), who: z.string() }),
+    z.object({ seen: z.literal('typing'), userId: z.uuid(), who: z.string() }),
   ])
   .openapi('Watched')
 

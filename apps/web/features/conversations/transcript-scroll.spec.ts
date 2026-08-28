@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  getLatestUserPrompt,
-  shouldPinForNewPrompt,
-  type TranscriptRow,
-} from './transcript-scroll.ts'
+import { getLatestUserPrompt, promptToPin, type TranscriptRow } from './transcript-scroll.ts'
 
 function user(seq: number): TranscriptRow {
   return { id: `user-${String(seq)}`, kind: 'user', seq }
@@ -18,17 +14,17 @@ describe('conversation prompt anchoring', () => {
     const previous = getLatestUserPrompt([user(1)])
     const next = getLatestUserPrompt([user(1), reply(2), reply(3)])
 
-    expect(shouldPinForNewPrompt(previous, next)).toBe(false)
+    expect(promptToPin(previous, next)).toBeNull()
   })
 
   it('pins when a genuinely new prompt arrives', () => {
     const previous = getLatestUserPrompt([user(1), reply(2)])
     const next = getLatestUserPrompt([user(1), reply(2), user(3)])
 
-    expect(shouldPinForNewPrompt(previous, next)).toBe(true)
+    expect(promptToPin(previous, next)).toEqual(next)
   })
 
   it('does not treat the first observation as a send', () => {
-    expect(shouldPinForNewPrompt(null, getLatestUserPrompt([user(1)]))).toBe(false)
+    expect(promptToPin(null, getLatestUserPrompt([user(1)]))).toBeNull()
   })
 })

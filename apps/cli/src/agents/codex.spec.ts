@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { EXCERPT } from './agent.ts'
 import type { AppNotification } from './codex-app-server.ts'
-import { toldFromNotification } from './codex.ts'
+import { toldFromNotification, type OutputProgress } from './codex.ts'
 
 const TURN = { threadId: 'thread-1', turnId: 'turn-1' }
 
@@ -9,8 +10,8 @@ function notification(method: string, params: Record<string, unknown>): AppNotif
 }
 
 describe('Codex app-server events', () => {
-  it('streams command output at the real offsets and keeps only its excerpt', () => {
-    const outputs = new Map<string, string>()
+  it('marks the prefix that app-server could not expose and keeps its available excerpt', () => {
+    const outputs = new Map<string, OutputProgress>()
     const started = toldFromNotification(
       notification('item/started', {
         item: {
@@ -19,14 +20,6 @@ describe('Codex app-server events', () => {
           command: 'printf lines',
           status: 'inProgress',
         },
-      }),
-      TURN,
-      outputs,
-    )
-    const first = toldFromNotification(
-      notification('item/commandExecution/outputDelta', {
-        itemId: 'command-1',
-        delta: 'first\n',
       }),
       TURN,
       outputs,
@@ -47,7 +40,7 @@ describe('Codex app-server events', () => {
           command: 'printf lines',
           status: 'completed',
           exitCode: 0,
-          aggregatedOutput: 'first\nsecond\n',
+          aggregatedOutput: 'second\n',
         },
       }),
       TURN,
@@ -66,11 +59,17 @@ describe('Codex app-server events', () => {
         },
       },
     ])
-    expect(first).toEqual([
-      { told: 'said', said: { said: 'output', callId: 'command-1', at: 0, text: 'first\n' } },
-    ])
     expect(second).toEqual([
-      { told: 'said', said: { said: 'output', callId: 'command-1', at: 6, text: 'second\n' } },
+      {
+        told: 'said',
+        said: {
+          said: 'output',
+          callId: 'command-1',
+          at: 0,
+          text: 'second\n',
+          truncated: true,
+        },
+      },
     ])
     expect(completed).toEqual([
       {
@@ -82,15 +81,65 @@ describe('Codex app-server events', () => {
           verb: 'ran',
           arg: 'printf lines',
           ok: true,
-          excerpt: 'first\nsecond\n',
+          excerpt: 'second\n',
+          truncated: true,
         },
       },
     ])
     expect(outputs.has('command-1')).toBe(false)
   })
 
+  it('keeps output already present when the command-start notification arrives', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const started = toldFromNotification(
+      notification('item/started', {
+        item: {
+          type: 'commandExecution',
+          id: 'fast-command',
+          command: 'printf fast',
+          status: 'inProgress',
+          aggregatedOutput: 'first\n',
+        },
+      }),
+      TURN,
+      outputs,
+    )
+    const next = toldFromNotification(
+      notification('item/commandExecution/outputDelta', {
+        itemId: 'fast-command',
+        delta: 'second\n',
+      }),
+      TURN,
+      outputs,
+    )
+
+    expect(started.at(-1)).toMatchObject({
+      said: { said: 'output', callId: 'fast-command', at: 0, text: 'first\n' },
+    })
+    expect(next).toEqual([
+      {
+        told: 'said',
+        said: { said: 'output', callId: 'fast-command', at: 6, text: 'second\n' },
+      },
+    ])
+  })
+
+  it('retains only a bounded completion excerpt after streaming a long command', () => {
+    const outputs = new Map<string, OutputProgress>()
+    const delta = 'x'.repeat(EXCERPT * 4)
+
+    toldFromNotification(
+      notification('item/commandExecution/outputDelta', { itemId: 'long', delta }),
+      TURN,
+      outputs,
+    )
+
+    expect(outputs.get('long')).toMatchObject({ at: delta.length })
+    expect(outputs.get('long')?.excerpt).toHaveLength(EXCERPT)
+  })
+
   it('keeps interleaved command output under its own call id', () => {
-    const outputs = new Map<string, string>()
+    const outputs = new Map<string, OutputProgress>()
 
     toldFromNotification(
       notification('item/commandExecution/outputDelta', { itemId: 'one', delta: 'a' }),
@@ -112,14 +161,14 @@ describe('Codex app-server events', () => {
     expect(one[0]).toMatchObject({ said: { callId: 'one', at: 1, text: 'c' } })
     expect(outputs).toEqual(
       new Map([
-        ['one', 'ac'],
-        ['two', 'b'],
+        ['one', { at: 2, excerpt: 'ac', prefixMissing: true }],
+        ['two', { at: 1, excerpt: 'b', prefixMissing: true }],
       ]),
     )
   })
 
   it('preserves assistant blocks around a tool in source order', () => {
-    const outputs = new Map<string, string>()
+    const outputs = new Map<string, OutputProgress>()
     const before = toldFromNotification(
       notification('item/completed', {
         item: { type: 'agentMessage', id: 'message-1', text: 'Before the tool' },

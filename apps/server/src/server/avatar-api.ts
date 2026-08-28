@@ -14,7 +14,10 @@ import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import type { ObjectStore } from '../object-store.ts'
 import { anyone, rowId, sends } from './route.ts'
 
-export type AvatarApi = { readonly objects: ObjectStore }
+export type AvatarApi = {
+  readonly objects: ObjectStore
+  readonly exists: (subject: AvatarSubject) => Promise<boolean>
+}
 
 /**
  * An image rather than JSON, which is the one place in this API that is true.
@@ -35,27 +38,41 @@ export function avatarApi(deps: AvatarApi) {
 }
 
 /** A person's face. */
-function personAvatar({ objects }: AvatarApi) {
+function personAvatar({ objects, exists }: AvatarApi) {
   return anyone().get('/avatars/users/{userId}', {
     summary: 'A person’s stored avatar',
     params: { userId: rowId },
-    answers: { 200: svg, 304: 'The browser already has this one, and it can never change' },
+    answers: {
+      200: svg,
+      304: 'The browser already has this one, and it can never change',
+      404: 'No such person',
+    },
 
-    run: async (c) => shows(c, objects, { kind: 'user', userId: c.req.valid('param').userId }),
+    run: async (c) => {
+      const subject = { kind: 'user', userId: c.req.valid('param').userId } as const
+      if (!(await exists(subject))) return c.body(null, 404)
+      return shows(c, objects, subject)
+    },
   })
 }
 
 /** One installed agent's face. Its machine is part of it: two Codexes in a Space are two faces. */
-function agentAvatar({ objects }: AvatarApi) {
+function agentAvatar({ objects, exists }: AvatarApi) {
   return anyone().get('/avatars/agents/{machineId}/{agentKind}', {
     summary: 'An installed agent’s stored avatar',
     params: { machineId: rowId, agentKind: z.enum(AGENT_KIND_NAMES) },
-    answers: { 200: svg, 304: 'The browser already has this one, and it can never change' },
+    answers: {
+      200: svg,
+      304: 'The browser already has this one, and it can never change',
+      404: 'No such installed agent',
+    },
 
     run: async (c) => {
       const { machineId, agentKind } = c.req.valid('param')
+      const subject = { kind: 'agent', machineId, agentKind } as const
+      if (!(await exists(subject))) return c.body(null, 404)
 
-      return shows(c, objects, { kind: 'agent', machineId, agentKind })
+      return shows(c, objects, subject)
     },
   })
 }

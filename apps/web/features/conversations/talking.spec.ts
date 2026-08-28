@@ -9,7 +9,7 @@ import {
 } from './talking.ts'
 
 function emptyLiveTurn(): LiveTurn {
-  return { activity: undefined, outputs: new Map() }
+  return { activity: undefined, outputs: new Map(), typing: [] }
 }
 
 describe('live conversation events', () => {

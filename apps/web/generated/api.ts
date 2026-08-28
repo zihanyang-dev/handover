@@ -2696,7 +2696,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description No such Space */
+                /** @description No such Space, or no such conversation in it */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2756,6 +2756,15 @@ export interface paths {
                 };
                 /** @description That is not a live machine credential */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That conversation was not given to this machine */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3254,6 +3263,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description No such person */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         put?: never;
@@ -3295,6 +3311,13 @@ export interface paths {
                 };
                 /** @description The browser already has this one, and it can never change */
                 304: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No such installed agent */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3359,6 +3382,8 @@ export interface components {
             next?: string;
         };
         Me: {
+            /** Format: uuid */
+            id: string;
             displayName: string;
             avatarUrl: string;
             credentials: components["schemas"]["Credential"][];
@@ -3707,6 +3732,7 @@ export interface components {
             arg: string;
             ok?: boolean;
             excerpt: string;
+            truncated?: boolean;
         };
         Happened: {
             activityType: string;
@@ -3797,6 +3823,8 @@ export interface components {
         } | {
             /** @enum {string} */
             seen: "typing";
+            /** Format: uuid */
+            userId: string;
             who: string;
         };
         Unkept: {
@@ -3816,6 +3844,7 @@ export interface components {
             callId: string;
             at: number;
             text: string;
+            truncated?: boolean;
         };
         HandOver: {
             key: string;

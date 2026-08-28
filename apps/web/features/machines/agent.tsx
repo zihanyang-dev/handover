@@ -20,7 +20,7 @@ const NAMES: Record<string, string> = {
   codex: 'Codex',
 } satisfies Record<AgentKind, string>
 
-export function agentName(kind: string): string {
+export function agentKindName(kind: string): string {
   return NAMES[kind] ?? kind
 }
 

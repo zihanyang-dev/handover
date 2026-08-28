@@ -73,7 +73,7 @@ function ReadyStart({
   // Empty is a folder of its own, which is what saying nothing means to the server. Chosen here
   // and nowhere else: a conversation keeps one directory for its whole life.
   const [worksIn, setWorksIn] = useState('')
-  const [id] = useState(() => crypto.randomUUID())
+  const [id, setId] = useState(() => crypto.randomUUID())
   const name = agent.name?.trim() || 'Unnamed agent'
   const online = agent.isHere
 
@@ -127,6 +127,9 @@ function ReadyStart({
                   to: '/s/$slug/c/$id',
                   params: { slug, id: opened.id },
                 })
+              },
+              onError: (error) => {
+                if (error.reason === 'conversation-id-taken') setId(crypto.randomUUID())
               },
             },
           )

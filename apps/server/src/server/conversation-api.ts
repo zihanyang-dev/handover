@@ -409,7 +409,9 @@ function saying({ db }: ConversationApi) {
         spaceId: c.get('space').id,
         after: asked.after,
       })
-      if (reading === undefined) return refused(c, UNAVAILABLE)
+      if (reading === undefined) {
+        throw new Error('conversation disappeared after its message was written')
+      }
 
       return c.json(asTranscript(reading), 200)
     },

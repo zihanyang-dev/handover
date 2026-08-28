@@ -1,5 +1,5 @@
 // Adapted from Kanna's transcriptScrollAnchors.ts.
-// Copyright (c) 2025 Jake Mor. Licensed under the MIT terms in THIRD_PARTY_NOTICES.md.
+// Copyright (c) 2025 Jake Mor. Used under the source terms reproduced in THIRD_PARTY_NOTICES.md.
 
 export type TranscriptRow = {
   readonly id: string
@@ -8,7 +8,6 @@ export type TranscriptRow = {
 }
 
 export type LatestUserPrompt = {
-  readonly messageId: string
   readonly rowId: string
   readonly seq: number
 }
@@ -18,7 +17,7 @@ export function getLatestUserPrompt(rows: readonly TranscriptRow[]): LatestUserP
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index]
     if (row?.kind !== 'user') continue
-    return { messageId: String(row.seq), rowId: row.id, seq: row.seq }
+    return { rowId: row.id, seq: row.seq }
   }
   return null
 }
@@ -28,10 +27,10 @@ export function getLatestUserPrompt(rows: readonly TranscriptRow[]): LatestUserP
  * Streaming rows and older history leave the latest prompt untouched, so they
  * never fight the reader's scroll position.
  */
-export function shouldPinForNewPrompt(
+export function promptToPin(
   previous: LatestUserPrompt | null,
   next: LatestUserPrompt | null,
-): boolean {
-  if (next === null || previous === null) return false
-  return previous.messageId !== next.messageId
+): LatestUserPrompt | null {
+  if (next === null || previous === null || previous.seq === next.seq) return null
+  return next
 }

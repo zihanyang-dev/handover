@@ -61,6 +61,23 @@
     visibility 0s linear 200ms;
 }
 
+.home-sidebar-resize {
+  @apply pointer-events-auto absolute top-0 right-0 bottom-0 z-1 w-px;
+}
+
+.home-sidebar-resize [role='separator'] {
+  @apply h-full w-3 cursor-col-resize outline-none;
+}
+
+.home-sidebar-resize [role='separator']:focus-visible {
+  box-shadow: inset 2px 0 var(--focus);
+}
+
+.home-shell[data-sidebar-open='false'] .home-sidebar-resize {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .home-workspace-root {
   @apply relative shrink-0;
 }
@@ -174,30 +191,30 @@
 }
 
 .home-tab:hover,
-.home-tab[aria-pressed='true'] {
+.home-tab:is([aria-pressed='true'], [aria-current='page']) {
   background: var(--interaction-hover);
 }
 
-.home-tab[aria-pressed='true'] {
+.home-tab:is([aria-pressed='true'], [aria-current='page']) {
   padding-inline: 8px 0;
   margin-inline: 4px;
   color: var(--ink);
 }
 
-.home-tab:first-child[aria-pressed='true'] {
+.home-tab:first-child:is([aria-pressed='true'], [aria-current='page']) {
   margin-inline: 0 4px;
 }
 
-.home-tab:last-child[aria-pressed='true'] {
+.home-tab:last-child:is([aria-pressed='true'], [aria-current='page']) {
   margin-inline: 4px 0;
 }
 
-.home-tab[aria-pressed='true']:hover {
+.home-tab:is([aria-pressed='true'], [aria-current='page']):hover {
   background: var(--interaction-hover-strong);
 }
 
 .home-tab:active,
-.home-tab[aria-pressed='true']:active {
+.home-tab:is([aria-pressed='true'], [aria-current='page']):active {
   background: var(--interaction-pressed);
 }
 
@@ -205,7 +222,7 @@
   @apply relative flex shrink-0 items-center text-ink-quiet;
 }
 
-.home-tab[aria-pressed='true'] .home-tab-icon {
+.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-icon {
   color: #383836;
 }
 
@@ -221,7 +238,7 @@
   transition: grid-template-columns 200ms ease-out;
 }
 
-.home-tab[aria-pressed='true'] .home-tab-label {
+.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-label {
   grid-template-columns: 1fr;
 }
 
@@ -230,7 +247,7 @@
   overflow: hidden;
 }
 
-.home-tab[aria-pressed='true'] .home-tab-label-clip {
+.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-label-clip {
   padding-inline-end: 12px;
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }

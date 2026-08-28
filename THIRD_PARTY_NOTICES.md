@@ -4,7 +4,7 @@
 
 The chat transcript, message scroller wrapper, tool grouping, processing indicator, and composer dock are adapted from [Kanna](https://github.com/jakemor/kanna).
 
-MIT License
+Source license text (MIT-form grant with named exclusions)
 
 Copyright (c) 2025 Jake Mor
 

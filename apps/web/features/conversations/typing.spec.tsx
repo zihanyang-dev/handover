@@ -7,11 +7,14 @@
  * once" would pass a version that never says it again.
  */
 
-import { renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import type { ReactNode } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { useSayingYouAreTyping } from './talking.ts'
+import { serverSends } from '../../pretend/event-source.ts'
+import { useSayingYouAreTyping, useWatching } from './talking.ts'
 
 const server = setupServer()
 
@@ -27,6 +30,8 @@ afterAll(() => {
 })
 
 const ID = '11111111-1111-4111-8111-111111111111'
+const KAI = '22222222-2222-4222-8222-222222222222'
+const OTHER_MINA = '33333333-3333-4333-8333-333333333333'
 
 /** Every time the server was told, so the count is what is under test rather than a response. */
 function counting() {
@@ -40,6 +45,33 @@ function counting() {
 
   return said
 }
+
+function watching() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { readonly children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  )
+  return renderHook(() => useWatching('acme', ID, 1, KAI), { wrapper })
+}
+
+describe('watching somebody type', () => {
+  it('keys presence by person even when two people have the same name', () => {
+    vi.useFakeTimers()
+    const watched = watching()
+    const url = `/spaces/acme/conversations/${ID}/live`
+
+    act(() => {
+      serverSends(url, { seen: 'typing', userId: KAI, who: 'Mina' })
+      serverSends(url, { seen: 'typing', userId: OTHER_MINA, who: 'Mina' })
+    })
+    expect(watched.result.current.liveTurn.typing).toEqual([{ id: OTHER_MINA, name: 'Mina' }])
+
+    act(() => {
+      vi.advanceTimersByTime(5001)
+    })
+    expect(watched.result.current.liveTurn.typing).toEqual([])
+  })
+})
 
 describe('saying you are typing', () => {
   it('says it once for a burst of keystrokes', async () => {

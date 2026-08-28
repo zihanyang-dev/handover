@@ -201,8 +201,8 @@ describe('coming back', () => {
   })
 
   it('lands on a page when the provider does something nobody planned for', async () => {
-    // The browser got here by being redirected. There is nobody to read a 500, and what it would
-    // show is an error page on our own domain at the end of a sign-in.
+    // The browser got here by being redirected. It needs the same retry as an expired trip, not
+    // the false claim that its provider account lacks a verified address.
     const breaking = {
       begin: async () => ({
         url: new URL('https://accounts.google.com/o'),
@@ -231,7 +231,7 @@ describe('coming back', () => {
     const back = await comeBack(app, cookiesOf(left))
 
     expect(back.status).toBe(303)
-    expect(back.headers.get('location')).toContain(`${WEB}/`)
+    expect(back.headers.get('location')).toBe(`${WEB}/?handover_result=expired`)
   })
 
   it('turns away an arrival that did not start here', async () => {

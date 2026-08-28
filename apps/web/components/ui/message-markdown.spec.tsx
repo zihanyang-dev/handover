@@ -5,6 +5,13 @@ import { MessageMarkdown } from './message-markdown.tsx'
 afterEach(cleanup)
 
 describe('message markdown', () => {
+  it('keeps raw HTML as text rather than executable DOM', () => {
+    render(<MessageMarkdown>{'<script>alert("no")</script>'}</MessageMarkdown>)
+
+    expect(document.querySelector('script')).toBeNull()
+    expect(screen.getByText(/<script>/u)).toBeDefined()
+  })
+
   it('renders GFM structure instead of exposing its punctuation', () => {
     render(<MessageMarkdown>{'**Ready**\n\n- one\n- two\n\n`pnpm check`'}</MessageMarkdown>)
 

@@ -44,8 +44,11 @@ function open(at: string) {
 
 describe('entering a Space', () => {
   it('shows the one at that address', async () => {
-    server.use(...theSpace())
-    open('/s/acme')
+    server.use(
+      ...theSpace(),
+      http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
+    )
+    const router = open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
@@ -53,12 +56,12 @@ describe('entering a Space', () => {
     const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
     const home = within(switches).getByRole('button', { name: 'Home' })
     const chat = within(switches).getByRole('button', { name: 'Chat' })
-    const inbox = within(switches).getByRole('button', { name: 'Inbox' })
+    const inbox = within(switches).getByRole('link', { name: 'Inbox' })
 
-    expect(within(switches).getAllByRole('button')).toHaveLength(3)
+    expect(within(switches).getAllByRole('button')).toHaveLength(2)
     expect(home.getAttribute('aria-pressed')).toBe('true')
     expect(chat.getAttribute('aria-pressed')).toBe('false')
-    expect(inbox.getAttribute('aria-pressed')).toBe('false')
+    expect(inbox.getAttribute('aria-current')).toBeNull()
 
     await userEvent.click(chat)
 
@@ -69,6 +72,11 @@ describe('entering a Space', () => {
     expect(within(sidebar).queryByText('Conversations')).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Machines' })).toBeNull()
     expect(screen.queryByText('handover connect')).toBeNull()
+
+    await userEvent.click(inbox)
+
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined()
+    expect(router.state.location.pathname).toBe('/s/acme/inbox')
   })
 
   it('keeps pinned conversations directly under Home', async () => {
@@ -94,7 +102,7 @@ describe('entering a Space', () => {
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(within(sidebar).getByRole('button', { name: 'Pin' })).toBeDefined()
     expect(
-      await within(sidebar).findByRole('link', { name: 'keep the release moving' }),
+      await within(sidebar).findByRole('link', { name: /Mina · keep the release moving/i }),
     ).toBeDefined()
   })
 
@@ -154,7 +162,7 @@ describe('entering a Space', () => {
     expect(await screen.findByRole('heading', { name: 'How can Scout help?' })).toBeDefined()
     expect(within(sidebar).queryByRole('button', { name: /new agent/i })).toBeNull()
     expect(within(sidebar).getByRole('heading', { name: 'Today' })).toBeDefined()
-    expect(within(sidebar).getByText('ship the sidebar')).toBeDefined()
+    expect(within(sidebar).getByRole('link', { name: /Mina · ship the sidebar/i })).toBeDefined()
     expect(within(sidebar).queryByRole('button', { name: /new chat/i })).toBeNull()
   })
 

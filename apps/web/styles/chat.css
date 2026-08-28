@@ -1023,6 +1023,10 @@
   padding-block: 0.25rem 0.75rem;
 }
 
+.chat-typing {
+  @apply m-0 px-1 py-2 text-copy-xxs text-ink-muted;
+}
+
 .chat-processing {
   display: block;
   width: 100%;
@@ -1127,21 +1131,4 @@
 .chat-working {
   margin: 0;
   padding: 0.25rem;
-}
-
-.home-sidebar-resize {
-  @apply pointer-events-auto absolute top-0 right-0 bottom-0 z-1 w-px;
-}
-
-.home-sidebar-resize [role='separator'] {
-  @apply h-full w-3 cursor-col-resize outline-none;
-}
-
-.home-sidebar-resize [role='separator']:focus-visible {
-  box-shadow: inset 2px 0 var(--focus);
-}
-
-.home-shell[data-sidebar-open='false'] .home-sidebar-resize {
-  visibility: hidden;
-  pointer-events: none;
 }

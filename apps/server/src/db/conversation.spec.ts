@@ -98,6 +98,7 @@ beforeEach(async () => {
     requestKey: `space-${RUN}`,
     userId: PERSON,
     displayName: name,
+    emoji: '🏠',
     slug: normalizeSlug(name) as Slug,
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a Space')

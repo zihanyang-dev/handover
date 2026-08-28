@@ -8,14 +8,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowDown, Check, ChevronRight, FileDiff, X } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import {
-  Composer,
-  ComposerError,
-  SendButton,
-  StopButton,
-} from '../../components/ui/chat-composer.tsx'
+import { ArrowDown } from 'react-bootstrap-icons'
 import {
   MessageScroller,
   MessageScrollerContent,
@@ -24,26 +18,25 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from '../../components/ui/message-scroller.tsx'
-import { AgentMark, agentName as agentKindName, agentTint } from '../machines/agent.tsx'
+import { meQuery } from '../identity/me.ts'
+import { agentKindName } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { ChatActivity } from './chat-activity.tsx'
 import { ChatMessage, ChatMessageText } from './chat-message.tsx'
+import { ToolRun, type ToolMessage } from './chat-tools.tsx'
+import { ConversationComposer, type PendingUserMessage } from './conversation-composer.tsx'
 import { consumeMessageArrival } from './message-transition.ts'
-import { askedWithChoices, ModelChoices, type Model } from './model-choices.tsx'
 import {
   conversationsIn,
   useConversation,
-  useSay,
-  useStop,
   useWatching,
   type LiveOutput,
   type LiveTurn,
   type Message,
-  type Working,
 } from './talking.ts'
 import {
   getLatestUserPrompt,
-  shouldPinForNewPrompt,
+  promptToPin,
   type LatestUserPrompt,
   type TranscriptRow,
 } from './transcript-scroll.ts'
@@ -51,7 +44,7 @@ import {
 const AT_END_THRESHOLD_PX = 48
 const PROMPT_TOP_GAP_PX = 24
 
-type UserMessage = Extract<Message, { readonly role: 'user' }>
+type ChatAgent = { readonly avatarSrc: string; readonly name: string }
 
 export function Chat({ slug, id }: { readonly slug: string; readonly id: string }) {
   const conversation = useConversation(slug, id)
@@ -60,6 +53,7 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
     select: (answer) => answer.conversations.find((one) => one.id === id)?.opening,
   })
   const machines = useQuery(machinesIn(slug))
+  const me = useQuery(meQuery)
   const [animateArrival] = useState(() => consumeMessageArrival(id))
 
   if (conversation.isPending) return <p className="chat-screen-state">Looking…</p>
@@ -93,6 +87,7 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
         id={id}
         conversation={conversation.data}
         agent={agent}
+        ownUserId={me.data?.id}
         title={title}
         animateArrival={animateArrival}
       />
@@ -100,26 +95,31 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
   )
 }
 
+type ConversationSurfaceProps = {
+  readonly slug: string
+  readonly id: string
+  readonly conversation: NonNullable<ReturnType<typeof useConversation>['data']>
+  readonly agent: ChatAgent
+  readonly ownUserId: string | undefined
+  readonly title: string
+  readonly animateArrival: boolean
+}
+
 function ConversationSurface({
   slug,
   id,
   conversation,
   agent,
+  ownUserId,
   title,
   animateArrival,
-}: {
-  readonly slug: string
-  readonly id: string
-  readonly conversation: NonNullable<ReturnType<typeof useConversation>['data']>
-  readonly agent: { readonly avatarSrc: string; readonly name: string }
-  readonly title: string
-  readonly animateArrival: boolean
-}) {
+}: ConversationSurfaceProps) {
   const { agentKind, messages, offers, working } = conversation
-  const [pendingMessage, setPendingMessage] = useState<UserMessage>()
+  const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>()
+  const currentTurn = turnOf(messages)
   const turns = useMemo(() => transcriptTurns(messages), [messages])
   const rows = useMemo(() => rowsWithPending(turns, pendingMessage), [pendingMessage, turns])
-  const liveTurn = useWatching(slug, id, turnOf(messages))
+  const watching = useWatching(slug, id, currentTurn, ownUserId)
   const { scrollToEnd, scrollToMessage } = useMessageScroller()
   const viewport = useRef<HTMLDivElement>(null)
   const latestPrompt = useRef<LatestUserPrompt | null>(null)
@@ -144,8 +144,9 @@ function ConversationSurface({
 
     const previousPrompt = latestPrompt.current
     latestPrompt.current = nextPrompt
-    if (!shouldPinForNewPrompt(previousPrompt, nextPrompt) || nextPrompt === null) return
-    scrollToMessage(nextPrompt.rowId, {
+    const prompt = promptToPin(previousPrompt, nextPrompt)
+    if (prompt === null) return
+    scrollToMessage(prompt.rowId, {
       align: 'start',
       scrollMargin: PROMPT_TOP_GAP_PX,
     })
@@ -173,15 +174,16 @@ function ConversationSurface({
             <Transcript
               messages={messages}
               turns={turns}
+              turn={currentTurn}
               agent={agent}
               animateArrival={animateArrival}
               working={working.state === 'working'}
-              liveTurn={liveTurn}
+              liveTurn={watching.liveTurn}
               pendingMessage={pendingMessage}
             />
             {working.state === 'unknown' && (
               <div className="chat-transcript-footer">
-                <WorkingState working={working} />
+                <p className="chat-working">Nobody knows how that turn ended.</p>
               </div>
             )}
           </MessageScrollerContent>
@@ -197,7 +199,7 @@ function ConversationSurface({
       <div className="chat-input-dock">
         <div className="chat-input-wash" aria-hidden />
         <div className="chat-input-surface">
-          <SayInto
+          <ConversationComposer
             slug={slug}
             id={id}
             offers={offers}
@@ -205,9 +207,12 @@ function ConversationSurface({
             agentName={agent.name}
             avatarSrc={agent.avatarSrc}
             working={working.state === 'working'}
-            turn={turnOf(messages)}
+            turn={currentTurn}
             afterSeq={messages.at(-1)?.seq ?? 0}
-            onPending={setPendingMessage}
+            onPending={(message) => {
+              if (message !== undefined) watching.startTurn(message.seq)
+              setPendingMessage(message)
+            }}
           />
         </div>
       </div>
@@ -232,35 +237,42 @@ function ScrollToLatest({
   )
 }
 
-function agentPresentation(agent: InstalledAgent | undefined, kind: string) {
+function agentPresentation(agent: InstalledAgent | undefined, kind: string): ChatAgent {
   if (agent === undefined) return { avatarSrc: '', name: agentKindName(kind) }
   return { avatarSrc: agent.avatarUrl, name: agent.name?.trim() || agentKindName(kind) }
 }
 
-type ToolMessage = Message & { readonly role: 'tool' }
-type AssistantMessage = Message & { readonly role: 'assistant' }
+type AssistantMessage = Extract<Message, { readonly role: 'assistant' }>
 type ReplyBlock =
   | { readonly kind: 'assistant'; readonly message: AssistantMessage }
   | { readonly kind: 'tools'; readonly messages: ToolMessage[] }
+  | { readonly kind: 'activity'; readonly seq: number; readonly at: string; readonly text: string }
 
 function replyBlocks(messages: readonly Message[]): ReplyBlock[] {
   const blocks: ReplyBlock[] = []
-  for (const message of messages) {
-    if (message.role === 'assistant') {
-      blocks.push({ kind: 'assistant', message })
-      continue
-    }
-    if (message.role !== 'tool') continue
-
-    const previous = blocks.at(-1)
-    if (previous?.kind === 'tools') previous.messages.push(message)
-    else blocks.push({ kind: 'tools', messages: [message] })
-  }
+  for (const message of messages) addReplyBlock(blocks, message)
   return blocks
 }
 
+function addReplyBlock(blocks: ReplyBlock[], message: Message): void {
+  if (message.role === 'assistant') {
+    blocks.push({ kind: 'assistant', message })
+    return
+  }
+  if (message.role === 'activity') {
+    const text = activityText(message)
+    if (text !== null) blocks.push({ kind: 'activity', seq: message.seq, at: message.at, text })
+    return
+  }
+  if (message.role !== 'tool') return
+
+  const previous = blocks.at(-1)
+  if (previous?.kind === 'tools') previous.messages.push(message)
+  else blocks.push({ kind: 'tools', messages: [message] })
+}
+
 type TranscriptTurn =
-  | { readonly key: string; readonly user: Message & { readonly role: 'user' } }
+  | { readonly key: string; readonly user: Extract<Message, { readonly role: 'user' }> }
   | { readonly key: string; readonly reply: Message[] }
 
 function transcriptTurns(messages: readonly Message[]): TranscriptTurn[] {
@@ -269,18 +281,13 @@ function transcriptTurns(messages: readonly Message[]): TranscriptTurn[] {
   return turns
 }
 
-function transcriptRows(turns: readonly TranscriptTurn[]): TranscriptRow[] {
-  return turns.map(transcriptRow)
-}
-
 function rowsWithPending(
   turns: readonly TranscriptTurn[],
-  pending: UserMessage | undefined,
+  pending: PendingUserMessage | undefined,
 ): readonly TranscriptRow[] {
-  const written = transcriptRows(turns)
-  return pending === undefined
-    ? written
-    : [...written, { id: 'pending-user', kind: 'user', seq: pending.seq }]
+  const rows = turns.map(transcriptRow)
+  if (pending === undefined) return rows
+  return [...rows, { id: 'pending-user', kind: 'user', seq: pending.seq }]
 }
 
 function transcriptRow(turn: TranscriptTurn): TranscriptRow {
@@ -293,6 +300,7 @@ function transcriptRow(turn: TranscriptTurn): TranscriptRow {
 function Transcript({
   messages,
   turns,
+  turn,
   agent,
   animateArrival,
   working,
@@ -301,11 +309,12 @@ function Transcript({
 }: {
   readonly messages: readonly Message[]
   readonly turns: readonly TranscriptTurn[]
-  readonly agent: { readonly avatarSrc: string; readonly name: string }
+  readonly turn: number
+  readonly agent: ChatAgent
   readonly animateArrival: boolean
   readonly working: boolean
   readonly liveTurn: LiveTurn
-  readonly pendingMessage: UserMessage | undefined
+  readonly pendingMessage: PendingUserMessage | undefined
 }) {
   const [firstPaintEndsAt] = useState(() => messages.at(-1)?.seq)
   const activeCallId = liveTurn.activity?.said === 'doing' ? liveTurn.activity.callId : undefined
@@ -322,7 +331,12 @@ function Transcript({
           <MessageScrollerItem key={turn.key} messageId={row.id}>
             <div className="chat-transcript-row" data-transcript-row-id={row.id}>
               {'user' in turn ? (
-                <ChatMessage placement="right" at={turn.user.at} copyText={turn.user.content.text}>
+                <ChatMessage
+                  placement="right"
+                  at={turn.user.at}
+                  author={turn.user.said ?? 'Unknown person'}
+                  copyText={turn.user.content.text}
+                >
                   <ChatMessageText
                     message={turn.user}
                     animate={
@@ -351,8 +365,17 @@ function Transcript({
           </div>
         </MessageScrollerItem>
       )}
+      {liveTurn.typing.length > 0 && (
+        <MessageScrollerItem messageId="typing">
+          <div className="chat-transcript-row">
+            <p className="chat-typing" role="status" aria-live="polite">
+              {typingText(liveTurn.typing)}
+            </p>
+          </div>
+        </MessageScrollerItem>
+      )}
       {working && !activeCallIsWritten && (
-        <MessageScrollerItem messageId={`live-${String(turnOf(messages))}`}>
+        <MessageScrollerItem messageId={`live-${String(turn)}`}>
           <div className="chat-transcript-row chat-live-row">
             <ChatActivity activity={liveTurn.activity} output={activeOutput} />
           </div>
@@ -379,13 +402,13 @@ function AgentReply({
   liveOutputs,
 }: {
   readonly messages: readonly Message[]
-  readonly agent: { readonly avatarSrc: string; readonly name: string }
+  readonly agent: ChatAgent
   readonly liveOutputs: ReadonlyMap<string, LiveOutput>
 }) {
   const blocks = replyBlocks(messages)
   const first = blocks[0]
   if (first === undefined) return null
-  const beganAt = first.kind === 'assistant' ? first.message.at : first.messages[0]?.at
+  const beganAt = blockStartedAt(first)
   if (beganAt === undefined) return null
   const copyText = blocks
     .filter(
@@ -400,14 +423,20 @@ function AgentReply({
       placement="left"
       at={beganAt}
       avatarSrc={agent.avatarSrc}
-      agentName={agent.name}
-      copyText={copyText || undefined}
+      author={agent.name}
+      {...(copyText === '' ? {} : { copyText })}
     >
       <div className="chat-agent-reply">
         <ReplyContent blocks={blocks} liveOutputs={liveOutputs} />
       </div>
     </ChatMessage>
   )
+}
+
+function blockStartedAt(block: ReplyBlock): string | undefined {
+  if (block.kind === 'assistant') return block.message.at
+  if (block.kind === 'activity') return block.at
+  return block.messages[0]?.at
 }
 
 function ReplyContent({
@@ -419,373 +448,35 @@ function ReplyContent({
 }) {
   return (
     <div className="chat-agent-reply-content">
-      {blocks.map((block) =>
-        block.kind === 'tools' ? (
-          <ToolRun
-            key={`tools-${String(block.messages[0]?.seq ?? 0)}`}
-            messages={block.messages}
-            liveOutputs={liveOutputs}
-          />
-        ) : (
+      {blocks.map((block) => {
+        if (block.kind === 'tools') {
+          return (
+            <ToolRun
+              key={`tools-${String(block.messages[0]?.seq ?? 0)}`}
+              messages={block.messages}
+              liveOutputs={liveOutputs}
+            />
+          )
+        }
+        if (block.kind === 'activity') {
+          return (
+            <p className="chat-line-activity" key={`activity-${String(block.seq)}`}>
+              {block.text}
+            </p>
+          )
+        }
+        return (
           <ChatMessageText key={`answer-${String(block.message.seq)}`} message={block.message} />
-        ),
-      )}
-    </div>
-  )
-}
-
-function ToolRun({
-  messages,
-  liveOutputs,
-}: {
-  readonly messages: readonly ToolMessage[]
-  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
-}) {
-  const hasLiveOutput = messages.some((message) => outputFor(message, liveOutputs) !== undefined)
-  const [open, setOpen] = useState(hasLiveOutput)
-  const label = `Ran ${String(messages.length)} ${messages.length === 1 ? 'step' : 'steps'}`
-
-  return (
-    <div className="chat-tool-run">
-      <button
-        type="button"
-        className="chat-tool-run-toggle"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((current) => !current)
-        }}
-      >
-        <span className="chat-tool-run-label">
-          {label}
-          <AccordionChevron />
-        </span>
-      </button>
-      <div
-        className="chat-tool-run-body"
-        data-open={open || undefined}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        <div>
-          <div className="chat-tool-rows">
-            {messages.map((message) => (
-              <ToolRow key={message.seq} message={message} liveOutputs={liveOutputs} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function toolLabel(message: ToolMessage) {
-  const { name, verb } = message.content
-  if (/^agent/iu.test(name)) return 'Delegating work'
-  if (/toolsearch/iu.test(name)) return 'Finding a tool'
-  if (/websearch/iu.test(name)) return 'Searching the web'
-  if (/webfetch/iu.test(name)) return 'Fetching a page'
-  return toolTone(`${verb} ${name}`) === 'run' ? 'Run' : verb || name
-}
-
-function ToolRow({
-  message,
-  liveOutputs,
-}: {
-  readonly message: ToolMessage
-  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
-}) {
-  const liveOutput = outputFor(message, liveOutputs)
-  const [expanded, setExpanded] = useState(liveOutput !== undefined)
-  const { arg, name, ok } = message.content
-  const label = toolLabel(message)
-  const changed = toolCounts(message).changed
-
-  return (
-    <div className="chat-tool-row" data-ok={ok === false ? 'false' : 'true'}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => {
-          setExpanded((current) => !current)
-        }}
-      >
-        <span className="chat-tool-row-icon" aria-hidden>
-          {ok === false ? <X /> : <Check />}
-        </span>
-        <span className="chat-tool-row-copy">
-          <strong>{label}</strong>
-          <span className="chat-tool-chip">{arg || name}</span>
-        </span>
-        {!changed && <AccordionChevron />}
-      </button>
-      {changed && (
-        <DiffChip
-          message={message}
-          expanded={expanded}
-          onToggle={() => {
-            setExpanded((current) => !current)
-          }}
-        />
-      )}
-      <div
-        className="chat-tool-detail"
-        data-open={expanded || undefined}
-        aria-hidden={!expanded}
-        inert={!expanded}
-      >
-        <div>
-          <ToolOutput message={message} liveOutput={liveOutput} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function outputFor(
-  message: ToolMessage,
-  liveOutputs: ReadonlyMap<string, LiveOutput>,
-): LiveOutput | undefined {
-  const { callId } = message.content
-  return callId === undefined ? undefined : liveOutputs.get(callId)
-}
-
-function ToolOutput({
-  message,
-  liveOutput,
-}: {
-  readonly message: ToolMessage
-  readonly liveOutput: LiveOutput | undefined
-}) {
-  const durable = message.content.excerpt
-  const preferDurable = liveOutput?.truncated === true && durable.length > liveOutput.text.length
-  const text = preferDurable ? durable : liveOutput?.text || durable
-  if (text === '') return null
-  return (
-    <ToolDetail
-      excerpt={text}
-      command={message.content.arg}
-      truncated={!preferDurable && liveOutput?.truncated === true}
-    />
-  )
-}
-
-function ToolDetail({
-  excerpt,
-  command,
-  truncated = false,
-}: {
-  readonly excerpt: string
-  readonly command: string
-  readonly truncated?: boolean
-}) {
-  const [showAll, setShowAll] = useState(false)
-  const lines = excerpt.split('\n')
-  const visibleLines =
-    command.trim() !== '' && lines[0]?.trim() === command.trim() ? lines.slice(1) : lines
-  const long = visibleLines.length > 7 || visibleLines.join('\n').length > 500
-
-  return (
-    <div className="chat-tool-output" data-clamped={(long && !showAll) || undefined}>
-      <span className="chat-tool-output-truncated" hidden={!truncated}>
-        Earlier output truncated
-      </span>
-      <code>
-        {visibleLines.map((line, index) => (
-          <span className="chat-tool-output-line" data-tone={toolLineTone(line)} key={index}>
-            {line === '' ? ' ' : line}
-          </span>
-        ))}
-      </code>
-      {long && (
-        <button
-          type="button"
-          className="chat-tool-show-all"
-          aria-expanded={showAll}
-          onClick={() => {
-            setShowAll((current) => !current)
-          }}
-        >
-          {showAll ? 'Show less' : 'Show all'}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function toolLineTone(line: string) {
-  if (line.startsWith('+') && !line.startsWith('+++')) return 'add'
-  if (line.startsWith('-') && !line.startsWith('---')) return 'delete'
-  if (/^(?:✓|✔|passed\b|success\b)/iu.test(line.trim())) return 'success'
-  if (/^(?:✗|✘|error\b|failed\b)/iu.test(line.trim())) return 'failure'
-  return 'plain'
-}
-
-function toolTone(label: string) {
-  if (/edit|write|patch/iu.test(label)) return 'edit'
-  if (/run|bash|command|exec/iu.test(label)) return 'run'
-  if (/read|search|find|list/iu.test(label)) return 'read'
-  return 'plain'
-}
-
-function AccordionChevron() {
-  return <ChevronRight className="chat-accordion-chevron" aria-hidden />
-}
-
-function DiffChip({
-  message,
-  expanded,
-  onToggle,
-}: {
-  readonly message: ToolMessage
-  readonly expanded: boolean
-  readonly onToggle: () => void
-}) {
-  const counts = toolCounts(message)
-  const file = message.content.arg || message.content.name
-
-  return (
-    <div className="chat-diff-chip-wrap">
-      <button
-        type="button"
-        aria-label={`Show diff for ${file}`}
-        aria-expanded={expanded}
-        onClick={onToggle}
-      >
-        <FileDiff className="chat-diff-icon" aria-hidden />
-        <span>{file}</span>
-        {counts.additions > 0 && <b>+{counts.additions}</b>}
-        {counts.deletions > 0 && <i>−{counts.deletions}</i>}
-        <AccordionChevron />
-      </button>
-    </div>
-  )
-}
-
-function toolCounts(message: ToolMessage) {
-  const lines = message.content.excerpt.split('\n')
-  const additions = lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
-  const deletions = lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length
-  return { additions, deletions, changed: additions > 0 || deletions > 0 }
-}
-
-/** The composer as this screen wires it: what is said goes into the conversation it is under. */
-function SayInto({
-  slug,
-  id,
-  offers,
-  agentKind,
-  agentName,
-  avatarSrc,
-  working,
-  turn,
-  afterSeq,
-  onPending,
-}: {
-  readonly slug: string
-  readonly id: string
-  readonly offers: readonly Model[]
-  readonly agentKind: string
-  readonly agentName: string
-  readonly avatarSrc: string
-  readonly working: boolean
-  readonly turn: number
-  readonly afterSeq: number
-  readonly onPending: (message: UserMessage | undefined) => void
-}) {
-  const [text, setText] = useState('')
-  const [model, setModel] = useState('')
-  const [effort, setEffort] = useState('')
-  const say = useSay(slug, id)
-  const stop = useStop(slug, id)
-
-  return (
-    <Composer
-      label={`Message ${agentName}`}
-      placeholder={`Ask ${agentName} anything…`}
-      text={text}
-      onText={setText}
-      disabled={say.isPending}
-      leading={<ComposerAvatar avatarSrc={avatarSrc} agentKind={agentKind} />}
-      action={
-        working ? (
-          <StopButton
-            disabled={stop.isPending}
-            onStop={() => {
-              stop.mutate({
-                params: { path: { slug, id } },
-                body: { key: `${String(turn)}/stop` },
-              })
-            }}
-          />
-        ) : (
-          <SendButton disabled={say.isPending || text.trim() === ''} />
         )
-      }
-      onSend={() => {
-        if (working) return
-        const sentText = text.trim()
-        const asked = askedWithChoices(sentText, model, effort)
-        onPending({
-          role: 'user',
-          seq: afterSeq + 1,
-          at: new Date().toISOString(),
-          said: null,
-          content: asked,
-        })
-        setText('')
-        say.mutate(asked, {
-          onSuccess: () => {
-            onPending(undefined)
-          },
-          onError: () => {
-            onPending(undefined)
-            setText(sentText)
-          },
-        })
-      }}
-    >
-      {say.isError && <ComposerError>{whyNot(say.error.reason)}</ComposerError>}
-      {stop.isError && <ComposerError>Could not stop it. Try again.</ComposerError>}
-      <ModelChoices
-        offers={offers}
-        agentKind={agentKind}
-        model={model}
-        effort={effort}
-        onModel={(next) => {
-          setModel(next)
-          setEffort('')
-        }}
-        onEffort={setEffort}
-      />
-    </Composer>
+      })}
+    </div>
   )
 }
 
-function ComposerAvatar({
-  avatarSrc,
-  agentKind,
-}: {
-  readonly avatarSrc: string
-  readonly agentKind: string
-}) {
-  return (
-    <span className="chat-composer-avatar" aria-hidden>
-      {avatarSrc !== '' && <img src={avatarSrc} alt="" />}
-      <span className={`chat-composer-avatar-mark ${agentTint(agentKind)}`}>
-        <AgentMark kind={agentKind} />
-      </span>
-    </span>
-  )
-}
-
-function WorkingState({ working }: { readonly working: Working }) {
-  if (working.state === 'unknown')
-    return (
-      <p className="chat-working" role="status" aria-live="polite">
-        Nobody knows how that turn ended.
-      </p>
-    )
-  return null
+function typingText(people: LiveTurn['typing']): string {
+  const names = people.map((person) => person.name)
+  if (names.length === 1) return `${names[0]} is typing…`
+  return `${names.join(', ')} are typing…`
 }
 
 function turnOf(messages: readonly Message[]): number {
@@ -813,18 +504,4 @@ function activityText(what: Extract<Message, { readonly role: 'activity' }>): st
   if (typeof said === 'string' && said !== '') return said
 
   return ACTIVITY_TEXT.get(what.content.activityType) ?? what.content.activityType
-}
-
-/**
- * Why what was said did not land.
- *
- * A machine that is not here is deliberately not among these: words said into a conversation that
- * already exists are written down whether or not its laptop is open, and the turn carries them
- * when it asks again. Only opening one can be refused for that — see `start-chat.tsx`.
- */
-function whyNot(reason: string): string {
-  if (reason === 'agent-not-on-machine') return 'This agent is no longer installed.'
-  if (reason === 'unavailable') return 'This conversation is not here any more.'
-
-  return 'Could not send that. Try again.'
 }

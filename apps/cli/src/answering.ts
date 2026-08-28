@@ -6,7 +6,7 @@
  * conversation on it would read as "nobody knows" while it was busy working.
  */
 
-import { PIECE } from '@handover/universal'
+import { fitsInPiece, textPieces } from '@handover/universal'
 import type { components } from '../generated/api.ts'
 import {
   type Agent,
@@ -247,14 +247,6 @@ export async function sayItStartedOver(api: Api, asking: Asking, machine: Machin
   })
 }
 
-/**
- * Writes down everything one turn produced.
- *
- * Every message carries a name built from the turn it belongs to and its place in it, so a write
- * whose answer was lost can be sent again and land in the same place. The count is local to this
- * turn: a turn that is being answered a second time is a turn nobody saw the end of, and that is
- * recovered by reading the agent's own record rather than by guessing where it got to.
- */
 /** How a turn the agent finished is closed, and what is said about it out loud. */
 async function ended(
   writing: Writing,
@@ -269,6 +261,12 @@ async function ended(
   await closing(writing, asking, how.whole ? ending(how.why) : LOST)
 }
 
+/**
+ * Writes down everything one turn produced.
+ *
+ * Every message carries a name built from the turn and its place in it, so a response lost after
+ * the write can be retried without making a second line.
+ */
 async function write(
   writing: Writing,
   asking: Asking,
@@ -365,26 +363,9 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
 function pieces(callId: string | undefined, output: string | undefined): readonly Unkept[] {
   if (callId === undefined || output === undefined || output.length <= EXCERPT) return []
 
-  const said: Unkept[] = []
-  for (let at = 0; at < output.length; at += PIECE) {
-    said.push({ said: 'output', callId, at, text: output.slice(at, at + PIECE) })
-  }
-
-  return said
+  return textPieces(output).map(({ at, text }) => ({ said: 'output', callId, at, text }))
 }
 
-/**
- * Writes into one conversation, and tells the difference between not reaching the server and
- * being refused.
- *
- * Not reaching it is nothing to do about: the agent is already working, and stopping it over a
- * dropped connection would throw away the work. One line of a transcript is lost, and the turn
- * ending unclosed is what says so.
- *
- * Being refused is different in kind — it means this build and that server disagree about what a
- * message is, and every line of every turn will vanish the same way. Silence there would be a
- * machine that looks like it is working and writes nothing down.
- */
 type LiveWriter = {
   readonly push: (said: Unkept) => void
   readonly drain: () => Promise<void>
@@ -392,53 +373,63 @@ type LiveWriter = {
 
 /** A serial, short-cadence writer for ephemeral events, bounded by transport-sized pieces. */
 function liveWriter(send: (said: Unkept) => Promise<void>): LiveWriter {
-  let sending = Promise.resolve()
-  let pending: Extract<Unkept, { readonly said: 'output' }>[] = []
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let sent = Promise.resolve()
+  let pendingOutput: Extract<Unkept, { readonly said: 'output' }>[] = []
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
 
-  const enqueue = (said: Unkept): void => {
-    sending = sending
-      .then(async () => {
-        await send(said)
-      })
-      .catch(() => undefined)
+  function enqueue(said: Unkept): void {
+    const sendOne = async (): Promise<void> => {
+      await send(said)
+    }
+    sent = sent.then(sendOne).catch(() => undefined)
   }
 
-  const flush = (): void => {
-    if (timer !== undefined) clearTimeout(timer)
-    timer = undefined
-    const batch = pending
-    pending = []
+  function flush(): void {
+    if (flushTimer !== undefined) clearTimeout(flushTimer)
+    flushTimer = undefined
+
+    const batch = pendingOutput
+    pendingOutput = []
     for (const output of batch) enqueue(output)
   }
 
-  const output = (next: Extract<Unkept, { readonly said: 'output' }>): void => {
-    const previous = pending.at(-1)
-    const joins =
+  function hold(next: Extract<Unkept, { readonly said: 'output' }>): void {
+    const previous = pendingOutput.at(-1)
+    const joinsPrevious =
       previous?.callId === next.callId &&
       previous.at + previous.text.length === next.at &&
-      previous.text.length + next.text.length <= PIECE
-    if (joins) pending[pending.length - 1] = { ...previous, text: `${previous.text}${next.text}` }
-    else pending.push(next)
+      fitsInPiece(`${previous.text}${next.text}`)
 
-    if (timer !== undefined) return
-    timer = setTimeout(flush, LIVE_OUTPUT_EVERY_MS)
-    timer.unref()
-  }
-
-  return {
-    push: (said) => {
-      if (said.said === 'output') output(said)
-      else {
-        flush()
-        enqueue(said)
+    if (joinsPrevious) {
+      pendingOutput[pendingOutput.length - 1] = {
+        ...previous,
+        text: `${previous.text}${next.text}`,
       }
-    },
-    drain: async () => {
-      flush()
-      await sending
-    },
+    } else {
+      pendingOutput.push(next)
+    }
+
+    if (flushTimer !== undefined) return
+    flushTimer = setTimeout(flush, LIVE_OUTPUT_EVERY_MS)
+    flushTimer.unref()
   }
+
+  function push(said: Unkept): void {
+    if (said.said === 'output') {
+      hold(said)
+      return
+    }
+
+    flush()
+    enqueue(said)
+  }
+
+  async function drain(): Promise<void> {
+    flush()
+    await sent
+  }
+
+  return { push, drain }
 }
 
 function writingInto(api: Api, asking: Asking, machine: Machine): Writing {
