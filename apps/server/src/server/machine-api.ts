@@ -10,16 +10,23 @@ import { z } from '@hono/zod-openapi'
 import { avatarPath } from '../avatar.ts'
 import { Models } from '../conversation/offers.ts'
 import type { Database } from '../db/connection.ts'
-import { checkIn, machinesIn, removeMachine, sayGoodbye, setAgentName } from '../db/machine.ts'
+import {
+  checkIn,
+  machinesIn,
+  removeMachine,
+  sayGoodbye,
+  setAgentSettings,
+  type Installed,
+} from '../db/machine.ts'
 import { handMachineTo } from '../db/membership.ts'
-import { forgetStranded, stopWantedOn, takeOne, type Taken } from '../db/turn.ts'
+import { forgetStranded, stopsWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import {
   agentsFound,
   AGENT_COMMANDS,
   AGENT_KIND_NAMES,
   type AgentKind,
-  type Installed,
 } from '../machine/agent-kind.ts'
+import { AT_ONCE_AT_MOST } from '../machine/at-once.ts'
 import type { Waiting } from '../machine/waiting.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
 import { type Failure, UNAVAILABLE, refused } from './failure.ts'
@@ -103,6 +110,14 @@ const Report = named('MachineReport', {
    * absent: a machine that cannot say which build it is has answered the question.
    */
   version: z.string().min(1).max(100).optional(),
+  /**
+   * The directory this machine was connected in.
+   *
+   * Not where anything runs. It is the one directory a screen can offer as "my project" without
+   * anybody typing a path — `03` promised that an agent works in your files, and `07` only keeps
+   * that promise if somebody can still choose it. Optional for the same reason `version` is.
+   */
+  connectedIn: z.string().min(1).max(512).optional(),
 })
 
 /**
@@ -119,6 +134,33 @@ const Said = named('Said', { text: z.string(), who: z.string().nullable() })
 
 /** All of them, oldest first. */
 const EVERYTHING_SAID = z.array(Said).readonly()
+
+/**
+ * Where a turn works, as one of three things rather than two nullable paths beside each other.
+ *
+ * Written as two — a directory somebody named, and the conversation this one was opened for —
+ * it was possible to say both, and the machine held the rule that one of them wins. Two facts
+ * with a precedence between them is one fact said badly: the rule lived on the machine, where
+ * neither of them is decided, and saying both was a silent answer rather than a refused one.
+ *
+ * Every case is still the machine's to turn into a path. This says which question it is
+ * answering, not where anything is.
+ */
+const WhereToWork = z
+  .discriminatedUnion('kind', [
+    /** Nobody said. A folder of its own, named after this conversation. */
+    z.object({ kind: z.literal('its-own') }),
+    /** A person pointed this conversation at a directory when they opened it. */
+    z.object({ kind: z.literal('somewhere-named'), path: z.string() }),
+    /**
+     * An agent opened this as a sub-task, and it belongs inside the work it was opened for.
+     *
+     * Beats a directory somebody named, which is why these cannot both be said: `subtask/` in
+     * somebody's own checkout is an untracked directory in every `git status` they run.
+     */
+    z.object({ kind: z.literal('under'), conversationId: rowId }),
+  ])
+  .openapi('WhereToWork')
 
 /** One question waiting for an answer on this machine. */
 const Asking = named('SomethingToAnswer', {
@@ -146,6 +188,21 @@ const Asking = named('SomethingToAnswer', {
    * everything still has to know what it is doing.
    */
   goal: z.string().nullable(),
+  /**
+   * Which of the three places this turn works in. The machine turns it into a path.
+   *
+   * Nothing here has ever seen that disk, which is the point: a path that turns out to be wrong
+   * is something the machine says on the turn it tries to use it, and a sandbox answers the same
+   * three cases with a root of its own.
+   */
+  where: WhereToWork,
+  /**
+   * Whether anything has been run in this conversation before this turn.
+   *
+   * How a machine tells a folder it is making for the first time from one it is making again
+   * because somebody deleted what was there. Only the second is worth a line in the transcript.
+   */
+  hasRunBefore: z.boolean(),
   asked: EVERYTHING_SAID,
   /** Which model to run, when the last person to speak chose one. */
   model: z.string().nullable(),
@@ -167,10 +224,17 @@ const CheckedIn = named('CheckedIn', {
   pollSeconds: z.number().int().nonnegative(),
   /** Which commands to look for. Told every time, so the list can change without a release. */
   lookFor: z.array(z.string()).readonly(),
-  /** Absent when there is nothing to do. One at a time: a machine answers one turn at a time. */
+  /**
+   * Absent when there is nothing to do. One at a time, still — not because a machine runs one
+   * thing, but because it asks again the moment it has started this one, and one turn per answer
+   * keeps "what am I owed" a question with a single answer.
+   */
   asking: Asking.optional(),
   /**
-   * The turn somebody has asked this machine to stop working on.
+   * Every turn somebody has asked this machine to stop working on.
+   *
+   * A list because a machine runs several: told about one of them, it would have no way to say
+   * which, and a stop asked about the other would wait for the first to end before it was heard.
    *
    * The turn and not just the conversation: a stop read a moment before the turn it was about
    * ended would otherwise stop whatever that machine picked up next, and leave that one claimed
@@ -180,7 +244,7 @@ const CheckedIn = named('CheckedIn', {
    * being told until the agent says it stopped, which is what makes a stop that arrived while
    * nothing was listening arrive on the next report instead of being lost.
    */
-  stopping: Stopping.optional(),
+  stopping: z.array(Stopping).readonly(),
 })
 
 const Agent = named('MachineAgent', {
@@ -212,6 +276,14 @@ const Machine = named('Machine', {
    * rather than filled in — a version this deployment guessed would be read as one it was told.
    */
   version: z.string().optional(),
+  /**
+   * The directory it was connected in, when it is a build that says so.
+   *
+   * What a screen offers as "my project" when somebody opens a conversation on this machine. Not
+   * where anything runs: where a conversation works is that conversation's, and this is only the
+   * one path a person can pick without typing one.
+   */
+  connectedIn: z.string().optional(),
   presence: Presence,
   agents: z.array(Agent).readonly(),
 })
@@ -221,9 +293,16 @@ const Machines = list('machines', Machine)
 /** Who a machine is being handed to. */
 const HandMachineTo = named('HandMachineTo', { ownerUserId: rowId })
 
-const AgentName = named('AgentName', {
+/**
+ * What an owner decides about one agent. A patch: what is left out is left alone.
+ *
+ * Both are theirs rather than a Space's, which is why they arrive at the same door.
+ */
+const AgentSettings = named('AgentSettings', {
   /** Null puts it back to what its kind is called, which is the only way to take a name off. */
-  name: z.string().trim().min(1).max(48).nullable(),
+  name: z.string().trim().min(1).max(48).nullable().optional(),
+  /** How many pieces of work it may run at the same time. Their laptop, their number. */
+  atOnce: z.number().int().min(1).max(AT_ONCE_AT_MOST).optional(),
 })
 
 export function machineApi(deps: MachineApi) {
@@ -231,7 +310,7 @@ export function machineApi(deps: MachineApi) {
     polling(deps),
     leaving(deps),
     listing(deps),
-    namingAgent(deps),
+    decidingAboutAgent(deps),
     detaching(deps),
     handingOver(deps),
   ]
@@ -251,10 +330,28 @@ function asAsking(taken: Taken) {
     agentSession: taken.agentSession,
     afterSeq: taken.afterSeq,
     goal: taken.goal,
+    where: whereItWorks(taken),
+    hasRunBefore: taken.hasRunBefore,
     asked: EVERYTHING_SAID.parse(taken.asked),
     model: taken.model,
     effort: taken.effort,
   }
+}
+
+/**
+ * Which of the three places a turn works in, decided here because this is where both facts are.
+ *
+ * A sub-task first: it belongs inside the work it was opened for, and that beats a directory
+ * somebody named for the same conversation. Nothing can set both today — a hand-off opens the
+ * conversation itself and never points it anywhere — but the order is written down rather than
+ * left to be true by accident, because the day something does set both, the answer is already
+ * decided and it is decided once.
+ */
+function whereItWorks(taken: Taken): z.infer<typeof WhereToWork> {
+  if (taken.subtaskOf !== null) return { kind: 'under', conversationId: taken.subtaskOf }
+  if (taken.worksIn !== null) return { kind: 'somewhere-named', path: taken.worksIn }
+
+  return { kind: 'its-own' }
 }
 
 /**
@@ -307,6 +404,9 @@ async function anythingFor(deps: MachineApi, machineId: string) {
     // hold.
     pollSeconds: 0,
     lookFor: AGENT_COMMANDS,
+    // Said even when the hold came back with nothing, because "nothing to stop" is an answer a
+    // machine acts on: it is how one learns that a turn it was told to stop is over.
+    stopping: [],
     ...owed,
   }
 }
@@ -314,18 +414,21 @@ async function anythingFor(deps: MachineApi, machineId: string) {
 /**
  * Anything this machine has to be told, or nothing.
  *
- * The stop is asked first and asked either way: a machine that is busy is exactly the one
- * somebody wants to stop.
+ * Both, every time. A stop used to be the whole answer, which it could be while a machine ran one
+ * thing: the turn being stopped was the only turn. Now it is one of several, and answering with
+ * only the stop would leave everything else this machine is owed waiting on it — including the
+ * question that was going to fill the slot the stop is about to free.
  *
- * Nothing here checks whether it is already busy before asking for a question — {@link takeOne}
- * will not hand one to a machine that is, and that belongs there rather than at this door.
+ * Nothing here checks whether an agent is already full before asking for a question —
+ * {@link takeOne} will not hand one to an agent that is, and that belongs there rather than at
+ * this door.
  */
 async function whatIsOwed(db: Database, machineId: string) {
-  const wanted = await stopWantedOn(db, machineId)
-  if (wanted !== undefined) return { stopping: wanted }
-
+  const stopping = await stopsWantedOn(db, machineId)
   const taken = await takeOne(db, machineId)
-  return taken === undefined ? undefined : { asking: asAsking(taken) }
+  if (stopping.length === 0 && taken === undefined) return undefined
+
+  return { stopping, ...(taken === undefined ? {} : { asking: asAsking(taken) }) }
 }
 
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
@@ -346,6 +449,7 @@ function polling(deps: MachineApi) {
       // notice would be one more report, one more turn taken, from a machine somebody took out.
       const still = await checkIn(deps.db, machineId, {
         version: reported.version,
+        connectedIn: reported.connectedIn,
         found: agentsFound(reported.found),
       })
       if (!still) return refused(c, NOT_OURS)
@@ -385,6 +489,7 @@ function listing({ db }: MachineApi) {
         id: machine.id,
         name: machine.name,
         ...(machine.version === undefined ? {} : { version: machine.version }),
+        ...(machine.connectedIn === null ? {} : { connectedIn: machine.connectedIn }),
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
@@ -397,29 +502,30 @@ function listing({ db }: MachineApi) {
 }
 
 /**
- * Naming one agent on one of your machines.
+ * Deciding about one agent on one of your machines: what it is called, and how much it takes on.
  *
- * The name follows the owner, not a Space: the same laptop appears in every Space its owner is in,
- * and an agent called something different in each would be a different agent to each room. Under
- * `/me` for that reason — it is not a Space's to change, and no Space is named in the path.
+ * Both follow the owner, not a Space: the same laptop appears in every Space its owner is in, and
+ * an agent called something different in each — or allowed more in one room than another — would
+ * be a different agent to each. Under `/me` for that reason: it is not a Space's to change, and
+ * no Space is named in the path.
  */
-function namingAgent({ db }: MachineApi) {
+function decidingAboutAgent({ db }: MachineApi) {
   return aPerson(db).patch('/me/machines/{id}/agents/{kind}', {
-    summary: 'Name an agent installed on one of your machines',
+    summary: 'Decide what one agent on one of your machines is called and how much it takes on',
     params: { id: rowId, kind: z.enum(AGENT_KIND_NAMES) },
-    body: AgentName,
+    body: AgentSettings,
     answers: {
-      204: 'Named, or put back to what its kind is called',
+      204: 'Decided',
       404: refuses(UNAVAILABLE, 'You have no installed agent with that identity'),
     },
 
     run: async (c) => {
       const { id, kind } = c.req.valid('param')
-      const done = await setAgentName(db, {
+      const done = await setAgentSettings(db, {
         machine: id,
         owner: c.get('userId'),
         kind,
-        name: c.req.valid('json').name,
+        ...c.req.valid('json'),
       })
 
       return done ? nothing(c, 204) : refused(c, UNAVAILABLE)

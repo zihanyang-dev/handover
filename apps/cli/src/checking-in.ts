@@ -10,6 +10,7 @@
 import { agentFor } from './agents/known-agents.ts'
 import {
   endTurn,
+  sayItStartedOver,
   startAnswering,
   type Answering,
   type Asking,
@@ -20,6 +21,7 @@ import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
 import { VERSION } from './env.ts'
 import { offering, type Offering } from './offering.ts'
+import { prepareWorkspace, type Workspace } from './workspace.ts'
 
 /** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
 const RETRY_SECONDS = 5
@@ -66,8 +68,23 @@ export type CheckingIn = {
   /** Told when something changed, so a person watching a terminal sees why it went quiet. */
   readonly say: (line: string) => void
   readonly env: NodeJS.ProcessEnv
-  /** Where an agent works: this process's own directory, which is where it was connected. */
-  readonly where: string
+  /**
+   * The folder each conversation gets one of its own under.
+   *
+   * It used to be this process's own directory — a machine ran one thing at a time, and that
+   * thing ran where `handover connect` was typed. Several at once in one directory is the exact
+   * failure that limit existed to prevent, so each turn now gets its own. See `workspace.ts`.
+   */
+  readonly workRoot: string
+  /**
+   * The directory this process is in, which is the one `handover connect` was run in.
+   *
+   * Reported, not used. Nothing runs here any more — every turn works in a folder of its own —
+   * but `03` promised an agent works in your files, and the only way that promise survives is
+   * for a person to be able to pick this directory when they open a conversation. A screen
+   * cannot offer it without having been told it.
+   */
+  readonly connectedIn: string
   /**
    * How to run this program again.
    *
@@ -92,8 +109,8 @@ export type Reported =
       readonly pollSeconds: number
       /** One question waiting on this machine, when there is one. */
       readonly asking: Asking | undefined
-      /** The turn somebody asked this machine to stop working on. */
-      readonly stopping: Stopping | undefined
+      /** Every turn somebody asked this machine to stop working on. Empty nearly always. */
+      readonly stopping: readonly Stopping[]
     }
   /** The server does not know this credential. Nothing to retry — somebody has to enrol again. */
   | { readonly said: 'not-ours' }
@@ -114,6 +131,8 @@ export async function reportOnce(
     readonly restarted?: boolean
     /** Adds what each agent offers, the first time this process sees each version. */
     readonly offering?: Offering
+    /** The directory this machine was connected in, so a screen can offer it as "my project". */
+    readonly connectedIn?: string
   } = {},
 ): Promise<Reported> {
   const looked = await findAgents(lookFor, env)
@@ -126,6 +145,7 @@ export async function reportOnce(
       found: [...found],
       restarted: also.restarted ?? false,
       version: VERSION,
+      ...(also.connectedIn === undefined ? {} : { connectedIn: also.connectedIn }),
     },
   })
 
@@ -162,14 +182,21 @@ export async function keepCheckingIn(
 ): Promise<Stopped> {
   let looking = lookFor
   // One per loop, because what it remembers is what this process has already asked.
-  const asks = offering(running.env, running.where)
-  let answering: Answering | undefined
+  const asks = offering(running.env, running.workRoot)
+  // Keyed by conversation, because that is what a question and a stop both name. A machine
+  // answers several at once now; how many is the server's to decide, and it decides it per agent
+  // rather than per machine — nothing here counts anything.
+  const answering = new Map<string, Answering>()
   // Said once, on the first report. Anything still open on this machine then was left by whatever
   // ran before this process, and went on without anybody watching it.
   let restarted = true
 
   while (!stopping.aborted) {
-    const reported = await reportOnce(api, looking, running.env, { restarted, offering: asks })
+    const reported = await reportOnce(api, looking, running.env, {
+      restarted,
+      offering: asks,
+      connectedIn: running.connectedIn,
+    })
 
     if (reported.said === 'not-ours') return taken(answering, running)
 
@@ -186,20 +213,8 @@ export async function keepCheckingIn(
     looking = reported.lookFor
 
     const stopped = await stopIfAsked(answering, reported.stopping, running.say)
-
-    // One at a time. Reporting carries on either way: a turn can take ten minutes, and a machine
-    // that goes quiet for ten minutes is one its Space shows as gone.
-    if (answering === undefined && reported.asking !== undefined) {
-      answering = answer(api, reported.asking, { ...running, until: stopping }, () => {
-        answering = undefined
-      })
-    }
-
-    // Nothing more can be learnt from asking again until the turn that was stopped actually
-    // ends, so that is what is waited on. The next question is picked up the moment it does.
-    if (stopped === undefined) {
-      await running.sleep(Math.max(reported.pollSeconds, AT_LEAST_SECONDS), stopping)
-    } else await Promise.race([stopped.done, running.sleep(WHILE_STOPPING_SECONDS, stopping)])
+    await beginAnswering(api, reported.asking, answering, { ...running, until: stopping })
+    await waitBeforeReportingAgain(running, reported, stopped, stopping)
   }
 
   // Stopping on purpose stops the agent too, and waits for the last of what it said to be written
@@ -211,7 +226,68 @@ export async function keepCheckingIn(
 }
 
 /**
- * Passes on a request to stop, when it is about the turn this machine is on, and says which turn.
+ * Starts what this report handed out and holds it until it is over.
+ *
+ * The loop's bookkeeping around `startAnswering`, which is the turn's own. What this owns is the
+ * map: an answer goes in before anything can settle it and comes out only when that same one
+ * finishes.
+ *
+ * Reporting carries on either way: a turn can take ten minutes, and a machine that goes quiet for
+ * ten minutes is one its Space shows as gone.
+ *
+ * One question per answer, still, and one started per report — the server hands out one at a time
+ * and the loop asks again a second later, so a machine allowed three is answering three within
+ * three seconds. Guarded on the conversation because being handed one that is already being
+ * answered is the server having answered before this machine's last claim was written down.
+ */
+async function beginAnswering(
+  api: Api,
+  asking: Asking | undefined,
+  answering: Map<string, Answering>,
+  machine: Machine,
+): Promise<void> {
+  if (asking === undefined || answering.has(asking.conversationId)) return
+
+  const started = await answer(api, asking, machine)
+  // Held before anything is hung off it finishing. A turn that is over before this line runs —
+  // a write that failed on the first try, an agent this build cannot run — would otherwise take
+  // itself out of a map it was not in yet, and then be put in and left there: the conversation
+  // reads as being answered for the rest of this process's life, and every question the server
+  // hands out for it is dropped on the floor. Which is the failure this whole map replaced.
+  answering.set(asking.conversationId, started)
+
+  const over = (): void => {
+    // Only if it is still this one. Nothing today can replace an entry before it settles, and
+    // an ending that took out its successor would be exactly the same bug the other way round.
+    if (answering.get(asking.conversationId) === started) answering.delete(asking.conversationId)
+  }
+  void started.done.then(over, over)
+}
+
+/**
+ * How long before asking again.
+ *
+ * Nothing more can be learnt from asking until a turn that was stopped actually ends, so that is
+ * what is waited on — and the next question is picked up the moment one does.
+ */
+async function waitBeforeReportingAgain(
+  running: CheckingIn,
+  reported: Extract<Reported, { said: 'here' }>,
+  stopped: readonly Answering[],
+  stopping: AbortSignal,
+): Promise<void> {
+  if (stopped.length === 0) {
+    return running.sleep(Math.max(reported.pollSeconds, AT_LEAST_SECONDS), stopping)
+  }
+
+  await Promise.race([
+    ...stopped.map(async (one) => one.done),
+    running.sleep(WHILE_STOPPING_SECONDS, stopping),
+  ])
+}
+
+/**
+ * Passes on every request to stop that is about a turn this machine is on, and says which.
  *
  * Told on every report until the agent says it stopped, so a request made while this machine was
  * between reports arrives on the next one instead of being lost. `stop` is asked more than once
@@ -222,22 +298,25 @@ export async function keepCheckingIn(
  * may have changed in that moment.
  */
 export async function stopIfAsked(
-  answering: Answering | undefined,
-  wanted: Stopping | undefined,
+  answering: ReadonlyMap<string, Answering>,
+  wanted: readonly Stopping[],
   say: (line: string) => void,
-): Promise<Answering | undefined> {
-  if (answering === undefined || wanted === undefined) return undefined
-  // The turn and not just the conversation. A stop is read out of the tables a moment before it
-  // is acted on, and in that moment the turn it was about can end and the next one begin — on the
-  // same conversation, because interrupting is how the next one got there. Matched loosely, the
-  // interrupt stops the answer it was making room for.
-  if (wanted.conversationId !== answering.conversationId) return undefined
-  if (wanted.afterSeq !== answering.afterSeq) return undefined
+): Promise<readonly Answering[]> {
+  const stopping = wanted
+    .map((one) => ({ one, running: answering.get(one.conversationId) }))
+    // The turn and not just the conversation. A stop is read out of the tables a moment before it
+    // is acted on, and in that moment the turn it was about can end and the next one begin — on
+    // the same conversation, because interrupting is how the next one got there. Matched loosely,
+    // the interrupt stops the answer it was making room for.
+    .filter((both) => both.running !== undefined && both.running.afterSeq === both.one.afterSeq)
+    .map((both) => both.running as Answering)
 
-  say(`stopping ${answering.conversationId}`)
-  await answering.stop()
+  for (const one of stopping) {
+    say(`stopping ${one.conversationId}`)
+    await one.stop()
+  }
 
-  return answering
+  return stopping
 }
 
 /**
@@ -246,7 +325,10 @@ export async function stopIfAsked(
  * The agent is still running, and this process is about to exit. Left alone it becomes an orphan:
  * nobody watching, still changing files in somebody's project, still spending their subscription.
  */
-async function taken(answering: Answering | undefined, running: CheckingIn): Promise<Stopped> {
+async function taken(
+  answering: ReadonlyMap<string, Answering>,
+  running: CheckingIn,
+): Promise<Stopped> {
   await settle(answering, running)
 
   return { kind: 'removed' }
@@ -259,7 +341,7 @@ async function taken(answering: Answering | undefined, running: CheckingIn): Pro
  * machine meets a newer deployment. It has to come back as a turn that ended saying so, not as a
  * question that sits unanswered forever with nobody able to explain why.
  */
-function answer(api: Api, asking: Asking, machine: Machine, over: () => void): Answering {
+async function answer(api: Api, asking: Asking, machine: Machine): Promise<Answering> {
   // The agent is found afresh for every turn, and this is where the turn's own name goes into the
   // environment it will run in. `handover task` reads it, so nothing has to be typed or guessed:
   // an agent says "I am waiting on you" about *this* conversation because that is the only one it
@@ -268,23 +350,75 @@ function answer(api: Api, asking: Asking, machine: Machine, over: () => void): A
     ...machine.env,
     HANDOVER_CONVERSATION: asking.conversationId,
   })
-  machine.say(
-    agent === undefined
-      ? `cannot run ${asking.agentKind} on this machine`
-      : `answering in ${asking.conversationId}`,
-  )
 
-  const started =
-    agent === undefined ? cannot(api, asking, machine) : startAnswering(api, asking, agent, machine)
-
-  void started.done.then(over, over)
-
-  return started
+  return starting(api, asking, machine, agent)
 }
 
-function cannot(api: Api, asking: Asking, machine: Machine): Answering {
-  const text = `This machine cannot run ${asking.agentKind}.`
+/**
+ * The turn, or the one line saying why there is not one.
+ *
+ * Two ways it cannot begin, and both have to come back as a turn that ended saying so rather than
+ * as a question that sits unanswered with nobody able to explain it. An agent this build has no
+ * adapter for is the ordinary way an older machine meets a newer deployment; a directory that is
+ * not there is a person having typed one that is not.
+ */
+async function starting(
+  api: Api,
+  asking: Asking,
+  machine: Machine,
+  agent: ReturnType<typeof agentFor>,
+): Promise<Answering> {
+  if (agent === undefined) {
+    machine.say(`cannot run ${asking.agentKind} on this machine`)
 
+    return cannot(api, asking, machine, `This machine cannot run ${asking.agentKind}.`)
+  }
+
+  const workspace = await prepareWorkspace(asking, machine.workRoot)
+  if (workspace.kind !== 'ready') {
+    const why = whyItCannotWorkThere(workspace)
+    machine.say(why.said)
+
+    return cannot(api, asking, machine, why.written)
+  }
+
+  if (workspace.startedOver) {
+    machine.say(`nothing left in ${workspace.path}; starting over`)
+    await sayItStartedOver(api, asking, machine)
+  }
+
+  machine.say(`answering in ${asking.conversationId}, in ${workspace.path}`)
+
+  return startAnswering(api, asking, agent, { machine, where: workspace.path })
+}
+
+/**
+ * Why a turn cannot begin where it was going to, in the two voices it has to be said in.
+ *
+ * A terminal line and a sentence in the transcript are different audiences: one is somebody
+ * watching a machine, the other is somebody reading a conversation days later. Said once each,
+ * here, so a fourth way for a workspace to be unusable cannot quietly become a fourth copy of
+ * this — or worse, fall through as though the folder were fine.
+ */
+function whyItCannotWorkThere(workspace: Exclude<Workspace, { kind: 'ready' }>): {
+  readonly said: string
+  readonly written: string
+} {
+  switch (workspace.kind) {
+    case 'not-an-absolute-path':
+      return {
+        said: `${workspace.path} does not say where it starts from`,
+        written: `${workspace.path} is not a full path, so this machine cannot tell where it means.`,
+      }
+    case 'no-such-directory':
+      return {
+        said: `no directory at ${workspace.path}`,
+        written: `There is no directory at ${workspace.path} on this machine.`,
+      }
+  }
+}
+
+function cannot(api: Api, asking: Asking, machine: Machine, text: string): Answering {
   return {
     conversationId: asking.conversationId,
     afterSeq: asking.afterSeq,
@@ -295,10 +429,20 @@ function cannot(api: Api, asking: Asking, machine: Machine): Answering {
   }
 }
 
-async function settle(answering: Answering | undefined, running: CheckingIn): Promise<void> {
-  if (answering === undefined) return
+async function settle(
+  answering: ReadonlyMap<string, Answering>,
+  running: CheckingIn,
+): Promise<void> {
+  // Taken once, before anything is stopped. Read again afterwards it would be a different map:
+  // an answer that ends while the others are being asked to stop takes itself out of it, and
+  // what is then waited on is everything except the one that was closest to finishing.
+  const all = [...answering.values()]
+  if (all.length === 0) return
 
-  running.say('stopping what the agent was doing')
-  await answering.stop()
-  await answering.done
+  running.say('stopping what the agents were doing')
+  // All of them asked to stop first, and only then waited on. One at a time, every agent after
+  // the first would be left running for as long as the one before it took to wind down — and
+  // what is winding down here is a process that is about to be killed.
+  await Promise.all(all.map(async (one) => one.stop()))
+  await Promise.all(all.map(async (one) => one.done))
 }

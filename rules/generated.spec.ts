@@ -23,15 +23,24 @@ const TYPES = 'apps/server/generated/db.ts'
 /** The map at the foot of the generated types: every table, by the name Postgres knows it by. */
 const IN_THE_TYPES = /^export interface DB \{([\s\S]*?)^\}/mu
 
-/** Every table this branch creates, as `create table <name>` says it. */
+/**
+ * Every table this branch has a migration for: the ones it creates, and the names it renames to.
+ *
+ * A rename is as much this branch's table as a create — asked only about `create table`, this
+ * read a renamed one as somebody else's schema, which is the opposite of what it is for. Nothing
+ * is taken away on a drop or a rename-from: the artefacts are generated from a database that
+ * holds every migration, so a name that is gone by the end cannot be in them anyway.
+ */
 function migrated(): ReadonlySet<string> {
-  const said = readdirSync(MIGRATIONS)
+  const sql = readdirSync(MIGRATIONS)
     .filter((entry) => entry.endsWith('.sql'))
-    .flatMap((entry) => [
-      ...readFileSync(join(MIGRATIONS, entry), 'utf8').matchAll(
-        /create table (?:if not exists )?(\w+)/giu,
-      ),
-    ])
+    .map((entry) => readFileSync(join(MIGRATIONS, entry), 'utf8'))
+    .join('\n')
+
+  const said = [
+    ...sql.matchAll(/create table (?:if not exists )?(\w+)/giu),
+    ...sql.matchAll(/alter table (?:only )?\w+ rename to (\w+)/giu),
+  ]
 
   return new Set(said.map((one) => (one[1] ?? '').toLowerCase()))
 }

@@ -24,19 +24,20 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>
 
-export interface AgentNames {
-  kind: string
-  machine_id: string
-  name: string
-  named_at: Generated<Timestamp>
-}
-
 export interface Agents {
   found_at: Generated<Timestamp>
   kind: string
   machine_id: string
   models: Json | null
   version: string
+}
+
+export interface AgentSettings {
+  at_once: Generated<number>
+  decided_at: Generated<Timestamp>
+  kind: string
+  machine_id: string
+  name: string | null
 }
 
 export interface BrowserSessions {
@@ -61,6 +62,7 @@ export interface Conversations {
   id: Generated<string>
   machine_id: string
   space_id: string
+  works_in: string | null
 }
 
 export interface Credentials {
@@ -109,6 +111,7 @@ export interface Invitations {
 }
 
 export interface Machines {
+  connected_in: string | null
   created_at: Generated<Timestamp>
   enrolled_from: string
   id: Generated<string>
@@ -164,8 +167,10 @@ export interface Tasks {
   ended_at: Timestamp | null
   goal: string
   id: Generated<string>
+  is_root: Generated<boolean | null>
   owner_user_id: string
   parent_id: string | null
+  parent_of_root: Generated<boolean | null>
   sleep_until: Timestamp | null
   state: string
 }
@@ -185,7 +190,7 @@ export interface Users {
 }
 
 export interface DB {
-  agent_names: AgentNames
+  agent_settings: AgentSettings
   agents: Agents
   browser_sessions: BrowserSessions
   conversation_pins: ConversationPins

@@ -1863,7 +1863,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Name an agent installed on one of your machines */
+        /** Decide what one agent on one of your machines is called and how much it takes on */
         patch: {
             parameters: {
                 query?: never;
@@ -1876,11 +1876,11 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AgentName"];
+                    "application/json": components["schemas"]["AgentSettings"];
                 };
             };
             responses: {
-                /** @description Named, or put back to what its kind is called */
+                /** @description Decided */
                 204: {
                     headers: {
                         [name: string]: unknown;
@@ -3132,7 +3132,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description No such machine here, or it does not have that agent */
+                /** @description This machine cannot take it, or this is already one */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -3327,7 +3327,7 @@ export interface components {
             /** @example code-mismatch */
             reason: string;
             /** @enum {string} */
-            recovery: "retype" | "request-new-code" | "start-over" | "sign-in" | "choose-another-name" | "choose-another-agent" | "choose-another-machine" | "wait" | "retry-later" | "ask-an-owner";
+            recovery: "retype" | "request-new-code" | "start-over" | "sign-in" | "choose-another-name" | "choose-another-agent" | "choose-another-machine" | "carry-on-here" | "wait" | "retry-later" | "ask-an-owner";
         };
         TooSoon: components["schemas"]["Failure"] & {
             retryAfterSeconds: number;
@@ -3526,7 +3526,7 @@ export interface components {
             pollSeconds: number;
             lookFor: string[];
             asking?: components["schemas"]["SomethingToAnswer"];
-            stopping?: components["schemas"]["StopWanted"];
+            stopping: components["schemas"]["StopWanted"][];
         };
         SomethingToAnswer: {
             /** Format: uuid */
@@ -3536,9 +3536,24 @@ export interface components {
             agentSession: string | null;
             afterSeq: number;
             goal: string | null;
+            where: components["schemas"]["WhereToWork"];
+            hasRunBefore: boolean;
             asked: components["schemas"]["Said"][];
             model: string | null;
             effort: string | null;
+        };
+        WhereToWork: {
+            /** @enum {string} */
+            kind: "its-own";
+        } | {
+            /** @enum {string} */
+            kind: "somewhere-named";
+            path: string;
+        } | {
+            /** @enum {string} */
+            kind: "under";
+            /** Format: uuid */
+            conversationId: string;
         };
         Said: {
             text: string;
@@ -3553,6 +3568,7 @@ export interface components {
             found: components["schemas"]["AgentFound"][];
             restarted?: boolean;
             version?: string;
+            connectedIn?: string;
         };
         AgentFound: {
             command: string;
@@ -3577,6 +3593,7 @@ export interface components {
             ownerName: string;
             yours: boolean;
             version?: string;
+            connectedIn?: string;
             presence: components["schemas"]["Presence"];
             agents: components["schemas"]["MachineAgent"][];
         };
@@ -3597,8 +3614,9 @@ export interface components {
             version: string;
             models: components["schemas"]["Model"][];
         };
-        AgentName: {
-            name: string | null;
+        AgentSettings: {
+            name?: string | null;
+            atOnce?: number;
         };
         HandMachineTo: {
             /** Format: uuid */
@@ -3735,6 +3753,7 @@ export interface components {
             /** @enum {string} */
             agentKind: "claude-code" | "codex";
             asked: components["schemas"]["Asked"];
+            worksIn?: string;
         };
         SayThis: {
             key: string;
@@ -3841,7 +3860,6 @@ export interface components {
         HandOff: {
             key: string;
             goal: string;
-            machine: string;
             /** @enum {string} */
             agentKind: "claude-code" | "codex";
         };

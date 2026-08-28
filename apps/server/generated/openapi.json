@@ -83,6 +83,7 @@
               "choose-another-name",
               "choose-another-agent",
               "choose-another-machine",
+              "carry-on-here",
               "wait",
               "retry-later",
               "ask-an-owner"
@@ -834,12 +835,16 @@
             "$ref": "#/components/schemas/SomethingToAnswer"
           },
           "stopping": {
-            "$ref": "#/components/schemas/StopWanted"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StopWanted"
+            }
           }
         },
         "required": [
           "pollSeconds",
-          "lookFor"
+          "lookFor",
+          "stopping"
         ]
       },
       "SomethingToAnswer": {
@@ -867,6 +872,12 @@
             "type": "string",
             "nullable": true
           },
+          "where": {
+            "$ref": "#/components/schemas/WhereToWork"
+          },
+          "hasRunBefore": {
+            "type": "boolean"
+          },
           "asked": {
             "type": "array",
             "items": {
@@ -888,9 +899,66 @@
           "agentSession",
           "afterSeq",
           "goal",
+          "where",
+          "hasRunBefore",
           "asked",
           "model",
           "effort"
+        ]
+      },
+      "WhereToWork": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "its-own"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "somewhere-named"
+                ]
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "under"
+                ]
+              },
+              "conversationId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "conversationId"
+            ]
+          }
         ]
       },
       "Said": {
@@ -942,6 +1010,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100
+          },
+          "connectedIn": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         },
         "required": [
@@ -1047,6 +1120,9 @@
           "version": {
             "type": "string"
           },
+          "connectedIn": {
+            "type": "string"
+          },
           "presence": {
             "$ref": "#/components/schemas/Presence"
           },
@@ -1139,7 +1215,7 @@
           "models"
         ]
       },
-      "AgentName": {
+      "AgentSettings": {
         "type": "object",
         "properties": {
           "name": {
@@ -1147,11 +1223,13 @@
             "nullable": true,
             "minLength": 1,
             "maxLength": 48
+          },
+          "atOnce": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
           }
-        },
-        "required": [
-          "name"
-        ]
+        }
       },
       "HandMachineTo": {
         "type": "object",
@@ -1657,6 +1735,11 @@
           },
           "asked": {
             "$ref": "#/components/schemas/Asked"
+          },
+          "worksIn": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         },
         "required": [
@@ -2117,11 +2200,6 @@
             "minLength": 1,
             "maxLength": 2000
           },
-          "machine": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
           "agentKind": {
             "type": "string",
             "enum": [
@@ -2133,7 +2211,6 @@
         "required": [
           "key",
           "goal",
-          "machine",
           "agentKind"
         ]
       },
@@ -3848,7 +3925,7 @@
     },
     "/me/machines/{id}/agents/{kind}": {
       "patch": {
-        "summary": "Name an agent installed on one of your machines",
+        "summary": "Decide what one agent on one of your machines is called and how much it takes on",
         "security": [
           {
             "browserSession": []
@@ -3882,14 +3959,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AgentName"
+                "$ref": "#/components/schemas/AgentSettings"
               }
             }
           }
         },
         "responses": {
           "204": {
-            "description": "Named, or put back to what its kind is called"
+            "description": "Decided"
           },
           "400": {
             "description": "The body was not the shape it claims",
@@ -5231,7 +5308,7 @@
             }
           },
           "409": {
-            "description": "No such machine here, or it does not have that agent",
+            "description": "This machine cannot take it, or this is already one",
             "content": {
               "application/json": {
                 "schema": {

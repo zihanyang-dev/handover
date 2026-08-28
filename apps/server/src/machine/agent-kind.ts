@@ -59,20 +59,6 @@ export type FoundAgent = {
   readonly models?: readonly Model[]
 }
 
-/**
- * An agent on a machine, as the database has it.
- *
- * `models` comes back as whatever is in the column. It is left unread here on purpose: a list
- * written by a different build of this program is exactly the case where a shape can be wrong, and
- * the layer that has to answer for it is the one putting it on the wire.
- */
-export type Installed = {
-  readonly kind: AgentKind
-  readonly name: string | null
-  readonly version: string
-  readonly models: unknown
-}
-
 /** What a machine says it found, in its own terms: the command it looked for, and what answered. */
 export type Reported = {
   readonly command: string

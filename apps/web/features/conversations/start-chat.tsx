@@ -14,6 +14,7 @@ import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-l
 import { Composer, ComposerError, SendButton } from './composer.tsx'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
 import { useBeginConversation } from './talking.ts'
+import { WhereChoice } from './where-choice.tsx'
 
 export function StartChat({
   slug,
@@ -41,6 +42,7 @@ export function StartChat({
   const agent = agentsOn(machines.data).find(
     (one) => one.machineId === machineId && one.kind === agentKind,
   )
+  const machine = machines.data.find((one) => one.id === machineId)
   if (agent === undefined)
     return (
       <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
@@ -48,15 +50,27 @@ export function StartChat({
       </p>
     )
 
-  return <ReadyStart slug={slug} agent={agent} />
+  return <ReadyStart slug={slug} agent={agent} connectedIn={machine?.connectedIn} />
 }
 
-function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
+function ReadyStart({
+  slug,
+  agent,
+  connectedIn,
+}: {
+  readonly slug: string
+  readonly agent: InstalledAgent
+  /** The directory its machine was connected in, when it is a build that says so. */
+  readonly connectedIn: string | undefined
+}) {
   const navigate = useNavigate()
   const begin = useBeginConversation(slug)
   const [text, setText] = useState('')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
+  // Empty is a folder of its own, which is what saying nothing means to the server. Chosen here
+  // and nowhere else: a conversation keeps one directory for its whole life.
+  const [worksIn, setWorksIn] = useState('')
   const [id] = useState(() => crypto.randomUUID())
   const name = agent.name?.trim() || 'Unnamed agent'
   const online = agent.isHere
@@ -106,6 +120,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
                 machineId: agent.machineId,
                 agentKind: agent.kind,
                 asked: askedWithChoices(text.trim(), model, effort),
+                ...(worksIn === '' ? {} : { worksIn }),
               },
             },
             {
@@ -118,17 +133,20 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
       >
         {!online && <ComposerError>{name} is offline.</ComposerError>}
         {begin.isError && <ComposerError>{whyNot(begin.error.reason, name)}</ComposerError>}
-        <ModelChoices
-          offers={agent.models}
-          agentKind={agent.kind}
-          model={model}
-          effort={effort}
-          onModel={(next) => {
-            setModel(next)
-            setEffort('')
-          }}
-          onEffort={setEffort}
-        />
+        <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          <WhereChoice connectedIn={connectedIn} worksIn={worksIn} onWorksIn={setWorksIn} />
+          <ModelChoices
+            offers={agent.models}
+            agentKind={agent.kind}
+            model={model}
+            effort={effort}
+            onModel={(next) => {
+              setModel(next)
+              setEffort('')
+            }}
+            onEffort={setEffort}
+          />
+        </div>
         <SendButton disabled={!online || begin.isPending || text.trim() === ''} />
       </Composer>
     </section>

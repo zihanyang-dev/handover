@@ -62,9 +62,10 @@ const CANNOT_HAND_OVER: Failure<404> = {
   status: 404,
 }
 
-const NO_MACHINE: Failure<409> = {
-  reason: 'no-such-machine',
-  recovery: 'choose-another-machine',
+/** It is a sub-task itself, and `prd.md` 07 ⑤ says the fanning out stops there. */
+const NO_DEEPER: Failure<409> = {
+  reason: 'already-a-subtask',
+  recovery: 'carry-on-here',
   status: 409,
 }
 
@@ -119,10 +120,15 @@ const HandWorkTo = named('HandWorkTo', { ownerUserId: rowId })
 
 const StopWorking = named('StopWorking', { ...CALLED, how: HowItStopped })
 
+/**
+ * No machine. The work opens on the machine the one handing it off is already running on.
+ *
+ * `prd.md` 07 ⑥: an agent that could name a machine could put work on somebody's laptop with
+ * nobody in the room. A person handing you something leaves a name and a time; this would not.
+ */
 const HandOff = named('HandOff', {
   ...CALLED,
   goal,
-  machine: z.string().min(1).max(200),
   agentKind: z.enum(AGENT_KIND_NAMES),
 })
 
@@ -282,7 +288,7 @@ function stopping({ db }: TaskApi) {
   })
 }
 
-/** The agent opens a piece of work for another agent, and carries on. */
+/** The agent opens a piece of work for another agent here, and carries on. */
 function handingOff({ db }: TaskApi) {
   return aMachine(db).post('/machines/current/conversations/{id}/task/handed-off', {
     summary: 'Open a piece of work for another agent',
@@ -291,7 +297,7 @@ function handingOff({ db }: TaskApi) {
     answers: {
       201: sends(WorkOpened, 'Opened, and its machine already knows'),
       404: refuses(UNAVAILABLE, 'Nothing was handed over in that conversation'),
-      409: refuses(NO_MACHINE, 'No such machine here, or it does not have that agent'),
+      409: refuses([NO_AGENT, NO_DEEPER], 'This machine cannot take it, or this is already one'),
     },
 
     run: async (c) => {
@@ -300,13 +306,12 @@ function handingOff({ db }: TaskApi) {
         conversationId: c.req.valid('param').id,
         machineId: c.get('machineId'),
         key: asked.key,
-        machine: asked.machine,
         agentKind: asked.agentKind,
         goal: asked.goal,
       })
 
       if (off.kind === 'nothing-to-hand-off') return refused(c, UNAVAILABLE)
-      if (off.kind === 'no-machine') return refused(c, NO_MACHINE)
+      if (off.kind === 'not-yours-to-hand-off') return refused(c, NO_DEEPER)
       if (off.kind === 'no-agent') return refused(c, NO_AGENT)
 
       return c.json({ conversationId: off.conversationId }, 201)

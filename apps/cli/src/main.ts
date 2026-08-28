@@ -27,6 +27,7 @@ import { forEveryone, handoverFor, type Step } from './service.ts'
 import { sleep } from './sleeping.ts'
 import { attachmentPath, readAttachment, writeAttachment, type Attachment } from './store.ts'
 import { runTask } from './task.ts'
+import { workRootIn } from './workspace.ts'
 
 const run = promisify(execFile)
 
@@ -357,11 +358,17 @@ async function stayConnected(attachment: Attachment): Promise<void> {
   // Starts from what connecting was told, so the first check-in already carries findings. Every
   // answer returns the list again, so it follows the server without ever having been guessed.
   // The PATH is the one the service file carries, put there by `connect`.
+  // Made once, up front. Every turn makes its own folder under it, but what looks for an agent's
+  // models runs before any turn does and has to run somewhere that exists.
+  const workRoot = workRootIn(homedir())
+  await mkdir(workRoot, { recursive: true })
+
   const stopped = await keepCheckingIn(
     api,
     attachment.lookFor,
-    // Where an agent works is where this process is, which the service file set to the directory
-    // `connect` was run in. Nobody chooses it, and nothing asks.
+    // Where an agent works is a folder of its own under this, named after its conversation —
+    // not this process's directory, which is what it was while a machine ran one thing. See
+    // `workspace.ts` for why several at once needs that and nothing else.
     {
       sleep,
       say,
@@ -371,7 +378,10 @@ async function stayConnected(attachment: Attachment): Promise<void> {
         ...machineEnvironment(),
         PATH: await reachableAs({ beside: where, howToRun: howToRunThis() }, machineEnvironment()),
       },
-      where: process.cwd(),
+      workRoot,
+      // The directory this process is in, which the service file set to the one `connect` was run
+      // in. Nothing runs here now; it is reported so a screen can offer it as "my project".
+      connectedIn: process.cwd(),
       handover: 'handover',
     },
     stopping.signal,

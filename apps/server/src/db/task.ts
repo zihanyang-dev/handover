@@ -199,7 +199,7 @@ export type Stopped =
 /**
  * A person takes it back, and everything it handed off comes back with it.
  *
- * The whole subtree, because the alternative is an orphan: what it handed off is still changing
+ * Everything under it, because the alternative is an orphan: what it handed off is still changing
  * files on somebody's machine, and the piece of work that would have read the result is over.
  * Nobody is watching it and nobody wants it.
  *
@@ -214,18 +214,18 @@ export async function takeBack(db: Database, saying: Saying): Promise<Stopped> {
     const root = await openTaskOn(tx, conversation.id)
     if (root === undefined) return { kind: 'nothing-to-take-back' }
 
-    // Written by hand because the correctness *is* the SQL: one recursive walk down the tree,
-    // ending every piece of work in it in the snapshot it was read in. Through the builder a
-    // reader would still have to rebuild this to see that no child can be missed on the way.
+    // Written by hand because the correctness *is* the SQL: this one and everything under it end
+    // in the snapshot they were read in. Through the builder a reader would still have to rebuild
+    // it to see that no child can be missed on the way.
+    //
+    // It walked the tree recursively while a tree could be any depth. `prd.md` 07 ⑤ stops it at
+    // two — only what a person owns may hand work out — so "everything under this" is one index
+    // seek on `parent_id`, and there is no shape of data a walk would have found and this misses.
     const stopped = await sql<{ id: string; conversationId: string; machineId: string }>`
-      with recursive tree as (
-        select id from tasks where id = ${root.id} and ended_at is null
-        union all
-        select t.id from tasks t join tree on t.parent_id = tree.id where t.ended_at is null
-      ),
-      over as (
+      with over as (
         update tasks set state = ${STATE.done}, ended_at = now(), sleep_until = null
-         where id in (select id from tree)
+         where (id = ${root.id} or parent_id = ${root.id})
+           and ended_at is null
         returning id, conversation_id
       )
       select o.id, o.conversation_id as "conversationId", c.machine_id as "machineId"

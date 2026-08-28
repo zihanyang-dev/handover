@@ -196,6 +196,15 @@ const OpenConversation = named('OpenConversation', {
   machineId: rowId,
   agentKind: z.enum(AGENT_KIND_NAMES),
   asked: Asked,
+  /**
+   * A directory on that machine to work in, when somebody has one in mind.
+   *
+   * Left out nearly always, and then the agent works in a folder of its own, named after this
+   * conversation. Two conversations pointed at one directory will tread on each other and this
+   * does not stop them — it is the same thing as opening two terminals in one checkout, and it
+   * is the person's to decide.
+   */
+  worksIn: z.string().trim().min(1).max(512).optional(),
 })
 
 const OpenedConversation = named('OpenedConversation', { id: z.uuid() })
@@ -294,6 +303,7 @@ function opening({ db }: ConversationApi) {
         machineId: asked.machineId,
         agentKind: asked.agentKind,
         asked: asked.asked,
+        ...(asked.worksIn === undefined ? {} : { worksIn: asked.worksIn }),
         // From the session, never from the body, for the reason `saying` says.
         saidBy: c.get('userId'),
       })

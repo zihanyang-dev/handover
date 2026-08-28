@@ -150,17 +150,19 @@ function SayInto({
     >
       {say.isError && <ComposerError>{whyNot(say.error.reason)}</ComposerError>}
       {stop.isError && <ComposerError>Could not stop it. Try again.</ComposerError>}
-      <ModelChoices
-        offers={offers}
-        agentKind={agentKind}
-        model={model}
-        effort={effort}
-        onModel={(next) => {
-          setModel(next)
-          setEffort('')
-        }}
-        onEffort={setEffort}
-      />
+      <div className="ml-auto flex min-w-0 items-center gap-1.5">
+        <ModelChoices
+          offers={offers}
+          agentKind={agentKind}
+          model={model}
+          effort={effort}
+          onModel={(next) => {
+            setModel(next)
+            setEffort('')
+          }}
+          onEffort={setEffort}
+        />
+      </div>
       {working ? (
         <StopButton
           disabled={stop.isPending}
@@ -221,6 +223,7 @@ const ACTIVITY_TEXT = new Map<string, string>([
   ['failed', 'That turn failed'],
   ['unknown', 'Nobody knows how that turn ended'],
   ['forgot', 'This agent could not remember the earlier chat'],
+  ['started-over', 'The folder this was working in had been deleted, so it started over'],
   ['stop', 'You asked it to stop'],
   ['unreadable', 'One event could not be read'],
 ])

@@ -158,6 +158,89 @@ describe('entering a Space', () => {
     expect(within(sidebar).queryByRole('button', { name: /new chat/i })).toBeNull()
   })
 
+  const WHERE = 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+
+  /** One agent on one machine, and a note of what opening a conversation was asked for. */
+  function anAgent(connectedIn: string | undefined) {
+    const asked: { body?: unknown } = {}
+    server.use(
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'Mina',
+            yours: true,
+            ...(connectedIn === undefined ? {} : { connectedIn }),
+            presence: { state: 'here' },
+            agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
+          },
+        ],
+      }),
+      http.post('*/spaces/acme/conversations', async ({ request }) => {
+        asked.body = await request.json()
+        return HttpResponse.json({ id: WHERE }, { status: 201 })
+      }),
+      http.get(`*/spaces/acme/conversations/${WHERE}`, () =>
+        HttpResponse.json({
+          id: WHERE,
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [],
+          messages: [],
+        }),
+      ),
+    )
+
+    return asked
+  }
+
+  /** On that agent's own screen, with something typed and nothing chosen. */
+  async function typedToIt(): Promise<void> {
+    open('/s/acme/a/m-1/claude-code')
+    await screen.findByRole('heading', { name: 'How can Scout help?' })
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'Read notes.txt')
+  }
+
+  it('works in a folder of its own unless somebody says otherwise', async () => {
+    const asked = anAgent('/Users/mina/code/thing')
+    await typedToIt()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(asked.body).toMatchObject({ machineId: 'm-1' })
+    })
+    expect(asked.body).not.toHaveProperty('worksIn')
+  })
+
+  it('works in the machine\u2019s own directory when that is what was picked', async () => {
+    // `03` promised an agent works in your files. `07` gives every conversation a folder of its
+    // own so several can run at once, which would have ended that promise quietly — an empty
+    // folder cannot answer "read src/payment". The promise survives as this choice, so a control
+    // that did not reach the wire would be the promise gone with a control standing in for it.
+    const asked = anAgent('/Users/mina/code/thing')
+    await typedToIt()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Where it works: Its own folder' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'code/thing' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(asked.body).toMatchObject({ worksIn: '/Users/mina/code/thing' })
+    })
+  })
+
+  it('offers no choice from a machine too old to say where it was connected', async () => {
+    // Nothing rather than a menu with one option in it, or a path this deployment guessed. Its
+    // own folder is what happens, and it is what would have happened anyway.
+    anAgent(undefined)
+    await typedToIt()
+
+    expect(screen.queryByRole('button', { name: /where it works/iu })).toBeNull()
+  })
+
   it('creates the conversation with the first message only when it is sent', async () => {
     const id = '250d79d8-a888-4c71-9eac-79f56bafd195'
     let opened: unknown

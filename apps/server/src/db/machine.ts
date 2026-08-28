@@ -11,9 +11,43 @@
 
 import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kysely'
 import type { DB } from '../../generated/db.ts'
-import type { AgentKind, FoundAgent, Installed } from '../machine/agent-kind.ts'
+import type { AgentKind, FoundAgent } from '../machine/agent-kind.ts'
+import { AT_ONCE_BY_DEFAULT } from '../machine/at-once.ts'
 import type { Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
+
+/**
+ * An agent on a machine, as the database has it.
+ *
+ * `models` comes back as whatever is in the column. It is left unread here on purpose: a list
+ * written by a different build of this program is exactly the case where a shape can be wrong, and
+ * the layer that has to answer for it is the one putting it on the wire.
+ */
+export type Installed = {
+  readonly kind: AgentKind
+  readonly name: string | null
+  readonly version: string
+  readonly models: unknown
+}
+
+/**
+ * How many this agent may run at the same time: what its owner decided, or the default.
+ *
+ * A fragment rather than a query, because it is asked in two shapes that have to agree — beside
+ * every agent in a Space, and inside the statement that claims a turn. Written twice, a page
+ * would eventually show a number that the claim does not honour, and neither copy would look
+ * wrong on its own.
+ *
+ * No row means nobody has decided anything about this agent, which is not the same as a decision
+ * to allow the default — but it is what they get, and it is what the column would have given them
+ * had a row been written for some other reason.
+ */
+export function atOnceFor(machineId: Expression<string>, kind: Expression<string>) {
+  return sql<number>`coalesce((
+    select settings.at_once from agent_settings settings
+     where settings.machine_id = ${machineId} and settings.kind = ${kind}
+  ), ${AT_ONCE_BY_DEFAULT}::int)`
+}
 
 /** Whose machine a credential is, if it is still one. */
 export async function machineHolding(db: Database, tokenHash: string): Promise<string | undefined> {
@@ -43,6 +77,13 @@ export async function checkIn(
   reported: {
     /** Which build of the CLI is reporting, or nothing when it is too old to say. */
     readonly version: string | undefined
+    /**
+     * The directory that machine was connected in, or nothing when it is too old to say.
+     *
+     * Not where anything runs — where a person was standing when they connected it, which is the
+     * one directory a screen can offer as "my project" without anybody typing a path.
+     */
+    readonly connectedIn: string | undefined
     readonly found: readonly FoundAgent[]
   },
 ): Promise<boolean> {
@@ -56,8 +97,11 @@ export async function checkIn(
         last_seen_at: sql<Date>`clock_timestamp()`,
         left_at: null,
         // Written every time rather than only when it changes: a machine that stopped saying which
-        // build it is has stopped knowing, and the honest record of that is null.
+        // build it is has stopped knowing, and the honest record of that is null. Its directory
+        // goes the same way, and for a second reason — a service can be moved, and the answer has
+        // to be about the process running now.
         version: reported.version ?? null,
+        connected_in: reported.connectedIn ?? null,
       })
       .where('id', '=', machineId)
       .where('removed_at', 'is', null)
@@ -136,6 +180,13 @@ type Machine = {
   readonly name: string
   /** Which build of the CLI it is running, or nothing when it has never said. */
   readonly version: string | undefined
+  /**
+   * The directory it was connected in, or null when it has never said.
+   *
+   * Not where anything runs — where a person was standing when they connected it. It is the one
+   * directory a screen can offer as "my project" without anybody typing a path.
+   */
+  readonly connectedIn: string | null
   /**
    * Whose it is.
    *
@@ -240,6 +291,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       'machines.id',
       'machines.name',
       'machines.version',
+      'machines.connected_in as connectedIn',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       // Whose it is, because in a Space with two people in it a name is not enough: one of these
@@ -267,6 +319,7 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       version: row.version ?? undefined,
       ownerName: row.ownerName,
       ownerUserId: row.ownerUserId,
+      connectedIn: row.connectedIn,
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: found
         .filter((agent) => agent.machineId === row.id)
@@ -289,15 +342,15 @@ async function installedOn(
   return (
     tx
       .selectFrom('agents')
-      .leftJoin('agent_names', (join) =>
+      .leftJoin('agent_settings', (join) =>
         join
-          .onRef('agent_names.machine_id', '=', 'agents.machine_id')
-          .onRef('agent_names.kind', '=', 'agents.kind'),
+          .onRef('agent_settings.machine_id', '=', 'agents.machine_id')
+          .onRef('agent_settings.kind', '=', 'agents.kind'),
       )
       .select([
         'agents.machine_id as machineId',
         'agents.kind',
-        'agent_names.name',
+        'agent_settings.name',
         'agents.version',
         'agents.models',
       ])
@@ -311,24 +364,32 @@ async function installedOn(
 }
 
 /**
- * Keeps a person's choice outside the machine's complete discovery report. An absent report can
- * remove the installed row; it must not be able to remove the name that should return with it.
+ * What an owner has decided about one agent on one of their machines.
+ *
+ * Kept outside the machine's discovery report, which is replaced whole on every check-in: an
+ * absent report can remove the installed row, and it must not be able to remove the decisions
+ * that should come back with it.
+ *
+ * A patch. Anything left out is left alone — so setting how many at a time does not have to
+ * restate the name, and there is no read-then-write in a caller for the two to disagree across.
  */
-export async function setAgentName(
+export async function setAgentSettings(
   db: Database,
-  naming: {
+  deciding: {
     readonly machine: string
     readonly owner: string
     readonly kind: AgentKind
-    readonly name: string | null
+    /** Null takes the name off, which is what putting it back to its kind's name means. */
+    readonly name?: string | null | undefined
+    readonly atOnce?: number | undefined
   },
 ): Promise<boolean> {
   return db.transaction().execute(async (tx) => {
     const machine = await tx
       .selectFrom('machines')
       .select('id')
-      .where('id', '=', naming.machine)
-      .where('owner_user_id', '=', naming.owner)
+      .where('id', '=', deciding.machine)
+      .where('owner_user_id', '=', deciding.owner)
       .where('removed_at', 'is', null)
       .forUpdate()
       .executeTakeFirst()
@@ -339,29 +400,26 @@ export async function setAgentName(
       .selectFrom('agents')
       .select('kind')
       .where('machine_id', '=', machine.id)
-      .where('kind', '=', naming.kind)
+      .where('kind', '=', deciding.kind)
       .forUpdate()
       .executeTakeFirst()
 
     if (installed === undefined) return false
 
-    const name = naming.name
-    if (name === null) {
-      await tx
-        .deleteFrom('agent_names')
-        .where('machine_id', '=', naming.machine)
-        .where('kind', '=', naming.kind)
-        .execute()
-      return true
+    // Written rather than deleted when a name comes off: the row may be carrying how many at a
+    // time as well, and taking a name off is not a decision to forget that one too.
+    const decided = {
+      ...(deciding.name === undefined ? {} : { name: deciding.name }),
+      ...(deciding.atOnce === undefined ? {} : { at_once: deciding.atOnce }),
     }
 
     await tx
-      .insertInto('agent_names')
-      .values({ machine_id: naming.machine, kind: naming.kind, name })
+      .insertInto('agent_settings')
+      .values({ machine_id: deciding.machine, kind: deciding.kind, ...decided })
       .onConflict((clash) =>
         clash.columns(['machine_id', 'kind']).doUpdateSet({
-          name,
-          named_at: sql<Date>`clock_timestamp()`,
+          ...decided,
+          decided_at: sql<Date>`clock_timestamp()`,
         }),
       )
       .execute()

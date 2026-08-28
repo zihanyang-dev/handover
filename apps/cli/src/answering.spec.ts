@@ -24,6 +24,8 @@ const ASKING: Asking = {
   agentKind: 'claude-code',
   agentSession: null,
   goal: null,
+  where: { kind: 'its-own' },
+  hasRunBefore: false,
   afterSeq: 4,
   asked: [{ text: 'read notes.txt', who: 'Kai' }],
   model: null,
@@ -72,13 +74,13 @@ function saying(...told: readonly Told[]): Agent {
 
 async function answered(agent: Agent): Promise<readonly Written[]> {
   const machine = {
-    where: '/nowhere',
+    workRoot: '/nowhere',
     handover: 'handover',
     env: {},
     say: () => undefined,
     until: new AbortController().signal,
   }
-  await startAnswering(apiFor(ORIGIN, 'hm_t'), ASKING, agent, machine).done
+  await startAnswering(apiFor(ORIGIN, 'hm_t'), ASKING, agent, { machine, where: '/nowhere' }).done
 
   return written
 }

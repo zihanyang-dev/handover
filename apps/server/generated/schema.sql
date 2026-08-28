@@ -69,16 +69,18 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: agent_names; Type: TABLE; Schema: public; Owner: -
+-- Name: agent_settings; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.agent_names (
+CREATE TABLE public.agent_settings (
     machine_id uuid NOT NULL,
     kind text NOT NULL,
-    name text NOT NULL,
-    named_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    CONSTRAINT agent_names_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text]))),
-    CONSTRAINT agent_names_name_check CHECK (((name = btrim(name)) AND ((char_length(name) >= 1) AND (char_length(name) <= 48))))
+    name text,
+    decided_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    at_once integer DEFAULT 3 NOT NULL,
+    CONSTRAINT agent_settings_at_once_check CHECK (((at_once >= 1) AND (at_once <= 16))),
+    CONSTRAINT agent_settings_kind_check CHECK ((kind = ANY (ARRAY['claude-code'::text, 'codex'::text]))),
+    CONSTRAINT agent_settings_name_check CHECK (((name = btrim(name)) AND ((char_length(name) >= 1) AND (char_length(name) <= 48))))
 );
 
 
@@ -131,7 +133,9 @@ CREATE TABLE public.conversations (
     machine_id uuid NOT NULL,
     agent_kind text NOT NULL,
     agent_session_id text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    works_in text,
+    CONSTRAINT conversations_works_in_check CHECK (((works_in = btrim(works_in)) AND ((char_length(works_in) >= 1) AND (char_length(works_in) <= 512))))
 );
 
 
@@ -222,7 +226,8 @@ CREATE TABLE public.machines (
     removed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     version text,
-    owner_user_id uuid NOT NULL
+    owner_user_id uuid NOT NULL,
+    connected_in text
 );
 
 
@@ -302,6 +307,12 @@ CREATE TABLE public.tasks (
     sleep_until timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     ended_at timestamp with time zone,
+    is_root boolean GENERATED ALWAYS AS ((parent_id IS NULL)) STORED,
+    parent_of_root boolean GENERATED ALWAYS AS (
+CASE
+    WHEN (parent_id IS NULL) THEN NULL::boolean
+    ELSE true
+END) STORED,
     CONSTRAINT tasks_check CHECK (((ended_at IS NULL) = (state <> 'done'::text))),
     CONSTRAINT tasks_check1 CHECK (((sleep_until IS NULL) = (state <> 'sleep'::text))),
     CONSTRAINT tasks_goal_check CHECK (((btrim(goal) <> ''::text) AND (octet_length(goal) <= 2000))),
@@ -334,11 +345,11 @@ CREATE TABLE public.users (
 
 
 --
--- Name: agent_names agent_names_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_settings agent_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agent_names
-    ADD CONSTRAINT agent_names_pkey PRIMARY KEY (machine_id, kind);
+ALTER TABLE ONLY public.agent_settings
+    ADD CONSTRAINT agent_settings_pkey PRIMARY KEY (machine_id, kind);
 
 
 --
@@ -574,6 +585,14 @@ ALTER TABLE ONLY public.tasks
 
 
 --
+-- Name: tasks tasks_root_identity; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_root_identity UNIQUE (id, is_root);
+
+
+--
 -- Name: turns turns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -702,10 +721,10 @@ CREATE INDEX tasks_waiting_on_owner ON public.tasks USING btree (owner_user_id) 
 
 
 --
--- Name: turns_one_open_per_machine; Type: INDEX; Schema: public; Owner: -
+-- Name: turns_open_on_machine; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX turns_one_open_per_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
+CREATE INDEX turns_open_on_machine ON public.turns USING btree (machine_id) WHERE (ended_at IS NULL);
 
 
 --
@@ -723,11 +742,11 @@ CREATE CONSTRAINT TRIGGER memberships_keep_an_owner AFTER INSERT OR DELETE OR UP
 
 
 --
--- Name: agent_names agent_names_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_settings agent_settings_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agent_names
-    ADD CONSTRAINT agent_names_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.agent_settings
+    ADD CONSTRAINT agent_settings_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id) ON DELETE CASCADE;
 
 
 --
@@ -872,6 +891,14 @@ ALTER TABLE ONLY public.outputs
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: tasks tasks_no_grandchildren; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_no_grandchildren FOREIGN KEY (parent_of_root, parent_id) REFERENCES public.tasks(is_root, id);
 
 
 --

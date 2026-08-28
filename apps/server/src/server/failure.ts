@@ -31,6 +31,8 @@ const RECOVERIES = [
   'choose-another-agent',
   /** Its machine is not here. Waiting works if it comes back; another machine works now. */
   'choose-another-machine',
+  /** There is nobody else to give this to. Whoever asked has to do it where they are. */
+  'carry-on-here',
   /** Nothing is wrong; a code was just sent. Give it a moment. */
   'wait',
   /** Nothing the person did caused this, and nothing they do fixes it. */

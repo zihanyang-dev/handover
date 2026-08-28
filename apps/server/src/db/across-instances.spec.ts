@@ -19,7 +19,7 @@ import { beginConversation } from './conversation.ts'
 import { connectProvider } from './credential.ts'
 import { issueCode } from './email-code.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn } from './machine.ts'
+import { checkIn, setAgentSettings } from './machine.ts'
 import { userHolding, revokeSession } from './session.ts'
 import { signInWithCode } from './sign-in.ts'
 import { createSpace } from './space.ts'
@@ -218,18 +218,50 @@ describe('two instances at once', () => {
     expect(took[0]?.conversationId).toBe(conversationId)
   })
 
-  it('let exactly one of them take *any* turn on one machine, not one turn each', async () => {
-    // The harder half, and the one a primary key does not catch: two conversations waiting on the
-    // same machine. Each instance reads "nothing open on this machine" in its own snapshot, then
-    // claims a different conversation — two rows, no key in common, and two agents running in one
-    // directory. prd 04 says a machine does exactly one thing at once, and this is where that has
-    // to be decided.
+  it('let an agent allowed one take one, however many instances are asking', async () => {
+    // The harder half, and the one no key catches: two conversations waiting for the same agent.
+    // Each instance counts "nothing running" in its own snapshot, then claims a different
+    // conversation — two rows, no key in common, and an agent running twice what it was allowed.
+    //
+    // A unique index said this while the answer was always one. It cannot say "at most three",
+    // so what stands in its place is a lock on the machine, and this is the test of it: allowed
+    // one, exactly one is taken no matter how many instances ask at the same moment.
     const { machineId, spaceId, userId } = await aQuestion()
     await aSecondQuestion(machineId, spaceId, userId)
+    await setAgentSettings(one, {
+      machine: machineId,
+      owner: userId,
+      kind: 'claude-code',
+      atOnce: 1,
+    })
 
     const [first, second] = await Promise.all([takeOne(one, machineId), takeOne(two, machineId)])
 
     expect([first, second].filter((taken) => taken !== undefined)).toHaveLength(1)
+  })
+
+  it('let two of them fill an agent allowed two, and no further', async () => {
+    // The same lock read the other way. Allowed one, one is a limit that a single instance
+    // reaches on its own; allowed two, the count itself has to be right across instances — a
+    // third claim would mean somebody counted against a stale snapshot.
+    const { machineId, spaceId, userId } = await aQuestion()
+    await aSecondQuestion(machineId, spaceId, userId)
+    await aSecondQuestion(machineId, spaceId, userId)
+    await setAgentSettings(one, {
+      machine: machineId,
+      owner: userId,
+      kind: 'claude-code',
+      atOnce: 2,
+    })
+
+    const taken = await Promise.all([
+      takeOne(one, machineId),
+      takeOne(two, machineId),
+      takeOne(one, machineId),
+      takeOne(two, machineId),
+    ])
+
+    expect(taken.filter((one) => one !== undefined)).toHaveLength(2)
   })
 })
 
@@ -266,6 +298,7 @@ async function aQuestion(): Promise<{
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
   await checkIn(one, collected.machineId, {
     version: undefined,
+    connectedIn: undefined,
     found: [{ kind: 'claude-code', version: '2.1.231' }],
   })
 

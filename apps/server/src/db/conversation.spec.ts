@@ -14,6 +14,7 @@ import { ACTIVITY, ROLES } from '../conversation/transcript.ts'
 import { watchers } from '../conversation/watchers.ts'
 import { loadEnv } from '../env.ts'
 import { createLog } from '../log.ts'
+import type { AgentKind } from '../machine/agent-kind.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
@@ -29,9 +30,9 @@ import {
   sayTo,
 } from './conversation.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, removeMachine, sayGoodbye } from './machine.ts'
+import { checkIn, removeMachine, sayGoodbye, setAgentSettings } from './machine.ts'
 import { createSpace } from './space.ts'
-import { forgetStranded, openTurn, stopWantedOn, takeOne } from './turn.ts'
+import { forgetStranded, openTurn, stopsWantedOn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
 import { listenForLive } from './watching.ts'
 
@@ -105,6 +106,7 @@ beforeEach(async () => {
   MACHINE = await attached()
   await checkIn(db, MACHINE, {
     version: undefined,
+    connectedIn: undefined,
     found: [{ kind: 'claude-code', version: '2.1.231' }],
   })
 })
@@ -135,12 +137,12 @@ async function attached(): Promise<string> {
  * The opening is this conversation's `turn-1`, and every test below counts from it: a fixture
  * that opened an empty one would be setting up a state nothing in this program can reach.
  */
-async function opened(text = 'hello'): Promise<string> {
+async function opened(text = 'hello', agentKind: AgentKind = 'claude-code'): Promise<string> {
   const conversation = await beginConversation(db, {
     conversationId: randomUUID(),
     spaceId: SPACE,
     machineId: MACHINE,
-    agentKind: 'claude-code',
+    agentKind,
     saidBy: PERSON,
     asked: { text },
   })
@@ -275,7 +277,7 @@ describe('saying something to an agent', () => {
     const conversation = await running('hello')
 
     expect(await asks(conversation, 'turn-2', 'no, leave legacy alone')).toEqual({ kind: 'said' })
-    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
+    expect(await stopsWantedOn(db, MACHINE)).toMatchObject([{ conversationId: conversation }])
   })
 
   it('is finished once the last question is answered, however many were interrupted', async () => {
@@ -415,11 +417,72 @@ describe('taking a question', () => {
     expect(await takeOne(db, MACHINE)).toBeUndefined()
   })
 
+  it('carries the directory a person pointed it at, and nothing when they did not', async () => {
+    // The one path this deployment stores, and it is stored because somebody typed it. Unchecked
+    // on the way in on purpose: nothing here has seen that machine's disk, so a path that is
+    // wrong is something the machine says on the turn it tries to use it.
+    const pointed = await beginConversation(db, {
+      conversationId: randomUUID(),
+      spaceId: SPACE,
+      machineId: MACHINE,
+      agentKind: 'claude-code',
+      saidBy: PERSON,
+      asked: { text: 'in my own checkout, please' },
+      worksIn: '/Users/mina/code/thing',
+    })
+    if (pointed.kind !== 'begun') throw new Error(`could not open one: ${pointed.kind}`)
+
+    expect(await takeOne(db, MACHINE)).toMatchObject({
+      conversationId: pointed.conversationId,
+      worksIn: '/Users/mina/code/thing',
+      subtaskOf: null,
+    })
+    expect(await takeOne(db, MACHINE)).toBeUndefined()
+
+    await opened('anywhere you like')
+    expect(await takeOne(db, MACHINE)).toMatchObject({ worksIn: null })
+  })
+
   it('is the longest-waiting one when two conversations are both asking', async () => {
     const first = await opened('the older question')
     await opened('the newer question')
 
     expect(await takeOne(db, MACHINE)).toMatchObject({ conversationId: first })
+  })
+
+  it('stops at what its agent is allowed, and hands out the next one as soon as one ends', async () => {
+    await setAgentSettings(db, { machine: MACHINE, owner: PERSON, kind: 'claude-code', atOnce: 2 })
+    const first = await running('one')
+    await running('two')
+    const third = await opened('three')
+
+    expect(await takeOne(db, MACHINE)).toBeUndefined()
+
+    await ends(first, 'opening/end')
+    expect((await takeOne(db, MACHINE))?.conversationId).toBe(third)
+  })
+
+  it('counts each agent on a machine separately, so a full one does not hold up the other', async () => {
+    // The reason the number is not the machine's. A laptop with both agents on it would otherwise
+    // have Codex being busy mean Claude Code could take nothing — two agents sharing one budget
+    // that neither of them was given.
+    await checkIn(db, MACHINE, {
+      version: undefined,
+      connectedIn: undefined,
+      found: [
+        { kind: 'claude-code', version: '2.1.231' },
+        { kind: 'codex', version: '0.44.0' },
+      ],
+    })
+    await setAgentSettings(db, { machine: MACHINE, owner: PERSON, kind: 'codex', atOnce: 1 })
+    const busy = await opened('for codex', 'codex')
+    expect((await takeOne(db, MACHINE))?.conversationId).toBe(busy)
+    // Older than the one below, and skipped anyway: what is full is this agent, not the machine.
+    await opened('more for codex', 'codex')
+
+    const free = await opened('for claude code')
+
+    expect((await takeOne(db, MACHINE))?.conversationId).toBe(free)
   })
 
   it('carries the session once the agent has named one', async () => {
@@ -511,7 +574,7 @@ describe('asking an agent to stop', () => {
     const conversation = await running('take your time')
     await asksToStop(conversation)
 
-    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
+    expect(await stopsWantedOn(db, MACHINE)).toMatchObject([{ conversationId: conversation }])
   })
 
   it('is still wanted after the agent has said several more things', async () => {
@@ -528,7 +591,7 @@ describe('asking an agent to stop', () => {
       })
     }
 
-    expect(await stopWantedOn(db, MACHINE)).toMatchObject({ conversationId: conversation })
+    expect(await stopsWantedOn(db, MACHINE)).toMatchObject([{ conversationId: conversation }])
   })
 
   it('stops being asked for once the agent says it stopped', async () => {
@@ -543,7 +606,7 @@ describe('asking an agent to stop', () => {
       message: { role: 'activity', content: { activityType: ACTIVITY.cancelled } },
     })
 
-    expect(await stopWantedOn(db, MACHINE)).toBeUndefined()
+    expect(await stopsWantedOn(db, MACHINE)).toEqual([])
   })
 
   it('leaves the turn open until it actually stops', async () => {
@@ -590,21 +653,15 @@ describe('a turn nobody was watching', () => {
     expect(await forgetStranded(db, MACHINE)).toBe(0)
   })
 
-  it('cannot be asked to close two on one machine, because there cannot be two', async () => {
-    // One at a time, decided by the database rather than by whoever asks. Two instances can both
-    // read "nothing open on this machine" before either commits — no primary key stops that, and
-    // no test can, since it depends on which statement commits first. The unique partial index
-    // can, and this is it.
-    const first = await running('take your time')
-    const second = await opened('and this one')
-    if (first === second) throw new Error('the fixture opened one conversation twice')
+  it('closes every turn the machine left open, not only the first', async () => {
+    // It used to be able to find at most one, because a machine ran at most one. A restart that
+    // closed the first and left the second would leave that conversation reading as working with
+    // nobody running it — and nothing would ever come back to it, since the process that could
+    // have said so is the one that just restarted.
+    await running('take your time')
+    await running('and this one')
 
-    await expect(
-      db
-        .insertInto('turns')
-        .values({ conversation_id: second, after_seq: 1, machine_id: MACHINE })
-        .execute(),
-    ).rejects.toThrow(/turns_one_open_per_machine/u)
+    expect(await forgetStranded(db, MACHINE)).toBe(2)
   })
 })
 

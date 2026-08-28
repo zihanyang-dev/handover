@@ -505,19 +505,52 @@ describe('holding a machine question instead of answering "nothing"', () => {
 })
 
 describe('a machine that is already answering something', () => {
-  it('is not handed a second question, because it would drop it on the floor', async () => {
-    // A person can open two conversations on one machine. The machine answers one at a time and
-    // ignores anything else it is handed — while the server has already written down that this
-    // question was taken. Nobody ever runs it, and the page shows it working until the machine
-    // restarts, which is the one outcome `unknown` exists to make rare.
+  /** How many at a time this machine's Claude Code is allowed, said through the door a person uses. */
+  async function allows(machine: { id: string }, atOnce: number): Promise<void> {
+    const done = await app.request(`/me/machines/${machine.id}/agents/claude-code`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: COOKIE },
+      body: JSON.stringify({ atOnce }),
+    })
+    if (done.status !== 204) throw new Error(`the fixture could not set a limit: ${done.status}`)
+  }
+
+  it('is handed a second question, because it can run both', async () => {
+    // `prd.md` 07 ②. Two things asked of one machine used to mean the second waited for the
+    // first, however long the first took — which made "hand it over and walk away" worth having
+    // exactly once.
+    const machine = await attached('busy-mbp')
+    const one = await conversationOn(machine)
+    const two = await conversationOn(machine)
+    await said(one, 'the first thing')
+    await said(two, 'the second thing')
+
+    const first = (await (await asMachine(machine.token, '/machines/current/poll')).json()) as {
+      asking?: { conversationId: string }
+    }
+    const next = (await (await asMachine(machine.token, '/machines/current/poll')).json()) as {
+      asking?: { conversationId: string }
+    }
+
+    expect(new Set([first.asking?.conversationId, next.asking?.conversationId])).toEqual(
+      new Set([one, two]),
+    )
+  })
+
+  it('is handed no more than its agent is allowed', async () => {
+    // The number is the whole of the limit now, and it is the owner's. Handed one past it, the
+    // machine would ignore it while the server had already written down that the question was
+    // taken — nobody would ever run it, and the page would read as working until that machine
+    // restarted, which is the one outcome `unknown` exists to make rare.
     //
-    // Whether it is busy is read from the ledger, not asked of the machine: a turn it has taken
+    // Whether it is full is read from the ledger, not asked of the machine: a turn it has taken
     // and not ended is one it is on, and that stays true while it is winding down.
     const machine = await attached('busy-mbp')
     const one = await conversationOn(machine)
     const two = await conversationOn(machine)
     await said(one, 'the first thing')
     await said(two, 'the second thing')
+    await allows(machine, 1)
 
     await asMachine(machine.token, '/machines/current/poll')
     const next = await asMachine(machine.token, '/machines/current/poll')

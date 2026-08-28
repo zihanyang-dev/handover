@@ -84,8 +84,14 @@ export type Answering = {
  * two things is one of them being read as the other.
  */
 export type Machine = {
-  /** Where the agent works: this process's own directory, which is where it was connected. */
-  readonly where: string
+  /**
+   * The folder every conversation gets one of its own under.
+   *
+   * Not this process's directory, which is what it used to be. A machine ran one thing at a time
+   * and that thing ran where `handover connect` was typed; several at once in one directory is
+   * the exact failure the old limit existed to prevent. See `workspace.ts`.
+   */
+  readonly workRoot: string
   /** How to run this program again, so an agent can be told something that works. */
   readonly handover: string
   readonly env: NodeJS.ProcessEnv
@@ -107,22 +113,23 @@ export type Machine = {
  * the agent finished is the thing this file exists to avoid.
  *
  * Which agent is the caller's to find: it is the one that took the work, and so the one that has
- * to answer for not being able to do it.
+ * to answer for not being able to do it. Where it works is the caller's too, and for the same
+ * reason — the folder has to exist before anything is started in it.
  */
 export function startAnswering(
   api: Api,
   asking: Asking,
   agent: Agent,
-  machine: Machine,
+  on: { readonly machine: Machine; readonly where: string },
 ): Answering {
-  const writing = writingInto(api, asking, machine)
-  const talk = agent.talk(machine.where, asking.agentSession)
+  const writing = writingInto(api, asking, on.machine)
+  const talk = agent.talk(on.where, asking.agentSession)
 
   return {
     conversationId: asking.conversationId,
     afterSeq: asking.afterSeq,
     stop: talk.stop,
-    done: write(writing, asking, talk.say(whatToDo(asking, machine.handover)), machine.say),
+    done: write(writing, asking, talk.say(whatToDo(asking, on.machine.handover)), on.machine.say),
   }
 }
 
@@ -219,6 +226,23 @@ export async function endTurn(
 
 /** Said before anything else in a turn the agent could not pick up where it left off. */
 const FORGOT = { role: 'activity', content: { activityType: 'forgot' } } as const
+
+/**
+ * Says the folder this conversation had been working in was not there any more.
+ *
+ * Written before the turn runs, because by the time the agent has said anything it has said it
+ * about an empty directory. The same kind of thing as an agent that could not remember the last
+ * turn, and kept apart from it because they are not the same fact: one is the agent's memory,
+ * this is the work itself. Nothing is broken by it — the folder is made again and the turn starts
+ * from what it can see — but a transcript that did not say so would have the agent looking as
+ * though it had lost the work.
+ */
+export async function sayItStartedOver(api: Api, asking: Asking, machine: Machine): Promise<void> {
+  await writingInto(api, asking, machine).message(`${asking.afterSeq}/started-over`, {
+    role: 'activity',
+    content: { activityType: 'started-over' },
+  })
+}
 
 /**
  * Writes down everything one turn produced.

@@ -71,6 +71,14 @@ export type Beginning = {
   readonly conversationId: string
   readonly saidBy: string
   readonly asked: Asked
+  /**
+   * A directory on that machine to work in, when a person has one in mind.
+   *
+   * Absent nearly always, and then the machine works somewhere of its own. Not checked here and
+   * not checkable: this deployment has never seen that machine's disk, and a path that is wrong
+   * is something the machine says on the turn it tries to use it.
+   */
+  readonly worksIn?: string | undefined
 }
 
 export type Begun =
@@ -141,6 +149,7 @@ export async function beginConversation(db: Database, beginning: Beginning): Pro
         space_id: beginning.spaceId,
         machine_id: machine.id,
         agent_kind: beginning.agentKind,
+        works_in: beginning.worksIn ?? null,
       })
       .execute()
 
@@ -711,29 +720,33 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
 
 export type HandedOff =
   | { readonly kind: 'handed-off'; readonly conversationId: string; readonly taskId: string }
-  /** No machine by that name can be reached from this Space, or it was removed. */
-  | { readonly kind: 'no-machine' }
-  /** That machine is here but does not have that agent. */
+  /** This machine does not have that agent. */
   | { readonly kind: 'no-agent' }
   /** This machine is not running a piece of work in that conversation. */
   | { readonly kind: 'nothing-to-hand-off' }
+  /** It is itself something that was handed off. Only what a person owns may hand out more. */
+  | { readonly kind: 'not-yours-to-hand-off' }
 
 export type HandingOff = {
   readonly conversationId: string
   readonly machineId: string
   readonly key: string
-  /** The machine to hand it to, by the name a person sees in the Space. */
-  readonly machine: string
   readonly agentKind: AgentKind
   readonly goal: string
 }
 
 /**
- * One agent opens a piece of work for another.
+ * One agent opens a piece of work for another, here.
  *
- * A new conversation, because it is a different agent on a different machine — and `03` settled
- * that changing the agent means changing the conversation. Nothing about this being a sub-task
- * makes that so; it is the same rule everything else follows.
+ * A new conversation, because it is a different agent — and `03` settled that changing the agent
+ * means changing the conversation. Nothing about this being a sub-task makes that so; it is the
+ * same rule everything else follows.
+ *
+ * **Here**, and that is `prd.md` 07 ⑥. It used to name a machine, and any machine the Space could
+ * reach would do — so an agent could put work on somebody's laptop at three in the morning with
+ * nobody in the room and nothing to say who decided it. A person handing you something has a name
+ * and a time against it; an agent doing it has neither. What is left is the same machine, which
+ * is also what lets a sub-task read the files the work it belongs to has been writing.
  *
  * Its owner is the agent that opened it, which is `parent_id` and nothing else. That is why what
  * it asks never reaches a person's Inbox: it is not asking them.
@@ -756,13 +769,23 @@ export async function handOffTo(db: Database, handing: HandingOff): Promise<Hand
 
     const parent = await openTaskOn(tx, mine.id)
     if (parent === undefined) return { kind: 'nothing-to-hand-off' }
+    // Two levels and no more, `prd.md` 07 ⑤. A plan that fans out belongs with whoever has to
+    // answer for it, not three deep where no person ever chose it — and every question about a
+    // tree ("what does taking this back stop") becomes a question about a parent and its
+    // children, which is one index seek rather than a walk.
+    if (parent.parentId !== null) return { kind: 'not-yours-to-hand-off' }
 
-    const to = await agentNamed(tx, mine.spaceId, handing)
-    if (typeof to !== 'string') return to
+    if (!(await hasAgent(tx, handing.machineId, handing.agentKind))) return { kind: 'no-agent' }
 
     const opened = await tx
       .insertInto('conversations')
-      .values({ space_id: mine.spaceId, machine_id: to, agent_kind: handing.agentKind })
+      .values({
+        space_id: mine.spaceId,
+        // The same machine. Whatever it writes lands beside what its parent is writing, which is
+        // the whole of how a sub-task sees the work it belongs to.
+        machine_id: handing.machineId,
+        agent_kind: handing.agentKind,
+      })
       .returning('id')
       .executeTakeFirstOrThrow()
 
@@ -781,46 +804,22 @@ export async function handOffTo(db: Database, handing: HandingOff): Promise<Hand
       .executeTakeFirstOrThrow()
 
     await bothSides(tx, handing, { mine: mine.id, theirs: opened.id })
-    await wakeMachine(tx, to)
+    await wakeMachine(tx, handing.machineId)
 
     return { kind: 'handed-off', conversationId: opened.id, taskId: task.id }
   })
 }
 
-/**
- * The machine an agent named, if that agent is on it and this Space can reach it.
- *
- * Both under the machine's lock rather than read and then decided on, for the same reason opening
- * a conversation is: a machine removed between the read and the insert would leave a piece of
- * work pinned to something nobody can reach.
- */
-async function agentNamed(
-  tx: Tx,
-  spaceId: string,
-  handing: HandingOff,
-): Promise<string | Extract<HandedOff, { kind: 'no-machine' | 'no-agent' }>> {
-  const to = await tx
-    .selectFrom('machines')
-    .select('machines.id')
-    .where('machines.name', '=', handing.machine)
-    .where('machines.removed_at', 'is', null)
-    .where(reachableFrom(spaceId))
-    // Two people in one Space can both have a laptop called `mbp`. Oldest wins, so the same name
-    // means the same machine every time rather than whichever row came back first.
-    .orderBy('machines.created_at')
-    .forUpdate()
-    .executeTakeFirst()
-
-  if (to === undefined) return { kind: 'no-machine' }
-
+/** Whether this machine has the agent being asked for. What it reported, as of its last report. */
+async function hasAgent(tx: Tx, machineId: string, kind: AgentKind): Promise<boolean> {
   const agent = await tx
     .selectFrom('agents')
     .select('kind')
-    .where('machine_id', '=', to.id)
-    .where('kind', '=', handing.agentKind)
+    .where('machine_id', '=', machineId)
+    .where('kind', '=', kind)
     .executeTakeFirst()
 
-  return agent === undefined ? { kind: 'no-agent' } : to.id
+  return agent !== undefined
 }
 
 /**

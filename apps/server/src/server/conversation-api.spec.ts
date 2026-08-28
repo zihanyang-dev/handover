@@ -299,7 +299,7 @@ describe('saying something', () => {
     // And the machine is told to stop, on the very next thing it asks.
     const told = await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
     expect(await told.json()).toMatchObject({
-      stopping: { conversationId: conversation },
+      stopping: [{ conversationId: conversation }],
     })
   })
 })

@@ -17,8 +17,12 @@ import { VERSION } from './env.ts'
  */
 let BIN = ''
 
+/** Somewhere real for a turn to be given a folder of its own under. */
+let WORK = ''
+
 beforeAll(async () => {
   BIN = await mkdtemp(join(tmpdir(), 'handover-checking-in-'))
+  WORK = await mkdtemp(join(tmpdir(), 'handover-checking-in-work-'))
   const path = join(BIN, 'some-new-agent')
   await writeFile(path, '#!/bin/sh\necho 1.2.3\n')
   await chmod(path, 0o755)
@@ -51,7 +55,8 @@ function runningFor(rounds: number) {
     signal: stopping.signal,
     running: {
       env: { PATH: '/nonexistent' } as NodeJS.ProcessEnv,
-      where: '/nowhere',
+      workRoot: WORK,
+      connectedIn: '/Users/mina/code/thing',
       handover: 'handover',
       say: (line: string) => said.push(line),
       sleep: async (seconds: number) => {
@@ -66,7 +71,7 @@ function runningFor(rounds: number) {
 function keepsAnswering(reports: unknown[] = [], lookFor: string[] = []) {
   return http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
     reports.push(await request.json())
-    return HttpResponse.json({ pollSeconds: 25, lookFor })
+    return HttpResponse.json({ pollSeconds: 25, lookFor, stopping: [] })
   })
 }
 
@@ -86,7 +91,7 @@ describe('staying connected', () => {
         return HttpResponse.json({
           pollSeconds: 0,
           lookFor: [],
-          stopping: { conversationId: 'not-the-one-here', afterSeq: 1 },
+          stopping: [{ conversationId: 'not-the-one-here', afterSeq: 1 }],
         })
       }),
     )
@@ -105,6 +110,20 @@ describe('staying connected', () => {
     await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
 
     expect(reports).toHaveLength(3)
+  })
+
+  it('says the directory it was connected in, so a screen can offer it', async () => {
+    // Nothing runs there any more — every turn gets a folder of its own. It is reported because
+    // `03` promised an agent works in your files, and that promise now lives on somebody being
+    // able to pick this directory when they open a conversation. A screen cannot offer a path it
+    // was never told.
+    const reports: unknown[] = []
+    server.use(keepsAnswering(reports))
+    const { running, signal } = runningFor(1)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(reports[0]).toMatchObject({ connectedIn: '/Users/mina/code/thing' })
   })
 
   it('says which build it is, in every report and not only the first', async () => {
@@ -130,7 +149,7 @@ describe('staying connected', () => {
     server.use(
       http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
         reports.push((await request.json()) as { found: unknown[] })
-        return HttpResponse.json({ pollSeconds: 25, lookFor: ['some-new-agent'] })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: ['some-new-agent'], stopping: [] })
       }),
     )
     const { running, signal } = runningFor(2)
@@ -153,7 +172,7 @@ describe('staying connected', () => {
     server.use(
       http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
         reports.push((await request.json()) as { restarted?: boolean })
-        return HttpResponse.json({ pollSeconds: 25, lookFor: [] })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: [], stopping: [] })
       }),
     )
     const { running, signal } = runningFor(3)
@@ -173,7 +192,7 @@ describe('staying connected', () => {
         asked += 1
         if (asked < 3) return HttpResponse.error()
         reports.push((await request.json()) as { restarted?: boolean })
-        return HttpResponse.json({ pollSeconds: 25, lookFor: [] })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: [], stopping: [] })
       }),
     )
     const { running, signal } = runningFor(4)
@@ -212,11 +231,14 @@ describe('staying connected', () => {
           {
             pollSeconds: 25,
             lookFor: [],
+            stopping: [],
             asking: {
               conversationId: 'c-1',
               agentKind: 'claude-code',
               agentSession: null,
               afterSeq: 1,
+              where: { kind: 'its-own' },
+              hasRunBefore: false,
               asked: [{ text: 'take your time', who: 'Kai' }],
               model: null,
               effort: null,
@@ -243,6 +265,71 @@ describe('staying connected', () => {
     expect(stopped).toBe(true)
   })
 
+  it('answers a second question while the first is still going', async () => {
+    // `prd.md` 07 ②. It used to hold one at a time and drop anything else it was handed — which
+    // it had to, because both would have run in the one directory this process was started in.
+    //
+    // The first turn is not allowed to finish until the second one has written something. Under
+    // one-at-a-time that is a deadlock: the second is never handed out, so it never writes, so
+    // the first is never released. The test can only pass if the second really began while the
+    // first was still open.
+    const answered: string[] = []
+    let handed = 0
+    let firstIsStillOpen = false
+    let secondBeganWhileFirstWas = false
+    const questions = ['c-1', 'c-2']
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, () =>
+        HttpResponse.json({
+          pollSeconds: 25,
+          lookFor: [],
+          stopping: [],
+          ...(handed < questions.length
+            ? {
+                asking: {
+                  conversationId: questions[handed++],
+                  agentKind: 'claude-code',
+                  agentSession: null,
+                  afterSeq: 1,
+                  where: { kind: 'its-own' },
+                  hasRunBefore: false,
+                  asked: [{ text: 'take your time', who: 'Kai' }],
+                  model: null,
+                  effort: null,
+                },
+              }
+            : {}),
+        }),
+      ),
+      http.post(`${ORIGIN}/machines/current/conversations/:id/messages`, async ({ params }) => {
+        const conversation = String(params['id'])
+        answered.push(conversation)
+        if (conversation === 'c-2') secondBeganWhileFirstWas = firstIsStillOpen
+
+        // The first turn is held open while the loop goes on reporting. Held for a moment rather
+        // than for ever, so one-at-a-time fails on the assertion below rather than by running out
+        // of time — a test that only ever times out says nothing about what went wrong.
+        if (conversation === 'c-1') {
+          firstIsStillOpen = true
+          await new Promise((over) => setTimeout(over, 200))
+          firstIsStillOpen = false
+        }
+
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post(
+        `${ORIGIN}/machines/current/conversations/:id/live`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    )
+    const { running, signal } = runningFor(4)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(secondBeganWhileFirstWas).toBe(true)
+    expect(answered).toEqual(['c-1', 'c-2'])
+  })
+
   it('waits for a stopped turn to end rather than asking again as fast as it can', async () => {
     // A stop is the one thing the server answers at once instead of holding, and it goes on
     // answering it until the turn ends. Asking again straight away is one request per round trip
@@ -258,11 +345,13 @@ describe('staying connected', () => {
             agentKind: 'claude-code',
             agentSession: null,
             afterSeq: 1,
+            where: { kind: 'its-own' },
+            hasRunBefore: false,
             asked: [{ text: 'take your time', who: 'Kai' }],
             model: null,
             effort: null,
           },
-          stopping: { conversationId: 'c-1', afterSeq: 1 },
+          stopping: [{ conversationId: 'c-1', afterSeq: 1 }],
         }),
       ),
       // The turn never ends: this machine cannot run that agent, and saying so never gets through.
@@ -284,7 +373,7 @@ describe('staying connected', () => {
       http.post(`${ORIGIN}/machines/current/poll`, () => {
         asked += 1
         if (asked < 3) return HttpResponse.error()
-        return HttpResponse.json({ pollSeconds: 25, lookFor: [] })
+        return HttpResponse.json({ pollSeconds: 25, lookFor: [], stopping: [] })
       }),
     )
     const { running, signal, said } = runningFor(4)
@@ -314,7 +403,8 @@ describe('being asked to stop', () => {
     const stopping = new AbortController()
     const running = {
       env: {},
-      where: '/nowhere',
+      workRoot: WORK,
+      connectedIn: '/Users/mina/code/thing',
       handover: 'handover',
       say: () => undefined,
       sleep: async (seconds: number, until: AbortSignal) =>
@@ -348,6 +438,7 @@ describe('one report, and what came of it', () => {
     expect(await reportOnce(apiFor(ORIGIN, 'hm_t'), [], env)).toMatchObject({
       said: 'here',
       lookFor: ['claude'],
+      stopping: [],
       pollSeconds: 25,
     })
   })
@@ -378,27 +469,32 @@ describe('one report, and what came of it', () => {
 describe('acting on a stop', () => {
   const TURN = { conversationId: 'c-1', afterSeq: 20 }
 
-  /** An agent that remembers whether anybody stopped it. */
+  /** An agent that remembers whether anybody stopped it, as the loop holds it. */
   function answering(conversationId: string, afterSeq: number) {
     let stopped = false
 
     return {
       was: () => stopped,
-      it: {
-        conversationId,
-        afterSeq,
-        done: Promise.resolve(),
-        stop: async () => {
-          stopped = true
-        },
-      },
+      it: new Map([
+        [
+          conversationId,
+          {
+            conversationId,
+            afterSeq,
+            done: Promise.resolve(),
+            stop: async () => {
+              stopped = true
+            },
+          },
+        ],
+      ]),
     }
   }
 
   it('stops the turn the stop names', async () => {
     const agent = answering('c-1', 20)
 
-    await stopIfAsked(agent.it, TURN, () => undefined)
+    await stopIfAsked(agent.it, [TURN], () => undefined)
 
     expect(agent.was()).toBe(true)
   })
@@ -406,7 +502,7 @@ describe('acting on a stop', () => {
   it('leaves another conversation alone', async () => {
     const agent = answering('c-2', 20)
 
-    await stopIfAsked(agent.it, TURN, () => undefined)
+    await stopIfAsked(agent.it, [TURN], () => undefined)
 
     expect(agent.was()).toBe(false)
   })
@@ -418,7 +514,7 @@ describe('acting on a stop', () => {
     // they interrupted to get — and leaves it claimed with nobody running it.
     const agent = answering('c-1', 22)
 
-    await stopIfAsked(agent.it, TURN, () => undefined)
+    await stopIfAsked(agent.it, [TURN], () => undefined)
 
     expect(agent.was()).toBe(false)
   })

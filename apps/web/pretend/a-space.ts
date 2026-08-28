@@ -35,9 +35,12 @@ type Machine = components['schemas']['Machine']
 type Conversation = components['schemas']['Conversation']
 type Machines = components['schemas']['Machines']
 type Conversations = components['schemas']['Conversations']
-type PretendAgent = Omit<Machine['agents'][number], 'avatarUrl' | 'name'> & {
+type PretendAgent = Omit<Machine['agents'][number], 'avatarUrl' | 'name' | 'atOnce' | 'running'> & {
   readonly avatarUrl?: string
   readonly name?: string | null
+  /** How many at a time, when a test is about that. Nearly none of them are. */
+  readonly atOnce?: number
+  readonly running?: number
 }
 type PretendMachine = Omit<Machine, 'agents'> & { readonly agents: readonly PretendAgent[] }
 type PretendConversation = Omit<Conversation, 'pinned'> & { readonly pinned?: boolean }

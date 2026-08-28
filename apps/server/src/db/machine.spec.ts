@@ -3,13 +3,21 @@ import { normalizeSlug, type Slug } from '@handover/universal'
 import { sql } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { loadEnv } from '../env.ts'
+import { AT_ONCE_AT_MOST, AT_ONCE_BY_DEFAULT } from '../machine/at-once.ts'
 import { presence } from '../machine/presence.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment, refuseEnrolment } from './enrolment.ts'
-import { checkIn, machineHolding, machinesIn, removeMachine, sayGoodbye } from './machine.ts'
+import {
+  checkIn,
+  machineHolding,
+  machinesIn,
+  removeMachine,
+  sayGoodbye,
+  setAgentSettings,
+} from './machine.ts'
 import { handMachineTo, joins, removes } from './membership.ts'
 import { createSpace } from './space.ts'
 import { arrive } from './user.ts'
@@ -229,6 +237,7 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [
         { kind: 'claude-code', version: '2.1.4' },
         { kind: 'codex', version: '0.9.0' },
@@ -237,6 +246,7 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
@@ -249,7 +259,7 @@ describe('what a machine reports', () => {
   it('records which build of the CLI is on that machine', async () => {
     const machineId = await attached()
 
-    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
+    await checkIn(db, machineId, { version: 'v0.4.0', connectedIn: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.version).toBe('v0.4.0')
@@ -260,9 +270,9 @@ describe('what a machine reports', () => {
     // to what an older process said would name the wrong build in the one place somebody looks to
     // find out which build is misbehaving.
     const machineId = await attached()
-    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
+    await checkIn(db, machineId, { version: 'v0.4.0', connectedIn: undefined, found: [] })
 
-    await checkIn(db, machineId, { version: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.version).toBeUndefined()
@@ -272,11 +282,13 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.2.0' }],
     })
 
@@ -291,6 +303,7 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
@@ -304,11 +317,13 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
@@ -322,11 +337,13 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.2.0' }],
     })
 
@@ -338,20 +355,154 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
+      connectedIn: undefined,
       found: [{ kind: 'codex', version: '0.9.0' }],
     })
 
-    await checkIn(db, machineId, { version: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([])
   })
 })
 
+describe('what its owner has decided about an agent', () => {
+  async function withAgent(): Promise<string> {
+    const machineId = await attached()
+    await checkIn(db, machineId, {
+      version: undefined,
+      connectedIn: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4' }],
+    })
+    return machineId
+  }
+
+  /**
+   * What was decided, read from the row that holds it.
+   *
+   * Not through the Space listing, which is what a screen sees: what is under test is that a
+   * decision was written down and survives, and a listing that stopped carrying one of these
+   * would take the test with it while the decision was still perfectly well kept.
+   */
+  async function settingsOf(machineId: string) {
+    return db
+      .selectFrom('agent_settings')
+      .select(['name', 'at_once as atOnce'])
+      .where('machine_id', '=', machineId)
+      .where('kind', '=', 'claude-code')
+      .executeTakeFirst()
+  }
+
+  it('is the default until somebody says otherwise, and the column agrees', async () => {
+    // Two places carry this number — the constant a reader reaches for and the column default a
+    // row written without one gets — and an agent whose owner has said nothing has to come back
+    // the same either way. Left to drift, a settings row written for a name alone would quietly
+    // change how much that agent takes on.
+    const machineId = await withAgent()
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      name: 'the one on my desk',
+    })
+
+    expect((await settingsOf(machineId))?.atOnce).toBe(AT_ONCE_BY_DEFAULT)
+  })
+
+  it('takes the most the door allows, and nothing past it', async () => {
+    // Two places carry the ceiling — the number the door checks against and the constraint the
+    // column carries — and a value between them is one this deployment accepts and the database
+    // then refuses. What a person sees for typing a number slightly too big has to be a refusal,
+    // not their laptop apparently breaking.
+    const machineId = await withAgent()
+    const most = { machine: machineId, owner: PERSON, kind: 'claude-code' as const }
+
+    await setAgentSettings(db, { ...most, atOnce: AT_ONCE_AT_MOST })
+    expect((await settingsOf(machineId))?.atOnce).toBe(AT_ONCE_AT_MOST)
+
+    await expect(setAgentSettings(db, { ...most, atOnce: AT_ONCE_AT_MOST + 1 })).rejects.toThrow(
+      /agent_settings_at_once_check/u,
+    )
+  })
+
+  it('keeps the name when only how many at a time changes', async () => {
+    const machineId = await withAgent()
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      name: 'the one on my desk',
+    })
+
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      atOnce: 7,
+    })
+
+    expect(await settingsOf(machineId)).toMatchObject({ name: 'the one on my desk', atOnce: 7 })
+  })
+
+  it('keeps how many at a time when the name comes off', async () => {
+    // Taking a name off used to delete the row, which is why it cannot any more: the row is
+    // carrying a second decision now, and forgetting that one was never what was asked for.
+    const machineId = await withAgent()
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      name: 'the one on my desk',
+      atOnce: 7,
+    })
+
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      name: null,
+    })
+
+    expect(await settingsOf(machineId)).toMatchObject({ name: null, atOnce: 7 })
+  })
+
+  it('survives an agent going missing from a report and coming back', async () => {
+    const machineId = await withAgent()
+    await setAgentSettings(db, {
+      machine: machineId,
+      owner: PERSON,
+      kind: 'claude-code',
+      atOnce: 7,
+    })
+
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, {
+      version: undefined,
+      connectedIn: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.4' }],
+    })
+
+    expect((await settingsOf(machineId))?.atOnce).toBe(7)
+  })
+
+  it('is nobody else’s to change', async () => {
+    const machineId = await withAgent()
+
+    const done = await setAgentSettings(db, {
+      machine: machineId,
+      owner: await someoneElse(),
+      kind: 'claude-code',
+      atOnce: 7,
+    })
+
+    expect(done).toBe(false)
+  })
+})
+
 describe('whether it is here', () => {
   it('is here right after checking in', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, { version: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })
@@ -359,7 +510,7 @@ describe('whether it is here', () => {
 
   it('is gone the moment it says goodbye, without waiting out the silence', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, { version: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
 
     await sayGoodbye(db, machineId)
 
@@ -371,7 +522,7 @@ describe('whether it is here', () => {
     const machineId = await attached()
     await sayGoodbye(db, machineId)
 
-    await checkIn(db, machineId, { version: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })

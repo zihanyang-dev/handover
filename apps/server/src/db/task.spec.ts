@@ -104,6 +104,7 @@ async function attached(machineName: string): Promise<string> {
 
   await checkIn(db, collected.machineId, {
     version: undefined,
+    connectedIn: undefined,
     found: [
       { kind: 'claude-code', version: '2.1.231' },
       { kind: 'codex', version: '0.148.0' },
@@ -113,20 +114,33 @@ async function attached(machineName: string): Promise<string> {
 }
 
 /** A machine that stopped answering: silent for longer than anybody waits before calling it gone. */
-async function wentSilent(machineName: string): Promise<void> {
+/**
+ * By id, because a name is not an identity — and this database is shared by every spec file
+ * running at the same time. Named, this silenced every machine anybody had called the same thing,
+ * and other files' fixtures failed with `machine-away` somewhere else entirely.
+ */
+async function wentSilent(machineId: string): Promise<void> {
   await db
     .updateTable('machines')
     .set({ last_seen_at: sql<Date>`now() - ${SILENT_FOR_SECONDS + 60} * interval '1 second'` })
-    .where('name', '=', machineName)
+    .where('id', '=', machineId)
     .execute()
 }
 
-/** Everything written into a conversation, as one string to look for words in. */
+/**
+ * Everything written into a conversation, as one string to look for words in.
+ *
+ * Ordered, because one test compares two of these to prove a line was written exactly once — and
+ * without an `order by` Postgres may hand the same rows back in a different order after anything
+ * changes the pages they sit on. That test then fails on a transcript nothing wrote to, and would
+ * have passed on one where a line really was written twice if the orders happened to agree.
+ */
 async function heard(conversationId: string): Promise<string> {
   const said = await db
     .selectFrom('messages')
     .select('content')
     .where('conversation_id', '=', conversationId)
+    .orderBy('seq')
     .execute()
 
   return JSON.stringify(said)
@@ -354,12 +368,11 @@ describe('a turn that went wrong', () => {
 })
 
 describe('handing a piece of it to somebody else', () => {
-  async function handedOff(conversation: string, to: string, goal = 'add an integration test') {
+  async function handedOff(conversation: string, goal = 'add an integration test') {
     const off = await handOffTo(db, {
       conversationId: conversation,
       machineId: MACHINE,
       key: `off-${goal}`,
-      machine: to,
       agentKind: 'codex',
       goal,
     })
@@ -367,39 +380,78 @@ describe('handing a piece of it to somebody else', () => {
     return off
   }
 
-  it('opens a conversation of its own, on the machine it names', async () => {
+  it('opens a conversation of its own, on the machine it is already running on', async () => {
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
 
-    const off = await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
 
     expect(off.conversationId).not.toBe(conversation)
-    expect(await nextTurn(other)).toBe(off.conversationId)
+    expect(await nextTurn()).toBe(off.conversationId)
   })
 
-  it('means the same machine every time when two of them share a name', async () => {
-    // Names are not identities — two laptops can both be called `mbp`, and in a Space with two
-    // people in it they easily are. Whichever one it means, it has to mean that one every time,
-    // rather than whichever row the database happened to return first.
+  it('tells the machine which piece of work it belongs to, so it knows where to put it', async () => {
+    // The only thing the machine is told about where to work, and it is not a path: this
+    // deployment has never seen that disk. A sub-task goes in a folder under the one its parent
+    // is working in — which is the whole of how it reads what that work has been writing.
     const conversation = await handedOver()
     await nextTurn()
-    const first = await attached('mbp')
-    await attached('mbp')
+    const off = await handedOff(conversation)
 
-    const off = await handedOff(conversation, 'mbp')
+    expect(await takeOne(db, MACHINE)).toMatchObject({
+      conversationId: off.conversationId,
+      subtaskOf: conversation,
+    })
+  })
 
-    expect(await nextTurn(first)).toBe(off.conversationId)
+  it('still knows which work a sub-task belongs to after that work has ended', async () => {
+    // Where a turn runs cannot depend on which half of the look claimed it. A sub-task is owed
+    // turns as work while its piece of work is open, and as an ordinary conversation once a
+    // person types into it afterwards — and the folder it worked in the whole time is the same
+    // folder. Read off the open task alone, the second kind lands somewhere else, the agent
+    // opens an empty directory, and everything it did is apparently gone.
+    const conversation = await handedOver()
+    await nextTurn()
+    const child = await handedOff(conversation)
+    await ends(conversation, '1/end')
+    await nextTurn()
+    await stopsWorking(db, reporting(child.conversationId, 'fin'), {
+      state: 'done',
+      ending: 'done',
+      said: 'added it',
+    })
+    await asks(child.conversationId, 'later', 'one more thing while you are there')
+
+    // The parent is owed one first — it has been waiting since before that question was asked.
+    expect(await nextTurn()).toBe(conversation)
+
+    expect(await takeOne(db, MACHINE)).toMatchObject({
+      conversationId: child.conversationId,
+      subtaskOf: conversation,
+    })
+  })
+
+  it('leaves it here even when another machine in the Space would take it', async () => {
+    // `prd.md` 07 ⑥. Nobody is in the room when an agent decides this, so it does not get to
+    // decide whose computer runs it. A person handing you something leaves a name against it;
+    // this would leave nothing at all — and the machine it picked could be somebody's laptop.
+    const conversation = await handedOver()
+    await nextTurn()
+    const somebodyElses = await attached('build-server-1')
+
+    const off = await handedOff(conversation)
+
+    expect(await nextTurn(somebodyElses)).toBeUndefined()
+    expect(await nextTurn()).toBe(off.conversationId)
   })
 
   it('does not stop the one handing off, so it can open a second', async () => {
     // Blocking on the first would make parallel impossible: it never gets to say the second one.
     const conversation = await handedOver()
     await nextTurn()
-    await attached('build-server-1')
 
-    await handedOff(conversation, 'build-server-1', 'one')
-    await handedOff(conversation, 'build-server-1', 'two')
+    await handedOff(conversation, 'one')
+    await handedOff(conversation, 'two')
 
     expect(await underwayIn(db, conversation)).toMatchObject({ handedOff: [{ goal: 'one' }, {}] })
   })
@@ -408,42 +460,41 @@ describe('handing a piece of it to somebody else', () => {
     // Not a state it declares — the count of its open children, which cannot go stale.
     const conversation = await handedOver()
     await nextTurn()
-    await attached('build-server-1')
-    await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
     await ends(conversation, '1/end')
 
+    // Its own machine has room for more; what it does not have is any reason to run this one.
+    expect(await nextTurn()).toBe(off.conversationId)
     expect(await nextTurn()).toBeUndefined()
   })
 
-  it('opens as many as it likes, because the only limit is a physical one', async () => {
-    // No count anywhere, on purpose: how many can run at once is how many machines somebody
-    // connected. A rule that says four would have to walk the tree on every hand-off to enforce
-    // a thing the machines already enforce.
+  it('opens as many as it likes, because what limits them is counted elsewhere', async () => {
+    // No count here, on purpose. How many run at once is `agent_settings.at_once`, asked when a
+    // turn is handed out — a rule here would be the same limit written a second time, in the one
+    // place that cannot see how many are actually running.
     const conversation = await handedOver()
     await nextTurn()
-    await attached('build-server-1')
 
-    await handedOff(conversation, 'build-server-1', 'one')
-    await handedOff(conversation, 'build-server-1', 'two')
-    await handedOff(conversation, 'build-server-1', 'three')
+    await handedOff(conversation, 'one')
+    await handedOff(conversation, 'two')
+    await handedOff(conversation, 'three')
 
     const underway = await underwayIn(db, conversation)
     expect(underway?.handedOff).toHaveLength(3)
   })
 
-  it('runs them one at a time when they land on one machine, rather than together', async () => {
-    // Two agents in one directory tread on each other. Nothing has to say so — a machine is
-    // handed one turn, and the next only once that one is closed.
+  it('runs them together, which is the whole of why opening a second one is worth anything', async () => {
+    // It used to be one at a time: two agents in one directory tread on each other, and the
+    // ledger said so. Each of these has a directory of its own now, so what is left to say is
+    // how many at once — a number, and one nobody has moved off its default here.
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const first = await handedOff(conversation, 'build-server-1', 'one')
-    await handedOff(conversation, 'build-server-1', 'two')
+    const first = await handedOff(conversation, 'one')
+    const second = await handedOff(conversation, 'two')
 
-    const took = await nextTurn(other)
-    expect(took).toBe(first.conversationId)
-    // Still busy with the first: the second is not handed out beside it.
-    expect(await nextTurn(other)).toBeUndefined()
+    const took = [await nextTurn(), await nextTurn()]
+
+    expect(new Set(took)).toEqual(new Set([first.conversationId, second.conversationId]))
   })
 
   it('lets it go when the machine it handed to stops answering, or it waits for ever', async () => {
@@ -451,12 +502,12 @@ describe('handing a piece of it to somebody else', () => {
     // handed to never comes back, and "still open" is true for the rest of time.
     const conversation = await handedOver()
     await nextTurn()
-    await attached('build-server-1')
-    await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
     await ends(conversation, '1/end')
+    expect(await nextTurn()).toBe(off.conversationId)
     expect(await nextTurn()).toBeUndefined()
 
-    await wentSilent('build-server-1')
+    await wentSilent(MACHINE)
 
     expect(await nextTurn()).toBe(conversation)
   })
@@ -466,10 +517,9 @@ describe('handing a piece of it to somebody else', () => {
     // instance runs the same look every ten seconds — the line has to be written exactly once.
     const conversation = await handedOver()
     await nextTurn()
-    await attached('build-server-1')
-    await handedOff(conversation, 'build-server-1', 'add an integration test')
+    await handedOff(conversation, 'add an integration test')
     await ends(conversation, '1/end')
-    await wentSilent('build-server-1')
+    await wentSilent(MACHINE)
 
     // Not the count it returns — that is every parent on this deployment, and the other tests
     // here leave plenty. What has to be exactly once is the line in *this* conversation.
@@ -477,7 +527,7 @@ describe('handing a piece of it to somebody else', () => {
     const once = await heard(conversation)
     await tellWhoeverIsWaitingOnAGoneMachine(db)
 
-    expect(once).toContain('build-server-1')
+    expect(once).toContain('mina-mbp')
     expect(once).toContain('add an integration test')
     expect(await heard(conversation)).toBe(once)
   })
@@ -485,11 +535,10 @@ describe('handing a piece of it to somebody else', () => {
   it('starts again as soon as one of them comes back, with what it said', async () => {
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const off = await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
     await ends(conversation, '1/end')
 
-    await stopsWorking(db, reporting(off.conversationId, 'fin', other), {
+    await stopsWorking(db, reporting(off.conversationId, 'fin'), {
       state: 'done',
       ending: 'done',
       said: 'on branch sub/xxx',
@@ -516,14 +565,14 @@ describe('handing a piece of it to somebody else', () => {
     // anywhere to say so. Stopping and telling whoever was waiting are one rule for this reason.
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const off = await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
     await ends(conversation, '1/end')
+    expect(await nextTurn()).toBe(off.conversationId)
     expect(await nextTurn()).toBeUndefined()
 
     await stopsWorking(
       db,
-      reporting(off.conversationId, 'asked', other),
+      reporting(off.conversationId, 'asked'),
       asking('which package should it go in?'),
     )
 
@@ -535,11 +584,11 @@ describe('handing a piece of it to somebody else', () => {
     // open children either way, so there is nothing to tell and nothing to clear.
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const off = await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
     await ends(conversation, '1/end')
+    await nextTurn()
 
-    await stopsWorking(db, reporting(off.conversationId, 'zz', other), {
+    await stopsWorking(db, reporting(off.conversationId, 'zz'), {
       state: 'sleep',
       until: new Date(Date.now() + 60_000),
     })
@@ -550,28 +599,79 @@ describe('handing a piece of it to somebody else', () => {
   it('does not put what it asks in anybody Inbox — it is asking whoever handed it out', async () => {
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const off = await handedOff(conversation, 'build-server-1')
+    const off = await handedOff(conversation)
 
-    await stopsWorking(db, reporting(off.conversationId, 'asked', other), asking('which package?'))
+    await stopsWorking(db, reporting(off.conversationId, 'asked'), asking('which package?'))
 
     expect(await waitingOn(db, PERSON)).toEqual([])
   })
 
-  it('refuses a machine that is not in this Space, and one without that agent', async () => {
+  it('refuses an agent this machine does not have', async () => {
     const conversation = await handedOver()
     await nextTurn()
+    await checkIn(db, MACHINE, {
+      version: undefined,
+      connectedIn: undefined,
+      found: [{ kind: 'claude-code', version: '2.1.231' }],
+    })
 
     const nowhere = await handOffTo(db, {
       conversationId: conversation,
       machineId: MACHINE,
       key: 'off-1',
-      machine: 'somebody-elses-laptop',
       agentKind: 'codex',
       goal: 'anything',
     })
 
-    expect(nowhere).toEqual({ kind: 'no-machine' })
+    expect(nowhere).toEqual({ kind: 'no-agent' })
+  })
+
+  it('cannot be written a third level even by something that is not this code', async () => {
+    // `handOffTo` refusing covers what this build writes and nothing else. Rows written before
+    // two levels were the rule were allowed any depth, and `takeBack` no longer walks a tree —
+    // so a grandchild it cannot see is work still running after the person who could stop it
+    // already stopped the parent. Said as a key, it is not something anybody has to remember.
+    const conversation = await handedOver()
+    await nextTurn()
+    const child = await handedOff(conversation)
+    const its = await db
+      .selectFrom('tasks')
+      .select('id')
+      .where('conversation_id', '=', child.conversationId)
+      .executeTakeFirstOrThrow()
+    const deeper = await opened('somewhere to hang it')
+
+    await expect(
+      db
+        .insertInto('tasks')
+        .values({
+          conversation_id: deeper,
+          parent_id: its.id,
+          owner_user_id: PERSON,
+          goal: 'run it on the big box',
+          state: 'working',
+        })
+        .execute(),
+    ).rejects.toThrow(/tasks_no_grandchildren/u)
+  })
+
+  it('refuses when it is itself a sub-task, because that is where the fanning out stops', async () => {
+    // `prd.md` 07 ⑤. A plan that fans out belongs with whoever has to answer for it — three deep,
+    // no person ever chose the shape of it, and taking the top one back stops work nobody can
+    // name. Two levels also make "everything under this" one index seek rather than a walk.
+    const conversation = await handedOver()
+    await nextTurn()
+    const child = await handedOff(conversation)
+
+    const deeper = await handOffTo(db, {
+      conversationId: child.conversationId,
+      machineId: MACHINE,
+      key: 'off-deeper',
+      agentKind: 'codex',
+      goal: 'run it on the big box',
+    })
+
+    expect(deeper).toEqual({ kind: 'not-yours-to-hand-off' })
   })
 })
 
@@ -649,61 +749,46 @@ describe('a turn nobody was watching', () => {
 })
 
 describe('taking it back', () => {
-  it('reaches all the way down, not just the children it can see', async () => {
-    // The recursion is the whole point and one level does not test it: a child that handed work
-    // on to a third machine leaves a grandchild changing files in a repository nobody is watching
-    // and nobody wants — exactly what `prd.md` 04 ⑪ says take-back is for.
-    const conversation = await handedOver()
-    await nextTurn()
-    const second = await attached('build-server-1')
-    const third = await attached('build-server-2')
-
-    const child = await handOffTo(db, {
+  async function subtask(conversation: string, goal: string): Promise<string> {
+    const off = await handOffTo(db, {
       conversationId: conversation,
       machineId: MACHINE,
-      key: 'off-child',
-      machine: 'build-server-1',
+      key: `off-${goal}`,
       agentKind: 'codex',
-      goal: 'add an integration test',
+      goal,
     })
-    if (child.kind !== 'handed-off') throw new Error('could not hand off')
-    await takeOne(db, second)
-    const grandchild = await handOffTo(db, {
-      conversationId: child.conversationId,
-      machineId: second,
-      key: 'off-grandchild',
-      machine: 'build-server-2',
-      agentKind: 'codex',
-      goal: 'run it on the big box',
-    })
-    if (grandchild.kind !== 'handed-off') throw new Error('could not hand off again')
+    if (off.kind !== 'handed-off') throw new Error(`could not hand off: ${off.kind}`)
+    return off.conversationId
+  }
+
+  it('stops every sub-task under it, not only the first', async () => {
+    // Each of them is still changing files, and the piece of work that would have read what they
+    // came back with is over. Nobody is watching them and nobody wants them — which is what
+    // `prd.md` 04 ⑪ says take-back is for.
+    //
+    // It walked the tree while a tree could be any depth. Two levels is the whole of it now, so
+    // what this proves is that "everything under this" still means all of them and not one.
+    const conversation = await handedOver()
+    await nextTurn()
+    const first = await subtask(conversation, 'add an integration test')
+    const second = await subtask(conversation, 'update the changelog')
 
     const back = await takeBack(db, { conversationId: conversation, spaceId: SPACE, key: 'back-2' })
 
     expect(back).toEqual({ kind: 'taken-back', alsoStopped: 2 })
-    expect(await underwayIn(db, grandchild.conversationId)).toBeUndefined()
-    expect(await nextTurn(third)).toBeUndefined()
+    expect(await underwayIn(db, first)).toBeUndefined()
+    expect(await underwayIn(db, second)).toBeUndefined()
   })
 
   it('takes back what it handed off as well, so nothing is left running unwatched', async () => {
     const conversation = await handedOver()
     await nextTurn()
-    const other = await attached('build-server-1')
-    const off = await handOffTo(db, {
-      conversationId: conversation,
-      machineId: MACHINE,
-      key: 'off-1',
-      machine: 'build-server-1',
-      agentKind: 'codex',
-      goal: 'add an integration test',
-    })
-    if (off.kind !== 'handed-off') throw new Error('could not hand off')
+    await subtask(conversation, 'add an integration test')
 
     const back = await takeBack(db, { conversationId: conversation, spaceId: SPACE, key: 'back-1' })
 
     expect(back).toEqual({ kind: 'taken-back', alsoStopped: 1 })
     expect(await nextTurn()).toBeUndefined()
-    expect(await nextTurn(other)).toBeUndefined()
   })
 
   it('leaves the conversation usable, as an ordinary one', async () => {
