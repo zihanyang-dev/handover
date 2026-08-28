@@ -71,6 +71,32 @@ function keepsAnswering(reports: unknown[] = [], lookFor: string[] = []) {
 }
 
 describe('staying connected', () => {
+  it('never asks again with no wait, however little it could do with the answer', async () => {
+    // The server says `pollSeconds: 0` because it held the question for as long as it was going
+    // to — but it only holds when it has nothing to say. When it does have something, it answers
+    // at once, and a machine that then waited zero would ask again immediately and be told the
+    // same thing: two processes at full speed, for as long as it lasts.
+    //
+    // Reachable: a stop is wanted for a turn this machine is not running, which is what a person
+    // pressing Stop after the agent has already died looks like from here.
+    const reports: unknown[] = []
+    server.use(
+      http.post(`${ORIGIN}/machines/current/poll`, async ({ request }) => {
+        reports.push(await request.json())
+        return HttpResponse.json({
+          pollSeconds: 0,
+          lookFor: [],
+          stopping: { conversationId: 'not-the-one-here', afterSeq: 1 },
+        })
+      }),
+    )
+    const { running, waited, signal } = runningFor(3)
+
+    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
+
+    expect(waited.every((seconds) => seconds > 0)).toBe(true)
+  })
+
   it('reports what it found, every time', async () => {
     const reports: unknown[] = []
     server.use(keepsAnswering(reports))

@@ -46,17 +46,25 @@ export function agentsOn(machines: readonly Machine[]): readonly InstalledAgent[
   )
 }
 
-export function machinesIn(slug: string) {
+/**
+ * How often to ask, when nobody is watching for anything in particular.
+ *
+ * There is no stream for machines, so this is the only way the list ever changes: one appears
+ * after its own process checks in, and one goes quiet. Quiet takes `SILENT_FOR_SECONDS` — nearly
+ * a minute — to become "gone", so asking every three seconds asked eighteen times for each time
+ * the answer could have changed, on every open Space, for as long as one was open.
+ */
+const WHILE_LOOKING_MS = 10_000
+
+/** On the one screen where somebody is sitting in front of a terminal, waiting for it to appear. */
+export const WHILE_WAITING_FOR_ONE_MS = 3000
+
+export function machinesIn(slug: string, everyMs = WHILE_LOOKING_MS) {
   return cached.queryOptions(
     'get',
     '/spaces/{slug}/machines',
     { params: { path: { slug } } },
-    {
-      // A machine appears after its own process checks in, and connecting one is somebody sitting
-      // in front of both screens. Asking again is what lets it appear without a refresh.
-      refetchInterval: 3000,
-      select: (answer) => answer.machines,
-    },
+    { refetchInterval: everyMs, select: (answer) => answer.machines },
   )
 }
 

@@ -18,7 +18,7 @@ import {
 import { createPortal } from 'react-dom'
 import type { components } from '../../generated/api.ts'
 import { agentName } from '../agents.ts'
-import { AgentMark } from '../machines/agent-mark.tsx'
+import { AgentMark, agentTint } from '../machines/agent-mark.tsx'
 
 export type Model = components['schemas']['Model']
 type Asked = components['schemas']['OpenConversation']['asked']
@@ -59,7 +59,7 @@ export function ModelChoices({
   const effortChoices = choicesForEffort(activeModel)
 
   return (
-    <div className="chat-model-choices">
+    <div className="ml-auto flex min-w-0 gap-1.5">
       <ChoiceMenu
         kind="model"
         agentKind={agentKind}
@@ -166,10 +166,10 @@ function ChoiceMenu({
   }
 
   return (
-    <div ref={root} className="chat-choice" data-kind={kind}>
+    <div ref={root} className="relative min-w-0" data-kind={kind}>
       <button
         ref={trigger}
-        className="chat-choice-trigger"
+        className="flex h-7 w-full max-w-36 min-w-0 cursor-pointer items-center overflow-hidden rounded-[3.125rem] border-0 bg-transparent px-3 font-[inherit] text-copy-xs/5 font-medium text-ellipsis whitespace-nowrap text-ink-muted hover:bg-[#37352f0f] aria-expanded:bg-[#37352f0f] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         type="button"
         aria-label={`${label}: ${current}`}
         aria-haspopup="menu"
@@ -188,7 +188,7 @@ function ChoiceMenu({
           <div
             ref={menu}
             id={menuId}
-            className="chat-choice-menu"
+            className="fixed z-100 max-h-[17.375rem] w-75 max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain rounded-[0.625rem] bg-base p-1 shadow-[var(--surface-raised-shadow)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             role="menu"
             tabIndex={-1}
             aria-label={label}
@@ -211,8 +211,8 @@ function ChoiceMenu({
                 trigger.current?.focus()
               }}
             />
-            <div className="chat-choice-divider" />
-            <p className="chat-choice-section">{section}</p>
+            <div className="mx-2 mt-2 mb-1.5 h-px bg-[#37352f17]" />
+            <p className="m-0 px-2 py-1 text-copy-xxs/5 font-semibold text-ink-muted">{section}</p>
             {choices.slice(1).map((choice, index) => (
               <ChoiceOption
                 key={choice.value}
@@ -261,7 +261,7 @@ function ChoiceOption({
       ref={(element) => {
         remember(index, element)
       }}
-      className="chat-choice-option"
+      className="group flex w-full min-h-7 cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left font-[inherit] text-copy-xs/5 text-ink hover:bg-[#37352f0f] focus-visible:bg-[#37352f0f] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-[featured=true]:min-h-[2.9375rem] data-[featured=true]:py-1"
       data-featured={index === 0}
       type="button"
       role="menuitemradio"
@@ -272,14 +272,24 @@ function ChoiceOption({
       }}
     >
       {showMark && (
-        <span className="chat-choice-mark" data-kind={agentKind} aria-hidden="true">
+        <span
+          className={`grid size-5 flex-none place-items-center [&>svg]:size-4 ${agentTint(agentKind)}`}
+          aria-hidden="true"
+        >
           <AgentMark kind={agentKind} />
         </span>
       )}
-      <span className="chat-choice-copy">
-        <strong>{compactLabel(choice.label)}</strong>
+      <span className="flex min-w-0 flex-1 gap-2 group-data-[featured=true]:flex-col group-data-[featured=true]:gap-0">
+        <strong className="max-w-[62%] flex-none overflow-hidden text-copy-xs/5 font-normal text-ellipsis whitespace-nowrap only:max-w-full group-aria-checked:font-medium group-data-[featured=true]:max-w-full">
+          {compactLabel(choice.label)}
+        </strong>
         {choice.about !== undefined && (
-          <small title={choice.about}>{compactAbout(choice.about)}</small>
+          <small
+            className="min-w-0 overflow-hidden text-copy-xxs/[1.125rem] text-ellipsis whitespace-nowrap text-ink-muted"
+            title={choice.about}
+          >
+            {compactAbout(choice.about)}
+          </small>
         )}
       </span>
       {selected && <CheckIcon />}
@@ -390,7 +400,11 @@ function moveThroughChoices(
 
 function CheckIcon() {
   return (
-    <svg className="chat-choice-check" viewBox="0 0 16 16" aria-hidden="true">
+    <svg
+      className="size-4 flex-none fill-none stroke-current stroke-[1.5] [stroke-linecap:round] [stroke-linejoin:round]"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
       <path d="m3.5 8 2.75 2.75 6.25-6.25" />
     </svg>
   )

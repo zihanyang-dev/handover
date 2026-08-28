@@ -15,7 +15,7 @@ import { agentName } from '../agents.ts'
 import { meQuery } from '../identity/me.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
 import { useMachineKey } from '../machines/machine-key.tsx'
-import { machinesIn } from '../machines/machine-list.ts'
+import { machinesIn, WHILE_WAITING_FOR_ONE_MS } from '../machines/machine-list.ts'
 import { ShellCommand } from '../shell-command.tsx'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
@@ -196,7 +196,7 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
 
 /** The machines that arrived, with what each of them found. */
 function Arrived({ slug }: { readonly slug: string }) {
-  const machines = useQuery(machinesIn(slug))
+  const machines = useQuery(machinesIn(slug, WHILE_WAITING_FOR_ONE_MS))
   const found = (machines.data ?? []).filter((machine) => machine.presence.state === 'here')
 
   if (found.length === 0) return null
@@ -296,7 +296,10 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
     }
   }, [])
 
-  const machines = useQuery({ ...machinesIn(slug ?? ''), enabled: slug !== undefined })
+  const machines = useQuery({
+    ...machinesIn(slug ?? '', WHILE_WAITING_FOR_ONE_MS),
+    enabled: slug !== undefined,
+  })
   const arrived = (machines.data ?? []).some((machine) => machine.presence.state === 'here')
 
   const goIn = () => {

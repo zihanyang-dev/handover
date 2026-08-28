@@ -35,6 +35,24 @@ const RETRY_SECONDS = 5
  */
 const WHILE_STOPPING_SECONDS = 3
 
+/**
+ * The least any two reports are ever apart.
+ *
+ * The server answers `pollSeconds: 0` because it has already waited — but it only waits when it
+ * has nothing to say. Whatever it does have, it answers at once, and a machine that then waited
+ * zero asks again immediately and is told the same thing, as fast as the network can carry it.
+ * Two processes at full tilt, for as long as the answer stays the same.
+ *
+ * It is reachable: a stop is wanted for a turn this machine is not running — which is what a
+ * person pressing Stop after the agent has already died looks like from here — and neither side
+ * can end that turn until the machine says so.
+ *
+ * Costs nothing where the loop is doing its job. A held question comes back the moment there is
+ * something, the agent is started, and only *then* is this second spent, before asking for a
+ * question there is not yet.
+ */
+const AT_LEAST_SECONDS = 1
+
 export type CheckingIn = {
   /**
    * Waits, and stops waiting the moment the signal says so.
@@ -179,8 +197,9 @@ export async function keepCheckingIn(
 
     // Nothing more can be learnt from asking again until the turn that was stopped actually
     // ends, so that is what is waited on. The next question is picked up the moment it does.
-    if (stopped === undefined) await running.sleep(reported.pollSeconds, stopping)
-    else await Promise.race([stopped.done, running.sleep(WHILE_STOPPING_SECONDS, stopping)])
+    if (stopped === undefined) {
+      await running.sleep(Math.max(reported.pollSeconds, AT_LEAST_SECONDS), stopping)
+    } else await Promise.race([stopped.done, running.sleep(WHILE_STOPPING_SECONDS, stopping)])
   }
 
   // Stopping on purpose stops the agent too, and waits for the last of what it said to be written

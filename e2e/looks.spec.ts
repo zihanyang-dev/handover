@@ -9,6 +9,9 @@
  *
  *     pnpm looks           compare against the pictures in .looks/
  *     pnpm looks:before    take them again, from where the styling is now
+ *
+ * Not part of `pnpm test:e2e`, which walks journeys against whatever the last run left behind.
+ * This one needs the database emptied first, and both scripts above do that.
  */
 
 import { expect, test, type Page } from '@playwright/test'

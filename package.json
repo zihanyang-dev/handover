@@ -37,7 +37,7 @@
     "test:agents": "vitest run --project agents",
     "coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text",
     "check": "pnpm generate && git diff --exit-code apps/server/generated apps/web/generated apps/cli/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm unused && pnpm duplication && pnpm test",
-    "test:e2e": "node --env-file=.env.e2e apps/server/scripts/migrate.ts && playwright test -c e2e",
+    "test:e2e": "node --env-file=.env.e2e apps/server/scripts/migrate.ts && playwright test -c e2e --grep-invert 'as it looks today'",
     "unused": "knip",
     "duplication": "jscpd apps packages e2e",
     "looks": "docker compose exec -T db psql -U handover -d postgres -c \"select pg_terminate_backend(pid) from pg_stat_activity where datname = 'handover_e2e'\" -c 'drop database if exists handover_e2e' -c 'create database handover_e2e' >/dev/null && node --env-file=.env.e2e apps/server/scripts/migrate.ts >/dev/null && playwright test -c e2e --grep 'as it looks today'",
