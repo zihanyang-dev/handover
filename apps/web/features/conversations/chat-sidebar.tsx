@@ -1,6 +1,9 @@
 /**
- * Sidebar rows reuse the canonical route and query keys. A second cache here would let pin state
- * and conversation state disagree depending on which surface somebody used last.
+ * What a Space has to talk to, and what has been said in it: the Chat sidebar.
+ *
+ * Agents first, then conversations by when they were started. Both come from the same queries the
+ * screens themselves read — a second cache here would let a pin, or whether an agent is here,
+ * disagree with the page beside it depending on which one somebody touched last.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -10,37 +13,15 @@ import { PinAngle, PinAngleFill } from 'react-bootstrap-icons'
 import type { components } from '../../generated/api.ts'
 import { agentName } from '../agents.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
-import { machinesIn } from '../machines/machine-list.ts'
+import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { ChatIcon } from '../spaces/sidebar-icons.tsx'
 import { conversationsIn, useSetPinned } from './talking.ts'
 
-type Machine = components['schemas']['Machine']
 type Conversation = components['schemas']['Conversation']
-type Agent = {
-  readonly machineId: string
-  readonly machineName: string
-  readonly kind: Machine['agents'][number]['kind']
-  readonly name: string | null
-  readonly avatarUrl: string
-  readonly isAvailable: boolean
-}
 
 type ConversationGroup = {
   readonly label: 'Today' | 'Yesterday' | 'This week' | 'Earlier'
   readonly conversations: readonly Conversation[]
-}
-
-function agentsOn(machines: readonly Machine[]): readonly Agent[] {
-  return machines.flatMap((machine) =>
-    machine.agents.map((agent) => ({
-      machineId: machine.id,
-      machineName: machine.name,
-      kind: agent.kind,
-      name: agent.name,
-      avatarUrl: agent.avatarUrl,
-      isAvailable: machine.presence.state !== 'gone',
-    })),
-  )
 }
 
 function dayStarted(at: Date): number {
@@ -101,10 +82,10 @@ function titleOf(conversation: Conversation): string {
   return conversation.opening?.trim() || 'New chat'
 }
 
-function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: Agent }) {
+function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
   const type = agentName(agent.kind)
   const name = agent.name?.trim() || 'Unnamed agent'
-  const availability = agent.isAvailable ? 'ready' : 'offline'
+  const availability = agent.isHere ? 'ready' : 'offline'
 
   return (
     <li>
@@ -114,14 +95,14 @@ function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: A
         params={{ slug, machineId: agent.machineId, agentKind: agent.kind }}
         aria-label={`${name}, ${type} on ${agent.machineName}, ${availability}`}
         title={`${name} · ${type} on ${agent.machineName} — ${availability}`}
-        data-online={agent.isAvailable}
+        data-online={agent.isHere}
       >
         <span className="chat-agent-avatar">
           <img src={agent.avatarUrl} alt="" width="44" height="44" />
           <span
             className="chat-agent-kind"
             data-kind={agent.kind}
-            data-online={agent.isAvailable}
+            data-online={agent.isHere}
             aria-hidden="true"
           >
             <AgentMark kind={agent.kind} />

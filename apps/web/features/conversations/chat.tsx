@@ -1,3 +1,11 @@
+/**
+ * One conversation, read and spoken into.
+ *
+ * Two things are on screen at once and only one of them survives: the transcript, which is
+ * everything that was written down, and the live line under it, which is what is happening this
+ * moment and is kept nowhere. They come from different places on purpose — see `talking.ts`.
+ */
+
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SendButton, StopButton } from './composer-buttons.tsx'
@@ -66,7 +74,7 @@ function Line({ message }: { readonly message: Message }) {
     )
   }
 
-  const happened = activityText(message.content.activityType)
+  const happened = activityText(message)
   return happened === null ? null : <li className="chat-line chat-line-activity">{happened}</li>
 }
 
@@ -213,8 +221,15 @@ function momentText(moment: Moment): string {
   return `${moment.verb} ${moment.arg}`.trim()
 }
 
+/**
+ * What an activity says, for the ones this screen has words for.
+ *
+ * `done` alone shows nothing: a turn that simply ended says so by the next thing being said.
+ * Everything else is shown — anything without words here appears as its own name rather than
+ * disappearing. A transcript is an account of what happened, and a page that quietly dropped the
+ * kinds it had not heard of would leave one looking like it skipped.
+ */
 const ACTIVITY_TEXT = new Map<string, string>([
-  ['done', 'Done'],
   ['cancelled', 'Stopped'],
   ['failed', 'That turn failed'],
   ['unknown', 'Nobody knows how that turn ended'],
@@ -223,12 +238,27 @@ const ACTIVITY_TEXT = new Map<string, string>([
   ['unreadable', 'One event could not be read'],
 ])
 
-function activityText(activity: string): string | null {
-  return ACTIVITY_TEXT.get(activity) ?? null
+function activityText(what: Message & { role: 'activity' }): string | null {
+  if (what.content.activityType === 'done') return null
+  const said: unknown = what.content['text']
+
+  return (
+    (typeof said === 'string' && said !== '' ? said : undefined) ??
+    ACTIVITY_TEXT.get(what.content.activityType) ??
+    what.content.activityType
+  )
 }
 
+/**
+ * Why what was said did not land.
+ *
+ * A machine that is not here is deliberately not among these: words said into a conversation that
+ * already exists are written down whether or not its laptop is open, and the turn carries them
+ * when it asks again. Only opening one can be refused for that — see `start-chat.tsx`.
+ */
 function whyNot(reason: string): string {
-  if (reason === 'machine-away') return 'This agent is offline.'
   if (reason === 'agent-not-on-machine') return 'This agent is no longer installed.'
+  if (reason === 'unavailable') return 'This conversation is not here any more.'
+
   return 'Could not send that. Try again.'
 }

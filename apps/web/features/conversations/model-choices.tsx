@@ -1,3 +1,11 @@
+/**
+ * What a person may choose for one question: which model, and how hard to think.
+ *
+ * The offers come from the agent itself and may be empty — an agent that lets you choose nothing
+ * shows no control here rather than an empty menu. Saying nothing is always allowed and means the
+ * agent's own default, so neither choice is ever required to send.
+ */
+
 import {
   useEffect,
   useId,

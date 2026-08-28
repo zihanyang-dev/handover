@@ -1,15 +1,19 @@
+/**
+ * One agent, before there is anything to say to it.
+ *
+ * Choosing an agent writes nothing: this screen is the choice, and the conversation begins at the
+ * moment the first message is sent. Somebody who opens it and walks away leaves nothing behind,
+ * which is why the history has no empty rows in it.
+ */
+
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { components } from '../../generated/api.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
-import { machinesIn } from '../machines/machine-list.ts'
+import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { SendButton } from './composer-buttons.tsx'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
 import { useBeginConversation } from './talking.ts'
-
-type Machine = components['schemas']['Machine']
-type Agent = Machine['agents'][number]
 
 export function StartChat({
   slug,
@@ -25,32 +29,15 @@ export function StartChat({
   if (machines.isError)
     return <p className="agent-start-state">Could not read this agent. Try again.</p>
 
-  const machine = machines.data.find((one) => one.id === machineId)
-  const agent = machine?.agents.find((one) => one.kind === agentKind)
-  if (machine === undefined || agent === undefined)
-    return <p className="agent-start-state">This agent is not available.</p>
-
-  return (
-    <ReadyStart
-      slug={slug}
-      machineId={machineId}
-      agent={agent}
-      online={machine.presence.state !== 'gone'}
-    />
+  const agent = agentsOn(machines.data).find(
+    (one) => one.machineId === machineId && one.kind === agentKind,
   )
+  if (agent === undefined) return <p className="agent-start-state">This agent is not available.</p>
+
+  return <ReadyStart slug={slug} agent={agent} />
 }
 
-function ReadyStart({
-  slug,
-  machineId,
-  agent,
-  online,
-}: {
-  readonly slug: string
-  readonly machineId: string
-  readonly agent: Agent
-  readonly online: boolean
-}) {
+function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
   const navigate = useNavigate()
   const begin = useBeginConversation(slug)
   const [text, setText] = useState('')
@@ -58,6 +45,7 @@ function ReadyStart({
   const [effort, setEffort] = useState('')
   const [id] = useState(() => crypto.randomUUID())
   const name = agent.name?.trim() || 'Unnamed agent'
+  const online = agent.isHere
 
   return (
     <section className="agent-start" aria-labelledby="agent-start-title">
@@ -84,7 +72,7 @@ function ReadyStart({
           begin.mutate(
             {
               id,
-              machineId,
+              machineId: agent.machineId,
               agentKind: agent.kind,
               asked: askedWithChoices(asked, model, effort),
             },
@@ -139,8 +127,17 @@ function ReadyStart({
   )
 }
 
+/**
+ * Why the first message did not land, in the words of whoever has to do something about it.
+ *
+ * The names are the server's own, from `conversation-api.ts`. Opening one is the last moment a
+ * different machine can be chosen, so it is the only place `machine-not-here` is ever an answer.
+ */
 function whyNot(reason: string, name: string): string {
-  if (reason === 'machine-away') return `${name} is offline.`
+  if (reason === 'machine-not-here') return `${name} is offline.`
   if (reason === 'agent-not-on-machine') return `${name} is no longer available.`
+  if (reason === 'unavailable') return `${name} is not in this Space any more.`
+  if (reason === 'conversation-id-taken') return 'Something else already started here. Try again.'
+
   return 'Could not send that. Try again.'
 }

@@ -1,3 +1,11 @@
+/**
+ * The one control at the end of a composer, in its two states.
+ *
+ * Together because they are one place on screen: while a turn runs, the thing under somebody's
+ * cursor is Stop, and the moment it ends it is Send again. Written apart, the two would drift
+ * into different sizes and the button would move as an agent started working.
+ */
+
 export function SendButton({ disabled }: { readonly disabled: boolean }) {
   return (
     <button className="composer-send" type="submit" aria-label="Send" disabled={disabled}>

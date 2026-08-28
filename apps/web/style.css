@@ -206,19 +206,6 @@
     background: var(--interaction-pressed);
   }
 
-  .button-danger {
-    color: var(--interaction-danger-text);
-    background: var(--interaction-danger-bg);
-  }
-
-  .button-danger:enabled:hover {
-    background: color-mix(in srgb, var(--interaction-danger-text) 14%, transparent);
-  }
-
-  .button-danger:enabled:active {
-    background: color-mix(in srgb, var(--interaction-danger-text) 18%, transparent);
-  }
-
   .button-label {
     line-height: 1.2;
   }
@@ -1329,7 +1316,6 @@
   .workspace-menu a:focus-visible,
   .chat-agent:focus-visible,
   .chat-pin:focus-visible,
-  .new-chat-button:focus-visible,
   .sidebar-section-heading:focus-visible,
   .home-sidebar-resize [role='separator']:focus-visible {
     outline: 2px solid CanvasText !important;
@@ -2695,16 +2681,6 @@
 
 .row {
   @apply flex min-h-9 items-center justify-between gap-3 py-2;
-}
-
-.member-avatar {
-  width: 1.75rem;
-  height: 1.75rem;
-  flex: none;
-  border-radius: 50%;
-  background: #f7f6f3;
-  object-fit: cover;
-  box-shadow: 0 0 0 1px rgba(42, 28, 0, 0.07);
 }
 
 .row + .row {

@@ -1,3 +1,11 @@
+/**
+ * One Space as a page reads it, and the one thing about it a page can change.
+ *
+ * Its face is here rather than beside the menu that shows it, because two surfaces show it: the
+ * Space itself and the list of Spaces under `/me`. Changing it has to reach both, and a mutation
+ * that lived beside one of them would be the one that forgot the other.
+ */
+
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api.ts'
 
