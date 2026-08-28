@@ -1,11 +1,20 @@
 /**
- * That a class a screen names is one a stylesheet has heard of.
+ * That a class a screen names is one that ends up meaning something.
  *
- * It drifts silently: a renamed rule, or a typo, renders as nothing at all — which reads as a
- * layout bug rather than as a name nobody defined. It shows up in no type, no test, and no
- * screenshot of the happy path.
+ * It drifts silently: a renamed rule, a typo, or a utility Tailwind does not recognise renders as
+ * nothing at all — which reads as a layout bug rather than as a name nobody defined. It shows up
+ * in no type, no test, and no screenshot of the happy path.
+ *
+ * Measured against the **built** stylesheet rather than the source, because most of what a screen
+ * names is no longer written down anywhere: Tailwind generates a utility on seeing it used, so
+ * the source has no `.flex` to find and `.flx` would be just as absent. What the build emits is
+ * the one place both kinds are answered — the rules we wrote, and the ones it wrote for us.
+ *
+ * So this builds. It is the slowest rule here and the only one that has to be: the alternative is
+ * a list of Tailwind's utility names kept by hand, which would be wrong within a week.
  */
 
+import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -26,14 +35,22 @@ function under(from: string, keep: (path: string) => boolean): readonly string[]
 const screens = (): readonly string[] =>
   under(WEB, (path) => path.endsWith('.tsx') && !path.endsWith('.spec.tsx'))
 
-/** Every class any stylesheet defines, ignoring what it says about them. */
-function defined(): ReadonlySet<string> {
-  const sheets = under(WEB, (path) => path.endsWith('.css'))
-    .map((path) => readFileSync(path, 'utf8'))
-    .join('\n')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
+/** Every class the built stylesheets carry, ignoring what they say about them. */
+function built(): ReadonlySet<string> {
+  execFileSync('pnpm', ['--filter', '@handover/web', 'build'], { stdio: 'pipe' })
 
-  return new Set([...sheets.matchAll(/\.([a-z][a-z0-9-]*)/g)].map((found) => found[1] ?? ''))
+  const assets = join(WEB, 'dist', 'assets')
+  const sheets = readdirSync(assets)
+    .filter((entry) => entry.endsWith('.css'))
+    .map((entry) => readFileSync(join(assets, entry), 'utf8'))
+    .join('\n')
+
+  // Escaped the way CSS needs them — `.h-1\.5`, `.bg-primary\/10` — and read back as written.
+  return new Set(
+    [...sheets.matchAll(/\.((?:[\w-]|\\.)+)/g)].map((found) =>
+      (found[1] ?? '').replaceAll('\\', ''),
+    ),
+  )
 }
 
 /** What one screen plainly puts on a `className`, with anything computed left out. */
@@ -54,8 +71,8 @@ describe('the stylesheets and the screens', () => {
   // mechanically without lying: a name reaches an element through a template, an array that is
   // joined, or a helper, and half of those read as unused. A rule that cries wolf teaches people
   // to edit its list without looking, which is worse than not having it.
-  it('have something for every class a screen names', async () => {
-    const known = defined()
+  it('have something for every class a screen names', () => {
+    const known = built()
 
     expect([...named()].filter((one) => !known.has(one))).toEqual([])
   })
