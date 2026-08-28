@@ -20,6 +20,21 @@
   --tertiary-light: #5f5e5b;
   --content: #37352f;
   --content-2: #1f1f1f;
+  /* The ramp inside a Space, measured from the live Notion app. It sits beside the older one
+     above — `--content`, `--basic`, `--tertiary-light` — which the way in still uses. Two ramps
+     one or two values apart is one ramp too many; collapsing them is a decision, not a tidy-up,
+     so both are named and neither is guessed at. */
+  --ink: #2c2c2b;
+  --ink-secondary: #5f5e59;
+  --ink-muted: #7d7a75;
+  --ink-quiet: #8e8b86;
+  --ink-placeholder: #a19e99;
+
+  /* An agent wears its maker's colour. Nothing else in the product may use these. */
+  --agent-claude: #d97757;
+  --agent-codex: #0f7b6c;
+  --agent-other: #5f5e59;
+
   --primary-100: #e7f3ff;
   --primary-200: #0069c8;
   --primary-500: #0075de;
@@ -98,6 +113,15 @@
   --color-neutral-900: var(--neutral-900);
   --color-neutral-950: var(--neutral-950);
   --color-red-500: var(--red-500);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-quiet: var(--ink-quiet);
+  --color-ink-placeholder: var(--ink-placeholder);
+  --color-agent-claude: var(--agent-claude);
+  --color-agent-codex: var(--agent-codex);
+  --color-agent-other: var(--agent-other);
+  --color-focus: var(--focus);
   --font-body: var(--font);
   --font-mono: var(--font-mono);
   --text-copy-xxs: var(--text-xxs);
@@ -108,6 +132,10 @@
   --text-copy-xl: var(--text-xl);
   --radius-ui: var(--radius);
   --radius-panel: var(--radius-lg);
+  /* The one curve anything in this product moves on: fast away, settling rather than stopping.
+     Defined here rather than in `:root` above — `inline` would make a token of the same name a
+     reference to itself, and a cycle leaves it invalid wherever it is used. */
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -328,7 +356,7 @@
   box-shadow:
     inset 0 0 0 0.5px var(--neutral-950),
     0 1px 2px -0.5px #16191d0a;
-  background: #ffffff;
+  background: var(--base);
 }
 
 .auth .button-secondary:enabled:hover {
@@ -444,7 +472,7 @@
   box-shadow:
     inset 0 0 0 1px var(--focus),
     0 0 0 1px var(--focus);
-  background: #ffffff;
+  background: var(--base);
 }
 
 /* Manus says a field is wrong in the field: coral ring, coral words beneath it. */
@@ -490,99 +518,8 @@
   @apply flex w-[min(50vw,48rem)] flex-col gap-8;
 }
 
-.onboarding-shell > .steps {
-  margin-bottom: 0;
-  overflow: clip;
-  overflow-clip-margin: 1rem;
-}
-
 .onboarding-content {
   @apply flex w-120 max-w-full self-center flex-col gap-5;
-}
-
-/* ── how far along the way in ───────────────────────────────────────────
-   Measured from Notion's setup bar: a 6px pill, the track a tint of the fill rather than a
-   grey, and the mark riding the leading edge so progress reads as movement. */
-
-.steps {
-  width: 100%;
-  margin-bottom: 0.75rem;
-}
-
-.steps-said {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.steps-track {
-  position: relative;
-  height: 6px;
-  border-radius: 1000px;
-  background: rgba(0, 117, 222, 0.1);
-}
-
-.steps-track[data-progress='25'] {
-  --at: 25%;
-  --scale: 0.25;
-}
-
-.steps-track[data-progress='50'] {
-  --at: 50%;
-  --scale: 0.5;
-}
-
-.steps-track[data-progress='75'] {
-  --at: 75%;
-  --scale: 0.75;
-}
-
-.steps-track[data-progress='100'] {
-  --at: 100%;
-  --scale: 1;
-}
-
-.steps-fill {
-  position: absolute;
-  inset: 0;
-  border-radius: 1000px;
-  background: var(--primary);
-  transform: scaleX(var(--scale));
-  transform-origin: left center;
-  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-
-.steps-rider {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  transform: translate3d(var(--at), 0, 0);
-  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-
-.steps-rider .mark {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translate(-50%, -50%);
-}
-
-.steps-labels {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  margin-top: 0.5rem;
-  color: var(--basic);
-  font-size: var(--text-xxs);
-  text-align: center;
-}
-
-.steps-labels [data-here] {
-  color: var(--content);
-  font-weight: 500;
 }
 
 /* Creation is always explicit. Its form rises from positive Y into one continuous drawer. */
@@ -658,7 +595,7 @@
 /* Notion's current public Card surface: white, a 10% black keyline, 12px radius, and
    elevation that appears only on interaction. The deck supplies the composition. */
 .space-choice-position .space-choice {
-  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-[#0000001a] bg-white px-3.5 py-3;
+  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-[var(--neutral-950)] bg-white px-3.5 py-3;
   transform-origin: center top;
 }
 
@@ -733,8 +670,8 @@
 }
 
 .space-choice-position .space-choice:hover {
-  border-color: #0000001a;
-  background: #ffffff;
+  border-color: var(--neutral-950);
+  background: var(--base);
   box-shadow:
     0 0.175px 1.041px #00000003,
     0 0.8px 2.925px #00000005,
@@ -744,7 +681,7 @@
 }
 
 .space-choice-position .space-choice-arrow {
-  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-[#787774] opacity-55;
+  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-[var(--neutral-300)] opacity-55;
   transform: translateY(-50%);
   transition:
     opacity 160ms ease-out,
@@ -769,7 +706,7 @@
 
 .space-choice:hover {
   border-color: #dcdad7;
-  background: #f7f7f5;
+  background: var(--base-secondary);
   box-shadow: 0 0.25rem 0.75rem #0f0f0f0a;
   transform: translateY(-1px);
 }
@@ -797,7 +734,7 @@
 
 .space-choice-new[aria-expanded='true'] {
   border-color: #0075de4a;
-  background: #f7f7f5;
+  background: var(--base-secondary);
 }
 
 /* This sheet belongs to the viewport, not to the row that opened it. Keeping it non-modal leaves
@@ -812,7 +749,7 @@
   border: 1px solid #00000012;
   border-bottom: 0;
   border-radius: 1rem 1rem 0 0;
-  background: #ffffff;
+  background: var(--base);
   box-shadow: 0 -0.75rem 2.5rem #0f0f0f12;
 }
 
@@ -879,7 +816,7 @@
 }
 
 .space-create-form .label {
-  color: #74736f;
+  color: var(--basic);
   font-weight: 500;
 }
 
@@ -904,7 +841,7 @@
 
 .space-choice-new .space-choice-icon {
   background: var(--primary);
-  color: #ffffff;
+  color: var(--base);
 }
 
 .space-choice-copy {
@@ -939,7 +876,7 @@
 }
 
 .space-url {
-  @apply bg-[#f7f7f5] font-mono text-copy-xxs text-basic;
+  @apply bg-base-secondary font-mono text-copy-xxs text-basic;
 }
 
 .space-url:disabled {
@@ -948,7 +885,7 @@
 }
 
 .shell-snippet {
-  @apply flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-[#0000001a] bg-white px-3 py-2.5 text-content;
+  @apply flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--neutral-950)] bg-white px-3 py-2.5 text-content;
 }
 
 .shell-snippet code {
@@ -984,10 +921,6 @@
 
 .host-stack {
   gap: 1rem;
-}
-
-.host-stack .steps {
-  margin-bottom: 0.25rem;
 }
 
 .host-head {
@@ -1028,9 +961,9 @@
   padding: 0.625rem 0.75rem;
   align-items: center;
   gap: 0.625rem;
-  border: 1px solid #0000001a;
+  border: 1px solid var(--neutral-950);
   border-radius: 0.75rem;
-  background: #ffffff;
+  background: var(--base);
 }
 
 .host-agent-mark {
@@ -1040,13 +973,13 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 0.5rem;
-  background: #f7f7f5;
+  background: var(--base-secondary);
   color: #2b292a;
 }
 
 .host-agent[data-agent='claude-code'] .host-agent-mark {
   background: #d977570d;
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 .host-agent-mark svg {
@@ -1197,7 +1130,7 @@
 }
 
 .host-method:hover {
-  background: #f7f7f5;
+  background: var(--base-secondary);
   color: var(--content);
 }
 
@@ -1227,7 +1160,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: #787774;
+  color: var(--neutral-300);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xxs);
@@ -1235,7 +1168,7 @@
 }
 
 .host-skip:hover {
-  background: #f7f7f5;
+  background: var(--base-secondary);
   color: var(--content);
 }
 
@@ -1327,7 +1260,7 @@
 /* ── Home: Notion's quiet sidebar and blank page frame ─────────────────── */
 
 .home-shell {
-  @apply grid min-h-dvh overflow-x-hidden bg-white text-[#2c2c2b];
+  @apply grid min-h-dvh overflow-x-hidden bg-white text-ink;
   grid-template-columns: var(--home-sidebar-width, 16.875rem) minmax(0, 1fr);
   font-family:
     ui-sans-serif,
@@ -1365,7 +1298,7 @@
 }
 
 .home-sidebar {
-  @apply absolute top-0 left-0 flex h-dvh min-w-0 flex-col overflow-visible bg-[#f9f8f7] text-[#2c2c2b] opacity-100;
+  @apply absolute top-0 left-0 flex h-dvh min-w-0 flex-col overflow-visible bg-[#f9f8f7] text-ink opacity-100;
   width: var(--home-sidebar-width, 16.875rem);
   transform: translate(0, 0);
   transition:
@@ -1401,7 +1334,7 @@
 }
 
 .home-workspace-identity {
-  @apply flex h-7.5 min-w-0 flex-auto cursor-pointer items-center gap-2 overflow-hidden border-0 bg-transparent px-2 text-start text-sm text-[#2c2c2b];
+  @apply flex h-7.5 min-w-0 flex-auto cursor-pointer items-center gap-2 overflow-hidden border-0 bg-transparent px-2 text-start text-sm text-ink;
   font-family: inherit;
 }
 
@@ -1421,7 +1354,7 @@
 
 .home-close-sidebar,
 .home-open-sidebar {
-  @apply grid shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent p-0 text-[#7d7a75];
+  @apply grid shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent p-0 text-ink-muted;
 }
 
 .home-close-sidebar {
@@ -1439,13 +1372,13 @@
   height: 1.5rem;
   margin-right: 0.375rem;
   opacity: 1;
-  color: #2c2c2b;
+  color: var(--ink);
 }
 
 .home-close-sidebar:hover,
 .home-open-sidebar:hover {
   background: var(--interaction-hover);
-  color: #2c2c2b;
+  color: var(--ink);
 }
 
 .home-close-sidebar:active,
@@ -1479,7 +1412,7 @@
 .workspace-emoji-picker [frimousse-emoji]:focus-visible,
 .chat-pin:focus-visible,
 .sidebar-section-heading:focus-visible {
-  outline: 2px solid #2383e2;
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -1488,7 +1421,7 @@
 }
 
 .home-tab {
-  @apply flex h-8 min-w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 bg-transparent p-0 text-sm leading-[1.05rem] font-medium text-[#7d7a75];
+  @apply flex h-8 min-w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 bg-transparent p-0 text-sm leading-[1.05rem] font-medium text-ink-muted;
   padding-inline: 5px;
   margin-inline: 0;
   font-family: inherit;
@@ -1507,7 +1440,7 @@
 .home-tab[aria-pressed='true'] {
   padding-inline: 8px 0;
   margin-inline: 4px;
-  color: #2c2c2b;
+  color: var(--ink);
 }
 
 .home-tab:first-child[aria-pressed='true'] {
@@ -1528,7 +1461,7 @@
 }
 
 .home-tab-icon {
-  @apply relative flex shrink-0 items-center text-[#8e8b86];
+  @apply relative flex shrink-0 items-center text-ink-quiet;
 }
 
 .home-tab[aria-pressed='true'] .home-tab-icon {
@@ -1575,8 +1508,8 @@
   width: 18.75rem;
   padding: 0.5rem;
   border-radius: 0.625rem;
-  background: #fff;
-  color: #2c2c2b;
+  background: var(--base);
+  color: var(--ink);
   box-shadow:
     0 1.25rem 1.5rem rgba(25, 25, 25, 0.05),
     0 0.3125rem 0.5rem rgba(25, 25, 25, 0.027),
@@ -1622,7 +1555,7 @@
 
 .workspace-menu-space-copy strong {
   overflow: hidden;
-  color: #2c2c2b;
+  color: var(--ink);
   font-size: 1rem;
   font-weight: 500;
   line-height: 1.25rem;
@@ -1631,7 +1564,7 @@
 }
 
 .workspace-menu-space-copy > span {
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.875rem;
   line-height: 1rem;
 }
@@ -1668,7 +1601,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: #2c2c2b;
+  color: var(--ink);
   font-family: inherit;
   font-size: 0.875rem;
   font-weight: 400;
@@ -1704,7 +1637,7 @@
   margin: 0;
   padding: 0.375rem;
   overflow: hidden;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1rem;
@@ -1729,7 +1662,7 @@
 }
 
 .workspace-menu-account li:last-child a {
-  color: #2383e2;
+  color: var(--focus);
 }
 
 .workspace-menu-logout {
@@ -1744,7 +1677,7 @@
   width: 20rem;
   padding: 0.5rem;
   border-radius: 0.625rem;
-  background: #fff;
+  background: var(--base);
   box-shadow: var(--surface-raised-shadow);
 }
 
@@ -1762,7 +1695,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: #f7f6f3;
-  color: #2c2c2b;
+  color: var(--ink);
   font: 0.875rem/1.05rem inherit;
   box-shadow: inset 0 0 0 1px rgba(42, 28, 0, 0.07);
 }
@@ -1784,7 +1717,7 @@
 .workspace-emoji-picker [frimousse-category-header] {
   height: 1.75rem;
   padding: 0.375rem 0.25rem;
-  background: #fff;
+  background: var(--base);
   color: #91918e;
   font-size: 0.75rem;
   font-weight: 500;
@@ -1819,7 +1752,7 @@
   display: block;
   margin: 0;
   padding: 0.75rem;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.75rem;
 }
 
@@ -1845,7 +1778,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: #a19e99;
+  color: var(--ink-placeholder);
   font-family: inherit;
   font-size: 0.75rem;
   font-weight: 500;
@@ -1909,7 +1842,7 @@
   gap: 0.5rem;
   padding: 0.5rem;
   border-radius: 0.625rem;
-  color: #5f5e59;
+  color: var(--ink-secondary);
   text-decoration: none;
   flex-direction: column;
 }
@@ -1930,7 +1863,7 @@
   flex: none;
   border: 1px solid rgba(55, 53, 47, 0.14);
   border-radius: 50%;
-  background: #fff;
+  background: var(--base);
   box-shadow:
     0 1px 2px rgba(15, 15, 15, 0.08),
     0 4px 12px rgba(15, 15, 15, 0.06);
@@ -1950,20 +1883,20 @@
   display: grid;
   width: 1.125rem;
   height: 1.125rem;
-  border: 0.125rem solid #fff;
+  border: 0.125rem solid var(--base);
   border-radius: 50%;
-  background: #fff;
+  background: var(--base);
   box-shadow: 0 1px 2px rgba(15, 15, 15, 0.16);
-  color: #2c2c2b;
+  color: var(--ink);
   place-items: center;
 }
 
 .chat-agent-kind[data-kind='claude-code'] {
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 .chat-agent-kind[data-kind='codex'] {
-  color: #5f5e59;
+  color: var(--ink-secondary);
 }
 
 .chat-agent-kind svg {
@@ -1974,7 +1907,7 @@
 .chat-agent-name {
   width: 3.75rem;
   overflow: hidden;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.6875rem;
   font-weight: 500;
   line-height: 0.875rem;
@@ -2015,7 +1948,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.5rem;
-  color: #5f5e59;
+  color: var(--ink-secondary);
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.25rem;
@@ -2026,7 +1959,7 @@
   width: 1.25rem;
   height: 1.25rem;
   flex: none;
-  fill: #8e8b86;
+  fill: var(--ink-quiet);
 }
 
 .chat-history-title {
@@ -2039,7 +1972,7 @@
 
 .chat-history-summary time {
   flex: none;
-  color: #a19e99;
+  color: var(--ink-placeholder);
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1rem;
@@ -2056,7 +1989,7 @@
   border: 0;
   border-radius: 0.25rem;
   background: #f2f1ef;
-  color: #7d7a75;
+  color: var(--ink-muted);
   opacity: 0;
   pointer-events: none;
 }
@@ -2074,7 +2007,7 @@
 
 .chat-pin:hover {
   background: #e7e5e2;
-  color: #2c2c2b;
+  color: var(--ink);
 }
 
 .chat-pin svg {
@@ -2109,7 +2042,7 @@
   height: 4rem;
   border: 1px solid rgba(55, 53, 47, 0.14);
   border-radius: 50%;
-  background: #fff;
+  background: var(--base);
   box-shadow:
     0 1.25rem 1.5rem rgba(25, 25, 25, 0.05),
     0 0.3125rem 0.5rem rgba(25, 25, 25, 0.027),
@@ -2130,16 +2063,16 @@
   display: grid;
   width: 1.375rem;
   height: 1.375rem;
-  border: 0.125rem solid #fff;
+  border: 0.125rem solid var(--base);
   border-radius: 50%;
-  background: #fff;
+  background: var(--base);
   box-shadow: 0 1px 3px rgba(15, 15, 15, 0.18);
-  color: #5f5e59;
+  color: var(--ink-secondary);
   place-items: center;
 }
 
 .agent-start-kind[data-kind='claude-code'] {
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 .agent-start-kind svg {
@@ -2149,7 +2082,7 @@
 
 .agent-start h1 {
   margin: 1.25rem 0 2rem;
-  color: #2c2c2b;
+  color: var(--ink);
   font-size: 1.875rem;
   font-weight: 600;
   line-height: 2.25rem;
@@ -2157,15 +2090,15 @@
 }
 
 .agent-start-name {
-  color: #2383e2;
+  color: var(--focus);
 }
 
 .agent-start-name[data-kind='claude-code'] {
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 .agent-start-name[data-kind='codex'] {
-  color: #0f7b6c;
+  color: var(--agent-codex);
 }
 
 .agent-start-composer,
@@ -2174,14 +2107,14 @@
   padding: 0.25rem;
   border-radius: 1.375rem;
   outline: 2px solid transparent;
-  background: #fff;
+  background: var(--base);
   box-shadow: var(--surface-raised-shadow);
   transition: outline-color 100ms ease-in-out;
 }
 
 .agent-start-composer:focus-within,
 .chat-composer:focus-within {
-  outline-color: #2383e2;
+  outline-color: var(--focus);
 }
 
 .agent-start-composer textarea,
@@ -2194,7 +2127,7 @@
   padding: 0.75rem 0.75rem 0 0.875rem;
   border: 0;
   background: transparent;
-  color: #2c2c2b;
+  color: var(--ink);
   font: inherit;
   font-size: 1rem;
   line-height: 1.5rem;
@@ -2203,7 +2136,7 @@
 
 .agent-start-composer textarea::placeholder,
 .chat-composer textarea::placeholder {
-  color: #a19e99;
+  color: var(--ink-placeholder);
 }
 
 .agent-start-actions,
@@ -2247,7 +2180,7 @@
   border: 0;
   border-radius: 3.125rem;
   background: transparent;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
@@ -2264,7 +2197,7 @@
 
 .chat-choice-trigger:focus-visible,
 .chat-choice-option:focus-visible {
-  outline: 2px solid #2383e2;
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -2279,7 +2212,7 @@
   padding: 0.25rem;
   scrollbar-width: none;
   border-radius: 0.625rem;
-  background: #fff;
+  background: var(--base);
   box-shadow: var(--surface-raised-shadow);
 }
 
@@ -2298,7 +2231,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: #2c2c2b;
+  color: var(--ink);
   font: inherit;
   font-size: 0.875rem;
   line-height: 1.25rem;
@@ -2320,12 +2253,12 @@
   width: 1.25rem;
   height: 1.25rem;
   flex: none;
-  color: #5f5e59;
+  color: var(--ink-secondary);
   place-items: center;
 }
 
 .chat-choice-mark[data-kind='claude-code'] {
-  color: #d97757;
+  color: var(--agent-claude);
 }
 
 .chat-choice-mark > svg {
@@ -2368,7 +2301,7 @@
 .chat-choice-copy small {
   min-width: 0;
   overflow: hidden;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.75rem;
   line-height: 1.125rem;
   text-overflow: ellipsis;
@@ -2395,7 +2328,7 @@
 .chat-choice-section {
   margin: 0;
   padding: 0.25rem 0.5rem;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.25rem;
@@ -2417,7 +2350,7 @@
 
 .composer-stop {
   background: rgba(55, 53, 47, 0.08);
-  color: #5f5e59;
+  color: var(--ink-secondary);
 }
 
 .composer-send svg,
@@ -2440,7 +2373,7 @@
 
 .composer-send:focus-visible,
 .composer-stop:focus-visible {
-  outline: 2px solid #2383e2;
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -2495,7 +2428,7 @@
   display: grid;
   align-self: flex-start;
   gap: 0.25rem;
-  color: #7d7a75;
+  color: var(--ink-muted);
   font-size: 0.8125rem;
 }
 
@@ -2509,7 +2442,7 @@
 .chat-line-activity,
 .chat-working,
 .chat-live {
-  color: #8e8b86;
+  color: var(--ink-quiet);
   font-size: 0.8125rem;
 }
 
@@ -2541,7 +2474,7 @@
 }
 
 .home-sidebar-resize [role='separator']:focus-visible {
-  box-shadow: inset 2px 0 #2383e2;
+  box-shadow: inset 2px 0 var(--focus);
 }
 
 .home-shell[data-sidebar-open='false'] .home-sidebar-resize {
@@ -2566,7 +2499,7 @@
 }
 
 .home-breadcrumb strong {
-  color: #37352f;
+  color: var(--content);
   font-weight: 400;
 }
 
@@ -2575,7 +2508,7 @@
 }
 
 .home-content h1 {
-  color: #37352f;
+  color: var(--content);
   font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.035em;
@@ -2583,7 +2516,7 @@
 }
 
 .home-state {
-  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-[#37352f];
+  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-[var(--content)];
 }
 
 .home-state p,
@@ -2636,7 +2569,7 @@
     height: 1.5rem;
     margin-right: 0.375rem;
     opacity: 1;
-    color: #2c2c2b;
+    color: var(--ink);
   }
 
   .workspace-emoji-popover {

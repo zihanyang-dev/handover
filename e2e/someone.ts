@@ -30,9 +30,15 @@ export function connects(): Database {
 
 const LETTERS = join(import.meta.dirname, 'letters.log')
 
-/** Signs somebody in from the front door, and leaves them where they landed. */
-export async function signsIn(page: Page, name: string): Promise<string> {
-  const address = `${name}-${randomUUID().slice(0, 8)}@example.com`
+/**
+ * Signs somebody in from the front door, and leaves them where they landed.
+ *
+ * The address is made up unless one is given: journeys run against a database the last run left
+ * behind, so two people called Mina must not be the same account. A caller that wants the same
+ * address every time — one comparing pictures, where the address is on screen — says so.
+ */
+export async function signsIn(page: Page, name: string, exactly?: string): Promise<string> {
+  const address = exactly ?? `${name}-${randomUUID().slice(0, 8)}@example.com`
 
   await page.goto('/sign-in')
   await page.getByLabel(/email/i).fill(address)

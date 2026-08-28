@@ -52,17 +52,31 @@ export function Steps({
   const leg = done && step === 2 ? 'Done' : `Step ${String(step)} of 2`
 
   return (
-    <div className="steps" role="img" aria-label={leg}>
-      <span className="steps-said">{leg}</span>
-      <div className="steps-track" data-progress={at}>
-        <div className="steps-fill" />
-        <div className="steps-rider">
-          <Mark size={26} state={mark} />
+    // No outer spacing: where it sits is its parent's to say. It had a margin once and both of
+    // its parents overrode it, one of them with a selector that never matched anything.
+    //
+    // Clipped, because the mark rides above and below a 6px track and the page has no room for it
+    // there. The margin is what lets the mark keep its own shadow while the rest is cut.
+    <div className="w-full overflow-clip [overflow-clip-margin:1rem]" role="img" aria-label={leg}>
+      <span className="sr-only">{leg}</span>
+      {/* Both the fill and the rider read their position from here, so one attribute moves both
+          and neither can be a step behind the other. */}
+      <div
+        className="relative h-1.5 rounded-full bg-primary/10 data-[progress=25]:[--at:25%] data-[progress=25]:[--scale:0.25] data-[progress=50]:[--at:50%] data-[progress=50]:[--scale:0.5] data-[progress=75]:[--at:75%] data-[progress=75]:[--scale:0.75] data-[progress=100]:[--at:100%] data-[progress=100]:[--scale:1]"
+        data-progress={at}
+      >
+        <div className="absolute inset-0 origin-left rounded-full bg-primary transition-transform duration-[420ms] ease-settle will-change-transform [transform:scaleX(var(--scale))]" />
+        <div className="pointer-events-none absolute inset-0 transition-transform duration-[420ms] ease-settle will-change-transform [transform:translate3d(var(--at),0,0)]">
+          <Mark
+            className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2"
+            size={26}
+            state={mark}
+          />
         </div>
       </div>
-      <div className="steps-labels">
+      <div className="mt-2 grid grid-cols-2 text-center text-copy-xxs text-basic">
         {LEGS.map((leg, i) => (
-          <span key={leg} data-here={!done && i + 1 === step ? '' : undefined}>
+          <span key={leg} className={!done && i + 1 === step ? 'font-medium text-content' : ''}>
             {leg}
           </span>
         ))}

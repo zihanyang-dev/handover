@@ -20,3 +20,7 @@ apps/web/dist
 apps/cli/dist
 e2e/letters.log
 test-results/
+
+# What the styling is measured against while it moves to tokens and utilities. Pictures of the
+# product are not source, and a binary nobody can review is not a thing to keep in a history.
+.looks/

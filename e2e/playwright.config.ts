@@ -30,6 +30,9 @@ export default defineConfig({
   // nothing to do with the product.
   timeout: 90_000,
   reporter: [['list']],
+  // Temporary, for the move from a hand-written stylesheet to tokens and utilities. Pictures do
+  // not belong in this repository; they live where the work does and go when it is done.
+  snapshotPathTemplate: '{testDir}/../.looks/{arg}{ext}',
   use: {
     baseURL: ORIGIN,
     trace: 'retain-on-failure',
