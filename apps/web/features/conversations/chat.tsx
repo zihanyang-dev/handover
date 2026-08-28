@@ -180,7 +180,10 @@ function Composer({
           <StopButton
             disabled={stop.isPending}
             onStop={() => {
-              stop.mutate(turn)
+              stop.mutate({
+                params: { path: { slug, id } },
+                body: { key: `${String(turn)}/stop` },
+              })
             }}
           />
         ) : (

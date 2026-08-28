@@ -6,8 +6,7 @@
  * Written out per screen, "is this one here" had already been asked two different ways.
  */
 
-import { queryOptions } from '@tanstack/react-query'
-import { api } from '../../api.ts'
+import { cached } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
 export type Machine = components['schemas']['Machine']
@@ -47,17 +46,15 @@ export function agentsOn(machines: readonly Machine[]): readonly InstalledAgent[
 }
 
 export function machinesIn(slug: string) {
-  return queryOptions({
-    queryKey: ['machines', slug] as const,
-    // A machine appears after its own process checks in. Polling lets that happen without making
-    // somebody refresh the Space they are already looking at.
-    refetchInterval: 3000,
-    queryFn: async () => {
-      const { data, error } = await api.GET('/spaces/{slug}/machines', {
-        params: { path: { slug } },
-      })
-      if (data === undefined) throw new Error(error.reason)
-      return data.machines
+  return cached.queryOptions(
+    'get',
+    '/spaces/{slug}/machines',
+    { params: { path: { slug } } },
+    {
+      // A machine appears after its own process checks in, and connecting one is somebody sitting
+      // in front of both screens. Asking again is what lets it appear without a refresh.
+      refetchInterval: 3000,
+      select: (answer) => answer.machines,
     },
-  })
+  )
 }

@@ -10,13 +10,15 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { api } from '../../api.ts'
+import { api, cached } from '../../api.ts'
 import { cache } from '../../query-client.ts'
 import { ME } from '../identity/me.ts'
 
 function whatItOpens(secret: string) {
   return {
-    queryKey: ['invitation', secret] as const,
+    queryKey: cached.queryOptions('get', '/invitations/{secret}', {
+      params: { path: { secret } },
+    }).queryKey,
     // One try. A link that does not work does not start working, and asking four times is four
     // seconds of "Looking…" before the same answer.
     retry: false,

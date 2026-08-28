@@ -9,6 +9,7 @@
     "framer-motion": "^13.1.1",
     "frimousse": "^0.3.0",
     "openapi-fetch": "^0.17.0",
+    "openapi-react-query": "^0.5.4",
     "opentype.js": "^2.0.0",
     "react": "^19.2.8",
     "react-bootstrap-icons": "^1.11.6",

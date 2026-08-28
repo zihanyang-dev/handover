@@ -71,17 +71,17 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
           if (asked === '' || !online) return
           begin.mutate(
             {
-              id,
-              machineId: agent.machineId,
-              agentKind: agent.kind,
-              asked: askedWithChoices(asked, model, effort),
+              params: { path: { slug } },
+              body: {
+                id,
+                machineId: agent.machineId,
+                agentKind: agent.kind,
+                asked: askedWithChoices(asked, model, effort),
+              },
             },
             {
-              onSuccess: (conversationId) => {
-                void navigate({
-                  to: '/s/$slug/c/$id',
-                  params: { slug, id: conversationId },
-                })
+              onSuccess: (opened) => {
+                void navigate({ to: '/s/$slug/c/$id', params: { slug, id: opened.id } })
               },
             },
           )
@@ -106,7 +106,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
           )}
           {begin.isError && (
             <span className="composer-error" role="alert">
-              {whyNot(begin.error.message, name)}
+              {whyNot(begin.error.reason, name)}
             </span>
           )}
           <ModelChoices

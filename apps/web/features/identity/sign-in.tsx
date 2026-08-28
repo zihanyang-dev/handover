@@ -5,10 +5,10 @@
  * keeps an accessible name without repeating a visible “Sign in” heading.
  */
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState } from 'react'
-import { api, retryKey } from '../../api.ts'
+import { api, cached, retryKey } from '../../api.ts'
 import { FieldError } from '../../components/ui/field-error.tsx'
 import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
 import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
@@ -22,15 +22,10 @@ const SAID: Record<string, string> = {
   'address-refused': 'No mail can reach that address. Check it, or use a different one.',
 }
 
-async function offeredKinds(): Promise<readonly string[]> {
-  const { data } = await api.GET('/auth/credentials')
-  return data?.offered ?? []
-}
-
 /** Only what this deployment can actually offer: a door that opens onto an error is not a door. */
 function OtherWays() {
-  const offered = useQuery({ queryKey: ['credentials'], queryFn: offeredKinds })
-  const providers = (offered.data ?? []).filter(isProvider)
+  const offered = cached.useQuery('get', '/auth/credentials')
+  const providers = (offered.data?.offered ?? []).filter(isProvider)
 
   const leaveFor = useMutation({
     mutationFn: async (provider: string) => {

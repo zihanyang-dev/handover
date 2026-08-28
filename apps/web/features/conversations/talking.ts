@@ -11,9 +11,9 @@
  * see {@link useConversation}.
  */
 
-import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { api, retryKey, retryKeyDone } from '../../api.ts'
+import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
 /** Often enough that a person watching the list sees it move, rarely enough to be free at rest. */
@@ -101,7 +101,7 @@ export function useWatching(
     const live = watch(slug, id)
 
     const read = (): void => {
-      void client.invalidateQueries({ queryKey: ['conversation', slug, id] })
+      void client.invalidateQueries({ queryKey: transcriptOf(slug, id) })
     }
 
     // Whatever arrived while this browser was not connected arrived while it was not connected. A
@@ -126,23 +126,28 @@ export function useWatching(
 }
 
 export function conversationsIn(slug: string) {
-  return queryOptions({
-    queryKey: ['conversations', slug] as const,
-    queryFn: async () => {
-      const { data, error } = await api.GET('/spaces/{slug}/conversations', {
-        params: { path: { slug } },
-      })
-      if (data === undefined) throw new Error(error.reason)
-      return data.conversations
+  return cached.queryOptions(
+    'get',
+    '/spaces/{slug}/conversations',
+    { params: { path: { slug } } },
+    {
+      // Same rule as one conversation: only while something is happening. This list says which of
+      // them are working, and a "Working" beside one that finished a minute ago is the list saying
+      // something untrue for as long as somebody leaves the page open.
+      refetchInterval: (query) =>
+        (query.state.data?.conversations ?? []).some((one) => one.working.state === 'working')
+          ? WHILE_WORKING_MS
+          : false,
+      select: (answer) => answer.conversations,
     },
-    // Same rule as one conversation: only while something is happening. This list says which of
-    // them are working, and a "Working" beside one that finished a minute ago is the list saying
-    // something untrue for as long as somebody leaves the page open.
-    refetchInterval: (query) =>
-      (query.state.data ?? []).some((one) => one.working.state === 'working')
-        ? WHILE_WORKING_MS
-        : false,
-  })
+  )
+}
+
+/** The slot one conversation's transcript is kept in, named by the read that fills it. */
+function transcriptOf(slug: string, id: string) {
+  return cached.queryOptions('get', '/spaces/{slug}/conversations/{id}', {
+    params: { path: { slug, id } },
+  }).queryKey
 }
 
 /**
@@ -157,7 +162,9 @@ export function conversationsIn(slug: string) {
  */
 export function useConversation(slug: string, id: string) {
   return useQuery({
-    queryKey: ['conversation', slug, id] as const,
+    // Named by the read, but not the generated read itself: what is kept here is the whole
+    // transcript, and what is asked for is the part of it this page does not have.
+    queryKey: transcriptOf(slug, id),
     queryFn: async ({ client, queryKey }) => {
       // The client running this query, not the module's: a component may be under another one,
       // and reading the wrong cache would ask for a tail of something this screen never had.
@@ -196,9 +203,6 @@ export function useConversation(slug: string, id: string) {
   })
 }
 
-/** Taken from the contract, so a kind the server does not offer cannot be asked for. */
-type Opening = components['schemas']['OpenConversation']
-
 /** What was said, and what it was said with. Absent means the agent's own default, always. */
 export type Saying = components['schemas']['SayThis']['asked']
 
@@ -212,16 +216,8 @@ export type Saying = components['schemas']['SayThis']['asked']
 export function useBeginConversation(slug: string) {
   const client = useQueryClient()
 
-  return useMutation({
-    mutationFn: async (on: Opening) => {
-      const { data, error } = await api.POST('/spaces/{slug}/conversations', {
-        params: { path: { slug } },
-        body: on,
-      })
-      if (data === undefined) throw new Error(error.reason)
-      return data.id
-    },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversations', slug] }),
+  return cached.useMutation('post', '/spaces/{slug}/conversations', {
+    onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })
 }
 
@@ -248,7 +244,7 @@ export function useSay(slug: string, id: string) {
       if (error !== undefined) throw new Error(error.reason)
       retryKeyDone(intention)
     },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+    onSuccess: async () => client.invalidateQueries({ queryKey: transcriptOf(slug, id) }),
   })
 }
 
@@ -262,15 +258,8 @@ export function useSay(slug: string, id: string) {
 export function useStop(slug: string, id: string) {
   const client = useQueryClient()
 
-  return useMutation({
-    mutationFn: async (turn: number) => {
-      const { error } = await api.POST('/spaces/{slug}/conversations/{id}/stop', {
-        params: { path: { slug, id } },
-        body: { key: `${String(turn)}/stop` },
-      })
-      if (error !== undefined) throw new Error(error.reason)
-    },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+  return cached.useMutation('post', '/spaces/{slug}/conversations/{id}/stop', {
+    onSuccess: async () => client.invalidateQueries({ queryKey: transcriptOf(slug, id) }),
   })
 }
 
@@ -289,21 +278,22 @@ export function useSetPinned(slug: string, id: string) {
           })
       if (!answer.response.ok) throw new Error('pin-not-changed')
     },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversations', slug] }),
+    onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })
 }
 
 /** Everything waiting on you, across every Space. */
 export function inbox() {
-  return queryOptions({
-    queryKey: ['inbox'] as const,
-    queryFn: async () => {
-      const { data, error } = await api.GET('/me/inbox', {})
-      if (data === undefined) throw new Error(error.reason)
-      return data.waiting
+  return cached.queryOptions(
+    'get',
+    '/me/inbox',
+    {},
+    {
+      // Often enough that somebody who leaves this open sees a piece of work stop on them, rarely
+      // enough to be free. Nothing pushes here: an Inbox is read when somebody wonders, not
+      // watched.
+      refetchInterval: 15_000,
+      select: (answer) => answer.waiting,
     },
-    // Often enough that somebody who leaves this open sees a piece of work stop on them, rarely
-    // enough to be free. Nothing pushes here: an Inbox is read when somebody wonders, not watched.
-    refetchInterval: 15_000,
-  })
+  )
 }

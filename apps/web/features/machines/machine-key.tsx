@@ -13,9 +13,10 @@
 
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { api } from '../../api.ts'
+import { api, cached } from '../../api.ts'
 
-const MACHINE_KEY = ['machine-key'] as const
+/** Named by the call that mints one, so nothing else can claim the same slot by accident. */
+const MACHINE_KEY = cached.queryOptions('post', '/me/machine-keys', {}).queryKey
 
 function machineKey() {
   return queryOptions({

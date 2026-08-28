@@ -10,29 +10,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircleFill, ChevronRight } from 'react-bootstrap-icons'
-import { api } from '../../api.ts'
 import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { agentName } from '../agents.ts'
 import { meQuery } from '../identity/me.ts'
 import { AgentMark } from '../machines/agent-mark.tsx'
 import { useMachineKey } from '../machines/machine-key.tsx'
+import { machinesIn } from '../machines/machine-list.ts'
 import { ShellCommand } from '../shell-command.tsx'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
-
-function machinesIn(slug: string) {
-  return {
-    queryKey: ['machines', slug] as const,
-    // The terminal takes as long as it takes; the page keeps asking so nobody refreshes.
-    refetchInterval: 3000,
-    queryFn: async () => {
-      const { data, error } = await api.GET('/spaces/{slug}/machines', {
-        params: { path: { slug } },
-      })
-      if (data === undefined) throw new Error(error.reason)
-      return data.machines
-    },
-  }
-}
 
 function countdown(seconds: number) {
   const minutes = Math.floor(seconds / 60)

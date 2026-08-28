@@ -9,7 +9,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { CheckCircleFill, ExclamationCircleFill, Laptop } from 'react-bootstrap-icons'
-import { api } from '../../api.ts'
+import { api, cached } from '../../api.ts'
 import { meQuery } from '../identity/me.ts'
 
 const SAID: Record<string, string> = {
@@ -18,18 +18,14 @@ const SAID: Record<string, string> = {
 }
 
 function waitingFor(code: string) {
-  return {
-    queryKey: ['enrolment', code] as const,
-    enabled: code !== '',
-    retry: false,
-    queryFn: async () => {
-      const { data, error } = await api.GET('/enrolments/{userCode}', {
-        params: { path: { userCode: code } },
-      })
-      if (data === undefined) throw new Error(error.reason)
-      return data
-    },
-  }
+  return cached.queryOptions(
+    'get',
+    '/enrolments/{userCode}',
+    { params: { path: { userCode: code } } },
+    // Nothing to ask about until somebody has typed one, and a code that is not right does not
+    // become right: asking again is three more seconds of "Looking…" before the same answer.
+    { enabled: code !== '', retry: false },
+  )
 }
 
 /**
@@ -109,14 +105,26 @@ function Answered({ letIn }: { readonly letIn: boolean }) {
   )
 }
 
-/** Something did not work. Words where there are words for it, and never the word off the wire. */
-function Trouble({ error, fallback }: { readonly error: Error | null; readonly fallback: string }) {
+/**
+ * Something did not work. Words where there are words for it, and never the word off the wire.
+ *
+ * The refusal arrives as itself rather than as a sentence squeezed into an `Error`: a reason is a
+ * value the contract names, and a page that read it back out of a message string would break the
+ * day somebody reworded the message.
+ */
+function Trouble({
+  error,
+  fallback,
+}: {
+  readonly error: { readonly reason: string } | null
+  readonly fallback: string
+}) {
   if (error === null) return null
 
   return (
     <p className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
-      {SAID[error.message] ?? fallback}
+      {SAID[error.reason] ?? fallback}
     </p>
   )
 }
@@ -129,7 +137,7 @@ export function Connect({ typed }: { readonly typed: string }) {
   const waiting = useQuery(waitingFor(asked))
   const me = useQuery(meQuery)
 
-  const answer = useMutation({
+  const answer = useMutation<boolean, { reason: string }, boolean>({
     mutationFn: async (yes: boolean) => {
       const { error, response } = yes
         ? await api.POST('/me/machines', { body: { userCode: asked } })
@@ -139,7 +147,7 @@ export function Connect({ typed }: { readonly typed: string }) {
       // No reason to read means the server did not answer in the shape it promises — a crash, a
       // proxy, a gateway. Calling that "unavailable" would say the Space is gone, which is a
       // different thing and one somebody would go and look for.
-      if (!response.ok) throw new Error(error?.reason ?? 'unknown')
+      if (!response.ok) throw error ?? { reason: 'unknown', recovery: 'retry-later' }
       return yes
     },
   })

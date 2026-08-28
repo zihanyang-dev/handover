@@ -10,29 +10,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { EmojiPicker } from 'frimousse'
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 import { meQuery } from '../identity/me.ts'
 import { useSignOut } from '../identity/sign-out.tsx'
 import { CheckIcon, PlusIcon, SettingsIcon } from './sidebar-icons.tsx'
-import { useChangeSpaceEmoji } from './space.ts'
+import { peopleIn, useChangeSpaceEmoji } from './space.ts'
 
 type Space = components['schemas']['Space']
-type Member = components['schemas']['Member']
-
-function peopleIn(slug: string) {
-  return {
-    queryKey: ['members', slug] as const,
-    queryFn: async (): Promise<readonly Member[]> => {
-      const { data, error } = await api.GET('/spaces/{slug}/members', {
-        params: { path: { slug } },
-      })
-      if (data === undefined) throw new Error(error.reason)
-
-      return data.members
-    },
-  }
-}
 
 function accountName(me: components['schemas']['Me'] | undefined): string {
   return (
@@ -56,7 +40,7 @@ function EmojiChooser({ slug, close }: { readonly slug: string; readonly close: 
         columns={8}
         locale="en"
         onEmojiSelect={({ emoji }) => {
-          change.mutate(emoji, { onSuccess: close })
+          change.mutate({ params: { path: { slug } }, body: { emoji } }, { onSuccess: close })
         }}
       >
         <div className="workspace-emoji-toolbar">
