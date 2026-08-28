@@ -77,7 +77,13 @@ describe('saying you are typing', () => {
   })
 
   it('is silent about a failure, because a name that does not appear is the same as a pause', async () => {
-    server.use(http.post(`*/spaces/acme/conversations/${ID}/typing`, () => HttpResponse.error()))
+    const tried = { times: 0 }
+    server.use(
+      http.post(`*/spaces/acme/conversations/${ID}/typing`, () => {
+        tried.times += 1
+        return HttpResponse.error()
+      }),
+    )
     const saying = renderHook(() => useSayingYouAreTyping('acme', ID))
 
     // Nothing to await and nothing to catch: what this says is kept nowhere, so one that did not
@@ -85,5 +91,11 @@ describe('saying you are typing', () => {
     expect(() => {
       saying.result.current()
     }).not.toThrow()
+
+    // Waited for all the same. A request still in flight when this test ends is one the test
+    // environment tears down under it, and that arrives as a failure belonging to no test at all.
+    await vi.waitFor(() => {
+      expect(tried.times).toBe(1)
+    })
   })
 })
