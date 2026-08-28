@@ -9,8 +9,9 @@
 import { returnPath } from '@handover/universal'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
+import { FieldError } from '../../components/ui/field-error.tsx'
 
 /** Rounded up, so "1 minute" never means "any moment now". */
 function minutesLeft(expiresAt: string): number {
@@ -72,6 +73,7 @@ function Resend({
 }) {
   const navigate = useNavigate()
   const waiting = useCountdown(after)
+  const error = useId()
   const intention = `code:${email}:after:${answering}`
 
   const resend = useMutation({
@@ -96,6 +98,7 @@ function Resend({
         className="button button-secondary"
         type="button"
         disabled={waiting > 0 || resend.isPending}
+        aria-describedby={error}
         onClick={() => {
           resend.mutate()
         }}
@@ -105,11 +108,11 @@ function Resend({
         </span>
       </button>
       {/* A button that did nothing looks the same as a letter that never came. */}
-      <p className="auth-error" data-shown={resend.isError ? '' : undefined}>
+      <FieldError id={error} shown={resend.isError}>
         {resend.isError
           ? (SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.')
           : null}
-      </p>
+      </FieldError>
     </>
   )
 }
@@ -133,6 +136,7 @@ export function EmailCode({
 }) {
   const navigate = useNavigate()
   const [code, setCode] = useState('')
+  const error = useId()
 
   const handBack = useMutation({
     mutationFn: async (digits: string) => {
@@ -172,13 +176,14 @@ export function EmailCode({
         <div className="stack-tight">
           <div className="auth-code-row">
             <input
-              className="code"
+              className="field code"
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={DIGITS}
               autoFocus
               aria-invalid={handBack.isError}
+              aria-describedby={error}
               aria-label={`${String(DIGITS)}-digit code`}
               value={code}
               onChange={(event) => {
@@ -195,11 +200,11 @@ export function EmailCode({
             <Resend email={email} after={resendAfterSeconds} answering={codeId} next={next} />
           </div>
 
-          <p className="auth-error" data-shown={handBack.isError ? '' : undefined}>
+          <FieldError id={error} shown={handBack.isError}>
             {handBack.isError
               ? (SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.')
               : null}
-          </p>
+          </FieldError>
 
           <button
             className="button button-primary"

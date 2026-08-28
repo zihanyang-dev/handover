@@ -195,7 +195,7 @@ export function credentialApi(deps: CredentialApi) {
 }
 
 /** Which ways in this deployment can actually offer. A way nobody can use is not offered. */
-function offering({ db, providers }: CredentialApi) {
+function offering({ providers }: CredentialApi) {
   return anyone().get('/auth/credentials', {
     summary: 'Which ways in this deployment can actually offer',
     // Answered to a stranger on purpose: a sign-in page cannot offer a choice it cannot see.

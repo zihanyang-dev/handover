@@ -29,6 +29,15 @@ let ADDRESS = ''
 let RUN = ''
 let SLUG = ''
 let COOKIE = ''
+/**
+ * What the machine keeps saying it has.
+ *
+ * Reported on every poll, because a poll is how a machine says what is installed as well as how
+ * it takes its turn: one that reported nothing would be uninstalling its agent, and every
+ * conversation on it would stop being answerable in the middle of a test about something else.
+ */
+const INSTALLED = [{ command: 'claude', version: '2.1.231' }]
+
 let MACHINE = { token: '', id: '' }
 let USER = ''
 
@@ -60,15 +69,6 @@ beforeEach(async () => {
   MACHINE = await attached()
   await asMachine('/machines/current/poll', 'POST', { found: INSTALLED })
 })
-
-/**
- * What the machine keeps saying it has.
- *
- * Reported on every poll, because a poll is how a machine says what is installed as well as how
- * it takes its turn: one that reported nothing would be uninstalling its agent, and every
- * conversation on it would stop being answerable in the middle of a test about something else.
- */
-const INSTALLED = [{ command: 'claude', version: '2.1.231' }]
 
 async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: string }> {
   // Minted here because a machine mints its own: the server only ever sees the hash.

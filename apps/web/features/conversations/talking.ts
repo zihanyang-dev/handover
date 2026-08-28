@@ -12,7 +12,7 @@
  */
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
@@ -44,9 +44,6 @@ type Transcript = components['schemas']['Transcript']
 /** Whether it is being worked on, in the contract's own words. Three states, and no fourth. */
 export type Working = components['schemas']['Working']
 
-/** The piece of work underway in a conversation. Absent means nobody handed this one over. */
-export type Underway = components['schemas']['Underway']
-
 /**
  * What is happening in this conversation right now, and when to go and read what was written.
  *
@@ -59,18 +56,6 @@ export type Underway = components['schemas']['Underway']
  * for a fresh turn, which is what a key is for — clearing it from inside would be a state change
  * during the render that noticed the turn had moved on.
  */
-/**
- * How long a name stays up after the last time somebody said they were typing.
- *
- * Longer than {@link SAYS_SO_EVERY} so an indicator does not flicker between two heartbeats, and
- * short enough that a browser which was closed mid-sentence does not leave somebody's name on
- * another person's screen. Nothing says "stopped": a tab that crashed cannot.
- */
-const STOPS_SHOWING_MS = 4000
-
-/** How often the browser says it is still typing, while somebody is. */
-const SAYS_SO_EVERY = 2000
-
 /**
  * The connection itself, opened once per conversation.
  *
@@ -106,15 +91,13 @@ export function useWatching(
   id: string,
   /** Which turn is running. A new one shows nothing of the last, and the list starts again. */
   turn: number,
-): { readonly moments: readonly Moment[]; readonly typing: string | undefined } {
+): readonly Moment[] {
   const [moments, setMoments] = useState<readonly Moment[]>([])
-  const [typing, setTyping] = useState<string | undefined>(undefined)
   const client = useQueryClient()
 
   useStartsAgainEachTurn(turn, setMoments)
 
   useEffect(() => {
-    let forgets: ReturnType<typeof setTimeout> | undefined = undefined
     const live = watch(slug, id)
 
     const read = (): void => {
@@ -132,51 +115,14 @@ export function useWatching(
 
       if (watched.seen === 'written') read()
       else if (watched.seen === 'moment') setMoments((sofar) => [...sofar, watched.moment])
-      else {
-        setTyping(watched.who)
-        // Forgotten on our own rather than on being told: being told is the one message a browser
-        // that was closed mid-sentence cannot send.
-        clearTimeout(forgets)
-        forgets = setTimeout(() => {
-          setTyping(undefined)
-        }, STOPS_SHOWING_MS)
-      }
     }
 
     return () => {
-      clearTimeout(forgets)
       live.close()
     }
   }, [slug, id, client])
 
-  return { moments, typing }
-}
-
-/**
- * Says you are typing, at most once every {@link SAYS_SO_EVERY}.
- *
- * Throttled rather than debounced: what the other side needs is to keep hearing it while somebody
- * is still going, and a debounce says nothing until they stop — which is the one moment it does
- * not matter.
- */
-export function useSayingYouAreTyping(slug: string, id: string): () => void {
-  const last = useRef(0)
-
-  return () => {
-    const now = Date.now()
-    if (now - last.current < SAYS_SO_EVERY) return
-    last.current = now
-
-    // Nothing is done with the answer, and a failure is swallowed on purpose: what this says is
-    // kept nowhere, so one that did not arrive is a name that does not appear — exactly what it
-    // would be if the person had paused. Left unhandled it is a rejected promise on every
-    // dropped connection, about nothing.
-    api
-      .POST('/spaces/{slug}/conversations/{id}/typing', {
-        params: { path: { slug, id } },
-      })
-      .catch(() => undefined)
-  }
+  return moments
 }
 
 export function conversationsIn(slug: string) {
@@ -253,13 +199,17 @@ export function useConversation(slug: string, id: string) {
 /** Taken from the contract, so a kind the server does not offer cannot be asked for. */
 type Opening = components['schemas']['OpenConversation']
 
-/** What a person may choose for one question. Empty means there is nothing to choose. */
-export type Model = components['schemas']['Model']
-
 /** What was said, and what it was said with. Absent means the agent's own default, always. */
 export type Saying = components['schemas']['SayThis']['asked']
 
-export function useOpenConversation(slug: string) {
+/**
+ * Opens a conversation by saying its first thing, which the server does as one intention.
+ *
+ * The id comes from the caller, so an answer nobody saw can be asked for again and finds the
+ * conversation the first attempt already made — rather than a second one with the same words in
+ * it. See `db/conversation.ts`.
+ */
+export function useBeginConversation(slug: string) {
   const client = useQueryClient()
 
   return useMutation({
@@ -324,56 +274,26 @@ export function useStop(slug: string, id: string) {
   })
 }
 
-/**
- * Handing it over, which is where a piece of work begins.
- *
- * The goal is the agent's own restatement, taken from the card it wrote — not from anything the
- * person typed. A sentence has the standing to be the name of a piece of work only because the
- * one that has to make it true wrote it and the one who has to live with it read it.
- */
-export function useHandOver(slug: string, id: string) {
+/** Sets this person's mark on one conversation, and nobody else's. */
+export function useSetPinned(slug: string, id: string) {
   const client = useQueryClient()
 
   return useMutation({
-    mutationFn: async (goal: string) => {
-      const intention = `hand-over:${id}:${goal}`
-      const { error } = await api.POST('/spaces/{slug}/conversations/{id}/task', {
-        params: { path: { slug, id } },
-        body: { key: retryKey(intention), goal },
-      })
-      if (error !== undefined) throw new Error(error.reason)
-      retryKeyDone(intention)
+    mutationFn: async (pinned: boolean) => {
+      const answer = pinned
+        ? await api.PUT('/spaces/{slug}/conversations/{id}/pin', {
+            params: { path: { slug, id } },
+          })
+        : await api.DELETE('/spaces/{slug}/conversations/{id}/pin', {
+            params: { path: { slug, id } },
+          })
+      if (!answer.response.ok) throw new Error('pin-not-changed')
     },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
+    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversations', slug] }),
   })
 }
 
-/**
- * Taking it back, which takes back whatever it handed out as well.
- *
- * A `DELETE`, because that is what it is: what goes away is the piece of work underway. The
- * conversation and everything said in it stay exactly where they are.
- *
- * Named after the conversation rather than after the click, so pressing it twice while the first
- * one is still going is the same request rather than two — the same rule everything else here
- * follows.
- */
-export function useTakeBack(slug: string, id: string) {
-  const client = useQueryClient()
-
-  return useMutation({
-    mutationFn: async () => {
-      const { error } = await api.DELETE('/spaces/{slug}/conversations/{id}/task', {
-        params: { path: { slug, id } },
-        body: { key: `take-back/${id}` },
-      })
-      if (error !== undefined) throw new Error(error.reason)
-    },
-    onSuccess: async () => client.invalidateQueries({ queryKey: ['conversation', slug, id] }),
-  })
-}
-
-/** Everything waiting on you, across every Space. The one read that is not under a Space. */
+/** Everything waiting on you, across every Space. */
 export function inbox() {
   return queryOptions({
     queryKey: ['inbox'] as const,

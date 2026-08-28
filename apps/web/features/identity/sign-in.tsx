@@ -9,6 +9,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { api, retryKey } from '../../api.ts'
+import { FieldError } from '../../components/ui/field-error.tsx'
 import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
 import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
 import { Mark } from '../../mark.tsx'
@@ -79,6 +80,7 @@ export function SignIn({
   /** A format the form itself can rule out; anything subtler is the server's to say. */
   const [refused, setRefused] = useState(false)
   const field = useId()
+  const error = `${field}-error`
 
   const askForCode = useMutation({
     mutationFn: async (address: string) => {
@@ -147,6 +149,7 @@ export function SignIn({
               autoComplete="email"
               required
               aria-invalid={invalid}
+              aria-describedby={error}
               placeholder="you@example.com"
               value={email}
               onChange={(event) => {
@@ -156,13 +159,11 @@ export function SignIn({
                 askForCode.reset()
               }}
             />
-            <p className="auth-error" data-shown={invalid ? '' : undefined}>
-              {invalid
-                ? refused || askForCode.error === null
-                  ? SAID['malformed-request']
-                  : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')
-                : null}
-            </p>
+            <FieldError id={error} shown={invalid}>
+              {refused || askForCode.error === null
+                ? SAID['malformed-request']
+                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')}
+            </FieldError>
 
             <button
               className="button button-primary"

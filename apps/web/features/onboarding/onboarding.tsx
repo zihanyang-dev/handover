@@ -10,15 +10,14 @@ import { normalizeSlug } from '@handover/universal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, Plus, X } from 'react-bootstrap-icons'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
+import { FieldError } from '../../components/ui/field-error.tsx'
 import { Arrival } from '../identity/arrival.tsx'
 import { ME, meQuery, type Me } from '../identity/me.ts'
 import { spaceRefusal } from '../spaces/refusal.ts'
-
-/** Long enough for the step to leave the screen, short enough that Continue still feels instant. */
-const STEP_EXIT_MS = 260
+import { STEP_EXIT_MS, Steps } from './steps.tsx'
 
 function spaceFormPresentation(embedded: boolean, hasSpaces: boolean) {
   if (embedded) return { className: 'stack-tight space-create-form', autoFocus: false }
@@ -48,6 +47,7 @@ function MakeSpace({
   const client = useQueryClient()
   const spaceField = useId()
   const urlField = useId()
+  const error = `${spaceField}-error`
   const [space, setSpace] = useState('')
   const presentation = spaceFormPresentation(embedded, me.spaces.length > 0)
   const slug = normalizeSlug(space)
@@ -102,6 +102,8 @@ function MakeSpace({
           className="field"
           autoFocus={presentation.autoFocus}
           placeholder="Acme"
+          aria-invalid={said !== undefined}
+          aria-describedby={error}
           value={space}
           onChange={(event) => {
             setSpace(event.target.value)
@@ -122,14 +124,10 @@ function MakeSpace({
         />
 
         {/* Always here so an error arriving does not shift the form, but only an alert when it
-            actually says something — an empty alert is a screen reader announcing nothing. */}
-        <p
-          className="auth-error"
-          role={said === undefined ? undefined : 'alert'}
-          data-shown={said !== undefined ? '' : undefined}
-        >
+            actually says something. */}
+        <FieldError id={error} shown={said !== undefined}>
           {said ?? null}
-        </p>
+        </FieldError>
 
         <button
           className="button button-primary"
@@ -156,9 +154,12 @@ function SpaceCreateDrawer({
   readonly onMade: (slug: string) => void
 }) {
   const drawer = useRef<HTMLDivElement>(null)
+  const returnFocus = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return undefined
+    returnFocus.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
     const frame = requestAnimationFrame(() => {
       drawer.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus()
     })
@@ -180,6 +181,10 @@ function SpaceCreateDrawer({
       cancelAnimationFrame(frame)
       document.removeEventListener('keydown', closeOnEscape)
       document.removeEventListener('pointerdown', closeFromOutside)
+      const opener = returnFocus.current
+      requestAnimationFrame(() => {
+        if (opener?.isConnected === true) opener.focus()
+      })
     }
   }, [onClose, open])
 
@@ -320,17 +325,11 @@ function PickSpace({
 export function Onboarding({ result }: { readonly result: string | undefined }) {
   const me = useQuery(meQuery)
   const [making, setMaking] = useState(false)
+  const toggleMaking = useCallback(() => {
+    setMaking((open) => !open)
+  }, [])
   /** Where this step ends: an existing Space to enter, or a made one to put a machine on. */
-  /**
-   * Which Space to go into, once the step has finished leaving the screen.
-   *
-   * Picked and just-made are the same thing on purpose. Making one used to send somebody to a
-   * second step for connecting a machine, and that was a first-Space special case `prd.md` 01 ④
-   * forbids — and since a machine belongs to a person, a new Space already has the machines its
-   * maker connected. What is left of that step lives where it always belonged: a Space with
-   * nothing that can run says so, and shows the command.
-   */
-  const [leave, setLeave] = useState<{ slug: string }>()
+  const [leave, setLeave] = useState<{ to: 'space' | 'host'; slug: string }>()
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const navigate = useNavigate()
 
@@ -342,9 +341,17 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
 
   const spaces = me.data?.spaces ?? []
   const choosing = spaces.length > 0
+  const done = leave !== undefined
 
   useEffect(() => {
     if (leave === undefined) return
+
+    // The Host step mounts at the midpoint and carries the rider forward itself. Waiting here as
+    // well made a completed create feel stuck before the route even began to load.
+    if (leave.to === 'host') {
+      void navigate({ to: '/onboarding/host', search: { s: leave.slug } })
+      return
+    }
 
     timer.current = setTimeout(() => {
       void navigate({ to: '/s/$slug', params: { slug: leave.slug } })
@@ -354,23 +361,33 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
   return (
     <main className="auth onboarding-page">
       <div className="onboarding-shell">
+        <Steps step={1} done={done} mark={done ? 'success' : 'thinking'} />
+
         <section className="onboarding-content">
           <Arrival result={result} />
 
-          {me.isPending && <p className="empty">Looking…</p>}
+          {me.isPending && (
+            <p className="empty" role="status">
+              Looking…
+            </p>
+          )}
+
+          {me.isError && (
+            <p className="said said-bad" role="alert">
+              Could not read your Spaces. Try again in a moment.
+            </p>
+          )}
 
           {me.isSuccess && choosing && (
             <PickSpace
               me={me.data}
               making={making}
               onPick={(slug) => {
-                setLeave({ slug })
+                setLeave({ to: 'space', slug })
               }}
-              onMake={() => {
-                setMaking((open) => !open)
-              }}
+              onMake={toggleMaking}
               onMade={(slug) => {
-                setLeave({ slug })
+                setLeave({ to: 'host', slug })
               }}
             />
           )}
@@ -379,7 +396,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
             <MakeSpace
               me={me.data}
               onMade={(slug) => {
-                setLeave({ slug })
+                setLeave({ to: 'host', slug })
               }}
             />
           )}

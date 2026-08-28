@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { signedIn } from '../../pretend/signed-in.ts'
+import { waysIn } from '../../pretend/ways-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
@@ -26,8 +27,12 @@ const EMAIL = 'mina@example.com'
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -75,7 +80,7 @@ describe('leaving', () => {
         revoked = true
         return new HttpResponse(null, { status: 204 })
       }),
-      http.get('*/auth/credentials', () => HttpResponse.json({ offered: ['email'] })),
+      waysIn(),
     )
     open('/settings')
 

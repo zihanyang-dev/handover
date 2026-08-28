@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { waysIn } from '../../pretend/ways-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
@@ -24,11 +25,12 @@ afterAll(() => {
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
+    context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: [at] }),
   })
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -37,12 +39,6 @@ function open(at: string) {
 }
 
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
-
-function offering(...providers: string[]) {
-  return http.get('*/auth/credentials', () =>
-    HttpResponse.json({ offered: ['email', ...providers] }),
-  )
-}
 
 /** The code screen asks for nothing on arrival; landing on it is what a test checks. */
 function answering(bodies: Record<string, unknown>[]) {
@@ -62,7 +58,7 @@ function answering(bodies: Record<string, unknown>[]) {
 
 describe('choosing a way in', () => {
   it('says one address is one account before anything is chosen', async () => {
-    server.use(offering('google'))
+    server.use(waysIn('google'))
     open('/sign-in')
 
     const said = await screen.findByText(/the same address reaches the same account/i)
@@ -74,7 +70,7 @@ describe('choosing a way in', () => {
   })
 
   it('labels the form without repeating the obvious task on the page', async () => {
-    server.use(offering('google'))
+    server.use(waysIn('google'))
     open('/sign-in')
 
     const form = await screen.findByRole('form', { name: /^sign in$/i })
@@ -85,7 +81,7 @@ describe('choosing a way in', () => {
   })
 
   it('offers only what this deployment has keys for', async () => {
-    server.use(offering('google'))
+    server.use(waysIn('google'))
     open('/sign-in')
 
     expect(await screen.findByRole('button', { name: /continue with google/i })).toBeDefined()
@@ -93,7 +89,7 @@ describe('choosing a way in', () => {
   })
 
   it('offers no provider at all when there are none', async () => {
-    server.use(offering())
+    server.use(waysIn())
     open('/sign-in')
 
     await screen.findByLabelText(/email address/i)
@@ -102,7 +98,7 @@ describe('choosing a way in', () => {
 
   it('asks for a code and lands on the screen that takes it', async () => {
     const bodies: Record<string, unknown>[] = []
-    server.use(offering(), answering(bodies))
+    server.use(waysIn(), answering(bodies))
     open('/sign-in')
 
     await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
@@ -115,17 +111,20 @@ describe('choosing a way in', () => {
 
   it('says an address cannot be reached instead of sending somebody to an empty inbox', async () => {
     server.use(
-      offering(),
+      waysIn(),
       http.post('*/auth/email-codes', () =>
         HttpResponse.json({ reason: 'address-refused', recovery: 'retype' }, { status: 400 }),
       ),
     )
     open('/sign-in')
 
-    await userEvent.type(await screen.findByLabelText(/email address/i), 'mina@example.com')
+    const field = await screen.findByLabelText(/email address/i)
+    await userEvent.type(field, 'mina@example.com')
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
+    const error = await screen.findByRole('alert')
+    expect(error.textContent).toMatch(/no mail can reach that address/i)
+    expect(field.getAttribute('aria-describedby')).toBe(error.id)
     // Staying put is the point: the code screen would be a wait for a letter that never comes.
     expect(screen.queryByText(/check your email/i)).toBeNull()
   })
@@ -134,7 +133,7 @@ describe('choosing a way in', () => {
     const bodies: Record<string, unknown>[] = []
     let attempt = 0
     server.use(
-      offering(),
+      waysIn(),
       http.post('*/auth/email-codes', async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>)
         attempt += 1
@@ -168,7 +167,7 @@ describe('choosing a way in', () => {
 
   it('says what to do when a code went out moments ago', async () => {
     server.use(
-      offering(),
+      waysIn(),
       http.post('*/auth/email-codes', () =>
         HttpResponse.json({ reason: 'too-soon', recovery: 'wait' }, { status: 429 }),
       ),

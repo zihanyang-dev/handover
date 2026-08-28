@@ -1,11 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Machines } from '../features/machines/machines.tsx'
 
-/** What a Space opens on: the machines anything here could run on. */
+/** The deliberately quiet Home screen while its next contents are being designed. */
 function Screen() {
-  const { slug } = Route.useParams()
-
-  return <Machines slug={slug} />
+  return null
 }
 
 export const Route = createFileRoute('/s/$slug/')({

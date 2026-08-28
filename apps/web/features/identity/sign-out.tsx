@@ -11,14 +11,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
 import { meQuery } from './me.ts'
 
-export function SignOut() {
+export function useSignOut() {
   const navigate = useNavigate()
-  const me = useQuery(meQuery)
-  const account = me.data?.credentials.find((one) => one.kind === 'email')?.address ?? ''
-
   const client = useQueryClient()
 
-  const leave = useMutation({
+  return useMutation({
     mutationFn: async () => {
       const { response } = await api.DELETE('/browser/sessions/current')
       // Not left. Navigating anyway would show the sign-in page to somebody still signed in, and
@@ -32,6 +29,12 @@ export function SignOut() {
       await navigate({ to: '/sign-in' })
     },
   })
+}
+
+export function SignOut() {
+  const me = useQuery(meQuery)
+  const account = me.data?.credentials.find((one) => one.kind === 'email')?.address ?? ''
+  const leave = useSignOut()
 
   return (
     <div className="row">

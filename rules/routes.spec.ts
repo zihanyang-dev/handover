@@ -101,10 +101,7 @@ describe('what the contract says about who may call what', () => {
       'POST /enrolments',
       'POST /enrolments/collect',
     ]
-    const PICTURES = [
-      'GET /avatars/agents/{machineId}/{agentKind}',
-      'GET /avatars/users/{userId}',
-    ]
+    const PICTURES = ['GET /avatars/agents/{machineId}/{agentKind}', 'GET /avatars/users/{userId}']
 
     const open = everyEndpoint()
       .filter((one) => one.shows.length === 0)

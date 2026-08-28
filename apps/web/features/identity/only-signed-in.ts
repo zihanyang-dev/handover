@@ -8,15 +8,18 @@
  */
 
 import { returnPath } from '@handover/universal'
+import type { QueryClient } from '@tanstack/react-query'
 import { redirect } from '@tanstack/react-router'
-import { cache } from '../../query-client.ts'
 import { meQuery, NotSignedIn } from './me.ts'
 
-export async function onlySignedIn(at: { readonly href: string }): Promise<void> {
-  // Through the cache, so what this reads on the way in is what the screen behind it renders from.
-  // Read and thrown away, every protected screen asks the same question twice and shows its empty
-  // state during the second ask.
-  const asked = await cache.query(meQuery).then(
+export async function onlySignedIn(
+  queryClient: QueryClient,
+  at: { readonly href: string },
+): Promise<void> {
+  // Through the router's cache, so what this reads on the way in is what the screen behind it
+  // renders from. A module singleton made tests and additional router instances read another
+  // answer even while their provider showed this one.
+  const asked = await queryClient.query(meQuery).then(
     () => undefined,
     (trouble: unknown) => trouble,
   )

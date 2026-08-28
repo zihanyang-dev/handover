@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
-import { api } from '../api.ts'
-import { Conversations } from '../features/conversations/conversations.tsx'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 import { Home } from '../features/spaces/home.tsx'
+import { spaceQuery } from '../features/spaces/space.ts'
 
 /**
  * The frame every screen inside a Space is shown in, and the one place it is mounted.
@@ -14,21 +13,7 @@ import { Home } from '../features/spaces/home.tsx'
  */
 function Screen() {
   const { slug } = Route.useParams()
-  const space = useQuery({
-    queryKey: ['space', slug],
-    queryFn: async () => {
-      // A 404 is "not there, or not yours" — one answer on purpose, so an address cannot be used
-      // to find out which Spaces exist. Anything else is a read that failed, and saying "not
-      // available" to that sends somebody looking for a Space that is theirs and is there.
-      const { data, error, response } = await api.GET('/spaces/{slug}', {
-        params: { path: { slug } },
-      })
-      if (response.status === 404) return null
-      if (data === undefined) throw new Error(error.reason)
-
-      return data
-    },
-  })
+  const space = useQuery(spaceQuery(slug))
 
   // Nothing is known yet. Rendering the frame now would show it with no name in it, and for a
   // moment a Space that turns out not to exist looks like one that does.
@@ -65,13 +50,13 @@ function Screen() {
   }
 
   return (
-    <Home space={space.data} aside={<Conversations slug={slug} />}>
+    <Home space={space.data}>
       <Outlet />
     </Home>
   )
 }
 
 export const Route = createFileRoute('/s/$slug')({
-  beforeLoad: async ({ location }) => onlySignedIn(location),
+  beforeLoad: async ({ context, location }) => onlySignedIn(context.queryClient, location),
   component: Screen,
 })

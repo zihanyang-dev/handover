@@ -12,7 +12,7 @@
 import type { components } from '../generated/api.ts'
 
 /** The agents this deployment offers, as the contract lists them. */
-export type AgentKind = components['schemas']['MachineAgent']['kind']
+type AgentKind = components['schemas']['MachineAgent']['kind']
 
 const NAMES: Record<string, string> = {
   'claude-code': 'Claude Code',

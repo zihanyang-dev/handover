@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { signedIn } from '../../pretend/signed-in.ts'
+import { waysIn } from '../../pretend/ways-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
@@ -24,16 +25,16 @@ afterAll(() => {
 })
 
 const EMAIL = 'mina@example.com'
-
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
+    context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: [at] }),
   })
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -159,9 +160,12 @@ describe('asking for another one', () => {
     )
     open(codeScreen('0'))
 
-    await userEvent.click(await screen.findByRole('button', { name: /resend/i }))
+    const resend = await screen.findByRole('button', { name: /resend/i })
+    await userEvent.click(resend)
 
-    expect(await screen.findByText(/no mail can reach that address/i)).toBeDefined()
+    const error = await screen.findByRole('alert')
+    expect(error.textContent).toMatch(/no mail can reach that address/i)
+    expect(resend.getAttribute('aria-describedby')).toBe(error.id)
   })
 })
 
@@ -181,7 +185,9 @@ describe('each way it can fail', () => {
 
       await typeCode('000000')
 
-      expect(await screen.findByText(words)).toBeDefined()
+      const error = await screen.findByRole('alert')
+      expect(error.textContent).toMatch(words)
+      expect(screen.getByLabelText(/digit code/i).getAttribute('aria-describedby')).toBe(error.id)
     })
   }
 
@@ -236,7 +242,7 @@ describe('each way it can fail', () => {
   it('sends a half-written address back to where codes come from', async () => {
     // Somebody who typed or shared the URL wrong gets the screen that can put it right, not the
     // router's own error page.
-    server.use(signedIn())
+    server.use(signedIn(), waysIn())
     open('/sign-in/code?email=mina%40example.com')
 
     expect(await screen.findByRole('form', { name: /sign in/i })).toBeDefined()

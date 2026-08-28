@@ -118,10 +118,14 @@ unknown     不知道,重试可能重复外部后果
 ## 4.1 浏览器上谁拥有什么
 
 ```
+Router        地址、参数、导航,和进入一块屏幕之前该先有什么
 React Query   全部服务端状态。一个 Space、一段对话、机器列表、Inbox —— 都是它的
 useState      只有这块屏幕自己的:输入框里还没发出去的字、开着的抽屉、选中的那一行
 SSE           不写状态。它只做两件事:告诉 React Query 去重拉,或者喂给一个不落库的临时视图
 ```
+
+Router 通过 context 拿到**同一个** `QueryClient`,guard、loader 和页面不各读一个模块单例。
+loader 要首屏事实时,只负责让 Query 的同一条 query 先有答案,不另建一份 router 自己的真相。
 
 **服务端状态不许有第二份。** 一个 `useState` 装着从接口拿来的东西,就是同一个事实的第二个家 ——
 它不会报错,只会在某次刷新之后和真相不一样,而没有人知道该信哪一个。
@@ -133,6 +137,9 @@ SSE           不写状态。它只做两件事:告诉 React Query 去重拉,或
 [Multica 把同一条写成硬规则](https://github.com/multica-ai/multica):React Query owns all server
 state · Zustand owns client/view state · WS events update React Query。我们没有 Zustand,那一半是
 `useState`,其余一样。
+
+依赖方向是 `main → routes → features → api/generated/components`。route 把地址翻成 feature 的输入,
+feature 不反过来导入 route;跨 feature 的共享值只有真共享时才下沉,不靠互相导入页面文件建立环。
 
 ## 5. agent 的边界
 

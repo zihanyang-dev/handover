@@ -11,7 +11,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useId } from 'react'
 import { inbox } from './talking.ts'
 
@@ -38,14 +37,8 @@ export function Inbox() {
       <ul className="rows">
         {on.map((one) => (
           <li key={one.conversationId} className="row">
-            <span className="row-name" style={{ flexDirection: 'column', alignItems: 'start' }}>
-              <Link
-                to="/s/$slug/c/$id"
-                params={{ slug: one.spaceSlug, id: one.conversationId }}
-                style={{ fontWeight: 500 }}
-              >
-                {one.goal}
-              </Link>
+            <span className="row-name inbox-row-copy">
+              <strong>{one.goal}</strong>
               {/* What it asked, because that is what somebody is answering. A row that only says
                   a piece of work is stuck makes them open it to find out what for. */}
               <span className="note">{one.asked ?? 'It stopped without saying why.'}</span>

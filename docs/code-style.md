@@ -485,6 +485,25 @@ expect(await screen.findByText('负责人 Mia')).toBeVisible()
 
 每个节点在自己的 Issue 里冻结这一节点适用的具体场景。**本文件不维护跨功能的场景清单。**
 
+### 10.1 Web 的可访问性 `lint` + `test` + `人工`
+
+目标是 **WCAG 2.2 AA**,要求落在整条页面与完整旅程上,不是「组件库通过」就算通过。
+
+- 能用原生元素就不用 ARIA 模拟。去另一个地址的是 link;只有同一视图里受控的 panel 才是 tab。
+  当前地址用 `aria-current`,不把导航链接拼成缺键盘行为的 tablist。
+- 每个输入有可见 label。错误和它用 `aria-describedby` 相连,控件同时有 `aria-invalid`;
+  异步错误进入 `role="alert"`,非错误进度进入 `role="status"`,不靠颜色一个人说话。
+- 键盘焦点始终可见,也不能被 sticky header、drawer 或其它作者内容完全盖住。作者样式在
+  `forced-colors` 下仍留一个系统色 outline。
+- pointer target 至少 `24×24 CSS px`;主要触控动作保持 40–44px。紧凑不等于把 hit area 缩成图形本身。
+- 320 CSS px 宽和 200% 文字大小下不丢内容、不丢操作、不让整页横向滚。真正二维的内容自己滚。
+- 非必要运动尊重 `prefers-reduced-motion`;自动运动超过 5 秒必须能停。hover、focus、pending、
+  disabled 不改变控件尺寸或让内容跳动。
+
+**目前这一条全部由人工守。** 屏幕测试用的是可访问名字(`getByRole`、`getByLabel`),所以一个丢了
+label 的控件会在那里失败 —— 但那是副作用,不是一条判据。真要机械化,先有 lint 或 axe,再来改这句话:
+写着「axe 会查」而没有 axe,比什么都不写更糟。
+
 ---
 
 ## 11. 注释写决定,不写代码 `人工`

@@ -32,11 +32,12 @@ afterAll(() => {
 })
 
 function open(at = '/join/hi_secret') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
+    context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: [at] }),
   })
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -78,7 +79,8 @@ describe('following a link somebody sent', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Join Acme' }))
 
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeDefined()
+    expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
     expect([asked, router.state.location.pathname]).toEqual([1, '/s/acme'])
   })
 

@@ -42,10 +42,21 @@ const listening = listenForLive(env, createLog({ ...env, LOG_LEVEL: 'fatal' }), 
   watching.show(happening)
 })
 
-/** What a watcher of this conversation is told, or nothing if nothing arrives. */
-async function told(conversationId: string, within = 3000): Promise<Watched | undefined> {
+/**
+ * What a watcher of this conversation is told next, or nothing if nothing arrives.
+ *
+ * `past` is how far the fixture had already got. A mark travels out through Postgres and back on
+ * another connection, so one written while the fixture was being built can still be in flight
+ * when the test starts watching — and a test that took that one for its own would pass or fail on
+ * timing. Marks at or below it are the fixture's, and are skipped.
+ */
+async function told(
+  conversationId: string,
+  { past = 0, within = 3000 }: { past?: number; within?: number } = {},
+): Promise<Watched | undefined> {
   return new Promise((settle) => {
     const stop = watching.watch(conversationId, (watched) => {
+      if (watched.seen === 'written' && watched.upTo <= past) return
       stop()
       settle(watched)
     })
@@ -224,7 +235,7 @@ describe('saying something to an agent', () => {
     await listening.listening
     // Two lines already: the question that opened it, and the agent finishing with it.
     const conversation = await answered()
-    const arriving = told(conversation)
+    const arriving = told(conversation, { past: 2 })
 
     await asks(conversation, 'turn-2', 'hello')
 
@@ -236,13 +247,13 @@ describe('saying something to an agent', () => {
     // already had, which is a round trip for nothing on every retry anybody makes.
     await listening.listening
     const conversation = await opened()
-    // Waited for rather than assumed: the first mark arrives on its own connection, and a watcher
-    // that started listening after it would be a test that passed by missing it.
-    const first = told(conversation)
+    // Waited for rather than assumed: the mark for the first thing said arrives on its own
+    // connection, and a watcher that started listening after it would pass by missing it.
+    const first = told(conversation, { past: 1 })
     await asks(conversation, 'turn-1', 'hello')
     await first
 
-    const again = told(conversation, 500)
+    const again = told(conversation, { past: 3, within: 500 })
     await asks(conversation, 'turn-1', 'hello')
 
     expect(await again).toBeUndefined()
@@ -390,7 +401,7 @@ describe('taking a question', () => {
     // The whole reason the ledger exists. An agent that started and then died before writing its
     // first line used to leave a question that still looked untouched — handed out again, running
     // whatever it had already done a second time.
-    const conversation = await opened('hello')
+    await opened('hello')
     await takeOne(db, MACHINE)
 
     expect(await takeOne(db, MACHINE)).toBeUndefined()
@@ -406,7 +417,7 @@ describe('taking a question', () => {
 
   it('is the longest-waiting one when two conversations are both asking', async () => {
     const first = await opened('the older question')
-    const second = await opened('the newer question')
+    await opened('the newer question')
 
     expect(await takeOne(db, MACHINE)).toMatchObject({ conversationId: first })
   })

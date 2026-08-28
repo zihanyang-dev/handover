@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { theSpace } from '../../pretend/a-space.ts'
 import { signedIn } from '../../pretend/signed-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
@@ -24,13 +25,14 @@ afterAll(() => {
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
+    context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: [at] }),
     // A test does not wait out the fade between routes.
     defaultViewTransition: false,
   })
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -38,9 +40,18 @@ function open(at: string) {
   )
 }
 
-const ACME = { id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }
-
-const BETA = { id: '22222222-2222-4222-8222-222222222222', slug: 'beta', displayName: 'Beta' }
+const ACME = {
+  id: '11111111-1111-4111-8111-111111111111',
+  slug: 'acme',
+  displayName: 'Acme',
+  emoji: '🏠',
+}
+const BETA = {
+  id: '22222222-2222-4222-8222-222222222222',
+  slug: 'beta',
+  displayName: 'Beta',
+  emoji: '🪴',
+}
 
 /** The machine step follows a made Space; these answer what it asks. */
 function quietMachineStep() {
@@ -91,7 +102,7 @@ describe('the first step — a Space', () => {
     expect(screen.queryByRole('button', { name: /open acme/i })).toBeNull()
   })
 
-  it('makes the workspace without rewriting the account profile, then goes into it', async () => {
+  it('makes the workspace without rewriting the account profile, then advances to Host', async () => {
     let renamed = false
     let made: unknown
     server.use(
@@ -113,10 +124,8 @@ describe('the first step — a Space', () => {
 
     expect(made).toEqual({ displayName: 'Acme', requestKey: expect.any(String) as unknown })
     expect(renamed).toBe(false)
-    // Straight into the Space, the same as picking one that already exists. There is no step
-    // between, and no first-Space special case — `prd.md` 01 ④.
-    expect(await screen.findAllByText('Acme')).not.toHaveLength(0)
-    expect(globalThis.location.pathname).not.toContain('/onboarding/host')
+    expect(await screen.findByRole('heading', { name: /connect a machine/i })).toBeDefined()
+    expect(screen.getByRole('img', { name: /step 2 of 2/i })).toBeDefined()
   })
 
   it('offers the address that is free when the one asked for is held', async () => {
@@ -139,17 +148,18 @@ describe('the first step — a Space', () => {
 
   it('somebody with Spaces is offered them, and picking one goes straight in', async () => {
     server.use(
+      // The whole Space, not three calls written out again: landing in one asks for more than
+      // the Space itself, and a hand-rolled pair leaves the rest erroring unhandled.
       signedIn({ spaces: [ACME] }),
-      http.get('*/spaces/acme', () => HttpResponse.json(ACME)),
-      http.get('*/spaces/acme/machines', () => HttpResponse.json({ machines: [] })),
+      ...theSpace({ slug: 'acme' }),
     )
     open('/onboarding')
 
     await userEvent.click(await screen.findByRole('button', { name: /open acme/i }))
 
-    // Past onboarding entirely: the Space's new Home frame, not the legacy Machines dashboard.
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeDefined()
-    expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    // Past onboarding entirely: the deliberately blank Home frame, not the legacy dashboard.
+    expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
   })
 
   it('shows each Space at the address it is at, in the order they were made', async () => {
@@ -195,7 +205,10 @@ describe('the first step — a Space', () => {
 
     expect(make.getAttribute('aria-expanded')).toBe('false')
     await userEvent.click(make)
-    expect(await screen.findByRole('textbox', { name: /workspace name/i })).toBeDefined()
+    const name = await screen.findByRole('textbox', { name: /workspace name/i })
+    await waitFor(() => {
+      expect(document.activeElement).toBe(name)
+    })
     const drawer = screen.getByRole('region', { name: /new space drawer/i })
     expect(drawer).toBeDefined()
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -207,6 +220,9 @@ describe('the first step — a Space', () => {
     expect(screen.queryByRole('textbox', { name: /workspace name/i })).toBeNull()
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(make.getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => {
+      expect(document.activeElement).toBe(make)
+    })
   })
 
   it('says once that this way now reaches an account that was already there', async () => {

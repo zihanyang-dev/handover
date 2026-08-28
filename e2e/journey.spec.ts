@@ -7,34 +7,40 @@
  *
  * What this is for is the half no unit test reaches: that the screens, the API and the machine
  * protocol agree about the same conversation at the same time.
+ *
+ * What it no longer walks is what the rebuilt app no longer shows. Handing a conversation over,
+ * the rail that a piece of work lives in, inviting somebody, and managing who is in a Space all
+ * have working server sides and no screen — `rules/reachable.spec.ts` keeps that list, and the
+ * behaviour itself is proven in `apps/server/src/db` and `apps/server/src/server`.
  */
 
 import { expect, test } from '@playwright/test'
 import { aMachine, waitsForATurn } from './a-machine.ts'
-import { db, makesASpace, signsIn } from './someone.ts'
+import { connects, makesASpace, signsIn } from './someone.ts'
+
+const db = connects()
 
 test.afterAll(async () => {
   await db.destroy()
 })
 
-test('talk to an agent, hand it over, and be asked something', async ({ page, context }) => {
-  // ① Sign in from the front door and make a Space — which lands straight in it, with no step
-  // in between and no first-Space special case.
+test('talk to an agent, and read what it answers', async ({ page, context }) => {
+  // ① Sign in from the front door and make a Space — which lands straight in it, with no first
+  // Space special case, and offers to connect a machine on the way.
   await signsIn(page, 'mina')
   await makesASpace(page)
 
-  // ② A machine of theirs connects, and appears without anybody refreshing.
+  // ② A machine of theirs connects, and its agents appear without anybody refreshing.
   const machine = await aMachine(await sessionOf(context), 'mina-mbp')
   await machine.poll()
-  await expect(page.getByText('mina-mbp')).toBeVisible({ timeout: 15_000 })
+  await picks(page, 'mina-mbp')
 
-  // ③ Pick an agent on it, which is how a conversation starts.
-  await page.getByRole('button', { name: /claude code/i }).click()
+  // ③ Saying the first thing is what opens a conversation — there is no way to make an empty one.
+  await page.getByLabel(/^Message /u).fill('where does the timeout live?')
+  await page.getByRole('button', { name: 'Send' }).click()
   await expect(page).toHaveURL(/\/c\//u)
 
-  // ④ Say something. The machine is handed the turn, because it asked for one.
-  await page.getByLabel('Say something').fill('where does the timeout live?')
-  await page.getByRole('button', { name: 'Send' }).click()
+  // ④ The machine is handed that turn, because it asked for one.
   const first = await waitsForATurn(machine)
   expect(first.asked.map((one) => one.text)).toEqual(['where does the timeout live?'])
 
@@ -43,46 +49,26 @@ test('talk to an agent, hand it over, and be asked something', async ({ page, co
   await machine.ends(first)
   await expect(page.getByText('In client.ts, hard-coded.')).toBeVisible({ timeout: 15_000 })
 
-  // ⑥ It puts a goal in front of the person — the card, which is a line in the transcript.
-  await page.getByLabel('Say something').fill('ok, take it from here')
+  // ⑥ And saying something into the conversation that already exists reaches the same agent.
+  await page.getByLabel('Message agent').fill('and on retries?')
   await page.getByRole('button', { name: 'Send' }).click()
   const second = await waitsForATurn(machine)
-  await machine.says(second, {
-    role: 'activity',
-    content: { activityType: 'proposed', text: 'Make the 30s timeout configurable' },
-  })
-  await machine.ends(second)
-  await expect(page.getByText('Make the 30s timeout configurable')).toBeVisible({ timeout: 15_000 })
-
-  // ⑦ Hand it over. The rail appears, which is what "you walked away" looks like.
-  await page.getByRole('button', { name: 'Hand it over' }).click()
-  const rail = page.getByLabel('This piece of work')
-  await expect(rail).toBeVisible({ timeout: 15_000 })
-  await expect(rail).toContainText('Make the 30s timeout configurable')
-
-  // ⑧ It carries on by itself — a turn it was never asked for — and then asks something.
-  const carrying = await waitsForATurn(machine)
-  // Through the task endpoint, not by writing a line saying so: what is true now is the ledger's,
-  // and a transcript that says "it asked you" changes nothing. This is `handover task wait`.
-  await machine.stops(carrying, { state: 'wait', question: 'env var, or a field on the client?' })
-  await machine.ends(carrying)
-  await expect(rail).toContainText('Waiting on you', { timeout: 15_000 })
-
-  // ⑨ And it is in the Inbox, which is reached from the sidebar and belongs to no Space.
-  await page.getByRole('tab', { name: 'Inbox' }).click()
-  await expect(page.getByText('env var, or a field on the client?')).toBeVisible({
-    timeout: 15_000,
-  })
+  expect(second.asked.map((one) => one.text)).toEqual(['and on retries?'])
 })
 
-test('a machine that goes away stops the page saying it is working', async ({ page, context }) => {
+test('a machine that goes away stops the page saying its agent is ready', async ({
+  page,
+  context,
+}) => {
   await signsIn(page, 'rui')
   await makesASpace(page)
   const machine = await aMachine(await sessionOf(context), 'rui-mbp')
   await machine.poll()
   await page.reload()
-  await expect(page.getByText('rui-mbp')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('Online')).toBeVisible()
+  await page.getByRole('button', { name: 'Chat' }).click()
+  await expect(page.getByRole('link', { name: /on rui-mbp, ready/iu })).toBeVisible({
+    timeout: 15_000,
+  })
 
   // Nothing is pushed to a machine, so "gone" is silence for long enough. Moved rather than
   // waited out: what is under test is what the page does with the answer, not the clock.
@@ -92,17 +78,10 @@ test('a machine that goes away stops the page saying it is working', async ({ pa
     .where('name', '=', 'rui-mbp')
     .execute()
 
-  await expect(page.getByText(/Offline/u)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /on rui-mbp, offline/iu })).toBeVisible({
+    timeout: 15_000,
+  })
 })
-
-/** The session this browser is carrying, which the machine needs to ask for a key. */
-async function sessionOf(context: import('@playwright/test').BrowserContext): Promise<string> {
-  const cookies = await context.cookies()
-  const session = cookies.find((one) => one.name === 'handover_session')
-  if (session === undefined) throw new Error('this browser is not signed in')
-
-  return session.value
-}
 
 test('what an agent is doing right now reaches a browser that is watching', async ({
   page,
@@ -116,15 +95,42 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
   await makesASpace(page)
   const machine = await aMachine(await sessionOf(context), 'ilya-mbp')
   await machine.poll()
-  await expect(page.getByText('ilya-mbp')).toBeVisible({ timeout: 15_000 })
+  await picks(page, 'ilya-mbp')
 
-  await page.getByRole('button', { name: /claude code/i }).click()
-  await expect(page).toHaveURL(/\/c\//u)
-  await page.getByLabel('Say something').fill('read notes.txt')
+  await page.getByLabel(/^Message /u).fill('read notes.txt')
   await page.getByRole('button', { name: 'Send' }).click()
   const turn = await waitsForATurn(machine)
 
-  await machine.happening(turn, { said: 'thinking', text: 'looking for notes.txt' })
-
-  await expect(page.getByText('looking for notes.txt')).toBeVisible({ timeout: 15_000 })
+  // Said over and over, because a moment is kept nowhere: the conversation is created by sending
+  // its first message, so the browser arrives on it at the same instant the machine is handed the
+  // turn, and one sent before that browser had opened its stream would simply be gone. A real
+  // agent says what it is doing continuously, which is what this imitates.
+  const saying = setInterval(() => {
+    void machine.happening(turn, { said: 'thinking', text: 'looking for notes.txt' })
+  }, 500)
+  try {
+    await expect(page.getByLabel('Happening now')).toContainText('looking for notes.txt', {
+      timeout: 15_000,
+    })
+  } finally {
+    clearInterval(saying)
+  }
 })
+
+/** Chooses the agent on that machine, which is what opens a composer to say the first thing to. */
+async function picks(page: import('@playwright/test').Page, machineName: string): Promise<void> {
+  await page.getByRole('button', { name: 'Chat' }).click()
+  const agent = page.getByRole('link', { name: new RegExp(`on ${machineName}, ready`, 'iu') })
+  await expect(agent).toBeVisible({ timeout: 15_000 })
+  await agent.click()
+  await expect(page).toHaveURL(/\/a\//u)
+}
+
+/** The session this browser is carrying, which the machine needs to ask for a key. */
+async function sessionOf(context: import('@playwright/test').BrowserContext): Promise<string> {
+  const cookies = await context.cookies()
+  const session = cookies.find((one) => one.name === 'handover_session')
+  if (session === undefined) throw new Error('this browser is not signed in')
+
+  return session.value
+}

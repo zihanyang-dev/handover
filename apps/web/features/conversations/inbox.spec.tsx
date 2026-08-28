@@ -32,11 +32,12 @@ afterAll(() => {
 type Waiting = components['schemas']['Waiting']
 
 function open() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
+    context: { queryClient: client },
     history: createMemoryHistory({ initialEntries: ['/s/acme/inbox'] }),
   })
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />

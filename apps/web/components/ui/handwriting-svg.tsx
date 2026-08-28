@@ -1,10 +1,3 @@
-/**
- * The wordmark drawing itself, on the sign-in screen. Not ours: it arrived from 21st.dev.
- *
- * Kept as it came, for the same reason as its neighbour: it follows the conventions of where it
- * came from, and this is the one place in the repository where that is true on purpose.
- */
-
 'use client'
 
 import { motion } from 'framer-motion'

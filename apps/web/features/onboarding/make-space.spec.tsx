@@ -25,8 +25,12 @@ afterAll(() => {
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />

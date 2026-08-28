@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { routeTree } from '../routeTree.gen.ts'
 import { theSpace } from '../pretend/a-space.ts'
 import { signedIn } from '../pretend/signed-in.ts'
+import { waysIn } from '../pretend/ways-in.ts'
+import { routeTree } from '../routeTree.gen.ts'
 
 const server = setupServer()
 
@@ -25,8 +26,12 @@ afterAll(() => {
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -42,31 +47,259 @@ describe('entering a Space', () => {
     server.use(...theSpace())
     open('/s/acme')
 
-    expect(await screen.findByRole('heading', { name: 'Home' })).toBeDefined()
-    expect(screen.getByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
+    expect(document.querySelector('.home-breadcrumb')).toBeNull()
+    const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
+    const home = within(switches).getByRole('button', { name: 'Home' })
+    const chat = within(switches).getByRole('button', { name: 'Chat' })
+    const inbox = within(switches).getByRole('button', { name: 'Inbox' })
+
+    expect(within(switches).getAllByRole('button')).toHaveLength(3)
+    expect(home.getAttribute('aria-pressed')).toBe('true')
+    expect(chat.getAttribute('aria-pressed')).toBe('false')
+    expect(inbox.getAttribute('aria-pressed')).toBe('false')
+
+    await userEvent.click(chat)
+
+    expect(home.getAttribute('aria-pressed')).toBe('false')
+    expect(chat.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
+    expect(sidebar.querySelector('.home-workspace-icon')).toBeNull()
+    expect(within(sidebar).queryByText('Conversations')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Machines' })).toBeNull()
+    expect(screen.queryByText('handover connect')).toBeNull()
   })
 
-  it('does not expose the deferred Space switcher', async () => {
+  it('keeps pinned conversations directly under Home', async () => {
     server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
-      signedIn(),
+      ...theSpace({
+        conversations: [
+          {
+            id: 'c-pinned',
+            agentKind: 'claude-code',
+            machineId: 'm-1',
+            machineName: 'mina-mbp',
+            startedAt: new Date().toISOString(),
+            opening: 'keep the release moving',
+            startedBy: 'Mina',
+            pinned: true,
+            working: { state: 'idle' },
+          },
+        ],
+      }),
     )
     open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    expect(within(sidebar).queryByRole('button', { name: 'Acme' })).toBeNull()
-    expect(screen.queryByRole('dialog', { name: /switch space/i })).toBeNull()
+    expect(within(sidebar).getByRole('button', { name: 'Pin' })).toBeDefined()
+    expect(
+      await within(sidebar).findByRole('link', { name: 'keep the release moving' }),
+    ).toBeDefined()
+  })
+
+  it('selects an agent without creating a conversation', async () => {
+    server.use(
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'Mina',
+            yours: true,
+            presence: { state: 'here' },
+            agents: [
+              {
+                kind: 'claude-code',
+                name: 'Scout',
+                version: '2.1.4',
+                models: [],
+              },
+            ],
+          },
+        ],
+        conversations: [
+          {
+            id: 'c-today',
+            agentKind: 'claude-code',
+            machineId: 'm-1',
+            machineName: 'mina-mbp',
+            startedAt: new Date().toISOString(),
+            opening: 'ship the sidebar',
+            startedBy: 'Mina',
+            pinned: false,
+            working: { state: 'idle' },
+          },
+        ],
+      }),
+    )
+    const router = open('/s/acme')
+
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    await userEvent.click(within(sidebar).getByRole('button', { name: 'Chat' }))
+
+    expect(await within(sidebar).findByRole('heading', { name: 'Agents' })).toBeDefined()
+    const agent = within(sidebar).getByRole('link', {
+      name: /Scout, Claude Code on mina-mbp, ready/i,
+    })
+    expect(within(agent).getByText('Scout')).toBeDefined()
+    expect(within(agent).queryByText('Claude Code')).toBeNull()
+    expect(agent.querySelector('img')?.getAttribute('src')).toBe(
+      '/avatars/agents/m-1/claude-code?v=pixel-art-v1',
+    )
+
+    await userEvent.click(agent)
+
+    expect(router.state.location.pathname).toBe('/s/acme/a/m-1/claude-code')
+    expect(await screen.findByRole('heading', { name: 'How can Scout help?' })).toBeDefined()
+    expect(within(sidebar).queryByRole('button', { name: /new agent/i })).toBeNull()
+    expect(within(sidebar).getByRole('heading', { name: 'Today' })).toBeDefined()
+    expect(within(sidebar).getByText('ship the sidebar')).toBeDefined()
+    expect(within(sidebar).queryByRole('button', { name: /new chat/i })).toBeNull()
+  })
+
+  it('creates the conversation with the first message only when it is sent', async () => {
+    const id = '250d79d8-a888-4c71-9eac-79f56bafd195'
+    let opened: unknown
+    let continued: unknown
+    server.use(
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'Mina',
+            yours: true,
+            presence: { state: 'here' },
+            agents: [
+              {
+                kind: 'claude-code',
+                name: 'Scout',
+                version: '2.1.4',
+                models: [
+                  {
+                    id: 'sonnet',
+                    name: 'Sonnet',
+                    about: 'Fast and capable',
+                    efforts: ['low', 'high'],
+                    defaultEffort: 'low',
+                    isDefault: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+      http.post('*/spaces/acme/conversations', async ({ request }) => {
+        opened = await request.json()
+        return HttpResponse.json({ id }, { status: 201 })
+      }),
+      http.post(`*/spaces/acme/conversations/${id}/messages`, async ({ request }) => {
+        continued = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.get(`*/spaces/acme/conversations/${id}`, ({ request }) =>
+        HttpResponse.json({
+          id,
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              about: 'Fast and capable',
+              efforts: ['low', 'high'],
+              defaultEffort: 'low',
+              isDefault: true,
+            },
+          ],
+          messages: new URL(request.url).searchParams.has('after')
+            ? []
+            : [
+                {
+                  seq: 1,
+                  at: new Date().toISOString(),
+                  role: 'user',
+                  content: { text: 'Read notes.txt' },
+                },
+              ],
+        }),
+      ),
+    )
+    const router = open('/s/acme')
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    await userEvent.click(within(sidebar).getByRole('button', { name: 'Chat' }))
+    await userEvent.click(
+      within(sidebar).getByRole('link', { name: /Scout, Claude Code on mina-mbp, ready/i }),
+    )
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'Read notes.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Model: Auto' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Sonnet' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'High' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/s/acme/c/${id}`)
+    })
+    expect(opened).toMatchObject({
+      machineId: 'm-1',
+      agentKind: 'claude-code',
+      asked: { text: 'Read notes.txt', model: 'sonnet', effort: 'high' },
+    })
+    expect(opened).toHaveProperty('id')
+    expect(await screen.findByText('Read notes.txt')).toBeDefined()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Message agent' }), 'And summarize')
+    await userEvent.click(screen.getByRole('button', { name: 'Model: Auto' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Sonnet' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Thinking: Default' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'High' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(continued).toMatchObject({
+        asked: { text: 'And summarize', model: 'sonnet', effort: 'high' },
+      })
+    })
+    expect(continued).toHaveProperty('key')
+  })
+
+  it('keeps Workspace actions to Settings', async () => {
+    server.use(
+      ...theSpace(),
+      http.get('*/spaces/acme/members', () =>
+        HttpResponse.json({
+          members: [
+            {
+              userId: 'u-1',
+              displayName: 'Mina',
+              avatarUrl: '/avatars/users/u-1',
+              role: 'owner',
+              since: new Date().toISOString(),
+              you: true,
+            },
+          ],
+        }),
+      ),
+    )
+    const router = open('/s/acme')
+
+    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    await userEvent.click(within(sidebar).getByRole('button', { name: /Acme/i }))
+
+    const menu = await screen.findByRole('dialog', { name: /Acme menu/i })
+    expect(within(menu).getByRole('button', { name: /change space emoji/i })).toBeDefined()
+    expect(within(menu).getByRole('button', { name: 'Settings' })).toBeDefined()
+    expect(within(menu).queryByRole('button', { name: /invite members/i })).toBeNull()
+    expect(router.state.location.pathname).toBe('/s/acme')
   })
 
   it('collapses, reopens, and resizes from the keyboard', async () => {
-    server.use(
-      http.get('*/spaces/acme', () =>
-        HttpResponse.json({ id: 'a', slug: 'acme', displayName: 'Acme' }),
-      ),
-      signedIn(),
-    )
+    server.use(...theSpace())
     open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
@@ -77,8 +310,17 @@ describe('entering a Space', () => {
 
     await userEvent.click(within(sidebar).getByRole('button', { name: /close sidebar/i }))
     const reopen = await screen.findByRole('button', { name: /open sidebar/i })
+    await waitFor(() => {
+      expect(document.activeElement).toBe(reopen)
+    })
+
     await userEvent.click(reopen)
-    expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    const reopened = await screen.findByRole('complementary', { name: /Acme sidebar/i })
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        within(reopened).getByRole('button', { name: /close sidebar/i }),
+      )
+    })
   })
 
   it('does not call a Space it could not read a Space you do not have', async () => {
@@ -110,21 +352,11 @@ describe('entering a Space', () => {
   })
 
   it('keeps the frame across screens, so a sidebar somebody moved stays moved', async () => {
-    // The frame is a layout, mounted once. Mounted per screen, opening a conversation puts a new
-    // one in its place and the sidebar somebody collapsed is open again.
+    // The frame is a layout, mounted once. Mounted per screen, moving to the Inbox puts a new one
+    // in its place and the sidebar somebody collapsed is open again.
     server.use(
       ...theSpace({ conversations: [] }),
       http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
-      http.get('*/spaces/acme/conversations/c-1', () =>
-        HttpResponse.json({
-          id: 'c-1',
-          agentKind: 'claude-code',
-          machineName: 'mina-mbp',
-          working: { state: 'idle' },
-          offers: [],
-          messages: [],
-        }),
-      ),
     )
     const router = open('/s/acme')
 
@@ -132,7 +364,7 @@ describe('entering a Space', () => {
     await userEvent.click(within(sidebar).getByRole('button', { name: /close sidebar/i }))
     await screen.findByRole('button', { name: /open sidebar/i })
 
-    await router.navigate({ to: '/s/$slug/c/$id', params: { slug: 'acme', id: 'c-1' } })
+    await router.navigate({ to: '/s/$slug/inbox', params: { slug: 'acme' } })
 
     // Still collapsed: the same frame, with something else inside it.
     expect(await screen.findByRole('button', { name: /open sidebar/i })).toBeDefined()
@@ -141,37 +373,16 @@ describe('entering a Space', () => {
   it('asks somebody whose session ran out to sign in, and remembers where they were', async () => {
     // Being asked to sign in must not cost the address somebody came for — `prd.md` 01 calls
     // that the difference between an interruption and a loss.
-    server.use(http.get('*/me', () => new HttpResponse(null, { status: 401 })))
+    server.use(
+      http.get('*/me', () => new HttpResponse(null, { status: 401 })),
+      waysIn(),
+    )
     const router = open('/s/acme')
 
     await screen.findByRole('form', { name: /^sign in$/i })
 
     expect(router.state.location.pathname).toBe('/sign-in')
     expect(router.state.location.search).toMatchObject({ next: '/s/acme' })
-  })
-
-  it('reaches the Inbox from inside any Space, because it belongs to none of them', async () => {
-    // Work handed out is answered for wherever it lives, so the one thing that must never be hard
-    // to find is found from wherever somebody happens to be.
-    server.use(...theSpace())
-    open('/s/acme')
-
-    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    const inbox = within(sidebar).getByRole('tab', { name: /inbox/i })
-
-    expect(inbox.getAttribute('href')).toBe('/s/acme/inbox')
-  })
-
-  it('offers a way out from inside, not only from the Spaces list', async () => {
-    // Somebody who came straight to a Space by its address should not have to go somewhere else
-    // to reach their account or leave.
-    server.use(...theSpace())
-    open('/s/acme')
-
-    const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    const out = within(sidebar).getByRole('tab', { name: /account/i })
-
-    expect(out.getAttribute('href')).toBe('/settings')
   })
 
   it('answers one that is not yours the same as one that is not there', async () => {

@@ -22,8 +22,12 @@ afterAll(() => {
 
 /** The application's own route tree, at a path. A tree built for a test is a different app. */
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -100,5 +104,14 @@ describe('arriving after a trip through a provider', () => {
     await screen.findByText(/name your workspace/i)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('owns the answer for an address with no screen', async () => {
+    open('/there-is-no-page-here')
+
+    expect(
+      await screen.findByRole('heading', { name: /this page is not available/i }),
+    ).toBeDefined()
+    expect(screen.getByRole('link', { name: /back to your spaces/i })).toBeDefined()
   })
 })

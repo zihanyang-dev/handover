@@ -37,6 +37,10 @@ machines
 agents
   machine_id · kind · version · models(可空) · found_at · 唯一(machine_id, kind)
   一台机器上扫到的东西。没有状态列:机器离线,它上面的 agent 就都不可用
+
+agent_names
+  machine_id · kind · name · named_at · 唯一(machine_id, kind)
+  主人给一个安装起的名字。独立于发现事实,所以一次没扫到不会把人的名字删掉
 ```
 
 **不建**:`machines.status`(派生)· agent 的 `last_seen_at`(跟机器走)· 机器分组 · 能力表。
@@ -142,6 +146,8 @@ where memberships.space_id = $1
 不是插件协议,不是让 agent 自己注册。一张 `kind → 命令名` 的表,`--version` 问一次版本。四家一致。
 
 第一版三个:`claude` · `codex` · `cursor-agent`。**清单是纯数据,住在 owner 里**,加一个 agent 是清单里加一行,不动别的。
+
+主人起的名字不是机器报告的一部分。把它放进 `agents`,下一次完整报告删掉一个暂时没扫到的 agent 时也会删掉名字;让机器上一次 PATH 抖动抹掉人的选择,恢复动作只能是再起一遍。所以名字单独住在 `agent_names`,按同一个 `machine_id + kind` 在读时合上。只有机器主人能写,改名不改变 kind、头像种子或路由身份。
 
 发现在**每次报到时**做,不只是启动时。别人 `brew upgrade` 之后我们跟着更新版本号,不重启、不重接。
 
@@ -342,6 +348,7 @@ POST   /machines/current/poll            机器报到,带上扫到的东西、�
                                          → { pollSeconds: 0, lookFor, asking?, stopping? }
 DELETE /machines/current/session         说再见,立刻转离线
 GET    /spaces/{slug}/machines           Space 页面读这个:成员的机器,连出来的,不是存的
+PATCH  /me/machines/{id}/agents/{kind}   给自己机器上已发现的 agent 起名,或恢复默认名
 DELETE /me/machines/{id}                 移除自己的机器
 ```
 
@@ -410,6 +417,7 @@ docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... 
 过期之后再批 → 拒绝
 两台机器同时用一把单次钥匙 → 一台成功,一台明确失败
 机器凭据被撤销后报到 → 拒绝,并且说清是被移除了
+主人给 agent 起名 → 下一次完整报告不覆盖;别人用同一个 id 改名 → 和不存在一样
 ```
 
 **浏览器旅程**:

@@ -23,9 +23,7 @@ afterAll(() => {
 })
 
 const EMAIL = 'mina@example.com'
-
 const SECOND = 'zane@example.com'
-
 const CHALLENGE = '11111111-1111-4111-8111-111111111111'
 
 /** This account, with the addresses that already reach it. */
@@ -55,8 +53,12 @@ function sends(bodies: Record<string, unknown>[] = []) {
 }
 
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />

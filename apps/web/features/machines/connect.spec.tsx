@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { signedIn } from '../../pretend/signed-in.ts'
+import { waysIn } from '../../pretend/ways-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
@@ -23,8 +24,12 @@ afterAll(() => {
 })
 
 function open(at: string) {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [at] }) })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createRouter({
+    routeTree,
+    context: { queryClient: client },
+    history: createMemoryHistory({ initialEntries: [at] }),
+  })
   return render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
@@ -33,8 +38,8 @@ function open(at: string) {
 }
 
 const SPACES = [
-  { id: 's-1', slug: 'acme', displayName: 'Acme' },
-  { id: 's-2', slug: 'beta', displayName: 'Beta' },
+  { id: 's-1', slug: 'acme', displayName: 'Acme', emoji: '🏠' },
+  { id: 's-2', slug: 'beta', displayName: 'Beta', emoji: '🪴' },
 ]
 
 function waiting(machineName = 'mina-mbp') {
@@ -169,7 +174,7 @@ describe('answering a machine', () => {
         http.get('*/me', () =>
           HttpResponse.json({ reason: 'no-session', recovery: 'sign-in' }, { status: 401 }),
         ),
-        http.get('*/auth/credentials', () => HttpResponse.json({ offered: ['email'] })),
+        waysIn(),
       )
       open(at)
 

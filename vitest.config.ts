@@ -35,6 +35,10 @@ export default defineConfig({
           name: 'web',
           include: ['apps/web/**/*.spec.tsx', 'apps/web/**/*.spec.ts'],
           environment: 'happy-dom',
+          // happy-dom has no `EventSource`, and a screen that watches one would render nothing of
+          // the live half at all. Said for the whole project rather than imported by the tests
+          // that happen to need it: what is missing belongs to the environment.
+          setupFiles: ['apps/web/pretend/event-source.ts'],
         },
       },
       {

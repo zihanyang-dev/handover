@@ -9,8 +9,8 @@
  *   2. the `messages` rows appended under it
  */
 
-import { sql } from 'kysely'
-import type { Json } from '../../generated/db.ts'
+import { sql, type ExpressionBuilder, type SelectQueryBuilder } from 'kysely'
+import type { DB, Json } from '../../generated/db.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import {
   ACTIVITY,
@@ -437,6 +437,34 @@ export type Standing = {
  * `working` is computed from the ledger and the machine's silence rather than stored, for the same
  * reason presence is: a machine that is killed writes nothing on the way out.
  */
+/**
+ * What the first thing anybody said in a conversation says: the words, and whose they are.
+ *
+ * Both are read off that one line rather than stored on the conversation. Stored, each would be a
+ * second copy of something one message already says, and would disagree with it the day anything
+ * about that line changes. `architecture.md` §2.
+ */
+function theFirstLine(eb: ExpressionBuilder<DB, 'conversations'>) {
+  const said = <T>(from: SelectQueryBuilder<DB, 'conversations' | 'messages' | 'users', T>) =>
+    from
+      .whereRef('messages.conversation_id', '=', 'conversations.id')
+      .where('messages.role', '=', 'user')
+      .orderBy('messages.seq')
+      .limit(1)
+
+  return [
+    said(eb.selectFrom('messages').select(sql<string | null>`content ->> 'text'`.as('opening'))).as(
+      'opening',
+    ),
+    said(
+      eb
+        .selectFrom('messages')
+        .innerJoin('users', 'users.id', 'messages.said_by')
+        .select('users.display_name as startedBy'),
+    ).as('startedBy'),
+  ]
+}
+
 export async function conversationsIn(
   db: Database,
   spaceId: string,
@@ -460,26 +488,7 @@ export async function conversationsIn(
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       sql<Date>`now()`.as('asOf'),
-      eb
-        .selectFrom('messages')
-        .select(sql<string | null>`content ->> 'text'`.as('opening'))
-        .whereRef('messages.conversation_id', '=', 'conversations.id')
-        .where('messages.role', '=', 'user')
-        .orderBy('messages.seq')
-        .limit(1)
-        .as('opening'),
-      // Whose it is, derived from the same line the opening comes from rather than stored on the
-      // conversation. Stored, it would be a second copy of the author of one message and would
-      // disagree with it the day anything about that line changes. `architecture.md` §2.
-      eb
-        .selectFrom('messages')
-        .innerJoin('users', 'users.id', 'messages.said_by')
-        .select('users.display_name as startedBy')
-        .whereRef('messages.conversation_id', '=', 'conversations.id')
-        .where('messages.role', '=', 'user')
-        .orderBy('messages.seq')
-        .limit(1)
-        .as('startedBy'),
+      ...theFirstLine(eb),
       stillOwed(sql.ref('conversations.id')).as('unfinished'),
     ])
     .where('conversations.space_id', '=', spaceId)

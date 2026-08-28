@@ -5,40 +5,34 @@
  * identity. One frame rather than one per page: the sidebar, its width, and whether it is open
  * are the same thing on every screen, and a second copy of them is a second answer.
  *
- * What goes in it is the caller's — the sidebar under the tabs, and the main area. This file owns
- * the frame and nothing that lives inside it.
+ * What goes in the main area is the caller's. This file owns the frame and nothing that lives
+ * inside it.
  */
 
-import { Link, useMatches } from '@tanstack/react-router'
+import { useMatches } from '@tanstack/react-router'
 import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
-  useState,
+  type RefObject,
 } from 'react'
-import { Mark } from '../../mark.tsx'
+import { ChatSidebar, PinnedChats } from '../conversations/chat-sidebar.tsx'
 import type { Me } from '../identity/me.ts'
-import {
-  CollapseIcon,
-  HomeIcon,
-  InboxIcon,
-  MenuIcon,
-  PeopleIcon,
-  PersonIcon,
-} from './sidebar-icons.tsx'
+import { ChatIcon, CollapseIcon, HomeIcon, InboxIcon, MenuIcon } from './sidebar-icons.tsx'
+import { WorkspaceMenu } from './workspace-menu.tsx'
 
 type Space = Me['spaces'][number]
+type SidebarView = 'home' | 'chat' | 'inbox'
 
 const DEFAULT_SIDEBAR_WIDTH = 270
 const MIN_SIDEBAR_WIDTH = 220
 const MAX_SIDEBAR_WIDTH = 480
 
-/**
- * What the open screen calls itself, for the line at the top.
- *
- * Read from the deepest match that says, so a screen names itself rather than being named by a
- * parent that would have to keep a list of its children.
- */
+/** The deepest screen names itself; the frame has no list of the screens it can hold. */
 function useDeepest(): string {
   const said = useMatches()
     .map((match) => (match.staticData as { where?: string }).where)
@@ -73,37 +67,166 @@ function beginSidebarResize(
   window.addEventListener('pointerup', finish)
 }
 
-function WorkspaceMark() {
-  return (
-    <span className="home-workspace-icon" aria-hidden>
-      <Mark size={22} bodyColor="#2c2c2b" />
-    </span>
-  )
+function useWorkspaceMenu() {
+  const [isOpen, setIsOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const closeFromOutside = (event: PointerEvent) => {
+      if (root.current?.contains(event.target as Node)) return
+      setIsOpen(false)
+    }
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      // The frame also owns Escape for closing the whole sidebar. One press closes the deepest
+      // thing that is open; without this, the menu and the sidebar disappear together.
+      event.stopImmediatePropagation()
+      setIsOpen(false)
+      trigger.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', closeFromOutside)
+    document.addEventListener('keydown', closeFromKeyboard)
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside)
+      document.removeEventListener('keydown', closeFromKeyboard)
+    }
+  }, [isOpen])
+
+  return { isOpen, setIsOpen, root, trigger }
 }
 
 function WorkspaceHeader({
   space,
   closeSidebar,
+  closeButton,
 }: {
   readonly space: Space
   readonly closeSidebar: () => void
+  readonly closeButton: RefObject<HTMLButtonElement | null>
 }) {
+  const { isOpen, setIsOpen, root, trigger } = useWorkspaceMenu()
+
   return (
-    <div className="home-workspace-root">
+    <div ref={root} className="home-workspace-root">
       <div className="home-workspace-pill">
-        <div className="home-workspace-identity">
-          <WorkspaceMark />
-          <span className="home-workspace-name">{space.displayName}</span>
-        </div>
         <button
+          ref={trigger}
+          className="home-workspace-identity"
+          type="button"
+          aria-label={`Open ${space.displayName} menu`}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          onClick={() => {
+            setIsOpen((open) => !open)
+          }}
+        >
+          <span className="home-workspace-emoji" aria-hidden>
+            {space.emoji}
+          </span>
+          <span className="home-workspace-name">{space.displayName}</span>
+        </button>
+        <button
+          ref={closeButton}
           className="home-close-sidebar"
           type="button"
           aria-label="Close sidebar"
-          onClick={closeSidebar}
+          aria-controls="space-sidebar"
+          aria-expanded="true"
+          onClick={() => {
+            setIsOpen(false)
+            closeSidebar()
+          }}
         >
           <CollapseIcon />
         </button>
       </div>
+      {isOpen && (
+        <WorkspaceMenu
+          space={space}
+          close={() => {
+            setIsOpen(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function SidebarViewButton({
+  view,
+  label,
+  icon,
+  active,
+  select,
+}: {
+  readonly view: SidebarView
+  readonly label: string
+  readonly icon: ReactNode
+  readonly active: boolean
+  readonly select: (view: SidebarView) => void
+}) {
+  return (
+    <button
+      className="home-tab"
+      type="button"
+      aria-pressed={active}
+      title={label}
+      onClick={() => {
+        select(view)
+      }}
+    >
+      <span className="home-tab-icon">{icon}</span>
+      <span className="home-tab-label">
+        <span className="home-tab-label-clip">
+          <span className="home-tab-label-text">{label}</span>
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function SidebarViews({
+  active,
+  select,
+}: {
+  readonly active: SidebarView
+  readonly select: (view: SidebarView) => void
+}) {
+  return (
+    <div className="home-tabbar" role="group" aria-label="Sidebar views">
+      <SidebarViewButton
+        view="home"
+        label="Home"
+        icon={<HomeIcon />}
+        active={active === 'home'}
+        select={select}
+      />
+      <SidebarViewButton
+        view="chat"
+        label="Chat"
+        icon={<ChatIcon />}
+        active={active === 'chat'}
+        select={select}
+      />
+      <SidebarViewButton
+        view="inbox"
+        label="Inbox"
+        icon={<InboxIcon />}
+        active={active === 'inbox'}
+        select={select}
+      />
+    </div>
+  )
+}
+
+function SidebarPanel({ view, slug }: { readonly view: SidebarView; readonly slug: string }) {
+  return (
+    <div className="home-sidebar-panel" role="region" aria-label={`${view} sidebar`}>
+      {view === 'home' && <PinnedChats slug={slug} />}
+      {view === 'chat' && <ChatSidebar slug={slug} />}
     </div>
   )
 }
@@ -139,137 +262,140 @@ function ResizeRail({
   )
 }
 
-export function Home({
+function useSidebarVisibility() {
+  const [isOpen, setIsOpen] = useState(true)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const openButton = useRef<HTMLButtonElement>(null)
+
+  const close = useCallback(() => {
+    setIsOpen(false)
+    requestAnimationFrame(() => {
+      openButton.current?.focus()
+    })
+  }, [])
+
+  const open = useCallback(() => {
+    setIsOpen(true)
+    requestAnimationFrame(() => {
+      closeButton.current?.focus()
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [close, isOpen])
+
+  return { isOpen, close, open, closeButton, openButton }
+}
+
+function MainPane({
   space,
-  aside,
+  where,
+  sidebarOpen,
+  openSidebar,
+  openButton,
   children,
 }: {
   readonly space: Space
-  /** Under the tabs. The list of what is in this Space, whatever that is on this screen. */
-  readonly aside?: ReactNode
+  readonly where: string
+  readonly sidebarOpen: boolean
+  readonly openSidebar: () => void
+  readonly openButton: RefObject<HTMLButtonElement | null>
   readonly children: ReactNode
 }) {
-  // Where somebody is comes from the screen that is open, not from the frame: the frame is
-  // mounted once and outlives every screen shown in it, so it cannot be the thing that knows.
+  const canvas = where === 'Home' || where === 'Chat'
+
+  return (
+    <main className="home-main">
+      {(!canvas || !sidebarOpen) && (
+        <header className="home-topbar">
+          {!sidebarOpen && (
+            <button
+              ref={openButton}
+              className="home-open-sidebar"
+              type="button"
+              aria-label="Open sidebar"
+              aria-controls="space-sidebar"
+              aria-expanded="false"
+              onClick={openSidebar}
+            >
+              <MenuIcon />
+            </button>
+          )}
+          {!canvas && (
+            <p className="home-breadcrumb">
+              <span>{space.displayName}</span>
+              <span aria-hidden>/</span>
+              <strong>{where}</strong>
+            </p>
+          )}
+        </header>
+      )}
+
+      {canvas ? (
+        children
+      ) : (
+        <section className="home-content" aria-labelledby="home-title">
+          <h1 id="home-title">{where}</h1>
+          {children}
+        </section>
+      )}
+    </main>
+  )
+}
+
+function initialView(where: string): SidebarView {
+  if (where === 'Inbox') return 'inbox'
+  if (where === 'Chat') return 'chat'
+  return 'home'
+}
+
+export function Home({ space, children }: { readonly space: Space; readonly children: ReactNode }) {
   const where = useDeepest()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const { isOpen, close, open, closeButton, openButton } = useSidebarVisibility()
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
+  const [chosenView, setChosenView] = useState<SidebarView>()
+  const view = chosenView ?? initialView(where)
 
   return (
     <div
       className="home-shell"
-      data-sidebar-open={sidebarOpen}
+      data-sidebar-open={isOpen}
       data-sidebar-resizing={resizing}
       style={{ '--home-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
     >
       <div className="home-sidebar-container">
-        <aside className="home-sidebar" aria-label={`${space.displayName} sidebar`}>
-          <WorkspaceHeader
-            space={space}
-            closeSidebar={() => {
-              setSidebarOpen(false)
-            }}
-          />
-
-          <Tabs slug={space.slug} where={where} />
-          <div className="home-sidebar-panel" role="tabpanel" aria-label="Home">
-            {aside}
-          </div>
+        <aside
+          id="space-sidebar"
+          className="home-sidebar"
+          aria-label={`${space.displayName} sidebar`}
+        >
+          <WorkspaceHeader space={space} closeSidebar={close} closeButton={closeButton} />
+          <SidebarViews active={view} select={setChosenView} />
+          <SidebarPanel view={view} slug={space.slug} />
         </aside>
 
         <ResizeRail width={sidebarWidth} setWidth={setSidebarWidth} setResizing={setResizing} />
       </div>
 
-      <main className="home-main">
-        <header className="home-topbar">
-          {!sidebarOpen && (
-            <button
-              className="home-open-sidebar"
-              type="button"
-              aria-label="Open sidebar"
-              onClick={() => {
-                setSidebarOpen(true)
-              }}
-            >
-              <MenuIcon />
-            </button>
-          )}
-          <p className="home-breadcrumb">
-            <span>{space.displayName}</span>
-            <span aria-hidden>/</span>
-            <strong>{where}</strong>
-          </p>
-        </header>
-
-        <section className="home-content" aria-labelledby="home-title">
-          <h1 id="home-title">{where}</h1>
-          {children}
-        </section>
-      </main>
+      <MainPane
+        space={space}
+        where={where}
+        sidebarOpen={isOpen}
+        openSidebar={open}
+        openButton={openButton}
+      >
+        {children}
+      </MainPane>
     </div>
-  )
-}
-
-/**
- * The three places inside a Space, and the one that is not inside it.
- *
- * Its own component because the frame around it is about the sidebar — how wide it is, whether it
- * is open — and this is about where somebody can go. They change for different reasons.
- */
-function Tabs({ slug, where }: { readonly slug: string; readonly where: string }) {
-  return (
-    <nav className="home-tabbar" aria-label="Sidebar navigation">
-      <Link
-        className="home-tab"
-        role="tab"
-        aria-selected={where === 'Home'}
-        to="/s/$slug"
-        params={{ slug }}
-      >
-        <HomeIcon />
-        <span>Home</span>
-      </Link>
-      {/* Not a Space's, and shown in every Space's sidebar anyway — it is the same one from
-                each of them. Work you handed out is answered for wherever it happens to live, so
-                the thing that must never be hard to reach is reachable from wherever you are. */}
-      <Link
-        className="home-tab"
-        role="tab"
-        aria-selected={where === 'Inbox'}
-        aria-label="Inbox"
-        title="Inbox"
-        to="/s/$slug/inbox"
-        params={{ slug }}
-      >
-        <InboxIcon />
-      </Link>
-      {/* Who else is in here. In the sidebar rather than behind a settings page because a
-                Space with two people in it is a different place from one with a person in it, and
-                that is worth being able to see without going looking. */}
-      <Link
-        className="home-tab"
-        role="tab"
-        aria-selected={where === 'People'}
-        aria-label="People"
-        title="People"
-        to="/s/$slug/people"
-        params={{ slug }}
-      >
-        <PeopleIcon />
-      </Link>
-      {/* The way out, from in here rather than only from the Spaces list: somebody who came
-                straight to a Space by its address should not have to go somewhere else to leave. */}
-      <Link
-        className="home-tab"
-        role="tab"
-        aria-selected="false"
-        aria-label="Account"
-        title="Account"
-        to="/settings"
-      >
-        <PersonIcon />
-      </Link>
-    </nav>
   )
 }

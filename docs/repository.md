@@ -20,9 +20,9 @@ apps/web/           浏览器应用
   components/ui/    没有主人的视觉零件:一段手写体、一次礼花、一层渐变模糊
                     进这里的标准是「它不知道 Handover 是什么」
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
-  mark.tsx mark.css 那个标识,和它的几种状态
-  style.css         整个产品的样式,一份。token 在 :root
-  pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、EventSource
+  mark.tsx mark.css 那个标识,和它的几种状态;关键帧留在相邻的 CSS
+  style.css         Tailwind 入口、theme,和语义化的 component utilities,整个产品一份
+  pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、登录方式、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
   scripts/build.ts  四个平台的单文件,bun 交叉编译
@@ -38,7 +38,7 @@ docs/               稳定规则 + roadmap 下每条旅程的 prd/design
 .21st/              视觉简报,给设计工具读的。**是输入,不是产物** —— 界面照它做,
                     它不照界面生成。和 prd 重叠的部分以 prd 为准:prd 说做什么,
                     这里说长什么样
-compose.yml         一个 postgres,两个库
+compose.yml         一个 postgres 两个库,和一个放脸的对象存储
 ```
 
 **边界由工具强制,不靠自觉。** 按包名跨过去,pnpm 找不到;用 `../` 绕过去,
@@ -103,7 +103,7 @@ pnpm test:db      把测试库迁到最新
 
 pnpm dev          API
 pnpm web          浏览器应用
-pnpm build        打包浏览器应用
+pnpm build        打包浏览器应用;Vite 8 的 Baseline Widely Available 目标,275 kB raw chunk 起警告
 
 pnpm --filter @handover/server release   一次发布对数据库做的事:把迁移应用上去,别的什么都不做
 pnpm --filter @handover/cli build   四个平台的可执行文件,进 apps/cli/dist
@@ -212,6 +212,15 @@ release    tag v* → 四个平台的可执行文件 + SHA256SUMS → GitHub Rel
 **tag 就是版本号**,由 `HANDOVER_VERSION` 写进二进制 —— 手里的文件能自己说出它来自哪个 commit。
 
 浏览器失败时保留 trace 和截图。
+
+## 7.1 浏览器基线
+
+Vite 的 `baseline-widely-available` 是这版的浏览器合同:Chrome/Edge 111、Firefox 114、
+Safari/iOS 16.4 起。不按印象写「现代浏览器」,也不默默给更老的浏览器发一份看似能跑的包;
+真要扩大范围时改 `build.target`,并带上对应的真实设备证据。
+
+`chunkSizeWarningLimit` 是 275 kB raw。它不是性能指标,只是让当前的路由切分在变差时出声 ——
+体积本身不证明 Core Web Vitals,那要等真的部署在某处、有 field 数据可看。
 
 ## 8. 合并前
 

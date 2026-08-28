@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Conversation } from '../features/conversations/conversation.tsx'
+import { Chat } from '../features/conversations/chat.tsx'
 
-/** One conversation, inside the Space frame its route already put around it. */
 function Screen() {
   const { slug, id } = Route.useParams()
-
-  return <Conversation slug={slug} id={id} />
+  return <Chat slug={slug} id={id} />
 }
 
 export const Route = createFileRoute('/s/$slug/c/$id')({
-  staticData: { where: 'Conversation' },
+  staticData: { where: 'Chat' },
   component: Screen,
 })

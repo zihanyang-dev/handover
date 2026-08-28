@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -25,6 +26,9 @@ export default defineConfig({
   root: import.meta.dirname,
   // The same file `tsr generate` reads, so a route tree built by the dev server and one built by
   // `pnpm generate` cannot disagree about where routes live.
-  plugins: [tanstackRouter(routing), react()],
+  plugins: [tailwindcss(), tanstackRouter(routing), react()],
+  // Vite 8 fixes this Baseline range at 2026-01-01. A 275 kB raw-chunk warning keeps the current
+  // route-split baseline visible without pretending bundle bytes alone prove Core Web Vitals.
+  build: { target: 'baseline-widely-available', chunkSizeWarningLimit: 275 },
   server: { proxy: Object.fromEntries(OWNED_BY_SERVER.map((path) => [path, SERVER])) },
 })

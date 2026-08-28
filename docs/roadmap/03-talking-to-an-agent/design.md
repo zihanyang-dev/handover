@@ -399,6 +399,14 @@ Multica 为这件事专门加了一个字段,注释值得抄:
 
 **⑩ 幂等由唯一索引兜**
 
+第一条消息和后面的消息有一个关键区别:**它到来之前还没有 conversation 可以替它限定 key 的范围。**
+浏览器因此先生成 conversation UUID;点击 agent 时只把 agent 身份放进 URL,不写库。第一次发送时把
+这个 UUID、agent 身份和第一句话一起交给 `POST /spaces/{slug}/conversations`。服务器在一个事务里
+先以 UUID 取得事务级 advisory lock(让同时到达的重试只有一个写者),再锁住机器、重新确认 agent 与
+在线状态、插入 conversation、追加 seq 1 的 user 消息并唤醒机器。任何一步失败全部回滚,所以不会留下
+空对话。响应丢失后带同一个 UUID 和完全相同的 machine、agent、说话人及第一句话重试,服务器返回同一个
+conversation,不是再开一段;同一个 UUID 换了其中任何一项都明确拒绝,不能把旧成功冒充成新意图。
+
 `seq` 由服务器在事务里算,**写的人不猜顺序**。
 
 幂等靠 `key` —— 每条消息在这段对话里的确定性名字。网页用它自己的幂等键,机器算得出
@@ -457,7 +465,7 @@ unknown     activityType = 'unknown'   没有人能说清它那边做到哪了
 ## 接口
 
 ```
-POST   /spaces/{slug}/conversations              挑一台机器上的一个 agent → 一段对话
+POST   /spaces/{slug}/conversations              第一条消息 + 客户端生成的 conversation id → 原子地创建对话并写下这句话
 GET    /spaces/{slug}/conversations              列表。在答没答是算出来的
 GET    /spaces/{slug}/conversations/{id}         对话 + 消息,按 seq
 POST   /spaces/{slug}/conversations/{id}/messages  幂等键;说一句

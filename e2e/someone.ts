@@ -17,7 +17,16 @@ import { expect, type Page } from '@playwright/test'
 import { connect, type Database } from '../apps/server/src/db/connection.ts'
 import { loadEnv } from '../apps/server/src/env.ts'
 
-export const db: Database = connect(loadEnv())
+/**
+ * A pool of this suite's own, one per spec file.
+ *
+ * Not one shared module-level pool: the files run in one worker, so the first `afterAll` to close
+ * a shared one would close it under the file still to run — which reads as "driver has already
+ * been destroyed", a long way from the test that caused it.
+ */
+export function connects(): Database {
+  return connect(loadEnv())
+}
 
 const LETTERS = join(import.meta.dirname, 'letters.log')
 
@@ -40,11 +49,21 @@ export async function signsIn(page: Page, name: string): Promise<string> {
   return address
 }
 
-/** Makes a Space from the front door, the way the only way in makes one. */
+/**
+ * Makes a Space from the front door, the way the only way in makes one.
+ *
+ * Making one now offers to connect a machine before it lets go, so this skips that — the tests
+ * that want a machine connect one themselves, over the wire, the way a real one arrives.
+ */
 export async function makesASpace(page: Page): Promise<string> {
   const name = `Acme ${randomUUID().slice(0, 6)}`
   await page.getByLabel(/workspace name/i).fill(name)
   await page.getByRole('button', { name: /continue/i }).click()
+
+  await page.waitForURL(/\/onboarding\/host|\/s\//u, { timeout: 20_000 })
+  if (page.url().includes('/onboarding/host')) {
+    await page.getByRole('button', { name: /skip for now/i }).click()
+  }
 
   await page.waitForURL(/\/s\//u, { timeout: 20_000 })
   const slug = /\/s\/([^/]+)/u.exec(page.url())?.[1]

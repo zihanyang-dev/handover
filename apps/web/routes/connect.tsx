@@ -14,6 +14,6 @@ function Screen() {
 }
 
 export const Route = createFileRoute('/connect')({
-  beforeLoad: async ({ location }) => onlySignedIn(location),
+  beforeLoad: async ({ context, location }) => onlySignedIn(context.queryClient, location),
   component: Screen,
 })
