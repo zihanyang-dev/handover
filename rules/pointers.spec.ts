@@ -52,15 +52,19 @@ function pointsAt(source: string): readonly string[] {
   )
 }
 
+/** What one file points at that is not here. Its own function: nesting is what the linter counts. */
+function brokenIn(path: string, here: ReadonlySet<string>): readonly string[] {
+  const missing = pointsAt(readFileSync(path, 'utf8')).filter(
+    (named) => !here.has(named.split('/').at(-1) ?? named),
+  )
+
+  return missing.map((named) => `${path}: ${named}`)
+}
+
 describe('what a comment points at', () => {
   it('is a file that is here', () => {
     const here = everyName('.')
-    const broken = SOURCE.flatMap(under).flatMap((path) =>
-      pointsAt(readFileSync(path, 'utf8'))
-        .filter((named) => !here.has(named.split('/').at(-1) ?? named))
-        .map((named) => `${path}: ${named}`),
-    )
 
-    expect(broken).toEqual([])
+    expect(SOURCE.flatMap(under).flatMap((path) => brokenIn(path, here))).toEqual([])
   })
 })

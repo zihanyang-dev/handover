@@ -16,7 +16,7 @@
 
 import { expect, test, type Page } from '@playwright/test'
 import { aMachine, waitsForATurn } from './a-machine.ts'
-import { connects, makesASpace, signsIn } from './someone.ts'
+import { connects, signsIn } from './someone.ts'
 
 const db = connects()
 
