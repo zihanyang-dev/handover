@@ -1,5 +1,5 @@
 /**
- * That every `-api.ts` is laid out the same way.
+ * That every file whose name ends in -api.ts is laid out the same way.
  *
  * A module's file answers three questions in order: what it needs, what it can say, and what it
  * does. Read in that order a stranger can stop after the second and still know the shape of the

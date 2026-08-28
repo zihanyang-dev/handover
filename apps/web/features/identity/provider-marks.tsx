@@ -1,15 +1,12 @@
 /**
  * The marks of the ways in, as pixel art.
  *
- * The artwork is ours (the single-polygon G and cat in ~/Downloads), the colours are theirs:
+ * The artwork is ours, the colours are theirs:
  * Google split into the four brand colours along the same arcs the official G uses — red over
  * the top, blue for the crossbar and the right stroke, green along the bottom, yellow up the
  * lower left — done by rasterising the polygon onto its 24×24 grid and painting each cell by
  * angle from the centre; GitHub's cat in its one brand ink, #181717, because the Invertocat
  * has no other colour.
- *
- * `credentials.tsx` still draws the icon set's single-ink Google — when that screen's turn
- * comes, it takes these.
  */
 
 export function GoogleMark({ size = 18 }: { readonly size?: number }) {

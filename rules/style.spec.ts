@@ -10,12 +10,12 @@
  * the source has no `.flex` to find and `.flx` would be just as absent. What the build emits is
  * the one place both kinds are answered — the rules we wrote, and the ones it wrote for us.
  *
- * So this builds. It is the slowest rule here and the only one that has to be: the alternative is
- * a list of Tailwind's utility names kept by hand, which would be wrong within a week.
+ * It reads a build rather than making one. `pnpm check` builds once, before the tests; a rule that
+ * built for itself would spawn pnpm, node and vite from inside a vitest worker, and there are as
+ * many of those as this machine has cores.
  */
 
-import { execFileSync } from 'node:child_process'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -37,9 +37,11 @@ const screens = (): readonly string[] =>
 
 /** Every class the built stylesheets carry, ignoring what they say about them. */
 function built(): ReadonlySet<string> {
-  execFileSync('pnpm', ['--filter', '@handover/web', 'build'], { stdio: 'pipe' })
-
   const assets = join(WEB, 'dist', 'assets')
+  if (!existsSync(assets)) {
+    throw new Error('nothing is built: run `pnpm build` first, which `pnpm check` does for you')
+  }
+
   const sheets = readdirSync(assets)
     .filter((entry) => entry.endsWith('.css'))
     .map((entry) => readFileSync(join(assets, entry), 'utf8'))

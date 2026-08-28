@@ -8,7 +8,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useId, useState } from 'react'
-import { api, cached, retryKey } from '../../api.ts'
+import { api, cached, reasonOf, retryKey } from '../../api.ts'
 import { FieldError } from '../../components/ui/field-error.tsx'
 import { GradientBlur } from '../../components/ui/gradient-blur.tsx'
 import { HandwritingSvg } from '../../components/ui/handwriting-svg.tsx'
@@ -82,7 +82,7 @@ export function SignIn({
       const { data, error } = await api.POST('/auth/email-codes', {
         body: { email: address, requestKey: retryKey(`code:${address}`) },
       })
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
       return data
     },
     onSuccess: async (opened) =>
@@ -157,7 +157,8 @@ export function SignIn({
             <FieldError id={error} shown={invalid}>
               {refused || askForCode.error === null
                 ? SAID['malformed-request']
-                : (SAID[askForCode.error.message] ?? 'That could not be sent. Try again shortly.')}
+                : (SAID[reasonOf(askForCode.error) ?? ''] ??
+                  'That could not be sent. Try again shortly.')}
             </FieldError>
 
             <button

@@ -9,8 +9,9 @@
  * one is not in the rebuilt app. Everything after that is the shipped thing — the link screen,
  * joining, and being inside. What the rest of `prd.md` 05 promises — inviting, stopping a link,
  * changing a role, taking somebody out and their machine with them — has a working server side
- * with nowhere to press it, so it is proven in `apps/server/src/db/invitation.spec.ts`,
- * `joining.spec.ts` and `member-api` instead, and named in `rules/reachable.spec.ts`.
+ * with nowhere to press it, so it is proven in `apps/server/src/db/joining.spec.ts` and
+ * `apps/server/src/server/joining-a-space.spec.ts` instead, and named in
+ * `rules/reachable.spec.ts`.
  */
 
 import { expect, test } from '@playwright/test'

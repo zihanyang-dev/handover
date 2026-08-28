@@ -17,10 +17,10 @@ export function useSignOut() {
 
   return useMutation({
     mutationFn: async () => {
-      const { response } = await api.DELETE('/browser/sessions/current')
+      const { error, response } = await api.DELETE('/browser/sessions/current')
       // Not left. Navigating anyway would show the sign-in page to somebody still signed in, and
       // the next screen they open would be their account again.
-      if (!response.ok) throw new Error('still-here')
+      if (!response.ok) throw error
     },
     onSuccess: async () => {
       // Everything that was true because of who was signed in. Kept, the next account to sign in

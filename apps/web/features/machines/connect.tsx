@@ -9,7 +9,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { CheckCircleFill, ExclamationCircleFill, Laptop } from 'react-bootstrap-icons'
-import { api, cached } from '../../api.ts'
+import { api, cached, reasonOf } from '../../api.ts'
 import { meQuery } from '../identity/me.ts'
 
 const SAID: Record<string, string> = {
@@ -124,7 +124,7 @@ function Trouble({
   return (
     <p className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
-      {SAID[error.reason] ?? fallback}
+      {SAID[reasonOf(error) ?? ''] ?? fallback}
     </p>
   )
 }
@@ -147,7 +147,7 @@ export function Connect({ typed }: { readonly typed: string }) {
       // No reason to read means the server did not answer in the shape it promises — a crash, a
       // proxy, a gateway. Calling that "unavailable" would say the Space is gone, which is a
       // different thing and one somebody would go and look for.
-      if (!response.ok) throw error ?? { reason: 'unknown', recovery: 'retry-later' }
+      if (!response.ok) throw error
       return yes
     },
   })

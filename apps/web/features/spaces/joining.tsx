@@ -30,7 +30,7 @@ function whatItOpens(secret: string) {
       // same. Anything else is this page failing to read, and saying "that link is dead" to a
       // server that broke sends somebody back to ask for a link that was fine.
       if (response.status === 404) return null
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
 
       return data
     },
@@ -44,7 +44,7 @@ export function Joining({ secret }: { readonly secret: string }) {
   const joining = useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST('/me/spaces', { body: { secret } })
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
 
       return data.slug
     },

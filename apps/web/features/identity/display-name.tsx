@@ -25,10 +25,10 @@ export function DisplayName() {
 
   const rename = useMutation({
     mutationFn: async (displayName: string) => {
-      const { response } = await api.PATCH('/me', { body: { displayName } })
+      const { error, response } = await api.PATCH('/me', { body: { displayName } })
       // Not renamed. Clearing the box and showing the old name would be this page telling somebody
       // their change went through, and they would find out much later that it did not.
-      if (!response.ok) throw new Error('not-renamed')
+      if (!response.ok) throw error
     },
     onSuccess: async () => {
       setTyped(null)

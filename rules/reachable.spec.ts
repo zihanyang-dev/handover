@@ -77,16 +77,16 @@ function callers(): string {
  * nowhere to press, and the honest thing then is not to write the route.
  */
 const NO_SCREEN_YET = new Set([
-  // Disconnecting a machine, and naming an agent on one. `machines.tsx` had both; the rebuilt
-  // sidebar lists machines and their agents but offers nothing to press on them yet.
+  // Disconnecting a machine, and naming an agent on one. The machines screen the rebuild removed
+  // had both; the rebuilt sidebar lists machines and their agents but offers nothing to press.
   '/me/machines/{id}',
   '/me/machines/{id}/agents/{kind}',
-  // Handing a conversation over as a piece of work, and taking it back. `underway.tsx`.
+  // Handing a conversation over as a piece of work, and taking it back.
   '/spaces/{slug}/conversations/{id}/task',
   // Saying you are typing. Nothing on the rebuilt chat shows the other person's name.
   '/spaces/{slug}/conversations/{id}/typing',
   // Everything the People screen did: inviting, stopping a link, changing a role, removing
-  // somebody, and reading what they still hold. `people.tsx`.
+  // somebody, and reading what they still hold.
   '/spaces/{slug}/invitations',
   '/spaces/{slug}/invitations/{id}',
   '/spaces/{slug}/machines/{id}',

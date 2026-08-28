@@ -305,7 +305,7 @@ export function useSetPinned(slug: string, id: string) {
         : await api.DELETE('/spaces/{slug}/conversations/{id}/pin', {
             params: { path: { slug, id } },
           })
-      if (!answer.response.ok) throw new Error('pin-not-changed')
+      if (!answer.response.ok) throw answer.error
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })

@@ -10,7 +10,7 @@ import { returnPath } from '@handover/universal'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
-import { api, retryKey, retryKeyDone } from '../../api.ts'
+import { api, reasonOf, retryKey, retryKeyDone } from '../../api.ts'
 import { FieldError } from '../../components/ui/field-error.tsx'
 
 /** Rounded up, so "1 minute" never means "any moment now". */
@@ -81,7 +81,7 @@ function Resend({
       const { data, error } = await api.POST('/auth/email-codes', {
         body: { email, requestKey: retryKey(intention) },
       })
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
       retryKeyDone(intention)
       return data
     },
@@ -110,7 +110,7 @@ function Resend({
       {/* A button that did nothing looks the same as a letter that never came. */}
       <FieldError id={error} shown={resend.isError}>
         {resend.isError
-          ? (SAID[resend.error.message] ?? 'That could not be sent. Try again shortly.')
+          ? (SAID[reasonOf(resend.error) ?? ''] ?? 'That could not be sent. Try again shortly.')
           : null}
       </FieldError>
     </>
@@ -143,7 +143,7 @@ export function EmailCode({
       const { data, error } = await api.POST('/browser/sessions', {
         body: { codeId, code: digits },
       })
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
       retryKeyDone(`code:${email}`)
       return data
     },
@@ -202,7 +202,8 @@ export function EmailCode({
 
           <FieldError id={error} shown={handBack.isError}>
             {handBack.isError
-              ? (SAID[handBack.error.message] ?? 'That could not be checked. Try again shortly.')
+              ? (SAID[reasonOf(handBack.error) ?? ''] ??
+                'That could not be checked. Try again shortly.')
               : null}
           </FieldError>
 

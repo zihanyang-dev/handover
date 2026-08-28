@@ -60,7 +60,9 @@ function MakeSpace({
       const { data, error } = await api.POST('/spaces', {
         body: { displayName: space.trim(), requestKey: retryKey(`space:${space.trim()}`) },
       })
-      if (data === undefined) throw new Error(JSON.stringify(error))
+      // The refusal itself, not a sentence with it stringified inside. `409` carries a free
+      // address in `suggestion`, and that has to survive being thrown.
+      if (data === undefined) throw error
       retryKeyDone(`space:${space.trim()}`)
       return data
     },

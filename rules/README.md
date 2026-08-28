@@ -20,12 +20,13 @@ where it is long the file says what was found and how.
 | `endpoints`      | every endpoint a design document names is one this deployment really has                 |
 | `generated`      | what is committed under `generated/` came from this branch's migrations and nothing else |
 | `imports`        | every file lists what it needs in the same order, and each module once                   |
+| `pointers`       | a file a comment points at in backticks is a file that is here                           |
 | `reachable`      | every endpoint this deployment has is one something can actually reach                   |
 | `revoked`        | nobody who was removed is still being answered                                           |
 | `routes`         | every route is behind the door its address promises                                      |
 | `shapes`         | every thing the contract carries has a name, and that no two things share one            |
 | `sql`            | SQL written by hand appears only on a list somebody changed on purpose                   |
-| `style`          | a class a screen names is one a stylesheet has heard of                                  |
+| `style`          | a class a screen names is one the build has something for                                |
 
 ## Adding one
 

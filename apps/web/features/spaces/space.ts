@@ -31,7 +31,7 @@ export function spaceQuery(slug: string) {
         params: { path: { slug } },
       })
       if (response.status === 404) return null
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
 
       return data
     },

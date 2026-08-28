@@ -8,7 +8,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { ExclamationCircleFill } from 'react-bootstrap-icons'
-import { api, retryKey, retryKeyDone } from '../../api.ts'
+import { api, reasonOf, retryKey, retryKeyDone } from '../../api.ts'
 import { ME } from './me.ts'
 
 const SAID: Record<string, string> = {
@@ -23,11 +23,11 @@ const SAID: Record<string, string> = {
   'malformed-request': 'Check that address.',
 }
 
-function Said({ reason, fallback }: { readonly reason: string; readonly fallback: string }) {
+function Said({ thrown, fallback }: { readonly thrown: unknown; readonly fallback: string }) {
   return (
     <p className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
-      {SAID[reason] ?? fallback}
+      {SAID[reasonOf(thrown) ?? ''] ?? fallback}
     </p>
   )
 }
@@ -44,7 +44,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
       const { data, error } = await api.POST('/me/credentials/email-codes', {
         body: { email: to, requestKey: retryKey(`attach:${to}`) },
       })
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
       return { address: to, id: data.codeId, digits: data.digits }
     },
     onSuccess: onSent,
@@ -60,7 +60,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
       }}
     >
       {send.isError && (
-        <Said reason={send.error.message} fallback="That could not be sent. Try again shortly." />
+        <Said thrown={send.error} fallback="That could not be sent. Try again shortly." />
       )}
 
       <label className="label" htmlFor={field}>
@@ -100,7 +100,9 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       const { error, response } = await api.POST('/me/credentials', {
         body: { codeId: sent.id, code: digits },
       })
-      if (!response.ok) throw new Error(error?.reason ?? 'unavailable')
+      // Whatever it was. No reason to read means the server did not answer in the shape it
+      // promises, and `reasonOf` says nothing about that rather than inventing a word for it.
+      if (!response.ok) throw error
       retryKeyDone(`attach:${sent.address}`)
     },
     onSuccess: async () => {
@@ -121,7 +123,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       }}
     >
       {answer.isError && (
-        <Said reason={answer.error.message} fallback="That could not be checked. Try again." />
+        <Said thrown={answer.error} fallback="That could not be checked. Try again." />
       )}
 
       <label className="label" htmlFor={field}>

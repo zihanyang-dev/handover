@@ -1,7 +1,7 @@
 /**
  * The Handover mark.
  *
- * Shipped to us as `AnimatedLogo.tsx` and reworked, not copied:
+ * Shipped to us as an AnimatedLogo component and reworked, not copied:
  *
  * - the viewBox is trimmed to the character's real bounding box (245 168 633 639). The one it
  *   came with carried an empty stage and a detached pom, so a `size` prop never meant the size

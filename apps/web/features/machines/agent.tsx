@@ -1,12 +1,28 @@
 /**
- * Product marks that identify agents found on a connected machine.
+ * How an agent is shown to a person: what it is called, the colour it is written in, and its mark.
  *
- * They are labels, never controls. Claude and Cursor follow the vendor marks catalogued by
- * Simple Icons; OpenAI follows the compact 20px vendor glyph used by Notion's model selector.
- * The adjacent text remains the accessible name.
+ * One file, because they are one decision made three ways and they were made in three places. The
+ * list of agents belongs to the server; how each is presented belongs here, the same split as
+ * providers.
+ *
+ * Every lookup takes a plain string. A conversation names the agent it was opened with, which may
+ * be one this build has never heard of — that one is shown as itself rather than hidden.
  */
 
 import { Terminal } from 'react-bootstrap-icons'
+import type { components } from '../../generated/api.ts'
+
+/** The agents this deployment offers, as the contract lists them. */
+type AgentKind = components['schemas']['MachineAgent']['kind']
+
+const NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+} satisfies Record<AgentKind, string>
+
+export function agentName(kind: string): string {
+  return NAMES[kind] ?? kind
+}
 
 /**
  * The colour an agent is written in, which is its maker's.

@@ -25,7 +25,7 @@ function machineKey() {
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: async () => {
       const { data, error } = await api.POST('/me/machine-keys', {})
-      if (data === undefined) throw new Error(error.reason)
+      if (data === undefined) throw error
 
       return data
     },

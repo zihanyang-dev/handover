@@ -36,7 +36,7 @@
     "test": "vitest run --project '!agents'",
     "test:agents": "vitest run --project agents",
     "coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.reporter=text",
-    "check": "pnpm generate && git diff --exit-code apps/server/generated apps/web/generated apps/cli/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm unused && pnpm duplication && pnpm test",
+    "check": "pnpm generate && git diff --exit-code apps/server/generated apps/web/generated apps/cli/generated && pnpm typecheck && pnpm lint && pnpm format && pnpm unused && pnpm duplication && pnpm build && pnpm test",
     "test:e2e": "node --env-file=.env.e2e apps/server/scripts/migrate.ts && playwright test -c e2e --grep-invert 'as it looks today'",
     "unused": "knip",
     "duplication": "jscpd apps packages e2e",

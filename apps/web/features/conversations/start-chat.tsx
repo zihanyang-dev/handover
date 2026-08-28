@@ -9,7 +9,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { AgentMark, agentTint } from '../machines/agent-mark.tsx'
+import { AgentMark, agentTint } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { Composer, ComposerError, SendButton } from './composer.tsx'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
@@ -87,7 +87,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
         className="mt-5 mb-8 text-center text-3xl/9 font-semibold text-ink"
         id="agent-start-title"
       >
-        How can <span className={tintOf(agent.kind)}>{name}</span> help?
+        How can <span className={agentTint(agent.kind)}>{name}</span> help?
       </h1>
 
       <Composer
@@ -141,14 +141,6 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
  * The names are the server's own, from `conversation-api.ts`. Opening one is the last moment a
  * different machine can be chosen, so it is the only place `machine-not-here` is ever an answer.
  */
-/** The agent's name in its maker's colour, which is the one flash of colour on this screen. */
-function tintOf(kind: string): string {
-  if (kind === 'claude-code') return 'text-agent-claude'
-  if (kind === 'codex') return 'text-agent-codex'
-
-  return 'text-focus'
-}
-
 function whyNot(reason: string, name: string): string {
   if (reason === 'machine-not-here') return `${name} is offline.`
   if (reason === 'agent-not-on-machine') return `${name} is no longer available.`

@@ -17,8 +17,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import type { components } from '../../generated/api.ts'
-import { agentName } from '../agents.ts'
-import { AgentMark, agentTint } from '../machines/agent-mark.tsx'
+import { AgentMark, agentName, agentTint } from '../machines/agent.tsx'
 
 export type Model = components['schemas']['Model']
 type Asked = components['schemas']['OpenConversation']['asked']

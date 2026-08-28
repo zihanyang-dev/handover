@@ -54,3 +54,17 @@ export function retryKey(intention: string): string {
 export function retryKeyDone(intention: string): void {
   sessionStorage.removeItem(`${RETRY_KEYS}.${intention}`)
 }
+
+/**
+ * The reason in whatever a call threw, when there is one.
+ *
+ * A refusal is thrown as the server wrote it, so its reason is a value the contract names. What a
+ * dropped connection throws is not that shape at all — and a screen that read one as the other
+ * would tell somebody the server said no when in fact nobody answered.
+ */
+export function reasonOf(thrown: unknown): string | undefined {
+  if (typeof thrown !== 'object' || thrown === null) return undefined
+  if (!('reason' in thrown) || typeof thrown.reason !== 'string') return undefined
+
+  return thrown.reason
+}

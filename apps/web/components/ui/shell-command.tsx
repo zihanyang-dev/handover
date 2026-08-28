@@ -6,7 +6,7 @@
  * comes back "that key does not work".
  */
 
-import { Copy } from './copy.tsx'
+import { Copy } from '../../components/ui/copy.tsx'
 
 export function ShellCommand({ command }: { readonly command: string }) {
   return (
