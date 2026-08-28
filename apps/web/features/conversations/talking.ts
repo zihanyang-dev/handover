@@ -12,9 +12,12 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
+
+/** How often the browser says it is still typing, while somebody is. */
+const SAYS_SO_EVERY = 2000
 
 /** Often enough that a person watching the list sees it move, rarely enough to be free at rest. */
 const WHILE_WORKING_MS = 1000
@@ -125,6 +128,32 @@ export function useWatching(
   return moments
 }
 
+/**
+ * Says you are typing, at most once every {@link SAYS_SO_EVERY}.
+ *
+ * Throttled rather than debounced: what the other side needs is to keep hearing it while somebody
+ * is still going, and a debounce says nothing until they stop — which is the one moment it does
+ * not matter.
+ *
+ * Nothing is done with the answer, and a failure is swallowed on purpose: what this says is kept
+ * nowhere, so one that did not arrive is a name that does not appear — exactly what it would be
+ * if the person had paused. Left unhandled it is a rejected promise on every dropped connection,
+ * about nothing.
+ */
+export function useSayingYouAreTyping(slug: string, id: string): () => void {
+  const last = useRef(0)
+
+  return () => {
+    const now = Date.now()
+    if (now - last.current < SAYS_SO_EVERY) return
+    last.current = now
+
+    api
+      .POST('/spaces/{slug}/conversations/{id}/typing', { params: { path: { slug, id } } })
+      .catch(() => undefined)
+  }
+}
+
 export function conversationsIn(slug: string) {
   return cached.queryOptions(
     'get',
@@ -144,7 +173,7 @@ export function conversationsIn(slug: string) {
 }
 
 /** The slot one conversation's transcript is kept in, named by the read that fills it. */
-function transcriptOf(slug: string, id: string) {
+export function transcriptOf(slug: string, id: string) {
   return cached.queryOptions('get', '/spaces/{slug}/conversations/{id}', {
     params: { path: { slug, id } },
   }).queryKey

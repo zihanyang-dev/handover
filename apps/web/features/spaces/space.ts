@@ -39,16 +39,6 @@ export function spaceQuery(slug: string) {
   })
 }
 
-/** Who is in this Space. */
-export function peopleIn(slug: string) {
-  return cached.queryOptions(
-    'get',
-    '/spaces/{slug}/members',
-    { params: { path: { slug } } },
-    { select: (answer) => answer.members },
-  )
-}
-
 /**
  * Changing the face.
  *

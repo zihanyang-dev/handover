@@ -6,6 +6,7 @@
  * Written out per screen, "is this one here" had already been asked two different ways.
  */
 
+import { useQueryClient } from '@tanstack/react-query'
 import { cached } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
@@ -57,4 +58,49 @@ export function machinesIn(slug: string) {
       select: (answer) => answer.machines,
     },
   )
+}
+
+/**
+ * Disconnecting one of your own, which is also what stops its credential working.
+ *
+ * Yours, not a Space's: a machine belongs to whoever connected it. The path says `/me` for that
+ * reason, and no Space appears in it — but every Space it was reachable from has to read its
+ * machines again, and the one on screen is the one somebody is looking at.
+ */
+export function useDisconnectMachine(slug: string) {
+  const client = useQueryClient()
+
+  return cached.useMutation('delete', '/me/machines/{id}', {
+    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+  })
+}
+
+/**
+ * Naming an agent on one of your machines, or putting the name back.
+ *
+ * The name follows its owner rather than the Space it is being looked at from: the same laptop
+ * appears in every Space that person is in, and one called something different in each would be a
+ * different agent to each room. `null` is the only way to take a name off.
+ */
+export function useNameAgent(slug: string) {
+  const client = useQueryClient()
+
+  return cached.useMutation('patch', '/me/machines/{id}/agents/{kind}', {
+    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+  })
+}
+
+/**
+ * Handing a machine to somebody else here.
+ *
+ * An owner's, and the thing to do *before* taking its owner out: removing the person first would
+ * take the machine with them, which is Tailscale's lesson — deleting a user deletes their devices
+ * and everything running on them stops.
+ */
+export function useHandMachineTo(slug: string) {
+  const client = useQueryClient()
+
+  return cached.useMutation('patch', '/spaces/{slug}/machines/{id}', {
+    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+  })
 }

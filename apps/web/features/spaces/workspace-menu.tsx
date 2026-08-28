@@ -13,8 +13,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { components } from '../../generated/api.ts'
 import { meQuery } from '../identity/me.ts'
 import { useSignOut } from '../identity/sign-out.tsx'
+import { peopleIn } from './people.ts'
 import { CheckIcon, PlusIcon, SettingsIcon } from './sidebar-icons.tsx'
-import { peopleIn, useChangeSpaceEmoji } from './space.ts'
+import { useChangeSpaceEmoji } from './space.ts'
 
 type Space = components['schemas']['Space']
 
