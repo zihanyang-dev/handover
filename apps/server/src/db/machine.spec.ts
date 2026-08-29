@@ -253,7 +253,7 @@ describe('what a machine reports', () => {
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([
-      { kind: 'claude-code', name: null, version: '2.1.4', models: null },
+      { kind: 'claude-code', name: null, atOnce: 3, version: '2.1.4', models: null },
     ])
   })
 
@@ -295,7 +295,7 @@ describe('what a machine reports', () => {
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([
-      { kind: 'claude-code', name: null, version: '2.2.0', models: null },
+      { kind: 'claude-code', name: null, atOnce: 3, version: '2.2.0', models: null },
     ])
   })
 

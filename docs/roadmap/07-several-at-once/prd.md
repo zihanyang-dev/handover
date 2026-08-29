@@ -138,8 +138,7 @@ agent 交办的活,留在原来那台机器上,换 agent 可以,换机器不行�
 ⑦ 你可以让一段对话就在你自己的项目里干活 —— 开对话时选,后果你自己担
 ```
 
-上限能改(`PATCH /me/machines/{id}/agents/{kind}`),但没有屏幕去改它 ——
-和断开、转交、给 agent 改名、刷新一样,都在「我的机器」那块还不存在的屏幕上。
+上限在 Space Settings 的 Machines 里改(`PATCH /me/machines/{id}/agents/{kind}`),和断开、转交、给 agent 改名放在同一块。只有机器主人能改自己的 agent;Space owner 只在处理成员归属时转交机器。
 
 ---
 

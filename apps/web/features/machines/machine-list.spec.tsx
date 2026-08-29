@@ -47,6 +47,7 @@ const MINA_MBP: components['schemas']['Machine'] = {
     {
       kind: 'claude-code',
       name: 'Scout',
+      atOnce: 3,
       avatarUrl: `/avatars/agents/${MACHINE_ID}/claude-code`,
       version: '2.1.4',
       models: [],

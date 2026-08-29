@@ -6,6 +6,11 @@
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "module": "ESNext",
+    "paths": {
+      "@shadcn/react/message-scroller": [
+        "./node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
+      ]
+    },
     "noEmit": true,
     "rootDir": "."
   },

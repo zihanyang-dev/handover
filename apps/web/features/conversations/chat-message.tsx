@@ -33,7 +33,7 @@ export function ChatMessage({
       </header>
       <div className="chat-message-body">{children}</div>
       <div className="chat-message-actions">
-        {copyText !== undefined && <CopyMessage text={copyText} />}
+        {copyText !== undefined && copyText !== '' && <CopyMessage text={copyText} />}
       </div>
     </article>
   )

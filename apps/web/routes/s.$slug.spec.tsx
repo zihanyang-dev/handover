@@ -378,9 +378,37 @@ describe('entering a Space', () => {
     expect(within(screen.getByRole('log')).getByText('And summarize')).toBeTruthy()
   })
 
-  it('opens an empty Workspace Settings shell', async () => {
+  it('hands an agent-authored goal over and takes it back', async () => {
+    const id = '77777777-7777-4777-8777-777777777777'
+    const goal = 'Make the timeout configurable and keep the default at 30 seconds'
+    let underway = false
+    let takenBack = false
     server.use(
-      ...theSpace(),
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'Mina',
+            yours: true,
+            presence: { state: 'here' },
+            agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
+          },
+        ],
+        conversations: [
+          {
+            id,
+            agentKind: 'claude-code',
+            machineId: 'm-1',
+            machineName: 'mina-mbp',
+            startedAt: new Date().toISOString(),
+            opening: 'Make the timeout configurable',
+            startedBy: null,
+            pinned: false,
+            working: { state: 'idle' },
+          },
+        ],
+      }),
       http.get('*/spaces/acme/members', () =>
         HttpResponse.json({
           members: [
@@ -395,24 +423,179 @@ describe('entering a Space', () => {
           ],
         }),
       ),
+      http.get(`*/spaces/acme/conversations/${id}`, ({ request }) =>
+        HttpResponse.json({
+          id,
+          agentKind: 'claude-code',
+          machineName: 'mina-mbp',
+          working: { state: 'idle' },
+          offers: [],
+          messages: new URL(request.url).searchParams.has('after')
+            ? []
+            : [
+                {
+                  seq: 1,
+                  at: new Date().toISOString(),
+                  role: 'user',
+                  said: 'mina@example.com',
+                  content: { text: 'Can this timeout be configurable?' },
+                },
+                {
+                  seq: 2,
+                  at: new Date().toISOString(),
+                  role: 'assistant',
+                  content: { text: 'Yes. The default can stay unchanged.' },
+                },
+                {
+                  seq: 3,
+                  at: new Date().toISOString(),
+                  role: 'activity',
+                  content: { activityType: 'proposed', text: goal },
+                },
+              ],
+          ...(underway
+            ? {
+                underway: {
+                  goal,
+                  state: 'working',
+                  sleepUntil: null,
+                  presence: { state: 'here' },
+                  handedOff: [],
+                  outputs: [],
+                  under: null,
+                },
+              }
+            : {}),
+        }),
+      ),
+      http.post(`*/spaces/acme/conversations/${id}/task`, () => {
+        underway = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.delete(`*/spaces/acme/conversations/${id}/task`, () => {
+        takenBack = true
+        underway = false
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open(`/s/acme/c/${id}`)
+
+    const proposal = await screen.findByRole('article', { name: 'Proposed handover' })
+    expect(within(proposal).getByText(goal)).toBeDefined()
+    expect(screen.queryByText('mina@example.com')).toBeNull()
+    await userEvent.click(within(proposal).getByRole('button', { name: 'Hand over' }))
+
+    expect(await screen.findByRole('heading', { name: 'Piece of work' })).toBeDefined()
+    expect(screen.getAllByText(goal).length).toBeGreaterThan(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Take back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Take back work' }))
+    await waitFor(() => {
+      expect(takenBack).toBe(true)
+    })
+  })
+
+  it('opens Workspace Settings with People and Machines', async () => {
+    const rui = '22222222-2222-4222-8222-222222222222'
+    const changed: unknown[] = []
+    let disconnected = false
+    server.use(
+      http.get('*/spaces/acme/members', () =>
+        HttpResponse.json({
+          members: [
+            {
+              userId: '11111111-1111-4111-8111-111111111111',
+              displayName: 'Mina',
+              avatarUrl: '/avatars/users/11111111-1111-4111-8111-111111111111',
+              role: 'owner',
+              since: new Date().toISOString(),
+              you: true,
+            },
+            {
+              userId: rui,
+              displayName: 'Rui',
+              avatarUrl: `/avatars/users/${rui}`,
+              role: 'member',
+              since: new Date().toISOString(),
+              you: false,
+            },
+          ],
+        }),
+      ),
+      http.get('*/spaces/acme/invitations', () => HttpResponse.json({ invitations: [] })),
+      http.patch(`*/spaces/acme/members/${rui}`, async ({ request }) => {
+        changed.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.patch('*/me/machines/m-1/agents/claude-code', async ({ request }) => {
+        changed.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.delete('*/me/machines/m-1', () => {
+        disconnected = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('*/spaces/acme/invitations', () =>
+        HttpResponse.json(
+          {
+            id: 'invite-1',
+            link: 'http://localhost:5173/join/hi_secret',
+            expiresAt: '2026-09-01T09:00:00.000Z',
+          },
+          { status: 201 },
+        ),
+      ),
+      ...theSpace({
+        machines: [
+          {
+            id: 'm-1',
+            name: 'mina-mbp',
+            ownerName: 'Mina',
+            yours: true,
+            connectedIn: '/Users/mina/code/thing',
+            presence: { state: 'here' },
+            agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
+          },
+        ],
+      }),
     )
     const router = open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     const trigger = within(sidebar).getByRole('button', { name: /Acme/i })
     await userEvent.click(trigger)
-
     const menu = await screen.findByRole('dialog', { name: /Acme menu/i })
-    expect(within(menu).getByRole('button', { name: /change space emoji/i })).toBeDefined()
-    expect(within(menu).queryByRole('button', { name: /invite members/i })).toBeNull()
+    expect(within(menu).getByRole('link', { name: 'Account settings' })).toBeDefined()
     await userEvent.click(within(menu).getByRole('button', { name: 'Settings' }))
 
     const settings = await screen.findByRole('dialog', { name: 'Acme settings' })
-    const [settingsSidebar, settingsContent] = [...(settings.firstElementChild?.children ?? [])]
     expect(screen.queryByRole('dialog', { name: /Acme menu/i })).toBeNull()
-    expect(settingsSidebar?.textContent).toBe('')
-    expect(settingsContent?.textContent).toBe('')
-    expect(within(settings).queryByRole('heading')).toBeNull()
+    expect(within(settings).getByRole('heading', { name: 'People' })).toBeDefined()
+    expect(within(settings).getByText('Mina')).toBeDefined()
+    await userEvent.selectOptions(
+      within(settings).getByRole('combobox', { name: 'Rui role' }),
+      'owner',
+    )
+    await waitFor(() => {
+      expect(changed).toContainEqual({ role: 'owner' })
+    })
+    await userEvent.click(within(settings).getByRole('button', { name: 'Create invite link' }))
+    expect(await within(settings).findByDisplayValue(/\/join\/hi_secret/u)).toBeDefined()
+
+    await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
+    expect(within(settings).getByRole('heading', { name: 'Machines' })).toBeDefined()
+    expect(within(settings).getByText('mina-mbp')).toBeDefined()
+    expect(within(settings).getByText('/Users/mina/code/thing')).toBeDefined()
+    await userEvent.clear(within(settings).getByRole('spinbutton', { name: 'At once' }))
+    await userEvent.type(within(settings).getByRole('spinbutton', { name: 'At once' }), '4')
+    await userEvent.click(within(settings).getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(changed).toContainEqual({ name: 'Scout', atOnce: 4 })
+    })
+    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect' }))
+    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect machine' }))
+    await waitFor(() => {
+      expect(disconnected).toBe(true)
+    })
     expect(router.state.location.pathname).toBe('/s/acme')
 
     await userEvent.keyboard('{Escape}')

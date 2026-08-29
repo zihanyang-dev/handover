@@ -9,7 +9,7 @@
  * inside it.
  */
 
-import { Link, useMatches } from '@tanstack/react-router'
+import { Link, useMatches, useNavigate } from '@tanstack/react-router'
 import {
   useCallback,
   useEffect,
@@ -109,6 +109,7 @@ function WorkspaceHeader({
   readonly closeButton: RefObject<HTMLButtonElement | null>
 }) {
   const { isOpen, setIsOpen, root, trigger } = useWorkspaceMenu()
+  const navigate = useNavigate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const closeSettings = useCallback(() => {
     setSettingsOpen(false)
@@ -164,7 +165,14 @@ function WorkspaceHeader({
         />
       )}
       {settingsOpen && (
-        <WorkspaceSettings label={`${space.displayName} settings`} close={closeSettings} />
+        <WorkspaceSettings
+          space={space}
+          close={closeSettings}
+          afterLeaving={() => {
+            setSettingsOpen(false)
+            void navigate({ to: '/' })
+          }}
+        />
       )}
     </div>
   )

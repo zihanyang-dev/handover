@@ -8,10 +8,8 @@
  * What this is for is the half no unit test reaches: that the screens, the API and the machine
  * protocol agree about the same conversation at the same time.
  *
- * What it no longer walks is what the rebuilt app no longer shows. Handing a conversation over,
- * the rail that a piece of work lives in, inviting somebody, and managing who is in a Space all
- * have working server sides and no screen — `rules/reachable.spec.ts` keeps that list, and the
- * behaviour itself is proven in `apps/server/src/db` and `apps/server/src/server`.
+ * Administration and handing work over are walked here as browser actions too: no endpoint counts
+ * as delivered merely because a tested hook contains its path.
  */
 
 import { expect, test } from '@playwright/test'
@@ -83,6 +81,76 @@ test('a machine that goes away stops the page saying its agent is ready', async 
   })
 })
 
+test('a machine owner changes agent settings and disconnects it', async ({ page, context }) => {
+  await signsIn(page, 'machine-owner')
+  await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'settings-mbp')
+  await machine.poll()
+
+  await openWorkspaceSettings(page)
+  await page.getByRole('tab', { name: 'Machines' }).click()
+  await expect(page.getByRole('heading', { name: 'Machines' })).toBeVisible()
+  await expect(page.getByText('settings-mbp')).toBeVisible({ timeout: 15_000 })
+  await page.getByLabel('Name').fill('Runner')
+  await page.getByLabel('At once').fill('4')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+
+  await openWorkspaceSettings(page)
+  await page.getByRole('tab', { name: 'Machines' }).click()
+  await expect(page.getByLabel('Name')).toHaveValue('Runner')
+  await expect(page.getByLabel('At once')).toHaveValue('4')
+  await page.getByRole('button', { name: 'Disconnect' }).click()
+  await page.getByRole('button', { name: 'Disconnect machine' }).click()
+  await expect(page.getByText('No machines here')).toBeVisible({ timeout: 15_000 })
+})
+
+test('hand work over, find its question in Inbox, and take it back', async ({ page, context }) => {
+  await signsIn(page, 'handover-owner')
+  await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'handover-mbp')
+  await machine.poll()
+  await picks(page, 'handover-mbp')
+
+  await page.getByLabel(/^Message /u).fill('make the timeout configurable')
+  await page.getByRole('button', { name: 'Send' }).click()
+  const first = await waitsForATurn(machine)
+  const goal = 'Make the timeout configurable and keep the default at 30 seconds'
+  await machine.says(first, {
+    role: 'activity',
+    content: { activityType: 'proposed', text: goal },
+  })
+  await machine.ends(first)
+
+  const proposal = page.getByRole('article', { name: 'Proposed handover' })
+  await expect(proposal).toContainText(goal, { timeout: 15_000 })
+  await proposal.getByRole('button', { name: 'Hand over' }).click()
+  await expect(page.getByRole('heading', { name: 'Piece of work' })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  const autonomous = await waitsForATurn(machine)
+  await machine.stops(autonomous, {
+    state: 'wait',
+    question: 'Should the setting be milliseconds or seconds?',
+  })
+  await machine.ends(autonomous)
+
+  await page.getByRole('link', { name: 'Inbox' }).click()
+  await expect(page).toHaveURL(/\/inbox$/u)
+  await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible({ timeout: 15_000 })
+  const waiting = page.getByRole('link').filter({ hasText: goal })
+  await expect(waiting).toContainText('Should the setting be milliseconds or seconds?')
+  await waiting.click()
+
+  await expect(page.getByRole('heading', { name: 'Piece of work' })).toBeVisible()
+  await page.getByRole('button', { name: 'Take back' }).click()
+  await page.getByRole('button', { name: 'Take back work' }).click()
+  await expect(page.getByRole('heading', { name: 'Piece of work' })).not.toBeVisible({
+    timeout: 15_000,
+  })
+})
+
 test('a resized sidebar still closes at 320 CSS pixels', async ({ page }) => {
   await signsIn(page, 'narrow')
   await makesASpace(page)
@@ -138,10 +206,19 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
   }
 })
 
+async function openWorkspaceSettings(page: import('@playwright/test').Page): Promise<void> {
+  await page.getByRole('button', { name: /Open .* menu/u }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByRole('heading', { name: 'People' })).toBeVisible()
+}
+
 /** Chooses the agent on that machine, which is what opens a composer to say the first thing to. */
 async function picks(page: import('@playwright/test').Page, machineName: string): Promise<void> {
   await page.getByRole('button', { name: 'Chat' }).click()
-  const agent = page.getByRole('link', { name: new RegExp(`on ${machineName}, ready`, 'iu') })
+  const agent = page.getByRole('link', {
+    name: `Unnamed agent, Claude Code on ${machineName}, ready`,
+    exact: true,
+  })
   await expect(agent).toBeVisible({ timeout: 15_000 })
   await agent.click()
   await expect(page).toHaveURL(/\/a\//u)

@@ -221,8 +221,8 @@ under              agent 把它当子任务开出来的,住在那件活的文件
 ## 接口
 
 ```
-PATCH /me/machines/{id}/agents/{kind}    今天只收 name,变成 name 和 at_once 都可选的 patch
-GET   /spaces/{slug}/machines             机器多一个字段:connectedIn
+PATCH /me/machines/{id}/agents/{kind}    今天只收 name,变成 name 和 atOnce 都可选的 patch
+GET   /spaces/{slug}/machines             机器多 connectedIn;每个 agent 多当前 atOnce
 POST  /spaces/{slug}/conversations        可选:worksIn —— 指到一个已有目录
 POST  /machines/current/poll              报告里多一个可选的 connectedIn
                                           asking 多一个 where:三选一,不是两个可空路径

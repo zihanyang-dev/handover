@@ -251,6 +251,8 @@ const Agent = named('MachineAgent', {
   kind: z.enum(AGENT_KIND_NAMES),
   /** What its owner calls it. Null means nobody has, and its kind's own name is what shows. */
   name: z.string().nullable(),
+  /** The current limit this owner chose, or the server's default when they never chose one. */
+  atOnce: z.number().int().min(1).max(AT_ONCE_AT_MOST),
   avatarUrl: z.string(),
   version: z.string(),
   /** Empty when this agent does not let you choose, and when nobody has asked it yet. */
@@ -428,7 +430,8 @@ async function whatIsOwed(db: Database, machineId: string) {
   const taken = await takeOne(db, machineId)
   if (stopping.length === 0 && taken === undefined) return undefined
 
-  return { stopping, ...(taken === undefined ? {} : { asking: asAsking(taken) }) }
+  if (taken === undefined) return { stopping }
+  return { stopping, asking: asAsking(taken) }
 }
 
 /** The one thing a machine ever does unprompted, and so the only way anything reaches it. */
@@ -443,7 +446,7 @@ function polling(deps: MachineApi) {
 
     run: async (c) => {
       const machineId = c.get('machineId')
-      const reported = c.req.valid('json')
+      const reported: z.infer<typeof Report> = c.req.valid('json')
       // Removed between the credential being read and this transaction opening: nothing to check
       // in, nothing to take, and the same answer a stranger gets. Waiting for the next request to
       // notice would be one more report, one more turn taken, from a machine somebody took out.
@@ -488,8 +491,8 @@ function listing({ db }: MachineApi) {
       const machines = seen.machines.map((machine) => ({
         id: machine.id,
         name: machine.name,
-        ...(machine.version === undefined ? {} : { version: machine.version }),
-        ...(machine.connectedIn === null ? {} : { connectedIn: machine.connectedIn }),
+        version: machine.version,
+        connectedIn: machine.connectedIn ?? undefined,
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
@@ -578,6 +581,7 @@ function asOffered(machineId: string, agent: Installed): z.infer<typeof Agent> {
   return {
     kind: agent.kind,
     name: agent.name,
+    atOnce: agent.atOnce,
     // The machine is part of the face: two Codexes in one Space are two agents, and one drawing
     // shared between them would make the page unable to say which of them said something.
     avatarUrl: avatarPath({ kind: 'agent', machineId, agentKind: agent.kind }),

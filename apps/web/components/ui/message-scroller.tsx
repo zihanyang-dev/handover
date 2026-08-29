@@ -1,5 +1,5 @@
 // Adapted from Kanna's message scroller wrapper.
-// Copyright (c) 2025 Jake Mor. Used under the source terms reproduced in THIRD_PARTY_NOTICES.md.
+// The original copyright and source terms are retained in styles/chat.css.
 
 import {
   MessageScroller as MessageScrollerPrimitive,

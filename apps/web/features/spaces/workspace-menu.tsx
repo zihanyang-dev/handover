@@ -115,6 +115,14 @@ export function WorkspaceMenu({
       <div className="workspace-menu-account">
         <p>{accountName(me.data)}</p>
         <ul>
+          {/* Account facts stay on their own address; putting them in Workspace Settings would
+              make a person's credentials look like they belong to this Space. */}
+          <li>
+            <Link to="/settings" onClick={close}>
+              <SettingsIcon />
+              <span>Account settings</span>
+            </Link>
+          </li>
           {(me.data?.spaces ?? []).map((one) => (
             <li key={one.id}>
               <Link to="/s/$slug" params={{ slug: one.slug }} onClick={close}>
