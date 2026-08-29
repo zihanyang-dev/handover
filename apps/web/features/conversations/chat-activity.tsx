@@ -1,5 +1,5 @@
 // The processing row is adapted from Kanna's ProcessingMessage.
-// Copyright (c) 2025 Jake Mor. Used under the source terms reproduced in THIRD_PARTY_NOTICES.md.
+// The original copyright and source terms are retained in styles/chat.css.
 
 import { useLayoutEffect, useRef } from 'react'
 import { ArrowRepeat } from 'react-bootstrap-icons'

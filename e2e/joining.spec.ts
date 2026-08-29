@@ -1,57 +1,125 @@
 /**
- * A second person arriving by a link, walked in two browsers.
+ * A second person arriving by a link, and the owner managing that relationship through the shipped UI.
  *
- * Two real contexts rather than one page with two sessions: what is under test is that the second
- * person sees a Space they were never given anything for except a link, and a single browser
- * carrying both cookies could pass that without it being true.
- *
- * The link is made through the database rather than pressed for, because the screen that made
- * one is not in the rebuilt app. Everything after that is the shipped thing — the link screen,
- * joining, and being inside. What the rest of `prd.md` 05 promises — inviting, stopping a link,
- * changing a role, taking somebody out and their machine with them — has a working server side
- * with nowhere to press it, so it is proven in `apps/server/src/db/joining.spec.ts` and
- * `apps/server/src/server/joining-a-space.spec.ts` instead, and named in
- * `rules/reachable.spec.ts`.
+ * Two real contexts rather than one page with two sessions: the second person has nothing except
+ * the one-time link, and removal must revoke the second browser rather than merely update a row in
+ * the first browser.
  */
 
 import { expect, test } from '@playwright/test'
-import { inviteInto } from '../apps/server/src/db/invitation.ts'
-import { connects, makesASpace, signsIn } from './someone.ts'
+import { aMachine, waitsForATurn } from './a-machine.ts'
+import { makesASpace, signsIn } from './someone.ts'
 
-const db = connects()
-
-test.afterAll(async () => {
-  await db.destroy()
-})
-
-test('somebody who was sent a link ends up inside the same Space', async ({ browser }) => {
+test('an owner invites, promotes, removes, and revokes through Workspace Settings', async ({
+  browser,
+}) => {
   const kaiBrowser = await browser.newContext()
   const kai = await kaiBrowser.newPage()
-  await signsIn(kai, 'kai')
+  const kaiAddress = await signsIn(kai, 'kai')
   const slug = await makesASpace(kai)
 
-  const space = await db
-    .selectFrom('spaces')
-    .select('id')
-    .where('slug', '=', slug)
-    .executeTakeFirstOrThrow()
-  const owner = await db
-    .selectFrom('memberships')
-    .select('user_id as userId')
-    .where('space_id', '=', space.id)
-    .executeTakeFirstOrThrow()
-  const invitation = await inviteInto(db, { spaceId: space.id, by: owner.userId })
-
-  // A second person, in their own browser, follows it. Signed in first: a link that answered to
-  // nobody would tell whoever guessed an address whether a Space exists. `prd.md` 01 ⑥.
+  const firstLink = await makeInviteLink(kai)
   const minaBrowser = await browser.newContext()
   const mina = await minaBrowser.newPage()
-  await signsIn(mina, 'mina')
-  await mina.goto(`/join/${invitation.secret}`)
+  const minaAddress = await signsIn(mina, 'mina')
+  await mina.goto(firstLink)
 
   await expect(mina.getByRole('heading', { name: /asked you to join/u })).toBeVisible({
     timeout: 15_000,
   })
-  await mina.getByRole('button', { name: /^Join / }).click()
-  await mina.waitForURL(new RegExp(`/s/${slug}`, 'u'), { timeout: 20_000 })
+  await mina.getByRole('button', { name: /^Join /u }).click()
+  await mina.waitForURL((url) => url.pathname === `/s/${slug}`, { timeout: 20_000 })
+
+  const machine = await aMachine(await sessionOf(minaBrowser), 'mina-mbp')
+  await machine.poll()
+  await picks(mina, 'mina-mbp')
+  await mina.getByLabel(/^Message /u).fill('keep the release moving')
+  await mina.getByRole('button', { name: 'Send' }).click()
+  const turn = await waitsForATurn(machine)
+  const goal = 'Keep the release moving and report any blocker'
+  await machine.says(turn, {
+    role: 'activity',
+    content: { activityType: 'proposed', text: goal },
+  })
+  await machine.ends(turn)
+  await mina
+    .getByRole('article', { name: 'Proposed handover' })
+    .getByRole('button', { name: 'Hand over' })
+    .click()
+  await expect(mina.getByRole('heading', { name: 'Piece of work' })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  await openSettings(kai)
+  const role = kai.getByRole('combobox', { name: `${minaAddress} role` })
+  await expect(role).toBeVisible({ timeout: 15_000 })
+  await role.selectOption('owner')
+  await expect(role).toHaveValue('owner')
+  await role.selectOption('member')
+  await expect(role).toHaveValue('member')
+
+  const secondLink = await createInviteLinkInsideSettings(kai)
+  await kai.getByRole('button', { name: 'Stop link' }).first().click()
+  await kai.getByRole('button', { name: `Remove ${minaAddress}` }).click()
+  await expect(kai.getByRole('heading', { name: `Remove ${minaAddress}` })).toBeVisible()
+  await expect(kai.getByText(goal)).toBeVisible()
+  await expect(kai.getByText('mina-mbp', { exact: true })).toBeVisible()
+  await expect(kai.getByRole('combobox', { name: 'New owner' }).first()).toContainText(kaiAddress)
+
+  await kai.getByRole('button', { name: 'Transfer' }).first().click()
+  await expect(kai.getByText(goal)).not.toBeVisible({ timeout: 15_000 })
+  await kai.getByRole('button', { name: 'Transfer' }).click()
+  await expect(kai.getByText('Nothing is still theirs here.')).toBeVisible({ timeout: 15_000 })
+  await kai.getByRole('button', { name: 'Remove member' }).click()
+
+  await mina.reload()
+  await expect(mina.getByText(/this space is not available/i)).toBeVisible({ timeout: 15_000 })
+
+  const ruiBrowser = await browser.newContext()
+  const rui = await ruiBrowser.newPage()
+  await signsIn(rui, 'rui')
+  await rui.goto(secondLink)
+  await expect(rui.getByRole('heading', { name: 'This link no longer works' })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  await Promise.all([kaiBrowser.close(), minaBrowser.close(), ruiBrowser.close()])
 })
+
+async function picks(page: import('@playwright/test').Page, machineName: string): Promise<void> {
+  await page.getByRole('button', { name: 'Chat' }).click()
+  const agent = page.getByRole('link', {
+    name: `Unnamed agent, Claude Code on ${machineName}, ready`,
+    exact: true,
+  })
+  await expect(agent).toBeVisible({ timeout: 15_000 })
+  await agent.click()
+}
+
+async function sessionOf(context: import('@playwright/test').BrowserContext): Promise<string> {
+  const session = (await context.cookies()).find((cookie) => cookie.name === 'handover_session')
+  if (session === undefined) throw new Error('this browser is not signed in')
+  return session.value
+}
+
+async function makeInviteLink(page: import('@playwright/test').Page): Promise<string> {
+  await openSettings(page)
+  const link = await createInviteLinkInsideSettings(page)
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  return link
+}
+
+async function openSettings(page: import('@playwright/test').Page): Promise<void> {
+  await page.getByRole('button', { name: /Open .* menu/u }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByRole('heading', { name: 'People' })).toBeVisible()
+}
+
+async function createInviteLinkInsideSettings(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  await page.getByRole('button', { name: 'Create invite link' }).click()
+  const link = page.getByLabel('New invite link')
+  await expect(link).toBeVisible()
+  return link.inputValue()
+}

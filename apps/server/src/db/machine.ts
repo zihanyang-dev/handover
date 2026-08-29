@@ -26,6 +26,7 @@ import type { Database, Tx } from './connection.ts'
 export type Installed = {
   readonly kind: AgentKind
   readonly name: string | null
+  readonly atOnce: number
   readonly version: string
   readonly models: unknown
 }
@@ -321,19 +322,30 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       ownerUserId: row.ownerUserId,
       connectedIn: row.connectedIn,
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
-      agents: found
-        .filter((agent) => agent.machineId === row.id)
-        .map((agent) => ({
-          kind: agent.kind,
-          name: agent.name,
-          version: agent.version,
-          models: agent.models,
-        })),
+      agents: installationsOn(row.id, found),
     })),
   }
 }
 
 type NamedInstallation = Installed & { readonly machineId: string }
+
+function installationsOn(
+  machineId: string,
+  found: readonly NamedInstallation[],
+): readonly Installed[] {
+  return found.flatMap((agent) => {
+    if (agent.machineId !== machineId) return []
+    return [
+      {
+        kind: agent.kind,
+        name: agent.name,
+        atOnce: agent.atOnce,
+        version: agent.version,
+        models: agent.models,
+      },
+    ]
+  })
+}
 
 async function installedOn(
   tx: Tx,
@@ -351,6 +363,7 @@ async function installedOn(
         'agents.machine_id as machineId',
         'agents.kind',
         'agent_settings.name',
+        atOnceFor(sql.ref('agents.machine_id'), sql.ref('agents.kind')).as('atOnce'),
         'agents.version',
         'agents.models',
       ])
@@ -408,10 +421,9 @@ export async function setAgentSettings(
 
     // Written rather than deleted when a name comes off: the row may be carrying how many at a
     // time as well, and taking a name off is not a decision to forget that one too.
-    const decided = {
-      ...(deciding.name === undefined ? {} : { name: deciding.name }),
-      ...(deciding.atOnce === undefined ? {} : { at_once: deciding.atOnce }),
-    }
+    const decided: { name?: string | null; at_once?: number } = {}
+    if (deciding.name !== undefined) decided.name = deciding.name
+    if (deciding.atOnce !== undefined) decided.at_once = deciding.atOnce
 
     await tx
       .insertInto('agent_settings')

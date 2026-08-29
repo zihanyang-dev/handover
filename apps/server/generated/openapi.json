@@ -1204,6 +1204,11 @@
             "type": "string",
             "nullable": true
           },
+          "atOnce": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
           "avatarUrl": {
             "type": "string"
           },
@@ -1221,6 +1226,7 @@
         "required": [
           "kind",
           "name",
+          "atOnce",
           "avatarUrl",
           "version",
           "models"

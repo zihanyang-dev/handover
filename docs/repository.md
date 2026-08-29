@@ -6,7 +6,6 @@
 
 ```
 Dockerfile          服务器 + 它托管的那些页面,一个镜像
-THIRD_PARTY_NOTICES.md  改编代码的原始授权文本;评审许可证时只信这里的逐字文本
 apps/server/        API
   src/<owner>/      一个事实 owner 一个目录,一个文件一条行为
                     住在这里的是 db/ 和 server/ 都要用、而谁都不该拥有的那些

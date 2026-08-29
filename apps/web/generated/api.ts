@@ -3638,6 +3638,7 @@ export interface components {
             /** @enum {string} */
             kind: "claude-code" | "codex";
             name: string | null;
+            atOnce: number;
             avatarUrl: string;
             version: string;
             models: components["schemas"]["Model"][];

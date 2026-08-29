@@ -50,6 +50,7 @@ function completeMachine(machine: PretendMachine): Machine {
     ...machine,
     agents: machine.agents.map((agent) => ({
       name: null,
+      atOnce: 3,
       avatarUrl: `/avatars/agents/${machine.id}/${agent.kind}?v=pixel-art-v1`,
       ...agent,
     })),
