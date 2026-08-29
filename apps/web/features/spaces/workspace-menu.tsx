@@ -49,9 +49,11 @@ function EmojiChooser({ slug, close }: { readonly slug: string; readonly close: 
 export function WorkspaceMenu({
   space,
   close,
+  openSettings,
 }: {
   readonly space: Space
   readonly close: () => void
+  readonly openSettings: () => void
 }) {
   const me = useQuery(meQuery)
   const people = useQuery(peopleIn(space.slug))
@@ -66,7 +68,11 @@ export function WorkspaceMenu({
   }, [])
 
   return (
-    <div className="workspace-menu" role="dialog" aria-label={`${space.displayName} menu`}>
+    <div
+      className="workspace-menu w-[calc(100%-1rem)] max-w-[300px]"
+      role="dialog"
+      aria-label={`${space.displayName} menu`}
+    >
       <div className="workspace-menu-space">
         <button
           ref={emojiControl}
@@ -99,9 +105,7 @@ export function WorkspaceMenu({
 
       <div className="workspace-menu-divider" />
       <div className="workspace-menu-actions">
-        {/* Deliberately only the button in this slice. Disabled is more honest than sending
-            somebody to account settings and calling it Workspace settings. */}
-        <button type="button" disabled>
+        <button type="button" onClick={openSettings}>
           <SettingsIcon />
           <span>Settings</span>
         </button>

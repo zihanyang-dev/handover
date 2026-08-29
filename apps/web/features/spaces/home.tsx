@@ -24,6 +24,7 @@ import { ChatSidebar, PinnedChats } from '../conversations/chat-sidebar.tsx'
 import type { Me } from '../identity/me.ts'
 import { ChatIcon, CollapseIcon, HomeIcon, InboxIcon, MenuIcon } from './sidebar-icons.tsx'
 import { WorkspaceMenu } from './workspace-menu.tsx'
+import { WorkspaceSettings } from './workspace-settings.tsx'
 
 type Space = Me['spaces'][number]
 type SidebarView = 'home' | 'chat' | 'inbox'
@@ -108,6 +109,13 @@ function WorkspaceHeader({
   readonly closeButton: RefObject<HTMLButtonElement | null>
 }) {
   const { isOpen, setIsOpen, root, trigger } = useWorkspaceMenu()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false)
+    setTimeout(() => {
+      trigger.current?.focus()
+    })
+  }, [trigger])
 
   return (
     <div ref={root} className="home-workspace-root">
@@ -149,7 +157,14 @@ function WorkspaceHeader({
           close={() => {
             setIsOpen(false)
           }}
+          openSettings={() => {
+            setIsOpen(false)
+            setSettingsOpen(true)
+          }}
         />
+      )}
+      {settingsOpen && (
+        <WorkspaceSettings label={`${space.displayName} settings`} close={closeSettings} />
       )}
     </div>
   )

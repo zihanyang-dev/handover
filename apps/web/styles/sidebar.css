@@ -257,13 +257,11 @@
   white-space: nowrap;
 }
 
-/* Notion's popover is 300px even though the sidebar is 270px; it deliberately crosses the edge. */
 .workspace-menu {
   position: absolute;
   z-index: 40;
   top: 2.625rem;
   left: 0.5rem;
-  width: 18.75rem;
   padding: 0.5rem;
   border-radius: 0.625rem;
   background: var(--base);

@@ -101,9 +101,8 @@ describe('entering a Space', () => {
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(within(sidebar).getByRole('button', { name: 'Pin' })).toBeDefined()
-    expect(
-      await within(sidebar).findByRole('link', { name: /Mina · keep the release moving/i }),
-    ).toBeDefined()
+    expect(await within(sidebar).findByText('keep the release moving')).toBeDefined()
+    expect(within(sidebar).queryByText(/^Mina ·/)).toBeNull()
   })
 
   it('selects an agent without creating a conversation', async () => {
@@ -162,7 +161,8 @@ describe('entering a Space', () => {
     expect(await screen.findByRole('heading', { name: 'How can Scout help?' })).toBeDefined()
     expect(within(sidebar).queryByRole('button', { name: /new agent/i })).toBeNull()
     expect(within(sidebar).getByRole('heading', { name: 'Today' })).toBeDefined()
-    expect(within(sidebar).getByRole('link', { name: /Mina · ship the sidebar/i })).toBeDefined()
+    expect(within(sidebar).getByText('ship the sidebar')).toBeDefined()
+    expect(within(sidebar).queryByText(/^Mina ·/)).toBeNull()
     expect(within(sidebar).queryByRole('button', { name: /new chat/i })).toBeNull()
   })
 
@@ -378,7 +378,7 @@ describe('entering a Space', () => {
     expect(within(screen.getByRole('log')).getByText('And summarize')).toBeTruthy()
   })
 
-  it('keeps Workspace actions to Settings', async () => {
+  it('opens an empty Workspace Settings shell', async () => {
     server.use(
       ...theSpace(),
       http.get('*/spaces/acme/members', () =>
@@ -399,13 +399,42 @@ describe('entering a Space', () => {
     const router = open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    await userEvent.click(within(sidebar).getByRole('button', { name: /Acme/i }))
+    const trigger = within(sidebar).getByRole('button', { name: /Acme/i })
+    await userEvent.click(trigger)
 
     const menu = await screen.findByRole('dialog', { name: /Acme menu/i })
     expect(within(menu).getByRole('button', { name: /change space emoji/i })).toBeDefined()
-    expect(within(menu).getByRole('button', { name: 'Settings' })).toBeDefined()
     expect(within(menu).queryByRole('button', { name: /invite members/i })).toBeNull()
+    await userEvent.click(within(menu).getByRole('button', { name: 'Settings' }))
+
+    const settings = await screen.findByRole('dialog', { name: 'Acme settings' })
+    const [settingsSidebar, settingsContent] = [...(settings.firstElementChild?.children ?? [])]
+    expect(screen.queryByRole('dialog', { name: /Acme menu/i })).toBeNull()
+    expect(settingsSidebar?.textContent).toBe('')
+    expect(settingsContent?.textContent).toBe('')
+    expect(within(settings).queryByRole('heading')).toBeNull()
     expect(router.state.location.pathname).toBe('/s/acme')
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Acme settings' })).toBeNull()
+      expect(document.activeElement).toBe(trigger)
+    })
+
+    await userEvent.click(trigger)
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: /Acme menu/i })).getByRole('button', {
+        name: 'Settings',
+      }),
+    )
+    const reopened = await screen.findByRole('dialog', { name: 'Acme settings' })
+    const underlay = reopened.parentElement?.firstElementChild
+    expect(underlay).not.toBeNull()
+    await userEvent.click(underlay as HTMLElement)
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Acme settings' })).toBeNull()
+      expect(document.activeElement).toBe(trigger)
+    })
   })
 
   it('collapses, reopens, and resizes from the keyboard', async () => {
