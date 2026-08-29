@@ -132,9 +132,7 @@ function ConversationRow({
         params={{ slug, id: conversation.id }}
       >
         <ChatIcon />
-        <span className="chat-history-title">
-          {conversation.startedBy ?? 'Unknown person'} · {titleOf(conversation)}
-        </span>
+        <span className="chat-history-title">{titleOf(conversation)}</span>
         {showAge && <time dateTime={conversation.startedAt}>{ageOf(conversation.startedAt)}</time>}
       </Link>
       <button
