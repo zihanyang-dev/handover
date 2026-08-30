@@ -26,6 +26,7 @@ import {
   AGENT_KIND_NAMES,
   type AgentKind,
 } from '../machine/agent-kind.ts'
+import { fallbackAgentName } from '../machine/agent-name.ts'
 import { AT_ONCE_AT_MOST } from '../machine/at-once.ts'
 import type { Waiting } from '../machine/waiting.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
@@ -580,7 +581,7 @@ function asOffered(machineId: string, agent: Installed): z.infer<typeof Agent> {
 
   return {
     kind: agent.kind,
-    name: agent.name,
+    name: agent.name ?? fallbackAgentName(machineId, agent.kind),
     atOnce: agent.atOnce,
     // The machine is part of the face: two Codexes in one Space are two agents, and one drawing
     // shared between them would make the page unable to say which of them said something.

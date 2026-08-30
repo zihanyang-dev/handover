@@ -9,7 +9,7 @@
  * inside it.
  */
 
-import { Link, useMatches, useNavigate } from '@tanstack/react-router'
+import { useMatches, useNavigate } from '@tanstack/react-router'
 import {
   useCallback,
   useEffect,
@@ -21,6 +21,7 @@ import {
   type RefObject,
 } from 'react'
 import { ChatSidebar, PinnedChats } from '../conversations/chat-sidebar.tsx'
+import { Inbox } from '../conversations/inbox.tsx'
 import type { Me } from '../identity/me.ts'
 import { ChatIcon, CollapseIcon, HomeIcon, InboxIcon, MenuIcon } from './sidebar-icons.tsx'
 import { WorkspaceMenu } from './workspace-menu.tsx'
@@ -212,16 +213,14 @@ function SidebarViewButton({
 }
 
 function SidebarViews({
-  slug,
   active,
   select,
 }: {
-  readonly slug: string
   readonly active: SidebarView
   readonly select: (view: SidebarView) => void
 }) {
   return (
-    <div className="home-tabbar" role="group" aria-label="Sidebar views">
+    <fieldset className="home-tabbar" aria-label="Sidebar views">
       <SidebarViewButton
         view="home"
         label="Home"
@@ -236,32 +235,24 @@ function SidebarViews({
         active={active === 'chat'}
         select={select}
       />
-      <Link
-        className="home-tab"
-        to="/s/$slug/inbox"
-        params={{ slug }}
-        aria-current={active === 'inbox' ? 'page' : undefined}
-        aria-label="Inbox"
-      >
-        <span className="home-tab-icon">
-          <InboxIcon />
-        </span>
-        <span className="home-tab-label">
-          <span className="home-tab-label-clip">
-            <span className="home-tab-label-text">Inbox</span>
-          </span>
-        </span>
-      </Link>
-    </div>
+      <SidebarViewButton
+        view="inbox"
+        label="Inbox"
+        icon={<InboxIcon />}
+        active={active === 'inbox'}
+        select={select}
+      />
+    </fieldset>
   )
 }
 
 function SidebarPanel({ view, slug }: { readonly view: SidebarView; readonly slug: string }) {
   return (
-    <div className="home-sidebar-panel" role="region" aria-label={`${view} sidebar`}>
+    <section className="home-sidebar-panel" aria-label={`${view} sidebar`} data-view={view}>
       {view === 'home' && <PinnedChats slug={slug} />}
       {view === 'chat' && <ChatSidebar slug={slug} />}
-    </div>
+      {view === 'inbox' && <Inbox />}
+    </section>
   )
 }
 
@@ -276,8 +267,7 @@ function ResizeRail({
 }) {
   return (
     <div className="home-sidebar-resize">
-      <div
-        role="separator"
+      <hr
         tabIndex={0}
         aria-label="Resize with left and right arrow keys"
         aria-orientation="vertical"
@@ -387,7 +377,6 @@ function MainPane({
 }
 
 function initialView(where: string): SidebarView {
-  if (where === 'Inbox') return 'inbox'
   if (where === 'Chat') return 'chat'
   return 'home'
 }
@@ -414,7 +403,7 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
           aria-label={`${space.displayName} sidebar`}
         >
           <WorkspaceHeader space={space} closeSidebar={close} closeButton={closeButton} />
-          <SidebarViews slug={space.slug} active={view} select={setChosenView} />
+          <SidebarViews active={view} select={setChosenView} />
           <SidebarPanel view={view} slug={space.slug} />
         </aside>
 

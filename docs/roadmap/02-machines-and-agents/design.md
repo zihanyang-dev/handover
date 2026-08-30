@@ -147,7 +147,7 @@ where memberships.space_id = $1
 
 第一版三个:`claude` · `codex` · `cursor-agent`。**清单是纯数据,住在 owner 里**,加一个 agent 是清单里加一行,不动别的。
 
-主人起的名字不是机器报告的一部分。把它放进 `agents`,下一次完整报告删掉一个暂时没扫到的 agent 时也会删掉名字;让机器上一次 PATH 抖动抹掉人的选择,恢复动作只能是再起一遍。所以名字单独住在 `agent_names`,按同一个 `machine_id + kind` 在读时合上。只有机器主人能写,改名不改变 kind、头像种子或路由身份。
+主人起的名字不是机器报告的一部分。把它放进 `agents`,下一次完整报告删掉一个暂时没扫到的 agent 时也会删掉名字;让机器上一次 PATH 抖动抹掉人的选择,恢复动作只能是再起一遍。所以名字单独住在 `agent_settings`,按同一个 `machine_id + kind` 在读时合上。没有人起名时,wire projection 用 `machine_id + kind` 稳定抽一个默认名;不写库、不随读取变化,而主人写下的名字永远覆盖它。只有机器主人能写,改名不改变 kind、头像种子或路由身份。
 
 发现在**每次报到时**做,不只是启动时。别人 `brew upgrade` 之后我们跟着更新版本号,不重启、不重接。
 

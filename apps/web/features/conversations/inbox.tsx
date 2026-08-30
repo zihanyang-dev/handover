@@ -21,7 +21,7 @@ export function Inbox() {
   const on = waiting.data ?? []
 
   return (
-    <section className="panel" aria-labelledby={heading}>
+    <section className="panel inbox-panel" aria-labelledby={heading}>
       <div className="panel-head">
         <h2 id={heading}>Waiting on you</h2>
         {on.length > 0 && <span className="chip">{on.length}</span>}

@@ -32,18 +32,19 @@ afterAll(() => {
 
 type Waiting = components['schemas']['Waiting']
 
-function open() {
+async function open() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
     context: { queryClient: client },
-    history: createMemoryHistory({ initialEntries: ['/s/acme/inbox'] }),
+    history: createMemoryHistory({ initialEntries: ['/s/acme'] }),
   })
   const view = render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  await userEvent.click(await screen.findByRole('button', { name: 'Inbox' }))
   return { router, view }
 }
 
@@ -70,7 +71,7 @@ describe('what is waiting on you', () => {
   it('shows the goal and what it asked, so nobody has to open it to find out', async () => {
     server.use(...waiting([ONE]))
 
-    const { router } = open()
+    const { router } = await open()
 
     expect(await screen.findByText(ONE.goal)).toBeDefined()
     expect(screen.getByText('Env var, or a field on the client options?')).toBeDefined()
@@ -82,7 +83,7 @@ describe('what is waiting on you', () => {
   it('crosses Spaces, because work you handed out is yours wherever it lives', async () => {
     server.use(...waiting([ONE, { ...ONE, conversationId: 'c-2', spaceSlug: 'lab' }]))
 
-    open()
+    await open()
 
     expect(await screen.findByText(/acme/u)).toBeDefined()
     expect(screen.getByText(/lab/u)).toBeDefined()
@@ -91,7 +92,7 @@ describe('what is waiting on you', () => {
   it('says something when nothing needs you, rather than showing an empty list', async () => {
     server.use(...waiting([]))
 
-    open()
+    await open()
 
     expect(await screen.findByText(/Nothing needs you/u)).toBeDefined()
   })
@@ -106,7 +107,7 @@ describe('what is waiting on you', () => {
       ),
     )
 
-    open()
+    await open()
 
     expect(await screen.findByText(/Could not read your Inbox/u)).toBeDefined()
     expect(screen.queryByText(/Nothing needs you/u)).toBeNull()
@@ -115,7 +116,7 @@ describe('what is waiting on you', () => {
   it('says so when a piece of work stopped without saying why', async () => {
     server.use(...waiting([{ ...ONE, asked: null }]))
 
-    open()
+    await open()
 
     expect(await screen.findByText(/stopped without saying why/u)).toBeDefined()
   })

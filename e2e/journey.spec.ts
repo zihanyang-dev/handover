@@ -136,10 +136,14 @@ test('hand work over, find its question in Inbox, and take it back', async ({ pa
   })
   await machine.ends(autonomous)
 
-  await page.getByRole('link', { name: 'Inbox' }).click()
-  await expect(page).toHaveURL(/\/inbox$/u)
-  await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible({ timeout: 15_000 })
-  const waiting = page.getByRole('link').filter({ hasText: goal })
+  const conversationUrl = page.url()
+  await page.getByRole('button', { name: 'Inbox' }).click()
+  await expect(page).toHaveURL(conversationUrl)
+  const inbox = page.getByRole('region', { name: 'inbox sidebar' })
+  await expect(inbox.getByRole('heading', { name: 'Waiting on you' })).toBeVisible({
+    timeout: 15_000,
+  })
+  const waiting = inbox.getByRole('link').filter({ hasText: goal })
   await expect(waiting).toContainText('Should the setting be milliseconds or seconds?')
   await waiting.click()
 

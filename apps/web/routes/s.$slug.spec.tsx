@@ -56,12 +56,13 @@ describe('entering a Space', () => {
     const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
     const home = within(switches).getByRole('button', { name: 'Home' })
     const chat = within(switches).getByRole('button', { name: 'Chat' })
-    const inbox = within(switches).getByRole('link', { name: 'Inbox' })
+    const inbox = within(switches).getByRole('button', { name: 'Inbox' })
 
-    expect(within(switches).getAllByRole('button')).toHaveLength(2)
+    expect(within(switches).getAllByRole('button')).toHaveLength(3)
     expect(home.getAttribute('aria-pressed')).toBe('true')
     expect(chat.getAttribute('aria-pressed')).toBe('false')
-    expect(inbox.getAttribute('aria-current')).toBeNull()
+    expect(inbox.getAttribute('aria-pressed')).toBe('false')
+    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
 
     await userEvent.click(chat)
 
@@ -75,8 +76,17 @@ describe('entering a Space', () => {
 
     await userEvent.click(inbox)
 
-    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined()
-    expect(router.state.location.pathname).toBe('/s/acme/inbox')
+    expect(await screen.findByRole('heading', { name: 'Waiting on you' })).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Inbox' })).toBeNull()
+    expect(inbox.getAttribute('aria-pressed')).toBe('true')
+    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
+    expect(router.state.location.pathname).toBe('/s/acme')
+
+    await userEvent.click(chat)
+
+    expect(chat.getAttribute('aria-pressed')).toBe('true')
+    expect(inbox.getAttribute('aria-pressed')).toBe('false')
+    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
   })
 
   it('keeps pinned conversations directly under Home', async () => {
@@ -211,42 +221,17 @@ describe('entering a Space', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'Read notes.txt')
   }
 
-  it('works in a folder of its own unless somebody says otherwise', async () => {
+  it('starts in a folder of its own without showing a workspace choice', async () => {
     const asked = anAgent('/Users/mina/code/thing')
     await typedToIt()
 
+    expect(screen.queryByRole('button', { name: /where it works/iu })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
       expect(asked.body).toMatchObject({ machineId: 'm-1' })
     })
     expect(asked.body).not.toHaveProperty('worksIn')
-  })
-
-  it('works in the machine\u2019s own directory when that is what was picked', async () => {
-    // `03` promised an agent works in your files. `07` gives every conversation a folder of its
-    // own so several can run at once, which would have ended that promise quietly — an empty
-    // folder cannot answer "read src/payment". The promise survives as this choice, so a control
-    // that did not reach the wire would be the promise gone with a control standing in for it.
-    const asked = anAgent('/Users/mina/code/thing')
-    await typedToIt()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Where it works: Its own folder' }))
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'code/thing' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
-
-    await waitFor(() => {
-      expect(asked.body).toMatchObject({ worksIn: '/Users/mina/code/thing' })
-    })
-  })
-
-  it('offers no choice from a machine too old to say where it was connected', async () => {
-    // Nothing rather than a menu with one option in it, or a path this deployment guessed. Its
-    // own folder is what happens, and it is what would have happened anyway.
-    anAgent(undefined)
-    await typedToIt()
-
-    expect(screen.queryByRole('button', { name: /where it works/iu })).toBeNull()
   })
 
   it('creates the conversation with the first message only when it is sent', async () => {
@@ -673,23 +658,23 @@ describe('entering a Space', () => {
     expect(await screen.findByText(/could not read this space/i)).toBeDefined()
   })
 
-  it('keeps the frame across screens, so a sidebar somebody moved stays moved', async () => {
-    // The frame is a layout, mounted once. Mounted per screen, moving to the Inbox puts a new one
-    // in its place and the sidebar somebody collapsed is open again.
+  it('keeps a resized frame while switching sidebar views', async () => {
     server.use(
       ...theSpace({ conversations: [] }),
       http.get('*/me/inbox', () => HttpResponse.json({ waiting: [] })),
     )
-    const router = open('/s/acme')
+    open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    await userEvent.click(within(sidebar).getByRole('button', { name: /close sidebar/i }))
-    await screen.findByRole('button', { name: /open sidebar/i })
+    const resize = screen.getByRole('separator', { name: /resize with left and right/i })
+    resize.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    const movedWidth = resize.getAttribute('aria-valuenow')
 
-    await router.navigate({ to: '/s/$slug/inbox', params: { slug: 'acme' } })
+    await userEvent.click(within(sidebar).getByRole('button', { name: 'Inbox' }))
+    await screen.findByRole('heading', { name: 'Waiting on you' })
 
-    // Still collapsed: the same frame, with something else inside it.
-    expect(await screen.findByRole('button', { name: /open sidebar/i })).toBeDefined()
+    expect(resize.getAttribute('aria-valuenow')).toBe(movedWidth)
   })
 
   it('asks somebody whose session ran out to sign in, and remembers where they were', async () => {
