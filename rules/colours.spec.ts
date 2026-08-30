@@ -26,11 +26,18 @@ import { describe, expect, it } from 'vitest'
 
 const WEB = 'apps/web'
 
-/** `#rgb`, `#rrggbb`, and the functional forms. */
-const A_COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|color-mix)\(/gu
+/**
+ * `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, and the functional forms.
+ *
+ * Those four lengths and no others, because those are the only ones CSS has. Written `{3,8}` it
+ * also matched five and seven digits, which no colour is — and the first thing it caught that way
+ * was `#13576`, a pull request somebody had cited in a comment.
+ */
+const A_COLOUR =
+  /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|\b(?:rgba?|hsla?|oklch|color-mix)\(/gu
 
 /** A brand's own ink, painted straight onto a path. */
-const PAINTED = /(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/gu
+const PAINTED = /(?:fill|stroke)="#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})"/gu
 
 /**
  * The ones that are not the product's palette, each with why.

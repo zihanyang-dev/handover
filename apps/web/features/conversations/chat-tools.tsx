@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Check2, ChevronRight, FileDiff, X } from 'react-bootstrap-icons'
 import { type LiveOutput, type Message } from './talking.ts'
 
@@ -7,68 +7,21 @@ export type ToolMessage = Extract<Message, { readonly role: 'tool' }>
 const MAX_COLLAPSED_LINES = 7
 const MAX_COLLAPSED_CHARACTERS = 500
 
-export function ToolRun({
-  messages,
-  liveOutputs,
-}: {
-  readonly messages: readonly ToolMessage[]
-  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
-}) {
-  const hasLiveOutput = messages.some((message) => outputFor(message, liveOutputs) !== undefined)
-  const [open, setOpen] = useState(hasLiveOutput)
-  const label = `Ran ${String(messages.length)} ${messages.length === 1 ? 'step' : 'steps'}`
-
-  return (
-    <div className="chat-tool-run">
-      <button
-        type="button"
-        className="chat-tool-run-toggle"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((current) => !current)
-        }}
-      >
-        <span className="chat-tool-run-label">
-          {label}
-          <AccordionChevron />
-        </span>
-      </button>
-      <div
-        className="chat-tool-run-body"
-        data-open={open || undefined}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        <div>
-          <div className="chat-tool-rows">
-            {messages.map((message) => (
-              <ToolRow key={message.seq} message={message} liveOutputs={liveOutputs} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function toolLabel(message: ToolMessage) {
-  const { name, verb } = message.content
-  if (/^agent/iu.test(name)) return 'Delegating work'
-  if (/toolsearch/iu.test(name)) return 'Finding a tool'
-  if (/websearch/iu.test(name)) return 'Searching the web'
-  if (/webfetch/iu.test(name)) return 'Fetching a page'
-  if (name === 'command_execution' || name === 'Bash') return 'Run'
-  return verb || name
-}
-
-function ToolRow({
+/**
+ * One step, and whatever it is printing if it is the one printing.
+ *
+ * Handed its own live output rather than the whole map, which is what lets it be memoized: the map
+ * is a new object on every piece that arrives, so a row given the map re-rendered on every piece
+ * of every *other* row's output. Given `undefined` — which is what every finished step gets — its
+ * props do not change and it does no work at all.
+ */
+const ToolRow = memo(function ToolRow({
   message,
-  liveOutputs,
+  liveOutput,
 }: {
   readonly message: ToolMessage
-  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+  readonly liveOutput: LiveOutput | undefined
 }) {
-  const liveOutput = outputFor(message, liveOutputs)
   const [expanded, setExpanded] = useState(liveOutput !== undefined)
   const { arg, name, ok } = message.content
   const label = toolLabel(message)
@@ -113,6 +66,64 @@ function ToolRow({
       </div>
     </div>
   )
+})
+
+export function ToolRun({
+  messages,
+  liveOutputs,
+}: {
+  readonly messages: readonly ToolMessage[]
+  readonly liveOutputs: ReadonlyMap<string, LiveOutput>
+}) {
+  const hasLiveOutput = messages.some((message) => outputFor(message, liveOutputs) !== undefined)
+  const [open, setOpen] = useState(hasLiveOutput)
+  const label = `Ran ${String(messages.length)} ${messages.length === 1 ? 'step' : 'steps'}`
+
+  return (
+    <div className="chat-tool-run">
+      <button
+        type="button"
+        className="chat-tool-run-toggle"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((current) => !current)
+        }}
+      >
+        <span className="chat-tool-run-label">
+          {label}
+          <AccordionChevron />
+        </span>
+      </button>
+      <div
+        className="chat-tool-run-body"
+        data-open={open || undefined}
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div>
+          <div className="chat-tool-rows">
+            {messages.map((message) => (
+              <ToolRow
+                key={message.seq}
+                message={message}
+                liveOutput={outputFor(message, liveOutputs)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function toolLabel(message: ToolMessage) {
+  const { name, verb } = message.content
+  if (/^agent/iu.test(name)) return 'Delegating work'
+  if (/toolsearch/iu.test(name)) return 'Finding a tool'
+  if (/websearch/iu.test(name)) return 'Searching the web'
+  if (/webfetch/iu.test(name)) return 'Fetching a page'
+  if (name === 'command_execution' || name === 'Bash') return 'Run'
+  return verb || name
 }
 
 function outputFor(

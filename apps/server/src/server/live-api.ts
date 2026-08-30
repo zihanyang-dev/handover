@@ -31,6 +31,21 @@ const HEARTBEAT_MS = 20_000
 /** Enough transient frames for a slow tab without allowing a disconnected socket to grow forever. */
 const MAX_PENDING_FRAMES = 128
 
+/**
+ * Membership is asked again before every frame, and it stays that way.
+ *
+ * It is a real cost — one indexed query per three kilobytes of streamed output, per watcher — and
+ * it was briefly bounded to one question every two seconds instead. `live-api.spec.ts` went red
+ * on the next commit: **closes an open stream when its membership is revoked**, which is a
+ * promise this repository mechanized precisely because it fails silently. Two seconds of being
+ * answered after being removed is a weaker promise, and buying speed with somebody else's
+ * guarantee is the wrong trade.
+ *
+ * The cheap *and* exact version is not a slower clock, it is no clock: `removeMember` saying so
+ * on the channel the moments already ride, and the stream closing when it hears its own name.
+ * That is the thing to build if this ever shows up in a profile — see `docs/architecture.md`.
+ */
+
 type Frame = { readonly data: string; readonly event?: string }
 type PendingFrame = { readonly frame: Frame; readonly disposable: boolean }
 
@@ -107,11 +122,7 @@ function watching({ db, live }: LiveApi) {
 
       return streamSSE(c, async (stream) => {
         let stop = (): void => undefined
-        // Asked again before every frame, and that is the point of it: the check above answered
-        // at the moment the stream opened, and a stream stays open for as long as somebody is
-        // looking. Taken out of the Space in the meantime, they would go on being told what an
-        // agent is doing on a machine they can no longer reach — which is the one thing
-        // `rules/revoked.spec.ts` exists to stop.
+
         const writer = frameWriter(async (frame) => {
           if (!(await conversationReachableBy(db, canWatch))) {
             stop()

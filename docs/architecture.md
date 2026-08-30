@@ -134,6 +134,35 @@ loader 要首屏事实时,只负责让 Query 的同一条 query 先有答案,不
 重拉",要么进一个明确活不过这一轮的视图(`Watching` 就是后者:thinking 和命令全文只在这里出现,
 永远不落库)。
 
+**一条流式片段的代价,不能跟着对话长度涨。** 一轮在跑的时候,命令打印的东西每三千字节就是一次
+React 更新。这一片和一小时前说过的话没有任何关系 —— 但只要 live 状态穿过 transcript 传下去,每
+条已完成的消息就会跟着重渲染,并且重新跑一遍 remark。量过:40 条回复的对话,一个片段触发 80 次
+markdown 解析;120 条时是 240 次。修完是 0 和 8。守它的是
+`features/conversations/streaming-cost.spec.tsx`,数的是解析次数而不是耗时 —— 耗时是这台机器的事,
+次数是这个 bug 的形状。
+
+做法是所有人都会走到的那条:
+[Vercel AI SDK 的 cookbook 把 markdown 分块 memo](https://ai-sdk.dev/cookbook/next/markdown-chatbot-with-memoization) ·
+[Streamdown 整个库就是为这件事存在的](https://streamdown.ai/docs/memoization) ·
+[LibreChat #13576](https://github.com/danny-avila/LibreChat/pull/13576) 就是同一个症状。
+我们比他们简单,因为**我们流的不是 markdown** —— 流的是命令输出,进 `pre`,所以一条消息要么已经
+完成要么还没到,没有半解析的块要留。
+
+**实时流每一帧都重新问一次成员资格,这也是一个决定。** 一次带索引的查询,每三千字节的流式输出、
+每个观看者一次。试过改成「最多两秒问一次」,下一次 `pnpm check` 就红在
+`server/live-api.spec.ts` 的 **closes an open stream when its membership is revoked** 上 —— 那条
+承诺是被机械化过的,因为它一旦坏就是安静地坏。**拿别人的保证去换速度是错的交易。** 又便宜又准确
+的版本不是更慢的时钟,是没有时钟:`removeMember` 在那些瞬间已经在走的那条通道上说一声,流听见自己
+的名字就关掉。等它真的出现在 profile 里再做。
+
+**不做列表虚拟化,这是一个决定,不是遗漏。** DOM 结点数跟着 transcript 涨,而
+[TanStack Virtual 专门为聊天写了一页文档](https://tanstack.com/virtual/latest/docs/chat),说明它可
+做:`anchorTo: 'end'`、`followOnAppend`、`overflow-anchor: none`。不做的理由是
+[它自己那篇文章的标题](https://tanstack.com/blog/tanstack-virtual-chat)——聊天把普通列表的契约反过来
+了:新内容在末尾长、历史往开头插、最后一条还在逐字变。换掉现在这个能正确锚定滚动的原语,去换一
+个手工管理偏移的,是拿一个没量到的问题去换一个已知很难的问题。**重新想它的触发条件是:有人真的
+因为一段对话太长而卡住。** 到那天,先量 DOM 结点数,再谈。
+
 [Multica 把同一条写成硬规则](https://github.com/multica-ai/multica):React Query owns all server
 state · Zustand owns client/view state · WS events update React Query。我们没有 Zustand,那一半是
 `useState`,其余一样。

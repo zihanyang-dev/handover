@@ -225,7 +225,9 @@ export type Seen = {
  * The conversation a machine is allowed to write into, locked, or nothing.
  *
  * Two paths need this and they must never disagree: a machine adding a line to a transcript, and
- * a machine reporting on the piece of work it is running. Both are told by the middleware that
+ * a machine reporting on the piece of work it is running. **Both write.** What is happening right
+ * now does not — it has {@link stillItsToSpeakOf}, and the difference is the whole point of the
+ * cost this one accepts below. Both are told by the middleware that
  * the credential is good — and both open a transaction afterwards, so both have to ask again
  * inside it. A machine somebody removed in between must not get one more write.
  *
@@ -253,6 +255,49 @@ export async function stillItsToWriteOn(
     .executeTakeFirst()
 
   return conversation?.id
+}
+
+/**
+ * Whether this machine may still be heard about this conversation. No lock, no transaction.
+ *
+ * The same question as {@link stillItsToWriteOn} and deliberately not the same answer, because
+ * what asks it is different in kind. That one guards a write and pays a row lock on two tables to
+ * do it; this one guards a moment that is kept nowhere and is gone a second later.
+ *
+ * It used to call that one, and the cost was not the lock itself — it was the frequency. A turn
+ * streams what a command is printing in three-kilobyte pieces, so every piece opened a
+ * transaction and took `for update` on the conversation *and* on the machine, to then write
+ * nothing at all. Three conversations running on one laptop serialized all of their output on
+ * that machine's single row, against a row the machine itself writes on every check-in.
+ *
+ * What is lost by not locking is that a machine removed in this exact millisecond may have one
+ * more moment shown to somebody already watching. It is shown and forgotten; the transcript is
+ * untouched, and the browser is asking the same question of its own membership before every frame
+ * it is handed — see `server/live-api.ts`.
+ */
+export async function stillItsToSpeakOf(
+  db: Database,
+  on: { readonly conversationId: string; readonly machineId: string },
+): Promise<boolean> {
+  const conversation = await db
+    .selectFrom('conversations')
+    .select('conversations.id')
+    .where('conversations.id', '=', on.conversationId)
+    .where('conversations.machine_id', '=', on.machineId)
+    // `exists` rather than a join, so there is no second table here at all. Joined, this would be
+    // the shape `review.md` 7 warns about even without `for update` on it today.
+    .where((eb) =>
+      eb.exists(
+        eb
+          .selectFrom('machines')
+          .select('machines.id')
+          .whereRef('machines.id', '=', 'conversations.machine_id')
+          .where('machines.removed_at', 'is', null),
+      ),
+    )
+    .executeTakeFirst()
+
+  return conversation !== undefined
 }
 
 export function reachableFrom(spaceId: string) {

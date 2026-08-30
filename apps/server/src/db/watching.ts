@@ -18,7 +18,7 @@ import type { Watchers } from '../conversation/watchers.ts'
 import type { Env } from '../env.ts'
 import type { Log } from '../log.ts'
 import type { Database, Tx } from './connection.ts'
-import { stillItsToWriteOn } from './machine.ts'
+import { stillItsToSpeakOf } from './machine.ts'
 import { listenOn, type Listening } from './notifications.ts'
 
 /** One name for everything live, and each instance sorts its own watchers out. */
@@ -71,7 +71,18 @@ export async function noteWritten(tx: Tx, conversationId: string, upTo: number):
   await announce(tx, { conversationId, watched: { seen: 'written', upTo } })
 }
 
-/** Authorizes a machine and publishes its live moment under the same row lock. */
+/**
+ * Checks a machine may be heard about this conversation, then says what it saw.
+ *
+ * No transaction, and that is the measured part rather than a preference. This is the highest
+ * frequency call in the product — a turn streams what a command prints in three-kilobyte pieces —
+ * and it used to open a transaction and take `for update` on the conversation and on the machine
+ * in order to write nothing at all. See {@link stillItsToSpeakOf}.
+ *
+ * The notification goes on the pool for the reason `review.md` 7 gives: a notification must ride
+ * the transaction that wrote the row it describes, and this one describes no row. It *is* the
+ * whole content, so nothing can arrive before it.
+ */
 export async function sayLiveFromMachine(
   db: Database,
   report: {
@@ -80,16 +91,10 @@ export async function sayLiveFromMachine(
     readonly watched: Happening['watched']
   },
 ): Promise<boolean> {
-  return db.transaction().execute(async (tx) => {
-    const conversation = await stillItsToWriteOn(tx, {
-      conversationId: report.conversationId,
-      machineId: report.machineId,
-    })
-    if (conversation === undefined) return false
+  if (!(await stillItsToSpeakOf(db, report))) return false
 
-    await announce(tx, { conversationId: report.conversationId, watched: report.watched })
-    return true
-  })
+  await announce(db, { conversationId: report.conversationId, watched: report.watched })
+  return true
 }
 
 /**

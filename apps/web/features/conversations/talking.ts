@@ -26,8 +26,19 @@ import type { components } from '../../generated/api.ts'
 const SAYS_SO_EVERY = 2000
 const TYPING_STAYS_FOR_MS = 5000
 
-/** Often enough that a person watching the list sees it move, rarely enough to be free at rest. */
-const WHILE_WORKING_MS = 1000
+/**
+ * How often the list of conversations asks again, while any of them is working.
+ *
+ * A backstop, not the way anything you do reaches the screen. What you did reaches it because the
+ * call you made says so — sending invalidates this list, and so does opening a conversation — and
+ * a clock is only for what somebody *else's* agent is doing, or what a handed-over piece of work
+ * does between turns. Those move on the scale of a turn, not of a second.
+ *
+ * It was one second, which asked the heaviest recurring query in the product sixty times a minute
+ * per open tab to see a flag that changes when a turn begins or ends. Nothing anybody could see
+ * was lost by making it this.
+ */
+const WHILE_WORKING_MS = 2500
 
 /**
  * How often to ask for a conversation anyway, while something is happening in it.
@@ -256,29 +267,42 @@ function useTypingPresence(ownUserId: string | undefined): {
   const [people, setPeople] = useState<readonly TypingPerson[]>([])
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
+  /**
+   * Who is reading, held rather than closed over.
+   *
+   * Only ever used to leave yourself out, and it arrives late: `/me` answers after this has
+   * mounted, so as a dependency it changed `show` from one identity to another — and `show` is
+   * what the live stream's effect depends on. The stream was therefore opened, torn down and
+   * opened again on every conversation anybody opened, with a full transcript read on each.
+   *
+   * A ref because that is what React's own guidance is for reading the latest value inside
+   * something that must not be re-created: <https://react.dev/learn/separating-events-from-effects>.
+   */
+  const reader = useRef(ownUserId)
+  useEffect(() => {
+    reader.current = ownUserId
+  }, [ownUserId])
+
   const clear = useCallback(() => {
     for (const timer of timers.current.values()) clearTimeout(timer)
     timers.current.clear()
     setPeople([])
   }, [])
 
-  const show = useCallback(
-    (person: TypingPerson) => {
-      if (person.id === ownUserId) return
-      const previous = timers.current.get(person.id)
-      if (previous !== undefined) clearTimeout(previous)
+  const show = useCallback((person: TypingPerson) => {
+    if (person.id === reader.current) return
+    const previous = timers.current.get(person.id)
+    if (previous !== undefined) clearTimeout(previous)
 
-      setPeople((current) =>
-        current.some((one) => one.id === person.id) ? current : [...current, person],
-      )
-      const expire = (): void => {
-        timers.current.delete(person.id)
-        setPeople((current) => current.filter((one) => one.id !== person.id))
-      }
-      timers.current.set(person.id, setTimeout(expire, TYPING_STAYS_FOR_MS))
-    },
-    [ownUserId],
-  )
+    setPeople((current) =>
+      current.some((one) => one.id === person.id) ? current : [...current, person],
+    )
+    const expire = (): void => {
+      timers.current.delete(person.id)
+      setPeople((current) => current.filter((one) => one.id !== person.id))
+    }
+    timers.current.set(person.id, setTimeout(expire, TYPING_STAYS_FOR_MS))
+  }, [])
 
   useEffect(() => {
     const active = timers.current
@@ -330,8 +354,10 @@ export function useWatching(
       read()
     }
 
+    // Everything the server names — its heartbeat — reaches a listener for that name and never
+    // this one, which is the browser's rule. So what arrives here is only ever a real frame, and
+    // anything unreadable is already nothing: `readWatched` parses defensively.
     live.onmessage = (event: MessageEvent<string>) => {
-      if (event.data === '') return
       const watched = readWatched(event.data)
       if (watched === undefined) return
 
@@ -512,6 +538,10 @@ export function useSay(slug: string, id: string) {
       client.setQueryData<Transcript | null>(queryKey, (current) => mergeTranscript(current, data))
       return data
     },
+    // The list beside the transcript says which conversations are working, and this just made one
+    // of them work. Said here rather than waited for, so what you did shows at once and the clock
+    // above is left to what other people's agents are doing.
+    onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })
 }
 
