@@ -15,7 +15,36 @@ declare global {
   }
 }
 
-const DEFAULT_ORIGIN = 'http://localhost:3000'
+/**
+ * Where a checkout runs.
+ *
+ * Only ever used by a build that came from source — see `main.ts`. A downloaded binary that
+ * assumed this would connect somebody's laptop to their own machine and report success, which is
+ * the one wrong answer that looks exactly like the right one.
+ */
+const WHERE_A_CHECKOUT_RUNS = 'http://localhost:3000'
+
+/** What {@link VERSION} says when nothing wrote a tag in, which is what a checkout is. */
+export const FROM_SOURCE = 'from source'
+
+/**
+ * Which deployment to connect a machine to, when nothing on this machine remembers one yet.
+ *
+ * Asked once, on the first connect; afterwards the answer is in the attachment. Nothing when this
+ * build cannot honestly say — and that is the whole of it: a checkout may assume the machine it
+ * is running on, because that is what a checkout is for, and a binary somebody downloaded may
+ * not. Defaulted, it connects a laptop to itself, says "connected", and is wrong in the one way
+ * that looks exactly like being right.
+ *
+ * The page that hands out a key hands out the whole line, address included. GitHub's runner,
+ * GitLab's runner and Tailscale all do the same — `config.sh --url …`, `register --url …`,
+ * `tailscale up --login-server …`.
+ */
+export function whereToConnect(said: string | undefined, version: string): string | undefined {
+  if (said !== undefined) return said
+
+  return version === FROM_SOURCE ? WHERE_A_CHECKOUT_RUNS : undefined
+}
 
 /**
  * Which build of this program is running.
@@ -26,11 +55,16 @@ const DEFAULT_ORIGIN = 'http://localhost:3000'
  * spelled with a dot while everything below uses brackets. Run from source there is no tag to
  * write in, and it says so rather than making up a number.
  */
-export const VERSION = process.env.HANDOVER_VERSION ?? 'from source'
+export const VERSION = process.env.HANDOVER_VERSION ?? FROM_SOURCE
 
 export type Env = {
-  /** Where this machine's Space lives. */
-  readonly origin: string
+  /**
+   * Where this machine's Space lives, when the environment says.
+   *
+   * Not defaulted here. Which deployment to connect to is a decision, and the right answer
+   * depends on what this build is — `main.ts` makes it, once, out loud.
+   */
+  readonly origin: string | undefined
   /** Where a user-level attachment is kept, per the XDG convention. */
   readonly configHome: string | undefined
   /**
@@ -45,7 +79,7 @@ export type Env = {
 
 export function readEnv(): Env {
   return {
-    origin: nonEmpty(process.env['HANDOVER_ORIGIN']) ?? DEFAULT_ORIGIN,
+    origin: nonEmpty(process.env['HANDOVER_ORIGIN']),
     configHome: nonEmpty(process.env['XDG_CONFIG_HOME']),
     checkForUpdates: nonEmpty(process.env['HANDOVER_NO_UPDATE_NOTIFIER']) === undefined,
   }

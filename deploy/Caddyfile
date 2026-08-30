@@ -1,0 +1,19 @@
+# The one origin. Everything a browser asks for arrives here and goes to one process.
+#
+# The pages and the API are the same origin because they have to be: the browser app's calls carry
+# no origin of their own and its session cookie is `SameSite=Lax`, so pages served from anywhere
+# else would arrive signed out. See the `Dockerfile` and `docs/repository.md` 4.1.
+#
+# The certificate is Caddy's own doing — it asks Let's Encrypt on first start and renews without
+# being asked. Nothing here holds a key.
+
+{$PUBLIC_HOST} {
+	encode zstd gzip
+
+	# The stream a browser watches a turn on stays open for as long as somebody is looking, and
+	# sends a comment line every twenty seconds. Left at the default, this proxy would close it
+	# and the page would silently stop moving.
+	reverse_proxy app:3000 {
+		flush_interval -1
+	}
+}

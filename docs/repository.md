@@ -35,6 +35,8 @@ packages/universal/ 两边必须算出同一个答案的东西
 rules/              这个仓库对自己的要求,写成测试。清单见 rules/README.md
 e2e/                真浏览器走一遍整条旅程。跑的是构建产物 + 真 server + 真库,
                     一个 origin,和线上同一个形状。唯一的替身是 agent 进程 —— 见 a-machine.ts
+deploy/             那一台机器上跑着的那份:生产 compose · Caddy · 发一次布的脚本
+                    这里没有秘密,值住在服务器的 deploy/.env,不进版本库
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
 .21st/              视觉简报,给设计工具读的。**是输入,不是产物** —— 界面照它做,
                     它不照界面生成。和 prd 重叠的部分以 prd 为准:prd 说做什么,
@@ -134,8 +136,8 @@ pnpm check        以上全部 + generate 无 diff
 
 ## 4.1 部署这台服务器需要什么
 
-**还没有部署过任何地方。** 下面是镜像里已经做完的部分,以及必须由外面提供的部分 —— 分开写,
-是因为前者验过,后者没有。
+**跑在东京一台 2C4G 上,`handover.pexoai.cn`。** 由什么组成、怎么发一次布,见 `deploy/README.md`。
+下面这张表是那份配置必须填满的东西。
 
 ```
 镜像做完的     装依赖 · 打包网页 · 起进程 · WEB_ROOT 指向打包出来的页面

@@ -3,7 +3,7 @@
 # One origin for both: the browser app's calls carry no origin of their own and its session cookie
 # is `SameSite=Lax`, so a page served from anywhere else arrives signed out. A deployment that
 # would rather put a proxy or a CDN in front of the pages leaves `WEB_ROOT` unset — see
-# `apps/server/src/server/browser-app.ts`.
+# `apps/server/src/server/app.ts`.
 
 FROM node:24-slim
 

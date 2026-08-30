@@ -68,7 +68,7 @@ describe('the second onboarding step — a machine', () => {
 
     expect(await screen.findByRole('heading', { name: /connect a machine/i })).toBeDefined()
     expect(screen.getByRole('img', { name: /step 2 of 2/i })).toBeDefined()
-    expect(screen.getByText(/^handover connect$/u)).toBeDefined()
+    expect(screen.getByText(/^handover connect --origin https?:\/\/\S+$/u)).toBeDefined()
     expect(screen.queryByText(/--key/u)).toBeNull()
   })
 
@@ -78,7 +78,9 @@ describe('the second onboarding step — a machine', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /use a key instead/i }))
 
-    expect(await screen.findByText(/handover connect --key WDJB-MJHT/u)).toBeDefined()
+    expect(
+      await screen.findByText(/handover connect --origin https?:\/\/\S+ --key WDJB-MJHT/u),
+    ).toBeDefined()
     expect(screen.getByRole('button', { name: /use the regular command/i })).toBeDefined()
   })
 

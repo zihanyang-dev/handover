@@ -19,7 +19,7 @@ import { parseArgs, promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
-import { VERSION, howToRunThis, machineEnvironment, readEnv } from './env.ts'
+import { VERSION, howToRunThis, machineEnvironment, readEnv, whereToConnect } from './env.ts'
 import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
 import { reachableAs } from './reachable.ts'
@@ -154,7 +154,14 @@ async function checkIn(): Promise<void> {
 }
 
 async function enrol(): Promise<Attachment> {
-  const origin = values.origin ?? env.origin
+  const origin = whereToConnect(values.origin ?? env.origin, VERSION)
+  if (origin === undefined) {
+    say('this build does not know which Handover to connect to.')
+    say('the page that gave you a key also gives you the whole line to run; copy that one.')
+    say('or say it yourself:  handover connect --origin https://… --key …')
+    process.exit(1)
+  }
+
   const key = values.key
   const connected = key === undefined ? await askAndWait(origin) : await useKey(origin, key)
 

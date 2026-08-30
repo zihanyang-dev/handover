@@ -149,7 +149,9 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
         >
           <div className="host-setup">
             <div className="host-setup-body">
-              <ShellCommand command="handover connect" />
+              {/* The address is on this line for the same reason it is on the one beside it:
+                  a downloaded binary knows nothing about where it landed, and this page does. */}
+              <ShellCommand command={`handover connect --origin ${globalThis.location.origin}`} />
               <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
             </div>
           </div>

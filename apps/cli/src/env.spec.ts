@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { howToRunThis } from './env.ts'
+import { FROM_SOURCE, howToRunThis, whereToConnect } from './env.ts'
 
 describe('how to run this program again', () => {
   it('is the runtime and the file, when this is running from source', () => {
@@ -31,5 +31,26 @@ describe('how to run this program again', () => {
 
   it('falls back to the name, rather than to something that cannot be run', () => {
     expect(howToRunThis([])).toBe('handover')
+  })
+})
+
+describe('which deployment a machine is about to join', () => {
+  it('is whatever was said, whoever is asking', () => {
+    expect(whereToConnect('https://handover.example.com', FROM_SOURCE)).toBe(
+      'https://handover.example.com',
+    )
+    expect(whereToConnect('https://handover.example.com', 'v1.2.3')).toBe(
+      'https://handover.example.com',
+    )
+  })
+
+  it('is this machine when nothing said, and this is a checkout', () => {
+    expect(whereToConnect(undefined, FROM_SOURCE)).toBe('http://localhost:3000')
+  })
+
+  // The one that matters. A downloaded binary that assumed localhost would connect somebody's
+  // laptop to itself and report success — wrong in the one way that reads exactly like right.
+  it('is nothing at all when nothing said and this was downloaded', () => {
+    expect(whereToConnect(undefined, 'v1.2.3')).toBeUndefined()
   })
 })

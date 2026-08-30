@@ -32,9 +32,19 @@ function machineKey() {
   })
 }
 
-/** What to run on the machine, said the same way wherever a key is shown. */
+/**
+ * What to run on the machine, said the same way wherever a key is shown.
+ *
+ * The address is on the line, because the line is the only thing that knows it. A downloaded
+ * binary has no idea which deployment somebody meant, and a default would make it guess — see
+ * `apps/cli/src/main.ts`. This is what GitHub's runner page, GitLab's runner page and Tailscale
+ * all hand over too: the address and the credential, in one line nobody has to assemble.
+ *
+ * `location.origin` and not a value from the server: the pages and the API are the same origin,
+ * forced rather than chosen, so where this page came from is where that machine should go.
+ */
 function connectWith(key: string): string {
-  return `handover connect --key ${key}`
+  return `handover connect --origin ${globalThis.location.origin} --key ${key}`
 }
 
 /**
