@@ -13,7 +13,7 @@
 
 import { http, HttpResponse } from 'msw'
 import type { components } from '../generated/api.ts'
-import { signedIn } from '../pretend/signed-in.ts'
+import { signedIn, SOMEBODY } from '../pretend/signed-in.ts'
 
 /**
  * The faces, which every screen showing a person or an agent asks the browser to fetch.
@@ -35,18 +35,22 @@ type Machine = components['schemas']['Machine']
 type Conversation = components['schemas']['Conversation']
 type Machines = components['schemas']['Machines']
 type Conversations = components['schemas']['Conversations']
-type PretendAgent = Omit<Machine['agents'][number], 'avatarUrl' | 'name' | 'atOnce' | 'running'> & {
+type PretendAgent = Omit<Machine['agents'][number], 'avatarUrl' | 'name' | 'atOnce'> & {
   readonly avatarUrl?: string
   readonly name?: string | null
   /** How many at a time, when a test is about that. Nearly none of them are. */
   readonly atOnce?: number
-  readonly running?: number
 }
-type PretendMachine = Omit<Machine, 'agents'> & { readonly agents: readonly PretendAgent[] }
+type PretendMachine = Omit<Machine, 'agents' | 'ownerUserId'> & {
+  readonly agents: readonly PretendAgent[]
+  /** Whose it is. Defaulted to whoever is signed in, which is what `yours` says on nearly all of them. */
+  readonly ownerUserId?: string
+}
 type PretendConversation = Omit<Conversation, 'pinned'> & { readonly pinned?: boolean }
 
 function completeMachine(machine: PretendMachine): Machine {
   return {
+    ownerUserId: SOMEBODY,
     ...machine,
     agents: machine.agents.map((agent) => ({
       name: null,

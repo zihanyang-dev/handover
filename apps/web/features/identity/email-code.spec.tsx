@@ -85,7 +85,7 @@ describe('handing the code back', () => {
     })
     // The real route tree, so this is where somebody actually ends up: onboarding, the first
     // step asking for a Space's name.
-    expect(await screen.findByRole('heading', { name: /name your workspace/i })).toBeDefined()
+    expect(await screen.findByRole('heading', { name: /name your space/i })).toBeDefined()
   })
 
   it('will not send five of them, however somebody asks it to', async () => {
@@ -223,7 +223,7 @@ describe('each way it can fail', () => {
 
     await typeCode('493018')
 
-    // Named in the frame twice — the workspace pill and the breadcrumb — which is the Space
+    // Named in the frame twice — the Space pill and the breadcrumb — which is the Space
     // page and not the front door, and that is the whole of what this test is about.
     expect(await screen.findAllByText('Acme')).not.toHaveLength(0)
   })
@@ -238,7 +238,7 @@ describe('each way it can fail', () => {
     await typeCode('493018')
 
     // The front door, which is where somebody picks a Space — not the address they were sent to.
-    expect(await screen.findByText(/name your workspace/i)).toBeDefined()
+    expect(await screen.findByText(/name your space/i)).toBeDefined()
   })
 
   it('sends a half-written address back to where codes come from', async () => {

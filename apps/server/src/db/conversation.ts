@@ -580,7 +580,14 @@ export async function unpinConversation(
 export type Reading = {
   readonly id: string
   readonly agentKind: string
-  readonly machineName: string
+  /**
+   * Which machine, not what it is called.
+   *
+   * A page that has both the machines list and this one matches them to put a face on the
+   * conversation, and two people who each call a laptop `mbp` are two machines with one name —
+   * matched on the name, one of them's agent ends up wearing the other's.
+   */
+  readonly machineId: string
   readonly working: Working
   /**
    * What this agent lets a person choose, as its machine last reported it.
@@ -610,7 +617,18 @@ type Stored = {
   readonly at: Date
 }
 
-/** Whether this person can still reach this conversation through this Space. */
+/**
+ * Whether this person can still reach this conversation through this Space.
+ *
+ * The same question {@link conversationWith} answers on its way to reading a transcript, asked on
+ * its own by whoever only needs the answer. Watching a turn is the case, twice over: holding a
+ * stream open begins by asking whether there is anything to watch, and asking it by reading the
+ * whole conversation would load an hour of somebody's history to throw all of it away.
+ *
+ * The membership is joined rather than assumed from the door, because the answer goes stale while
+ * the stream is open — see `rules/revoked.spec.ts`, and `live-api.ts` for the one caller that asks
+ * it again on every frame.
+ */
 export async function conversationReachableBy(
   db: Database,
   reading: { readonly conversationId: string; readonly spaceId: string; readonly userId: string },
@@ -671,7 +689,7 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
     .select([
       'conversations.id',
       'conversations.agent_kind as agentKind',
-      'machines.name as machineName',
+      'conversations.machine_id as machineId',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       'agents.models as offers',

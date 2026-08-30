@@ -10,8 +10,9 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { MessageScrollerProvider } from '../../components/ui/message-scroller.tsx'
 import { meQuery } from '../identity/me.ts'
-import { agentKindName } from '../machines/agent.tsx'
+import { agentName } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
+import { titleOf } from './chat-sidebar.tsx'
 import {
   CHAT_SCROLL_EDGE_PX,
   ConversationSurface,
@@ -24,7 +25,10 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
   const conversation = useConversation(slug, id)
   const conversationTitle = useQuery({
     ...conversationsIn(slug),
-    select: (answer) => answer.conversations.find((one) => one.id === id)?.opening,
+    // The list is where a conversation's name lives, and it is the same name the sidebar shows.
+    // Read out of the transcript instead, one screen called an empty conversation "Chat" and the
+    // other called it "New chat", and neither was reading what the other read.
+    select: (answer) => titleOf(answer.conversations.find((one) => one.id === id)),
   })
   const machines = useQuery(machinesIn(slug))
   const me = useQuery(meQuery)
@@ -35,15 +39,14 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
     return <p className="chat-screen-state">Could not read this chat. Try again.</p>
   if (conversation.data === null) return <UnavailableChat slug={slug} />
 
-  const { agentKind, machineName } = conversation.data
+  const { agentKind, machineId } = conversation.data
+  // By id, never by the machine's name. Two people who both call a laptop `mbp` are two machines
+  // with one name, and matching on it would put one of them's face on the other's conversation.
   const installed = agentsOn(machines.data ?? []).find(
-    (agent) => agent.kind === agentKind && agent.machineName === machineName,
+    (agent) => agent.kind === agentKind && agent.machineId === machineId,
   )
   const agent = agentPresentation(installed, agentKind)
-  const title =
-    conversationTitle.data ??
-    conversation.data.messages.find((message) => message.role === 'user')?.content.text ??
-    'Chat'
+  const title = conversationTitle.data ?? titleOf(undefined)
 
   return (
     <MessageScrollerProvider autoScroll scrollEdgeThreshold={CHAT_SCROLL_EDGE_PX}>
@@ -71,7 +74,9 @@ function UnavailableChat({ slug }: { readonly slug: string }) {
   )
 }
 
+/** An agent that is no longer installed still has a conversation, so its kind is all there is. */
 function agentPresentation(agent: InstalledAgent | undefined, kind: string): ChatAgent {
-  if (agent === undefined) return { avatarSrc: '', name: agentKindName(kind) }
-  return { avatarSrc: agent.avatarUrl, name: agent.name?.trim() || agentKindName(kind) }
+  if (agent === undefined) return { avatarSrc: '', name: agentName(kind, null) }
+
+  return { avatarSrc: agent.avatarUrl, name: agentName(agent.kind, agent.name) }
 }

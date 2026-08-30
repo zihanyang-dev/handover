@@ -19,23 +19,30 @@ import { useChangeSpaceEmoji } from './space.ts'
 
 type Space = components['schemas']['Space']
 
-function accountName(me: components['schemas']['Me'] | undefined): string {
-  return (
-    me?.credentials.find((credential) => credential.kind === 'email')?.address ??
-    me?.displayName ??
-    ''
-  )
+/**
+ * What this account is called here: the address a code is sent to, or its display name.
+ *
+ * Nothing at all until `/me` has answered. An empty string in its place is a line that says the
+ * account has no name, which is not what "we have not asked yet" means.
+ */
+function accountName(me: components['schemas']['Me'] | undefined): string | undefined {
+  if (me === undefined) return undefined
+
+  return me.credentials.find((credential) => credential.kind === 'email')?.address ?? me.displayName
 }
 
-function memberSummary(count: number): string {
-  return `${count} ${count === 1 ? 'member' : 'members'}`
+/** How many people are here, once that is known. A Space always has one, so nought is never true. */
+function memberSummary(people: readonly unknown[] | undefined): string | undefined {
+  if (people === undefined) return undefined
+
+  return `${people.length} ${people.length === 1 ? 'member' : 'members'}`
 }
 
 function EmojiChooser({ slug, close }: { readonly slug: string; readonly close: () => void }) {
   const change = useChangeSpaceEmoji(slug)
 
   return (
-    <div className="workspace-emoji-popover" role="dialog" aria-label="Choose a Space emoji">
+    <div className="space-emoji-popover" role="dialog" aria-label="Choose a Space emoji">
       <SpaceEmojiPicker
         choose={(emoji) => {
           change.mutate({ params: { path: { slug } }, body: { emoji } }, { onSuccess: close })
@@ -46,7 +53,7 @@ function EmojiChooser({ slug, close }: { readonly slug: string; readonly close: 
   )
 }
 
-export function WorkspaceMenu({
+export function SpaceMenu({
   space,
   close,
   openSettings,
@@ -57,7 +64,7 @@ export function WorkspaceMenu({
 }) {
   const me = useQuery(meQuery)
   const people = useQuery(peopleIn(space.slug))
-  const leave = useSignOut()
+  const signOut = useSignOut()
   const emojiControl = useRef<HTMLButtonElement>(null)
   const [choosingEmoji, setChoosingEmoji] = useState(false)
   const yours = people.data?.find((member) => member.you)
@@ -68,15 +75,11 @@ export function WorkspaceMenu({
   }, [])
 
   return (
-    <div
-      className="workspace-menu w-[calc(100%-1rem)] max-w-[300px]"
-      role="dialog"
-      aria-label={`${space.displayName} menu`}
-    >
-      <div className="workspace-menu-space">
+    <div className="space-menu" role="dialog" aria-label={`${space.displayName} menu`}>
+      <div className="space-menu-space">
         <button
           ref={emojiControl}
-          className="workspace-menu-emoji"
+          className="space-menu-emoji"
           type="button"
           aria-label="Change Space emoji"
           aria-haspopup="dialog"
@@ -88,9 +91,9 @@ export function WorkspaceMenu({
         >
           {space.emoji}
         </button>
-        <span className="workspace-menu-space-copy">
+        <span className="space-menu-space-copy">
           <strong>{space.displayName}</strong>
-          <span>{memberSummary(people.data?.length ?? 0)}</span>
+          <span>{memberSummary(people.data)}</span>
         </span>
       </div>
 
@@ -103,19 +106,19 @@ export function WorkspaceMenu({
         />
       )}
 
-      <div className="workspace-menu-divider" />
-      <div className="workspace-menu-actions">
+      <div className="space-menu-divider" />
+      <div className="space-menu-actions">
         <button type="button" onClick={openSettings}>
           <SettingsIcon />
           <span>Settings</span>
         </button>
       </div>
 
-      <div className="workspace-menu-divider" />
-      <div className="workspace-menu-account">
+      <div className="space-menu-divider" />
+      <div className="space-menu-account">
         <p>{accountName(me.data)}</p>
         <ul>
-          {/* Account facts stay on their own address; putting them in Workspace Settings would
+          {/* Account facts stay on their own address; putting them in Space Settings would
               make a person's credentials look like they belong to this Space. */}
           <li>
             <Link to="/settings" onClick={close}>
@@ -126,7 +129,7 @@ export function WorkspaceMenu({
           {(me.data?.spaces ?? []).map((one) => (
             <li key={one.id}>
               <Link to="/s/$slug" params={{ slug: one.slug }} onClick={close}>
-                <span className="workspace-menu-row-emoji">{one.emoji}</span>
+                <span className="space-menu-row-emoji">{one.emoji}</span>
                 <span>{one.displayName}</span>
                 {one.id === space.id && <CheckIcon />}
               </Link>
@@ -141,16 +144,16 @@ export function WorkspaceMenu({
         </ul>
       </div>
 
-      <div className="workspace-menu-divider" />
+      <div className="space-menu-divider" />
       <button
-        className="workspace-menu-logout"
+        className="space-menu-sign-out"
         type="button"
-        disabled={leave.isPending}
+        disabled={signOut.isPending}
         onClick={() => {
-          leave.mutate()
+          signOut.mutate()
         }}
       >
-        {leave.isError ? 'Could not log out' : 'Log out'}
+        {signOut.isError ? 'Could not sign out' : 'Sign out'}
       </button>
     </div>
   )

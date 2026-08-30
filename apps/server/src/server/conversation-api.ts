@@ -158,7 +158,8 @@ const Underway = named('Underway', {
 const Transcript = named('Transcript', {
   id: z.uuid(),
   agentKind: z.string(),
-  machineName: z.string(),
+  /** Which machine it runs on. The name is the machines list's to say — see `db/conversation.ts`. */
+  machineId: rowId,
   working: Working,
   /**
    * What this agent lets a person choose, one question at a time.

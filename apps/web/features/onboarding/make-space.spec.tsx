@@ -39,13 +39,13 @@ function open(at: string) {
 }
 
 async function type(name: string): Promise<void> {
-  const field = await screen.findByLabelText(/workspace name/i)
+  const field = await screen.findByLabelText(/space name/i)
   await userEvent.type(field, name)
 }
 
 /** The address as the form shows it: a whole URL, in a field nobody can type into. */
 async function shownAddress(): Promise<string> {
-  return (await screen.findByLabelText(/workspace url/i)).getAttribute('value') ?? ''
+  return (await screen.findByLabelText(/space url/i)).getAttribute('value') ?? ''
 }
 
 function makeIt() {

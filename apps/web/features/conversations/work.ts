@@ -6,13 +6,31 @@
  * conversation with nothing underway is the ordinary kind — you are sitting in it — and one with
  * something underway moves on its own between turns.
  *
- * What is underway is read as part of the transcript, so there is nothing to ask for here. These
- * are the three things a person does about it.
+ * What is underway is read as part of the transcript, so there is nothing to ask for here. This
+ * file holds the three things a person does about a piece of work, and the words its state goes
+ * by — two screens show a state and they were each writing the wire's own word onto the page.
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import { conversationsIn, inbox, transcriptOf } from './talking.ts'
+
+/**
+ * What a piece of work is doing, in words.
+ *
+ * The four states are the wire's, and `working` / `wait` / `sleep` / `done` are how the ledger
+ * writes them down — not how a person reads them. An unfamiliar one is shown as itself, because
+ * the column has no check constraint and a build that met a fifth should say so rather than call
+ * it something it is not.
+ */
+export function whatItIsDoing(state: string): string {
+  if (state === 'working') return 'Working'
+  if (state === 'wait') return 'Waiting on somebody'
+  if (state === 'sleep') return 'Sleeping'
+  if (state === 'done') return 'Finished'
+
+  return state
+}
 
 /** Everything that changes when a piece of work starts, stops, or moves. */
 function useAfterwards(slug: string, id: string) {

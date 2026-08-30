@@ -13,17 +13,15 @@
 import { http, HttpResponse } from 'msw'
 import type { Me } from '../features/identity/me.ts'
 
+/** Whoever a screen test is signed in as, named so a fixture can say a thing is theirs. */
+export const SOMEBODY = '00000000-0000-4000-8000-000000000001'
+
 type Space = Me['spaces'][number]
 type PretendSpace = Omit<Space, 'emoji'> & { readonly emoji?: string }
 type PretendPerson = Omit<Partial<Me>, 'spaces'> & { readonly spaces?: readonly PretendSpace[] }
 
 export function signedIn(who: PretendPerson = {}) {
-  const {
-    id = '00000000-0000-4000-8000-000000000001',
-    avatarUrl = '/avatars/users/00000000-0000-4000-8000-000000000001',
-    spaces = [],
-    ...rest
-  } = who
+  const { id = SOMEBODY, avatarUrl = `/avatars/users/${SOMEBODY}`, spaces = [], ...rest } = who
 
   return http.get('*/me', () =>
     HttpResponse.json<Me>({

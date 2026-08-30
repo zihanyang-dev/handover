@@ -63,7 +63,7 @@ test('a machine that goes away stops the page saying its agent is ready', async 
   const machine = await aMachine(await sessionOf(context), 'rui-mbp')
   await machine.poll()
   await page.reload()
-  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByRole('tab', { name: 'Chat' }).click()
   await expect(page.getByRole('link', { name: /on rui-mbp, ready/iu })).toBeVisible({
     timeout: 15_000,
   })
@@ -87,7 +87,7 @@ test('a machine owner changes agent settings and disconnects it', async ({ page,
   const machine = await aMachine(await sessionOf(context), 'settings-mbp')
   await machine.poll()
 
-  await openWorkspaceSettings(page)
+  await openSpaceSettings(page)
   await page.getByRole('tab', { name: 'Machines' }).click()
   await expect(page.getByRole('heading', { name: 'Machines' })).toBeVisible()
   await expect(page.getByText('settings-mbp')).toBeVisible({ timeout: 15_000 })
@@ -96,7 +96,7 @@ test('a machine owner changes agent settings and disconnects it', async ({ page,
   await page.getByRole('button', { name: 'Save' }).click()
   await page.getByRole('button', { name: 'Close settings' }).click()
 
-  await openWorkspaceSettings(page)
+  await openSpaceSettings(page)
   await page.getByRole('tab', { name: 'Machines' }).click()
   await expect(page.getByLabel('Name')).toHaveValue('Runner')
   await expect(page.getByLabel('At once')).toHaveValue('4')
@@ -137,9 +137,9 @@ test('hand work over, find its question in Inbox, and take it back', async ({ pa
   await machine.ends(autonomous)
 
   const conversationUrl = page.url()
-  await page.getByRole('button', { name: 'Inbox' }).click()
+  await page.getByRole('tab', { name: 'Inbox' }).click()
   await expect(page).toHaveURL(conversationUrl)
-  const inbox = page.getByRole('region', { name: 'inbox sidebar' })
+  const inbox = page.getByRole('tabpanel', { name: 'Inbox' })
   await expect(inbox.getByRole('heading', { name: 'Waiting on you' })).toBeVisible({
     timeout: 15_000,
   })
@@ -210,7 +210,7 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
   }
 })
 
-async function openWorkspaceSettings(page: import('@playwright/test').Page): Promise<void> {
+async function openSpaceSettings(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('button', { name: /Open .* menu/u }).click()
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'People' })).toBeVisible()
@@ -218,9 +218,9 @@ async function openWorkspaceSettings(page: import('@playwright/test').Page): Pro
 
 /** Chooses the agent on that machine, which is what opens a composer to say the first thing to. */
 async function picks(page: import('@playwright/test').Page, machineName: string): Promise<void> {
-  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByRole('tab', { name: 'Chat' }).click()
   const agent = page.getByRole('link', {
-    name: `Unnamed agent, Claude Code on ${machineName}, ready`,
+    name: `Claude Code on ${machineName}, ready`,
     exact: true,
   })
   await expect(agent).toBeVisible({ timeout: 15_000 })

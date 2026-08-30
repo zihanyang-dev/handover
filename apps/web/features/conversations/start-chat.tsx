@@ -8,10 +8,10 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Composer, ComposerError, SendButton } from '../../components/ui/chat-composer.tsx'
 import { Mark } from '../../mark.tsx'
-import { AgentMark, agentTint } from '../machines/agent.tsx'
+import { AgentMark, agentName, agentTint } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { markMessageArrival } from './message-transition.ts'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
@@ -27,30 +27,25 @@ export function StartChat({
   readonly agentKind: string
 }) {
   const machines = useQuery(machinesIn(slug))
-  if (machines.isPending)
-    return (
-      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
-        Looking…
-      </p>
-    )
+  if (machines.isPending) return <BeforeTheAgent>Looking…</BeforeTheAgent>
   if (machines.isError)
-    return (
-      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
-        Could not read this agent. Try again.
-      </p>
-    )
+    return <BeforeTheAgent>Could not read this agent. Try again.</BeforeTheAgent>
 
   const agent = agentsOn(machines.data).find(
     (one) => one.machineId === machineId && one.kind === agentKind,
   )
-  if (agent === undefined)
-    return (
-      <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
-        This agent is not available.
-      </p>
-    )
+  if (agent === undefined) return <BeforeTheAgent>This agent is not available.</BeforeTheAgent>
 
   return <ReadyStart slug={slug} agent={agent} />
+}
+
+/** The same column the composer stands in, so nothing jumps sideways when the agent arrives. */
+function BeforeTheAgent({ children }: { readonly children: ReactNode }) {
+  return (
+    <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
+      {children}
+    </p>
+  )
 }
 
 function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
@@ -60,7 +55,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
   const [id, setId] = useState(() => crypto.randomUUID())
-  const name = agent.name?.trim() || 'Unnamed agent'
+  const name = agentName(agent.kind, agent.name)
   const online = agent.isHere
 
   return (

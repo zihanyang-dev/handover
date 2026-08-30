@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test'
 import { aMachine, waitsForATurn } from './a-machine.ts'
 import { makesASpace, signsIn } from './someone.ts'
 
-test('an owner invites, promotes, removes, and revokes through Workspace Settings', async ({
+test('an owner invites, promotes, removes, and revokes through Space Settings', async ({
   browser,
 }) => {
   const kaiBrowser = await browser.newContext()
@@ -87,9 +87,9 @@ test('an owner invites, promotes, removes, and revokes through Workspace Setting
 })
 
 async function picks(page: import('@playwright/test').Page, machineName: string): Promise<void> {
-  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByRole('tab', { name: 'Chat' }).click()
   const agent = page.getByRole('link', {
-    name: `Unnamed agent, Claude Code on ${machineName}, ready`,
+    name: `Claude Code on ${machineName}, ready`,
     exact: true,
   })
   await expect(agent).toBeVisible({ timeout: 15_000 })

@@ -20,15 +20,27 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import { TabList, TabPanel, type Tab } from '../../components/ui/tabs.tsx'
 import { ChatSidebar, PinnedChats } from '../conversations/chat-sidebar.tsx'
 import { Inbox } from '../conversations/inbox.tsx'
 import type { Me } from '../identity/me.ts'
 import { ChatIcon, CollapseIcon, HomeIcon, InboxIcon, MenuIcon } from './sidebar-icons.tsx'
-import { WorkspaceMenu } from './workspace-menu.tsx'
-import { WorkspaceSettings } from './workspace-settings.tsx'
+import { SpaceMenu } from './space-menu.tsx'
+import { SpaceSettings } from './space-settings.tsx'
 
 type Space = Me['spaces'][number]
-type SidebarView = 'home' | 'chat' | 'inbox'
+
+/**
+ * The three things the sidebar can be showing.
+ *
+ * Tabs and not links: all three are one view with a panel swapped underneath, and the address
+ * does not change. What goes somewhere else is a link — `code-style.md` 10.1.
+ */
+const SIDEBAR_VIEWS: readonly Tab[] = [
+  { id: 'home', label: 'Home', icon: <HomeIcon /> },
+  { id: 'chat', label: 'Chat', icon: <ChatIcon /> },
+  { id: 'inbox', label: 'Inbox', icon: <InboxIcon /> },
+]
 
 const DEFAULT_SIDEBAR_WIDTH = 270
 const MIN_SIDEBAR_WIDTH = 220
@@ -69,7 +81,7 @@ function beginSidebarResize(
   window.addEventListener('pointerup', finish)
 }
 
-function useWorkspaceMenu() {
+function useSpaceMenu() {
   const [isOpen, setIsOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -100,7 +112,7 @@ function useWorkspaceMenu() {
   return { isOpen, setIsOpen, root, trigger }
 }
 
-function WorkspaceHeader({
+function SpaceHeader({
   space,
   closeSidebar,
   closeButton,
@@ -109,7 +121,7 @@ function WorkspaceHeader({
   readonly closeSidebar: () => void
   readonly closeButton: RefObject<HTMLButtonElement | null>
 }) {
-  const { isOpen, setIsOpen, root, trigger } = useWorkspaceMenu()
+  const { isOpen, setIsOpen, root, trigger } = useSpaceMenu()
   const navigate = useNavigate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const closeSettings = useCallback(() => {
@@ -120,11 +132,11 @@ function WorkspaceHeader({
   }, [trigger])
 
   return (
-    <div ref={root} className="home-workspace-root">
-      <div className="home-workspace-pill">
+    <div ref={root} className="home-space-root">
+      <div className="home-space-pill">
         <button
           ref={trigger}
-          className="home-workspace-identity"
+          className="home-space-identity"
           type="button"
           aria-label={`Open ${space.displayName} menu`}
           aria-haspopup="dialog"
@@ -133,10 +145,10 @@ function WorkspaceHeader({
             setIsOpen((open) => !open)
           }}
         >
-          <span className="home-workspace-emoji" aria-hidden>
+          <span className="home-space-emoji" aria-hidden>
             {space.emoji}
           </span>
-          <span className="home-workspace-name">{space.displayName}</span>
+          <span className="home-space-name">{space.displayName}</span>
         </button>
         <button
           ref={closeButton}
@@ -154,7 +166,7 @@ function WorkspaceHeader({
         </button>
       </div>
       {isOpen && (
-        <WorkspaceMenu
+        <SpaceMenu
           space={space}
           close={() => {
             setIsOpen(false)
@@ -166,7 +178,7 @@ function WorkspaceHeader({
         />
       )}
       {settingsOpen && (
-        <WorkspaceSettings
+        <SpaceSettings
           space={space}
           close={closeSettings}
           afterLeaving={() => {
@@ -179,80 +191,26 @@ function WorkspaceHeader({
   )
 }
 
-function SidebarViewButton({
-  view,
-  label,
-  icon,
-  active,
-  select,
-}: {
-  readonly view: SidebarView
-  readonly label: string
-  readonly icon: ReactNode
-  readonly active: boolean
-  readonly select: (view: SidebarView) => void
-}) {
+function renderSidebarTab(tab: Tab) {
   return (
-    <button
-      className="home-tab"
-      type="button"
-      aria-pressed={active}
-      aria-label={label}
-      onClick={() => {
-        select(view)
-      }}
-    >
-      <span className="home-tab-icon">{icon}</span>
+    <>
+      <span className="home-tab-icon">{tab.icon}</span>
       <span className="home-tab-label">
         <span className="home-tab-label-clip">
-          <span className="home-tab-label-text">{label}</span>
+          <span className="home-tab-label-text">{tab.label}</span>
         </span>
       </span>
-    </button>
+    </>
   )
 }
 
-function SidebarViews({
-  active,
-  select,
-}: {
-  readonly active: SidebarView
-  readonly select: (view: SidebarView) => void
-}) {
+function SidebarPanel({ view, slug }: { readonly view: string; readonly slug: string }) {
   return (
-    <fieldset className="home-tabbar" aria-label="Sidebar views">
-      <SidebarViewButton
-        view="home"
-        label="Home"
-        icon={<HomeIcon />}
-        active={active === 'home'}
-        select={select}
-      />
-      <SidebarViewButton
-        view="chat"
-        label="Chat"
-        icon={<ChatIcon />}
-        active={active === 'chat'}
-        select={select}
-      />
-      <SidebarViewButton
-        view="inbox"
-        label="Inbox"
-        icon={<InboxIcon />}
-        active={active === 'inbox'}
-        select={select}
-      />
-    </fieldset>
-  )
-}
-
-function SidebarPanel({ view, slug }: { readonly view: SidebarView; readonly slug: string }) {
-  return (
-    <section className="home-sidebar-panel" aria-label={`${view} sidebar`} data-view={view}>
+    <TabPanel name="sidebar" active={view} className="home-sidebar-panel">
       {view === 'home' && <PinnedChats slug={slug} />}
       {view === 'chat' && <ChatSidebar slug={slug} />}
       {view === 'inbox' && <Inbox />}
-    </section>
+    </TabPanel>
   )
 }
 
@@ -376,9 +334,9 @@ function MainPane({
   )
 }
 
-function initialView(where: string): SidebarView {
-  if (where === 'Chat') return 'chat'
-  return 'home'
+/** Which view the address implies. Opening a conversation is the sidebar's cue to list them. */
+function viewFor(where: string): string {
+  return where === 'Chat' ? 'chat' : 'home'
 }
 
 export function Home({ space, children }: { readonly space: Space; readonly children: ReactNode }) {
@@ -386,8 +344,11 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
   const { isOpen, close, open, closeButton, openButton } = useSidebarVisibility()
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
-  const [chosenView, setChosenView] = useState<SidebarView>()
-  const view = chosenView ?? initialView(where)
+  const [chosenView, setChosenView] = useState<string>()
+  // Both halves answer the same question — which view is showing. Until somebody picks one the
+  // address goes on deciding, so walking into a conversation brings the chat list with it; after
+  // a pick it is theirs, and moving around does not take it back.
+  const view = chosenView ?? viewFor(where)
 
   return (
     <div
@@ -402,8 +363,17 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
           className="home-sidebar"
           aria-label={`${space.displayName} sidebar`}
         >
-          <WorkspaceHeader space={space} closeSidebar={close} closeButton={closeButton} />
-          <SidebarViews active={view} select={setChosenView} />
+          <SpaceHeader space={space} closeSidebar={close} closeButton={closeButton} />
+          <TabList
+            name="sidebar"
+            label="Sidebar views"
+            tabs={SIDEBAR_VIEWS}
+            active={view}
+            choose={setChosenView}
+            className="home-tabbar"
+            tabClassName="home-tab"
+            renderTab={renderSidebarTab}
+          />
           <SidebarPanel view={view} slug={space.slug} />
         </aside>
 

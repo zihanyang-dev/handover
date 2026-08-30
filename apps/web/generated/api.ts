@@ -3618,6 +3618,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** Format: uuid */
+            ownerUserId: string;
             ownerName: string;
             yours: boolean;
             version?: string;
@@ -3682,7 +3684,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             agentKind: string;
-            machineName: string;
+            /** Format: uuid */
+            machineId: string;
             working: components["schemas"]["Working"];
             offers: components["schemas"]["Model"][];
             messages: components["schemas"]["Message"][];

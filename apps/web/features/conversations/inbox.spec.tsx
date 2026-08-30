@@ -44,7 +44,7 @@ async function open() {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
-  await userEvent.click(await screen.findByRole('button', { name: 'Inbox' }))
+  await userEvent.click(await screen.findByRole('tab', { name: 'Inbox' }))
   return { router, view }
 }
 

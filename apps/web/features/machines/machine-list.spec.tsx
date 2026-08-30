@@ -20,7 +20,7 @@ import {
   machinesIn,
   useDisconnectMachine,
   useHandMachineTo,
-  useNameAgent,
+  useAgentSettings,
 } from './machine-list.ts'
 
 const server = setupServer()
@@ -40,6 +40,7 @@ const MACHINE_ID = '11111111-1111-4111-8111-111111111111'
 const MINA_MBP: components['schemas']['Machine'] = {
   id: MACHINE_ID,
   name: 'mina-mbp',
+  ownerUserId: '00000000-0000-4000-8000-000000000001',
   ownerName: 'Mina',
   yours: true,
   presence: { state: 'here' },
@@ -124,7 +125,7 @@ describe('naming an agent', () => {
       }),
     )
 
-    const screen = watching(() => useNameAgent('acme'))
+    const screen = watching(() => useAgentSettings('acme'))
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })
@@ -151,7 +152,7 @@ describe('naming an agent', () => {
       }),
     )
 
-    const screen = watching(() => useNameAgent('acme'))
+    const screen = watching(() => useAgentSettings('acme'))
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })

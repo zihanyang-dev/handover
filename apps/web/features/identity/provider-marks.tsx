@@ -5,7 +5,7 @@
  * Google split into the four brand colours along the same arcs the official G uses — red over
  * the top, blue for the crossbar and the right stroke, green along the bottom, yellow up the
  * lower left — done by rasterising the polygon onto its 24×24 grid and painting each cell by
- * angle from the centre; GitHub's cat in its one brand ink, #181717, because the Invertocat
+ * angle from the centre; GitHub's cat in its one brand ink, because the Invertocat
  * has no other colour.
  */
 

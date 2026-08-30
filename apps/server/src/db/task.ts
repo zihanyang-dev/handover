@@ -232,14 +232,24 @@ export async function takeBack(db: Database, saying: Saying): Promise<Stopped> {
         from over o join conversations c on c.id = o.conversation_id
     `.execute(tx)
 
+    // Two lines each, and they are not the same statement twice. The stop is how a turn that is
+    // *running right now* is reached: `stopsWantedOn` finds one by looking for exactly this line
+    // written after the turn began, so without it the machine would carry on to the end of a turn
+    // whose piece of work is already over — and this is the promise the button makes, on every
+    // conversation under it as well as the one somebody pressed. The second says what happened,
+    // which is not "somebody pressed stop".
+    //
+    // Both named after the piece of work rather than after the request, so pressing twice while it
+    // winds down writes each line once in each conversation of the subtree.
     for (const one of stopped.rows) {
       await note(tx, one.conversationId, `${saying.key}/${one.id}/stop`, {
         activityType: ACTIVITY.stopAsked,
       })
-      // Named after the piece of work, so every conversation in the subtree gets this line once.
       await note(tx, one.conversationId, `${saying.key}/${one.id}`, {
         activityType: ACTIVITY.takenBack,
       })
+      // Woken as well as told: a machine between reports would otherwise wait out its hold before
+      // hearing either of the lines above.
       await wakeMachine(tx, one.machineId)
     }
 

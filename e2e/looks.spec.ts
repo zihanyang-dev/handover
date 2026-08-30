@@ -58,7 +58,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
   await shot(page, '04-connect')
 
   await page.goto('/onboarding')
-  await page.getByLabel(/workspace name/iu).fill('Acme')
+  await page.getByLabel(/space name/iu).fill('Acme')
   await page.getByRole('button', { name: /continue/iu }).click()
   await page.waitForURL(/\/onboarding\/host/u, { timeout: 20_000 })
   await shot(page, '05-host')
@@ -72,7 +72,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
 
   const machine = await aMachine(await sessionOf(context), 'mina-mbp')
   await machine.poll()
-  await page.getByRole('button', { name: 'Chat' }).click()
+  await page.getByRole('tab', { name: 'Chat' }).click()
   const agent = page.getByRole('link', { name: /on mina-mbp, ready/iu })
   await expect(agent).toBeVisible({ timeout: 15_000 })
   await shot(page, '07-space-chat-sidebar')
@@ -90,7 +90,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
   await expect(page.getByText('In client.ts, hard-coded.')).toBeVisible({ timeout: 15_000 })
   await shot(page, '09-chat')
 
-  await page.getByRole('button', { name: 'Inbox' }).click()
+  await page.getByRole('tab', { name: 'Inbox' }).click()
   await shot(page, '10-inbox')
 
   await page.goto('/settings')
@@ -100,7 +100,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
   await page.goto(`/s/${slug}`)
   await page.getByRole('button', { name: /menu$/iu }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await shot(page, '12-workspace-menu')
+  await shot(page, '12-space-menu')
 })
 
 async function sessionOf(context: import('@playwright/test').BrowserContext): Promise<string> {

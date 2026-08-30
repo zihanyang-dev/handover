@@ -48,7 +48,7 @@ export async function signsIn(page: Page, name: string, exactly?: string): Promi
   await page.getByLabel(/digit code/i).fill(code)
 
   // Six digits and nothing to press: the form sends itself, which is the promise being checked.
-  await expect(page.getByRole('heading', { name: /workspace|choose a space/i })).toBeVisible({
+  await expect(page.getByRole('heading', { name: /name your Space|choose a Space/i })).toBeVisible({
     timeout: 20_000,
   })
 
@@ -63,7 +63,7 @@ export async function signsIn(page: Page, name: string, exactly?: string): Promi
  */
 export async function makesASpace(page: Page): Promise<string> {
   const name = `Acme ${randomUUID().slice(0, 6)}`
-  await page.getByLabel(/workspace name/i).fill(name)
+  await page.getByLabel(/space name/i).fill(name)
   await page.getByRole('button', { name: /continue/i }).click()
 
   await page.waitForURL(/\/onboarding\/host|\/s\//u, { timeout: 20_000 })

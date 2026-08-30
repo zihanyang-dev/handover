@@ -107,6 +107,11 @@ function watching({ db, live }: LiveApi) {
 
       return streamSSE(c, async (stream) => {
         let stop = (): void => undefined
+        // Asked again before every frame, and that is the point of it: the check above answered
+        // at the moment the stream opened, and a stream stays open for as long as somebody is
+        // looking. Taken out of the Space in the meantime, they would go on being told what an
+        // agent is doing on a machine they can no longer reach — which is the one thing
+        // `rules/revoked.spec.ts` exists to stop.
         const writer = frameWriter(async (frame) => {
           if (!(await conversationReachableBy(db, canWatch))) {
             stop()

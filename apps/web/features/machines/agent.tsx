@@ -25,6 +25,20 @@ export function agentKindName(kind: string): string {
 }
 
 /**
+ * What an agent is called on screen.
+ *
+ * Its owner's word for it, and its kind's own name when nobody has chosen one — which is what
+ * `MachineAgent.name` being null means, and the only thing the wire ever says about it. Here once
+ * because three screens show an agent and each had answered it differently: one said "Unnamed
+ * agent", one said "Claude Code", and the server said "Juniper".
+ */
+export function agentName(kind: string, chosen: string | null): string {
+  const named = chosen?.trim() ?? ''
+
+  return named === '' ? agentKindName(kind) : named
+}
+
+/**
  * The colour an agent is written in, which is its maker's.
  *
  * A class rather than a `data-kind` selector in a stylesheet: three screens showed the same agent

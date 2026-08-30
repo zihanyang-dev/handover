@@ -26,7 +26,6 @@ import {
   AGENT_KIND_NAMES,
   type AgentKind,
 } from '../machine/agent-kind.ts'
-import { fallbackAgentName } from '../machine/agent-name.ts'
 import { AT_ONCE_AT_MOST } from '../machine/at-once.ts'
 import type { Waiting } from '../machine/waiting.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
@@ -269,7 +268,12 @@ const Machine = named('Machine', {
    * A Space with two people in it has two people's laptops in it, and what an agent does on one
    * of them happens in that person's files. Only its owner can disconnect it, and a page that did
    * not say which was which would be offering everybody a button that only works on one.
+   *
+   * The id as well as the name, because the screen that hands a machine to somebody else has to
+   * leave its present owner out of that list — and two people in one Space can share a display
+   * name. It is the same id `/spaces/{slug}/members` already gives every member.
    */
+  ownerUserId: rowId,
   ownerName: z.string(),
   yours: z.boolean(),
   /**
@@ -494,6 +498,7 @@ function listing({ db }: MachineApi) {
         name: machine.name,
         version: machine.version,
         connectedIn: machine.connectedIn ?? undefined,
+        ownerUserId: machine.ownerUserId,
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
@@ -581,7 +586,7 @@ function asOffered(machineId: string, agent: Installed): z.infer<typeof Agent> {
 
   return {
     kind: agent.kind,
-    name: agent.name ?? fallbackAgentName(machineId, agent.kind),
+    name: agent.name,
     atOnce: agent.atOnce,
     // The machine is part of the face: two Codexes in one Space are two agents, and one drawing
     // shared between them would make the page unable to say which of them said something.

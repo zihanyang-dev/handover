@@ -19,12 +19,12 @@ import {
 import { burstConfetti } from '../../components/ui/confetti-burst.ts'
 import { ShellCommand } from '../../components/ui/shell-command.tsx'
 import { meQuery } from '../identity/me.ts'
-import { AgentMark, agentKindName } from '../machines/agent.tsx'
+import { AgentMark, agentKindName, agentName } from '../machines/agent.tsx'
 import { useMachineKey } from '../machines/machine-key.tsx'
 import {
   type Machine,
   machinesIn,
-  useNameAgent,
+  useAgentSettings,
   WHILE_WAITING_FOR_ONE_MS,
 } from '../machines/machine-list.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
@@ -191,7 +191,7 @@ function HostAgentCard({
         {machine.yours ? (
           <AgentName slug={slug} machineId={machine.id} agent={agent} />
         ) : (
-          <strong>{agent.name?.trim() || 'Unnamed agent'}</strong>
+          <strong>{agentName(agent.kind, agent.name)}</strong>
         )}
         <small>
           {kindName} · {agent.version}
@@ -213,7 +213,7 @@ function AgentName({
   const kindName = agentKindName(agent.kind)
   const [name, setName] = useState(agent.name ?? '')
   const [editing, setEditing] = useState(false)
-  const naming = useNameAgent(slug)
+  const naming = useAgentSettings(slug)
 
   const control = editing ? (
     <AgentNameForm

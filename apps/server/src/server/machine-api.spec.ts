@@ -19,7 +19,6 @@ import { listenForWaking } from '../db/waking.ts'
 import { loadEnv } from '../env.ts'
 import { newSessionToken } from '../identity/session.ts'
 import { LOG_OPTIONS } from '../log.ts'
-import { fallbackAgentName } from '../machine/agent-name.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import { waitingRoom, type Waiting } from '../machine/waiting.ts'
 import { enrolmentApi } from './enrolment-api.ts'
@@ -217,7 +216,7 @@ describe('what a machine reports', () => {
       agents: [
         expect.objectContaining({
           kind: 'claude-code',
-          name: fallbackAgentName(machine.id, 'claude-code'),
+          name: null,
           version: '2.1.4',
           models: [],
         }),
@@ -239,7 +238,7 @@ describe('what a machine reports', () => {
     expect((await seenInSpace()).machines[0]?.agents).toEqual([
       expect.objectContaining({
         kind: 'claude-code',
-        name: fallbackAgentName(machine.id, 'claude-code'),
+        name: null,
         version: '2.1.4',
         models: [],
       }),

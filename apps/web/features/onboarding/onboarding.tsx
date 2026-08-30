@@ -3,7 +3,7 @@
  *
  * Somebody with Spaces is offered them and goes straight in — the steps that remain are not
  * theirs to walk again. Somebody with none is making one right away: the form asks only for the
- * workspace name and shows what its address will be.
+ * Space name and shows what its address will be.
  */
 
 import { normalizeSlug } from '@handover/universal'
@@ -28,7 +28,7 @@ function SpaceFormHeading({ embedded }: { readonly embedded: boolean }) {
   if (embedded) return null
   return (
     <div className="auth-head">
-      <h1>Name your workspace</h1>
+      <h1>Name your Space</h1>
     </div>
   )
 }
@@ -49,7 +49,7 @@ function SpaceEmojiField({
         ref={control}
         className="space-create-emoji"
         type="button"
-        aria-label={`Choose workspace emoji, currently ${emoji}`}
+        aria-label={`Choose Space emoji, currently ${emoji}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
@@ -62,7 +62,7 @@ function SpaceEmojiField({
         <div
           className="space-create-emoji-popover"
           role="dialog"
-          aria-label="Choose a workspace emoji"
+          aria-label="Choose a Space emoji"
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return
             setOpen(false)
@@ -82,7 +82,7 @@ function SpaceEmojiField({
   )
 }
 
-/** One workspace name, with its address appearing as it is typed. */
+/** One Space name, with its address appearing as it is typed. */
 function MakeSpace({
   me,
   onMade,
@@ -153,7 +153,7 @@ function MakeSpace({
       >
         <div className="space-create-name-field">
           <label className="label" htmlFor={spaceField}>
-            Workspace name
+            Space name
           </label>
           <div className="space-create-name-control">
             <SpaceEmojiField key={active ? 'active' : 'inactive'} emoji={emoji} choose={setEmoji} />
@@ -173,7 +173,7 @@ function MakeSpace({
           </div>
         </div>
         <label className="label" htmlFor={urlField}>
-          Workspace URL
+          Space URL
         </label>
         <input
           id={urlField}

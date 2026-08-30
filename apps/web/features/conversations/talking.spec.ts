@@ -75,7 +75,7 @@ describe('transcript tail reads', () => {
     const base = {
       id: 'conversation',
       agentKind: 'codex',
-      machineName: 'mina',
+      machineId: 'm-1',
       working: { state: 'idle' },
       offers: [],
     }

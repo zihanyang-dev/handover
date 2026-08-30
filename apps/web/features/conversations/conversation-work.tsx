@@ -1,4 +1,5 @@
 import { ArrowRight, Check2Circle } from 'react-bootstrap-icons'
+import { reasonOf } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 import { useSay } from './talking.ts'
 import { useHandOver } from './work.ts'
@@ -26,12 +27,12 @@ export function HandoverControl({
   return (
     <div className="ml-auto flex items-center gap-2">
       {say.isError && (
-        <span className="text-[12px] text-[#b42318]" role="alert">
+        <span className="text-[12px] text-panel-danger" role="alert">
           Could not ask for a handover. Try again.
         </span>
       )}
       <button
-        className="h-7 rounded-[6px] border border-[#dedcd8] bg-white px-2.5 text-[12px] font-medium text-[#5f5d59] hover:bg-[#f7f6f4] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0075de]"
+        className="h-7 rounded-[6px] border border-panel-line-firm bg-white px-2.5 text-[12px] font-medium text-panel-ink-soft hover:bg-panel-fill disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         disabled={say.isPending}
         onClick={() => {
@@ -62,28 +63,28 @@ export function HandoverProposal({
 
   return (
     <article
-      className="my-3 rounded-[10px] border border-[#ddd9d2] bg-[#fbfaf9] p-4"
+      className="my-3 rounded-[10px] border border-panel-line bg-panel-ground p-4"
       aria-label="Proposed handover"
     >
-      <p className="text-[12px] leading-4 font-medium tracking-[0.01em] text-[#898781] uppercase">
+      <p className="text-[12px] leading-4 font-medium tracking-[0.01em] text-panel-ink-quiet uppercase">
         Proposed handover
       </p>
-      <p className="mt-2 text-[14px] leading-5 font-medium text-[#343330]">{goal}</p>
-      <p className="mt-2 text-[12px] leading-[17px] text-[#777570]">
+      <p className="mt-2 text-[14px] leading-5 font-medium text-panel-ink">{goal}</p>
+      <p className="mt-2 text-[12px] leading-[17px] text-panel-ink-muted">
         Nothing carries on by itself until you confirm this goal.
       </p>
       <div className="mt-4 flex items-center justify-end gap-2">
         {active && (
-          <span className="inline-flex h-8 items-center gap-1.5 text-[13px] font-medium text-[#4c7a4b]">
+          <span className="inline-flex h-8 items-center gap-1.5 text-[13px] font-medium text-panel-good">
             <Check2Circle aria-hidden /> Handed over
           </span>
         )}
         {!active && !available && (
-          <span className="text-[13px] text-[#898781]">Another goal is underway</span>
+          <span className="text-[13px] text-panel-ink-quiet">Another goal is underway</span>
         )}
         {available && (
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-[#2383e2] px-3 text-[13px] font-medium text-white hover:bg-[#1f75ca] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0075de]"
+            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             type="button"
             disabled={handOver.isPending}
             onClick={() => {
@@ -95,16 +96,25 @@ export function HandoverProposal({
         )}
       </div>
       {handOver.isError && (
-        <p className="mt-3 text-[13px] text-[#b42318]" role="alert">
-          {handoverFailure(handOver.error.reason)}
+        <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+          {whyItDidNotGoOver(handOver.error)}
         </p>
       )}
     </article>
   )
 }
 
-function handoverFailure(reason: string): string {
-  if (reason === 'nothing-to-hand-over')
-    return 'This proposal is no longer available. Ask for a new one.'
-  return 'Could not hand this over. Try again.'
+/**
+ * Why the goal was not taken on.
+ *
+ * The name is the server's own — `cannot-hand-over` in `task-api.ts` — and it covers both halves
+ * of the one situation a person can act on: the agent is not there, or this proposal is not the
+ * current one. What a dropped connection throws carries no reason at all, and calling that a
+ * stale proposal would send somebody to ask for a new one that they do not need.
+ */
+function whyItDidNotGoOver(thrown: unknown): string {
+  if (reasonOf(thrown) === 'cannot-hand-over')
+    return 'That is no longer what is on offer here. Ask for it again.'
+
+  return 'That could not be sent. Try again.'
 }

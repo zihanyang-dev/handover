@@ -11,7 +11,7 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { PinAngle, PinAngleFill } from 'react-bootstrap-icons'
 import type { components } from '../../generated/api.ts'
-import { AgentMark, agentKindName } from '../machines/agent.tsx'
+import { AgentMark, agentKindName, agentName } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { ChatIcon } from '../spaces/sidebar-icons.tsx'
 import { conversationsIn, useSetPinned } from './talking.ts'
@@ -77,14 +77,25 @@ function ageOf(startedAt: string, now = Date.now()): string {
   )
 }
 
-function titleOf(conversation: Conversation): string {
-  return conversation.opening?.trim() || 'New chat'
+/**
+ * What a conversation is called, which is the first thing anybody said in it.
+ *
+ * Exported because the chat screen shows the same title over the same conversation, and the two
+ * were saying different things about one with nothing in it — "New chat" here and "Chat" there.
+ */
+export function titleOf(conversation: { readonly opening: string | null } | undefined): string {
+  const opening = conversation?.opening?.trim() ?? ''
+
+  return opening === '' ? 'New chat' : opening
 }
 
 function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
   const kindName = agentKindName(agent.kind)
-  const name = agent.name?.trim() || 'Unnamed agent'
+  const name = agentName(agent.kind, agent.name)
   const availability = agent.isHere ? 'ready' : 'offline'
+  // Its own name only when somebody gave it one. Unnamed, it is already showing its kind, and
+  // "Claude Code, Claude Code on mina-mbp" says the same word twice for no reason.
+  const said = name === kindName ? name : `${name}, ${kindName}`
 
   return (
     <li>
@@ -92,7 +103,7 @@ function AgentChoice({ slug, agent }: { readonly slug: string; readonly agent: I
         className="chat-agent"
         to="/s/$slug/a/$machineId/$agentKind"
         params={{ slug, machineId: agent.machineId, agentKind: agent.kind }}
-        aria-label={`${name}, ${kindName} on ${agent.machineName}, ${availability}`}
+        aria-label={`${said} on ${agent.machineName}, ${availability}`}
         data-online={agent.isHere}
       >
         <span className="chat-agent-avatar">

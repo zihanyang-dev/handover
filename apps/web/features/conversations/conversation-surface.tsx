@@ -5,7 +5,7 @@
  * interacted with, so its scrolling and composer remain one geometry instead of two page states.
  */
 
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown } from 'react-bootstrap-icons'
 import {
   MessageScroller,
@@ -66,10 +66,8 @@ export function ConversationSurface({
   const rows = useMemo(() => rowsWithPending(turns, pendingMessage), [pendingMessage, turns])
   const watching = useWatching(slug, id, currentTurn, ownUserId)
   const { scrollToEnd, scrollToMessage } = useMessageScroller()
-  const viewport = useRef<HTMLDivElement>(null)
   const latestPrompt = useRef<LatestUserPrompt | null>(null)
   const positionedConversation = useRef<string | null>(null)
-  const [showScrollButton, setShowScrollButton] = useState(false)
 
   useLayoutEffect(() => {
     const nextPrompt = getLatestUserPrompt(rows)
@@ -97,13 +95,6 @@ export function ConversationSurface({
     })
   }, [animateArrival, id, rows, scrollToEnd, scrollToMessage])
 
-  const noteScrollPosition = () => {
-    const element = viewport.current
-    if (element === null) return
-    const distance = element.scrollHeight - element.clientHeight - element.scrollTop
-    setShowScrollButton(distance > CHAT_SCROLL_EDGE_PX)
-  }
-
   return (
     <section className="chat-screen" aria-label="Chat">
       <header className="chat-conversation-header gap-2">
@@ -116,7 +107,7 @@ export function ConversationSurface({
         />
         {underway !== undefined && (
           <button
-            className="ml-auto h-7 rounded-[6px] border border-[#dedcd8] px-2.5 text-[12px] font-medium text-[#5f5d59] lg:hidden"
+            className="ml-auto h-7 rounded-[6px] border border-panel-line-firm px-2.5 text-[12px] font-medium text-panel-ink-soft lg:hidden"
             type="button"
             onClick={() => {
               setMobileWorkOpen(true)
@@ -138,14 +129,10 @@ export function ConversationSurface({
           watching={watching}
           pendingMessage={pendingMessage}
           setPendingMessage={setPendingMessage}
-          viewport={viewport}
-          noteScrollPosition={noteScrollPosition}
-          showScrollButton={showScrollButton}
-          scrollToEnd={scrollToEnd}
         />
         {underway !== undefined && (
           <aside
-            className="hidden h-full w-[320px] shrink-0 border-l border-[#e9e8e6] lg:block"
+            className="hidden h-full w-[320px] shrink-0 border-l border-panel-line lg:block"
             aria-label="Work details"
           >
             <WorkPanel slug={slug} id={id} underway={underway} />
@@ -168,6 +155,28 @@ export function ConversationSurface({
   )
 }
 
+/**
+ * How far the reader has scrolled from the live edge, and the one thing that depends on it.
+ *
+ * Kept beside the viewport it measures rather than in the screen above: nothing up there reads
+ * it, and it was four props — a ref, the measuring, the answer, and a way back to the edge — for
+ * one question.
+ */
+function useDistanceFromLatest() {
+  const viewport = useRef<HTMLDivElement>(null)
+  const [hasScrolledAway, setHasScrolledAway] = useState(false)
+
+  const noteScrollPosition = (): void => {
+    const element = viewport.current
+    if (element === null) return
+
+    const distance = element.scrollHeight - element.clientHeight - element.scrollTop
+    setHasScrolledAway(distance > CHAT_SCROLL_EDGE_PX)
+  }
+
+  return { viewport, hasScrolledAway, noteScrollPosition }
+}
+
 function ConversationMain({
   slug,
   id,
@@ -179,10 +188,6 @@ function ConversationMain({
   watching,
   pendingMessage,
   setPendingMessage,
-  viewport,
-  noteScrollPosition,
-  showScrollButton,
-  scrollToEnd,
 }: {
   readonly slug: string
   readonly id: string
@@ -194,12 +199,10 @@ function ConversationMain({
   readonly watching: ReturnType<typeof useWatching>
   readonly pendingMessage: PendingUserMessage | undefined
   readonly setPendingMessage: (message: PendingUserMessage | undefined) => void
-  readonly viewport: RefObject<HTMLDivElement | null>
-  readonly noteScrollPosition: () => void
-  readonly showScrollButton: boolean
-  readonly scrollToEnd: ReturnType<typeof useMessageScroller>['scrollToEnd']
 }) {
   const { agentKind, messages, offers, working, underway } = conversation
+  const { scrollToEnd } = useMessageScroller()
+  const { viewport, hasScrolledAway, noteScrollPosition } = useDistanceFromLatest()
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -231,7 +234,7 @@ function ConversationMain({
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <ScrollToLatest
-          show={showScrollButton}
+          show={hasScrolledAway}
           onClick={() => {
             scrollToEnd({ behavior: 'smooth' })
           }}

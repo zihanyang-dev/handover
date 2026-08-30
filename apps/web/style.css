@@ -39,6 +39,48 @@
   --agent-codex: #2b292a;
   --agent-other: #5f5e59;
 
+  /* The panels inside a Space — Settings, the work rail, the removal checklist — measured from
+     the live Notion app. A third ramp, and one too many: every step here is within a value or two
+     of one above it. Named rather than folded into them, for the same reason the two above are
+     both named — collapsing twenty greys is a design decision with visible consequences, and this
+     review's job was to find that nobody had made it, not to make it while nobody was looking.
+     What is enforced is that they are named at all: `rules/style.spec.ts` refuses a new colour
+     written into a screen as a hex. */
+  --panel-ink: #2f2e2b;
+  --panel-ink-body: #4f4d49;
+  --panel-ink-soft: #5f5d59;
+  --panel-ink-muted: #777570;
+  --panel-ink-quiet: #898781;
+  --panel-ink-off: #aaa8a3;
+  --panel-line: #e9e8e6;
+  --panel-line-firm: #d7d5d2;
+  --panel-ground: #fbfaf9;
+  --panel-fill: #f7f6f4;
+  --panel-fill-firm: #f0efed;
+  /* Four reds, because they are four different sentences: one says a thing failed, one is a
+     control that will destroy something, one is the ground under a warning, one is the warning's
+     own ink. Merged, a hover state would read as an error. */
+  --panel-danger: #b42318;
+  --panel-danger-quiet: #9b2c2c;
+  --panel-danger-fill: #d44c47;
+  --panel-danger-fill-hover: #c33f3a;
+  --panel-danger-wash: #fdf0ef;
+  --panel-danger-notice: #fff7f6;
+  --panel-danger-line: #f1cbc8;
+  --panel-danger-ink: #7d2925;
+  /* A machine that is here, and the dot beside it. */
+  --panel-good: #4c7a4b;
+  --panel-good-mark: #4c9a55;
+  /* The one blue notice on these screens: a link that will only ever be shown once. */
+  --panel-notice: #f4f9fe;
+  --panel-notice-line: #d9e8f8;
+  /* What a modal is shown against, and what lifts it. Measured from the same app; heavier than
+     `--surface-raised-shadow`, which is a menu's, because this one covers the whole screen. */
+  --panel-scrim: rgba(15, 15, 15, 0.6);
+  --panel-dialog-shadow:
+    0 24px 48px rgba(25, 25, 25, 0.24), 0 4px 12px rgba(25, 25, 25, 0.14),
+    0 0 0 1px rgba(42, 28, 0, 0.07);
+
   --primary-100: #e7f3ff;
   --primary-200: #0069c8;
   --primary-500: #0075de;
@@ -127,6 +169,29 @@
   --color-agent-claude: var(--agent-claude);
   --color-agent-codex: var(--agent-codex);
   --color-agent-other: var(--agent-other);
+  --color-panel-ink: var(--panel-ink);
+  --color-panel-ink-body: var(--panel-ink-body);
+  --color-panel-ink-soft: var(--panel-ink-soft);
+  --color-panel-ink-muted: var(--panel-ink-muted);
+  --color-panel-ink-quiet: var(--panel-ink-quiet);
+  --color-panel-ink-off: var(--panel-ink-off);
+  --color-panel-line: var(--panel-line);
+  --color-panel-line-firm: var(--panel-line-firm);
+  --color-panel-ground: var(--panel-ground);
+  --color-panel-fill: var(--panel-fill);
+  --color-panel-fill-firm: var(--panel-fill-firm);
+  --color-panel-danger: var(--panel-danger);
+  --color-panel-danger-quiet: var(--panel-danger-quiet);
+  --color-panel-danger-fill: var(--panel-danger-fill);
+  --color-panel-danger-fill-hover: var(--panel-danger-fill-hover);
+  --color-panel-danger-wash: var(--panel-danger-wash);
+  --color-panel-danger-notice: var(--panel-danger-notice);
+  --color-panel-danger-line: var(--panel-danger-line);
+  --color-panel-danger-ink: var(--panel-danger-ink);
+  --color-panel-good: var(--panel-good);
+  --color-panel-good-mark: var(--panel-good-mark);
+  --color-panel-notice: var(--panel-notice);
+  --color-panel-notice-line: var(--panel-notice-line);
   --color-focus: var(--focus);
   --font-body: var(--font);
   --font-mono: var(--font-mono);

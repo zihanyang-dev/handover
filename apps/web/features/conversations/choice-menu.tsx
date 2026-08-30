@@ -95,7 +95,9 @@ export function ChoiceMenu({
     <div ref={root} className="relative min-w-0">
       <button
         ref={trigger}
-        className="flex h-7 w-full max-w-36 min-w-0 cursor-pointer items-center overflow-hidden rounded-[3.125rem] border-0 bg-transparent px-3 font-[inherit] text-copy-xs/5 font-medium text-ellipsis whitespace-nowrap text-ink-muted hover:bg-[var(--choice-hover)] aria-expanded:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+        // The name is load-bearing, not decoration: the composer keeps its own ring while one of
+        // these is open, and it finds out by looking for this — see `chat.css`.
+        className="chat-choice-trigger flex h-7 w-full max-w-36 min-w-0 cursor-pointer items-center overflow-hidden rounded-[3.125rem] border-0 bg-transparent px-3 font-[inherit] text-copy-xs/5 font-medium text-ellipsis whitespace-nowrap text-ink-muted hover:bg-[var(--choice-hover)] aria-expanded:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         type="button"
         aria-label={`${label}: ${current}`}
         aria-haspopup="menu"

@@ -16,12 +16,14 @@ where it is long the file says what was found and how.
 | ---------------- | ---------------------------------------------------------------------------------------- |
 | `api-files.spec` | every `-api.ts` is laid out the same way                                                 |
 | `clocks`         | a column saying when something happened is stamped by the wall clock                     |
+| `colours`        | a colour is written in a stylesheet and only ever named on a screen                      |
 | `contract`       | no screen writes down a shape the contract already publishes                             |
 | `endpoints`      | every endpoint a design document names is one this deployment really has                 |
 | `generated`      | what is committed under `generated/` came from this branch's migrations and nothing else |
 | `imports`        | every file lists what it needs in the same order, and each module once                   |
 | `pointers`       | a file a comment points at in backticks is a file that is here                           |
 | `reachable`      | every endpoint this deployment has is one something can actually reach                   |
+| `refusals`       | every refusal a screen reads by name is one this server can actually send                |
 | `revoked`        | nobody who was removed is still being answered                                           |
 | `routes`         | every route is behind the door its address promises                                      |
 | `shapes`         | every thing the contract carries has a name, and that no two things share one            |

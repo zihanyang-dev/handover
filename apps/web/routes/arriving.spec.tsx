@@ -65,7 +65,7 @@ describe('arriving after a trip through a provider', () => {
 
     // The link is made once per provider per account, so the answer that made it is the one time
     // to mention it. A page that remembered would say it again.
-    await screen.findByText(/name your workspace/i)
+    await screen.findByText(/name your space/i)
     expect(screen.queryByText(/you already had an account here/i)).toBeNull()
   })
 
@@ -73,7 +73,7 @@ describe('arriving after a trip through a provider', () => {
     server.use(signedIn())
     open('/?handover_result=cancelled')
 
-    await screen.findByText(/name your workspace/i)
+    await screen.findByText(/name your space/i)
     expect(screen.queryByText(/you already had an account here/i)).toBeNull()
   })
 
@@ -101,7 +101,7 @@ describe('arriving after a trip through a provider', () => {
     server.use(signedIn())
     open('/')
 
-    await screen.findByText(/name your workspace/i)
+    await screen.findByText(/name your space/i)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
   })

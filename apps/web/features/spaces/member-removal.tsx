@@ -1,14 +1,24 @@
+/**
+ * What has to be settled before somebody's way in stops working.
+ *
+ * The one screen in this product that refuses to act until a person has decided something. Their
+ * machines go with them and their pieces of work stop, and neither is something this can choose
+ * for them — so each one is listed, each one is moved or stopped by hand, and the button stays
+ * disabled until nothing is left. Tailscale's lesson, the other way round: deleting a user there
+ * deletes their devices and everything running on them, with no list and no pause.
+ */
+
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { reasonOf } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
-import { useHandWorkTo, useTakeBack } from '../conversations/work.ts'
+import { useHandWorkTo, useTakeBack, whatItIsDoing } from '../conversations/work.ts'
 import { useHandMachineTo } from '../machines/machine-list.ts'
 import { useRemoveMember, whatTheyHold } from './people.ts'
 
 type Member = components['schemas']['Member']
 type Held = components['schemas']['StillTheirs']
 
-/** The checklist before access is removed: every remaining responsibility stays a human choice. */
 export function RemovalChecklist({
   slug,
   person,
@@ -25,41 +35,50 @@ export function RemovalChecklist({
   const held = useQuery(whatTheyHold(slug, person.userId))
   const remove = useRemoveMember(slug)
   const recipients = people.filter((candidate) => candidate.userId !== person.userId)
-  const clear = held.data?.working.length === 0 && held.data.machines.length === 0
+  // Not yet read is not the same as nothing left, and this is the guard on the one button that
+  // cannot be undone: until the answer is here it stays as though something were still held.
+  const holdsNothing = held.data !== undefined && nothingLeft(held.data)
 
   return (
     <section aria-labelledby="remove-person-title">
       <button
-        className="mb-4 border-0 bg-transparent text-[13px] text-[#777570] hover:text-[#373633]"
+        className="mb-4 border-0 bg-transparent text-[13px] text-panel-ink-muted hover:text-panel-ink"
         type="button"
         onClick={back}
       >
         ← Back to people
       </button>
-      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-[#2f2e2b]">
-        {person.you ? 'Leave this workspace' : `Remove ${person.displayName}`}
+      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-panel-ink">
+        {person.you ? 'Leave this Space' : `Remove ${person.displayName}`}
       </h2>
-      <p className="mt-1 text-[13px] leading-[18px] text-[#777570]">
+      <p className="mt-1 text-[13px] leading-[18px] text-panel-ink-muted">
         Resolve everything still held here before access is removed. Nothing is moved or stopped
         automatically.
       </p>
       {held.isPending && <PanelState>Checking what they still hold…</PanelState>}
       {held.isError && <PanelState>Could not read what they still hold. Try again.</PanelState>}
       {held.data !== undefined && (
-        <HeldRows slug={slug} held={held.data} recipients={recipients} changed={held.refetch} />
+        <HeldRows
+          slug={slug}
+          held={held.data}
+          recipients={recipients}
+          readAgain={() => {
+            void held.refetch()
+          }}
+        />
       )}
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-[#e9e8e6] pt-4">
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-panel-line pt-4">
         <button
-          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-[#f4f3f1]"
+          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-panel-fill"
           type="button"
           onClick={back}
         >
           Cancel
         </button>
         <button
-          className="h-8 rounded-[6px] border-0 bg-[#d44c47] px-3 text-[13px] font-medium text-white hover:bg-[#c33f3a] disabled:cursor-not-allowed disabled:opacity-45"
+          className="h-8 rounded-[6px] border-0 bg-panel-danger-fill px-3 text-[13px] font-medium text-white hover:bg-panel-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
           type="button"
-          disabled={!clear || remove.isPending}
+          disabled={!holdsNothing || remove.isPending}
           onClick={() => {
             remove.mutate(
               { params: { path: { slug, userId: person.userId } } },
@@ -67,28 +86,33 @@ export function RemovalChecklist({
             )
           }}
         >
-          {person.you ? 'Leave workspace' : 'Remove member'}
+          {person.you ? 'Leave this Space' : 'Remove member'}
         </button>
       </div>
-      {remove.isError && <RemovalError reason={remove.error.reason} />}
+      {remove.isError && <RemovalError thrown={remove.error} />}
     </section>
   )
+}
+
+/** Whether there is anything left to settle, asked the one way, by both readers of the answer. */
+function nothingLeft(held: Held): boolean {
+  return held.working.length === 0 && held.machines.length === 0
 }
 
 function HeldRows({
   slug,
   held,
   recipients,
-  changed,
+  readAgain,
 }: {
   readonly slug: string
   readonly held: Held
   readonly recipients: readonly Member[]
-  readonly changed: () => Promise<unknown>
+  readonly readAgain: () => void
 }) {
-  if (held.working.length === 0 && held.machines.length === 0)
+  if (nothingLeft(held))
     return (
-      <p className="mt-5 rounded-[7px] bg-[#f7f6f4] p-3 text-[13px] text-[#5f5d59]">
+      <p className="mt-5 rounded-[7px] bg-panel-fill p-3 text-[13px] text-panel-ink-soft">
         Nothing is still theirs here.
       </p>
     )
@@ -97,15 +121,15 @@ function HeldRows({
     <div className="mt-5 space-y-5">
       {held.working.length > 0 && (
         <div>
-          <h3 className="mb-2 text-[13px] font-medium text-[#5f5d59]">Pieces of work</h3>
-          <ul className="m-0 list-none divide-y divide-[#e9e8e6] border-y border-[#e9e8e6] p-0">
+          <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Pieces of work</h3>
+          <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
             {held.working.map((work) => (
               <WorkResolution
                 key={work.conversationId}
                 slug={slug}
                 work={work}
                 recipients={recipients}
-                changed={changed}
+                readAgain={readAgain}
               />
             ))}
           </ul>
@@ -113,15 +137,15 @@ function HeldRows({
       )}
       {held.machines.length > 0 && (
         <div>
-          <h3 className="mb-2 text-[13px] font-medium text-[#5f5d59]">Machines</h3>
-          <ul className="m-0 list-none divide-y divide-[#e9e8e6] border-y border-[#e9e8e6] p-0">
+          <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Machines</h3>
+          <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
             {held.machines.map((machine) => (
               <MachineResolution
                 key={machine.id}
                 slug={slug}
                 machine={machine}
                 recipients={recipients}
-                changed={changed}
+                readAgain={readAgain}
               />
             ))}
           </ul>
@@ -135,24 +159,21 @@ function WorkResolution({
   slug,
   work,
   recipients,
-  changed,
+  readAgain,
 }: {
   readonly slug: string
   readonly work: Held['working'][number]
   readonly recipients: readonly Member[]
-  readonly changed: () => Promise<unknown>
+  readonly readAgain: () => void
 }) {
   const transfer = useHandWorkTo(slug, work.conversationId)
   const stop = useTakeBack(slug, work.conversationId)
-  const readHeldAgain = () => {
-    void changed()
-  }
 
   return (
     <li className="py-3">
-      <p className="text-[13px] font-medium text-[#373633]">{work.goal}</p>
-      <p className="mt-0.5 text-[12px] text-[#898781]">
-        {work.state} · {work.machineName}
+      <p className="text-[13px] font-medium text-panel-ink">{work.goal}</p>
+      <p className="mt-0.5 text-[12px] text-panel-ink-quiet">
+        {whatItIsDoing(work.state)} · {work.machineName}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <TransferChoice
@@ -161,16 +182,16 @@ function WorkResolution({
           act={(ownerUserId) => {
             transfer.mutate(
               { params: { path: { slug, id: work.conversationId } }, body: { ownerUserId } },
-              { onSuccess: readHeldAgain },
+              { onSuccess: readAgain },
             )
           }}
         />
         <SmallButton
           label="Stop work"
-          danger
+          isDestructive
           disabled={stop.isPending}
           act={() => {
-            stop.mutate(undefined, { onSuccess: readHeldAgain })
+            stop.mutate(undefined, { onSuccess: readAgain })
           }}
         />
       </div>
@@ -182,22 +203,19 @@ function MachineResolution({
   slug,
   machine,
   recipients,
-  changed,
+  readAgain,
 }: {
   readonly slug: string
   readonly machine: Held['machines'][number]
   readonly recipients: readonly Member[]
-  readonly changed: () => Promise<unknown>
+  readonly readAgain: () => void
 }) {
   const transfer = useHandMachineTo(slug)
-  const readHeldAgain = () => {
-    void changed()
-  }
 
   return (
     <li className="py-3">
-      <p className="text-[13px] font-medium text-[#373633]">{machine.name}</p>
-      <p className="mt-0.5 text-[12px] text-[#898781]">
+      <p className="text-[13px] font-medium text-panel-ink">{machine.name}</p>
+      <p className="mt-0.5 text-[12px] text-panel-ink-quiet">
         {machine.inUse === 0 ? 'Not in use' : `${machine.inUse} active conversations`}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -207,7 +225,7 @@ function MachineResolution({
           act={(ownerUserId) => {
             transfer.mutate(
               { params: { path: { slug, id: machine.id } }, body: { ownerUserId } },
-              { onSuccess: readHeldAgain },
+              { onSuccess: readAgain },
             )
           }}
         />
@@ -230,7 +248,7 @@ function TransferChoice({
   return (
     <>
       <select
-        className="h-8 max-w-[220px] rounded-[5px] border border-[#d7d5d2] bg-white px-2 text-[13px] text-[#5f5d59]"
+        className="h-8 max-w-[220px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] text-panel-ink-soft"
         aria-label="New owner"
         value={ownerUserId}
         onChange={(event) => {
@@ -257,21 +275,21 @@ function TransferChoice({
 
 function SmallButton({
   label,
-  danger = false,
+  isDestructive = false,
   disabled,
   act,
 }: {
   readonly label: string
-  readonly danger?: boolean
+  readonly isDestructive?: boolean
   readonly disabled: boolean
   readonly act: () => void
 }) {
   return (
     <button
       className={
-        danger
-          ? 'h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-[#9b2c2c] hover:bg-[#fdf0ef] disabled:opacity-45'
-          : 'h-8 rounded-[5px] border border-[#d7d5d2] px-2 text-[13px] font-medium text-[#4f4d49] hover:bg-[#f5f4f2] disabled:opacity-45'
+        isDestructive
+          ? 'h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash disabled:opacity-45'
+          : 'h-8 rounded-[5px] border border-panel-line-firm px-2 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill disabled:opacity-45'
       }
       type="button"
       disabled={disabled}
@@ -282,21 +300,31 @@ function SmallButton({
   )
 }
 
-function RemovalError({ reason }: { readonly reason: string }) {
-  const message =
-    reason === 'last-owner'
-      ? 'Make somebody else an owner before leaving or changing your role.'
-      : 'That did not work. Try again.'
+/**
+ * Why nobody was taken out.
+ *
+ * The name is the server's own — `the-last-owner` in `member-api.ts`. What a dropped connection
+ * throws carries no reason at all, and reading one as the other told the last owner of a Space
+ * something true, and told everybody else the same thing when it was not.
+ */
+function whyTheyAreStillHere(thrown: unknown): string {
+  if (reasonOf(thrown) === 'the-last-owner')
+    return 'A Space keeps an owner. Make somebody else one first.'
+
+  return 'That could not be sent. Try again.'
+}
+
+function RemovalError({ thrown }: { readonly thrown: unknown }) {
   return (
-    <p className="mt-3 text-[13px] text-[#b42318]" role="alert">
-      {message}
+    <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+      {whyTheyAreStillHere(thrown)}
     </p>
   )
 }
 
-function PanelState({ children }: { readonly children: React.ReactNode }) {
+function PanelState({ children }: { readonly children: ReactNode }) {
   return (
-    <p className="py-6 text-[13px] text-[#777570]" role="status">
+    <p className="py-6 text-[13px] text-panel-ink-muted" role="status">
       {children}
     </p>
   )

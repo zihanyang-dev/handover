@@ -33,8 +33,8 @@ export function useSignOut() {
 
 export function SignOut() {
   const me = useQuery(meQuery)
-  const account = me.data?.credentials.find((one) => one.kind === 'email')?.address ?? ''
-  const leave = useSignOut()
+  const account = me.data?.credentials.find((one) => one.kind === 'email')?.address
+  const signOut = useSignOut()
 
   return (
     <div className="row">
@@ -43,10 +43,10 @@ export function SignOut() {
         className="button button-quiet"
         type="button"
         onClick={() => {
-          leave.mutate()
+          signOut.mutate()
         }}
       >
-        <span className="button-label">{leave.isError ? 'Could not sign out' : 'Sign out'}</span>
+        <span className="button-label">{signOut.isError ? 'Could not sign out' : 'Sign out'}</span>
       </button>
     </div>
   )

@@ -4,14 +4,14 @@ import { EmojiPicker } from 'frimousse'
 export function SpaceEmojiPicker({ choose }: { readonly choose: (emoji: string) => void }) {
   return (
     <EmojiPicker.Root
-      className="workspace-emoji-picker"
+      className="space-emoji-picker"
       columns={8}
       locale="en"
       onEmojiSelect={({ emoji }) => {
         choose(emoji)
       }}
     >
-      <div className="workspace-emoji-toolbar">
+      <div className="space-emoji-toolbar">
         <EmojiPicker.Search autoFocus placeholder="Search emoji" aria-label="Search emoji" />
         <EmojiPicker.SkinToneSelector aria-label="Change skin tone" />
       </div>

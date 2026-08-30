@@ -67,13 +67,13 @@ function quietMachineStep() {
 }
 
 describe('the first step — a Space', () => {
-  it('somebody with no Spaces is making a workspace right away', async () => {
+  it('somebody with no Spaces is making a space right away', async () => {
     server.use(signedIn({ displayName: 'Mina' }))
     open('/onboarding')
 
-    expect(await screen.findByLabelText(/workspace name/i)).toHaveProperty('value', '')
-    expect(screen.getByRole('button', { name: /choose workspace emoji.*🏠/i })).toBeDefined()
-    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
+    expect(await screen.findByLabelText(/space name/i)).toHaveProperty('value', '')
+    expect(screen.getByRole('button', { name: /choose space emoji.*🏠/i })).toBeDefined()
+    expect(screen.queryByRole('dialog', { name: /choose a space emoji/i })).toBeNull()
     expect(screen.queryByLabelText(/your name/i)).toBeNull()
   })
 
@@ -81,9 +81,9 @@ describe('the first step — a Space', () => {
     server.use(signedIn())
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/workspace name/i), '你好')
+    await userEvent.type(await screen.findByLabelText(/space name/i), '你好')
 
-    const address = await screen.findByLabelText(/workspace url/i)
+    const address = await screen.findByLabelText(/space url/i)
     expect(address).toHaveProperty('disabled', true)
     expect(address).toHaveProperty('value', expect.stringMatching(/\/s\/你好$/u))
     expect(address).not.toHaveProperty('value', expect.stringContaining('%'))
@@ -104,7 +104,7 @@ describe('the first step — a Space', () => {
     expect(screen.queryByRole('button', { name: /open acme/i })).toBeNull()
   })
 
-  it('makes the workspace without rewriting the account profile, then advances to Host', async () => {
+  it('makes the space without rewriting the account profile, then advances to Host', async () => {
     let renamed = false
     let made: unknown
     server.use(
@@ -121,7 +121,7 @@ describe('the first step — a Space', () => {
     )
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/workspace name/i), 'Acme')
+    await userEvent.type(await screen.findByLabelText(/space name/i), 'Acme')
     const between: { readonly heading: string | null; readonly success: boolean }[] = []
     const observer = new MutationObserver(() => {
       between.push({
@@ -157,7 +157,7 @@ describe('the first step — a Space', () => {
     )
     open('/onboarding')
 
-    await userEvent.type(await screen.findByLabelText(/workspace name/i), 'Acme')
+    await userEvent.type(await screen.findByLabelText(/space name/i), 'Acme')
     await userEvent.click(screen.getByRole('button', { name: /continue/i }))
 
     expect(await screen.findByText(/acme-2 is free/i)).toBeDefined()
@@ -224,7 +224,7 @@ describe('the first step — a Space', () => {
 
     expect(make.getAttribute('aria-expanded')).toBe('false')
     await userEvent.click(make)
-    const name = await screen.findByRole('textbox', { name: /workspace name/i })
+    const name = await screen.findByRole('textbox', { name: /space name/i })
     await waitFor(() => {
       expect(document.activeElement).toBe(name)
     })
@@ -234,10 +234,10 @@ describe('the first step — a Space', () => {
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(make.getAttribute('aria-expanded')).toBe('true')
 
-    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /choose a space emoji/i })).toBeNull()
 
     await userEvent.click(screen.getByRole('button', { name: /close new space/i }))
-    expect(screen.queryByRole('textbox', { name: /workspace name/i })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: /space name/i })).toBeNull()
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(make.getAttribute('aria-expanded')).toBe('false')
     await waitFor(() => {
@@ -245,8 +245,8 @@ describe('the first step — a Space', () => {
     })
 
     await userEvent.click(make)
-    await screen.findByRole('textbox', { name: /workspace name/i })
-    expect(screen.queryByRole('dialog', { name: /choose a workspace emoji/i })).toBeNull()
+    await screen.findByRole('textbox', { name: /space name/i })
+    expect(screen.queryByRole('dialog', { name: /choose a space emoji/i })).toBeNull()
   })
 
   it('says once that this way now reaches an account that was already there', async () => {

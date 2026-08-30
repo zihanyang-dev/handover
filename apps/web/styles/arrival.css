@@ -829,6 +829,15 @@
   outline-offset: 1px;
 }
 
+/* The same button with its words on it, for the one place there is room for them. */
+.shell-copy-said {
+  @apply inline-flex h-8 w-auto items-center gap-1.5 rounded-[6px] border border-panel-line-firm bg-base px-3 text-copy-xxs font-medium text-panel-ink;
+}
+
+.shell-copy-said:hover {
+  background: var(--panel-fill);
+}
+
 .shell-prompt {
   color: var(--primary);
   user-select: none;
@@ -1348,9 +1357,9 @@
   .home-close-sidebar:focus-visible,
   .home-open-sidebar:focus-visible,
   .home-tab:focus-visible,
-  .home-workspace-identity:focus-visible,
-  .workspace-menu button:focus-visible,
-  .workspace-menu a:focus-visible,
+  .home-space-identity:focus-visible,
+  .space-menu button:focus-visible,
+  .space-menu a:focus-visible,
   .chat-agent:focus-visible,
   .chat-pin:focus-visible,
   .sidebar-section-heading:focus-visible,

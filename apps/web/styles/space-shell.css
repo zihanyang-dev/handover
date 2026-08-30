@@ -100,7 +100,7 @@
     color: var(--ink);
   }
 
-  .workspace-emoji-popover {
+  .space-emoji-popover {
     top: 3rem;
     left: 0;
     width: min(20rem, calc(100vw - 2rem));

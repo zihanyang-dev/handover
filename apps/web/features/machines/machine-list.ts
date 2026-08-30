@@ -84,13 +84,15 @@ export function useDisconnectMachine(slug: string) {
 }
 
 /**
- * Naming an agent on one of your machines, or putting the name back.
+ * What an owner has decided about one agent on one of their machines: its name, and how much it
+ * takes on at the same time.
  *
- * The name follows its owner rather than the Space it is being looked at from: the same laptop
- * appears in every Space that person is in, and one called something different in each would be a
- * different agent to each room. `null` is the only way to take a name off.
+ * Both follow the owner rather than the Space it is being looked at from: the same laptop appears
+ * in every Space that person is in, and one called something different in each — or allowed a
+ * different number in each — would be a different agent to each room. `null` is the only way to
+ * take a name off.
  */
-export function useNameAgent(slug: string) {
+export function useAgentSettings(slug: string) {
   const client = useQueryClient()
 
   return cached.useMutation('patch', '/me/machines/{id}/agents/{kind}', {

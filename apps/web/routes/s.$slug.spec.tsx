@@ -53,24 +53,22 @@ describe('entering a Space', () => {
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
     expect(document.querySelector('.home-breadcrumb')).toBeNull()
-    const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
-    const home = within(switches).getByRole('button', { name: 'Home' })
-    const chat = within(switches).getByRole('button', { name: 'Chat' })
-    const inbox = within(switches).getByRole('button', { name: 'Inbox' })
+    const switches = within(sidebar).getByRole('tablist', { name: /sidebar views/i })
+    const home = within(switches).getByRole('tab', { name: 'Home' })
+    const chat = within(switches).getByRole('tab', { name: 'Chat' })
+    const inbox = within(switches).getByRole('tab', { name: 'Inbox' })
 
-    expect(within(switches).getAllByRole('button')).toHaveLength(3)
-    expect(home.getAttribute('aria-pressed')).toBe('true')
-    expect(chat.getAttribute('aria-pressed')).toBe('false')
-    expect(inbox.getAttribute('aria-pressed')).toBe('false')
-    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
+    expect(within(switches).getAllByRole('tab')).toHaveLength(3)
+    expect(home.getAttribute('aria-selected')).toBe('true')
+    expect(chat.getAttribute('aria-selected')).toBe('false')
+    expect(inbox.getAttribute('aria-selected')).toBe('false')
+    expect(switches.querySelectorAll('[aria-selected="true"]')).toHaveLength(1)
 
     await userEvent.click(chat)
 
-    expect(home.getAttribute('aria-pressed')).toBe('false')
-    expect(chat.getAttribute('aria-pressed')).toBe('true')
+    expect(home.getAttribute('aria-selected')).toBe('false')
+    expect(chat.getAttribute('aria-selected')).toBe('true')
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
-    expect(sidebar.querySelector('.home-workspace-icon')).toBeNull()
-    expect(within(sidebar).queryByText('Conversations')).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Machines' })).toBeNull()
     expect(screen.queryByText('handover connect')).toBeNull()
 
@@ -78,15 +76,19 @@ describe('entering a Space', () => {
 
     expect(await screen.findByRole('heading', { name: 'Waiting on you' })).toBeDefined()
     expect(screen.queryByRole('heading', { name: 'Inbox' })).toBeNull()
-    expect(inbox.getAttribute('aria-pressed')).toBe('true')
-    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
+    expect(inbox.getAttribute('aria-selected')).toBe('true')
+    expect(switches.querySelectorAll('[aria-selected="true"]')).toHaveLength(1)
     expect(router.state.location.pathname).toBe('/s/acme')
 
-    await userEvent.click(chat)
+    // The arrows move within the strip, which is the half a set of toggle buttons never had: one
+    // Tab stop, and the left arrow steps back through it rather than off it.
+    inbox.focus()
+    await userEvent.keyboard('{ArrowLeft}')
 
-    expect(chat.getAttribute('aria-pressed')).toBe('true')
-    expect(inbox.getAttribute('aria-pressed')).toBe('false')
-    expect(switches.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
+    expect(chat.getAttribute('aria-selected')).toBe('true')
+    expect(inbox.getAttribute('aria-selected')).toBe('false')
+    expect(document.activeElement).toBe(chat)
+    expect(switches.querySelectorAll('[aria-selected="true"]')).toHaveLength(1)
   })
 
   it('keeps pinned conversations directly under Home', async () => {
@@ -153,7 +155,7 @@ describe('entering a Space', () => {
     const router = open('/s/acme')
 
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    await userEvent.click(within(sidebar).getByRole('button', { name: 'Chat' }))
+    await userEvent.click(within(sidebar).getByRole('tab', { name: 'Chat' }))
 
     expect(await within(sidebar).findByRole('heading', { name: 'Agents' })).toBeDefined()
     const agent = within(sidebar).getByRole('link', {
@@ -203,7 +205,7 @@ describe('entering a Space', () => {
         HttpResponse.json({
           id: WHERE,
           agentKind: 'claude-code',
-          machineName: 'mina-mbp',
+          machineId: 'm-1',
           working: { state: 'idle' },
           offers: [],
           messages: [],
@@ -221,7 +223,7 @@ describe('entering a Space', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Message Scout' }), 'Read notes.txt')
   }
 
-  it('starts in a folder of its own without showing a workspace choice', async () => {
+  it('starts in a folder of its own without showing a space choice', async () => {
     const asked = anAgent('/Users/mina/code/thing')
     await typedToIt()
 
@@ -277,7 +279,7 @@ describe('entering a Space', () => {
         return HttpResponse.json({
           id,
           agentKind: 'claude-code',
-          machineName: 'mina-mbp',
+          machineId: 'm-1',
           working: { state: 'idle' },
           offers: [],
           messages: [
@@ -295,7 +297,7 @@ describe('entering a Space', () => {
         HttpResponse.json({
           id,
           agentKind: 'claude-code',
-          machineName: 'mina-mbp',
+          machineId: 'm-1',
           working: { state: 'idle' },
           offers: [
             {
@@ -322,7 +324,7 @@ describe('entering a Space', () => {
     )
     const router = open('/s/acme')
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
-    await userEvent.click(within(sidebar).getByRole('button', { name: 'Chat' }))
+    await userEvent.click(within(sidebar).getByRole('tab', { name: 'Chat' }))
     await userEvent.click(
       within(sidebar).getByRole('link', { name: /Scout, Claude Code on mina-mbp, ready/i }),
     )
@@ -412,7 +414,7 @@ describe('entering a Space', () => {
         HttpResponse.json({
           id,
           agentKind: 'claude-code',
-          machineName: 'mina-mbp',
+          machineId: 'm-1',
           working: { state: 'idle' },
           offers: [],
           messages: new URL(request.url).searchParams.has('after')
@@ -479,7 +481,7 @@ describe('entering a Space', () => {
     })
   })
 
-  it('opens Workspace Settings with People and Machines', async () => {
+  it('opens Space Settings with People and Machines', async () => {
     const rui = '22222222-2222-4222-8222-222222222222'
     const changed: unknown[] = []
     let disconnected = false
@@ -595,10 +597,10 @@ describe('entering a Space', () => {
         name: 'Settings',
       }),
     )
+    // The element itself is everything the panel does not cover: with a real dialog the backdrop
+    // is the browser's and there is nothing of ours to press.
     const reopened = await screen.findByRole('dialog', { name: 'Acme settings' })
-    const underlay = reopened.parentElement?.firstElementChild
-    expect(underlay).not.toBeNull()
-    await userEvent.click(underlay as HTMLElement)
+    await userEvent.click(reopened)
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Acme settings' })).toBeNull()
       expect(document.activeElement).toBe(trigger)
@@ -671,7 +673,7 @@ describe('entering a Space', () => {
     await userEvent.keyboard('{ArrowRight}')
     const movedWidth = resize.getAttribute('aria-valuenow')
 
-    await userEvent.click(within(sidebar).getByRole('button', { name: 'Inbox' }))
+    await userEvent.click(within(sidebar).getByRole('tab', { name: 'Inbox' }))
     await screen.findByRole('heading', { name: 'Waiting on you' })
 
     expect(resize.getAttribute('aria-valuenow')).toBe(movedWidth)

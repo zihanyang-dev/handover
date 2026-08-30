@@ -325,11 +325,6 @@
   height: 0.4375rem;
 }
 
-.chat-model-choices {
-  overflow: hidden;
-  align-items: center;
-}
-
 .chat-scroll-to-bottom {
   position: absolute;
   z-index: 10;
@@ -864,8 +859,7 @@
   white-space: nowrap;
 }
 
-.chat-tool-chip,
-.chat-activity-chip {
+.chat-tool-chip {
   min-width: 0;
   overflow: hidden;
   padding: 0;
