@@ -23,10 +23,21 @@ import type { Log } from './log.ts'
  */
 const EVERY_MS = 10_000
 
-export type Waker = { readonly stop: () => void }
+export type Waker = {
+  /**
+   * Stops looking, and waits for the round in flight.
+   *
+   * Waiting is the half that matters at shutdown. `main.ts` closes the pool once nothing is using
+   * it any more, and a round that was still running was still using it — `code-style.md` 8 asks
+   * whoever registers a timer to own its cancel *and* its wait.
+   */
+  readonly stop: () => Promise<void>
+}
 
 export function keepWaking(db: Database, log: Log, everyMs = EVERY_MS): Waker {
   let going = true
+  let waiting: ReturnType<typeof setTimeout> | undefined
+  let inFlight: Promise<void> | undefined
 
   const round = async (): Promise<void> => {
     try {
@@ -44,16 +55,33 @@ export function keepWaking(db: Database, log: Log, everyMs = EVERY_MS): Waker {
     }
   }
 
-  const beat = setInterval(() => {
-    if (going) void round()
-  }, everyMs)
-  // Never what keeps this process alive: a deploy should not wait out a beat.
-  beat.unref()
+  /**
+   * One round, then the next — rather than a beat that fires whether or not the last one is done.
+   *
+   * On an interval, a round that outlasts the gap does not delay the next one: it runs beside it,
+   * and a third joins them, and they pile up exactly when the database is slowest, which is the
+   * one time this should be asking *less*. Both rounds are idempotent, so what piled up was
+   * waste rather than damage — but waste that grows on its own is the shape of an outage.
+   */
+  const keepLooking = (): void => {
+    if (!going) return
+
+    // Never what keeps this process alive: a deploy should not wait out a beat.
+    waiting = setTimeout(() => {
+      inFlight = round().finally(() => {
+        inFlight = undefined
+        keepLooking()
+      })
+    }, everyMs).unref()
+  }
+
+  keepLooking()
 
   return {
-    stop: () => {
+    stop: async () => {
       going = false
-      clearInterval(beat)
+      clearTimeout(waiting)
+      await inFlight
     },
   }
 }

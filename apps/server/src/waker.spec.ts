@@ -46,9 +46,45 @@ describe('looking for work whose moment has come', () => {
     const waker = keepWaking(broken.db, quiet, 1)
 
     await promise
-    waker.stop()
+    await waker.stop()
 
     expect(broken.rounds()).toBeGreaterThanOrEqual(3)
+  })
+
+  /**
+   * A round that outlasts the gap must delay the next one, not run beside it.
+   *
+   * On a `setInterval` it did run beside it, and a third joined them — rounds piling up exactly
+   * when the database was slowest, which is the one time this should be asking less. Both rounds
+   * are idempotent, so what piled up was waste rather than damage; waste that grows on its own is
+   * still the shape of an outage.
+   */
+  it('runs one round at a time, however long a round takes', async () => {
+    let inside = 0
+    let mostAtOnce = 0
+    let finished = 0
+    const { promise, resolve } = Promise.withResolvers<void>()
+
+    const slow = {
+      transaction: () => ({
+        execute: async () => {
+          inside += 1
+          mostAtOnce = Math.max(mostAtOnce, inside)
+          await new Promise((done) => setTimeout(done, 12))
+          inside -= 1
+          finished += 1
+          if (finished >= 4) resolve()
+          throw new Error('the database is not there')
+        },
+      }),
+    } as unknown as Database
+
+    // A gap far shorter than a round: on an interval this is what overlap looks like.
+    const waker = keepWaking(slow, quiet, 1)
+    await promise
+    await waker.stop()
+
+    expect(mostAtOnce).toBe(1)
   })
 
   it('stops when it is told to', async () => {
@@ -57,7 +93,7 @@ describe('looking for work whose moment has come', () => {
     const waker = keepWaking(broken.db, quiet, 1)
     await promise
 
-    waker.stop()
+    await waker.stop()
     const after = broken.rounds()
     await new Promise((wake) => setTimeout(wake, 20))
 

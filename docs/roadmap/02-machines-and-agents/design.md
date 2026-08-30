@@ -135,6 +135,26 @@ where memberships.space_id = $1
 
 字符集和分组是纯规则,住在 `machine` owner 里,测试钉住:**不含数字、不含元音、不随机成词。**
 
+**没做限流,这是一个知道的缺口,不是没想到。** 同一份标准把熵和限流写成一对:
+
+> The user code SHOULD have enough entropy that, when combined with rate-limiting and other
+> mitigations, a brute-force attack becomes infeasible. It is RECOMMENDED that the server
+> rate-limit user code attempts.
+
+`20^8` ≈ 34.5 bit,正好是标准自己举的那个量级 —— 而它举那个量级的**前提**就是有限流。我们
+`GET /enrolments/{userCode}` 现在只有一道会话门,没有次数上限。
+
+算一遍这个缺口有多大:码只活 15 分钟,同一时刻真正在等的码是个位数。攻击者得先有一个自己的账号,
+然后每猜一次命中概率约 `10 / 2.56e10`;每秒一千次要跑一个月才有一半机会撞上**某一台别人正在接入的
+机器**,撞上了才能把它认领到自己名下。是真的,但不是现在最该花钱的地方。
+
+**不建的理由不是「不重要」,是它需要一张新表。** 现有那套限流(`LETTERS_PER_CALLER_PER_HOUR`)
+是数 `email_codes` 的行数,而查码这条路什么都不写,没有行可以数。为一条概率 1e-9 的路加一张表、
+加一个 owner,不划算。
+
+**重新想它的触发条件:** 这个部署开始接受它不认识的人注册的那天。到那天在这条路上加计数,和
+`email_codes` 用同一个 `asked_by` 口径,不要发明第二套。
+
 **⑤ 机器的凭据不是 `credentials` 表里的一行**
 
 那张表是**人**的:一行是一把能打开浏览器那扇门的东西。机器凭据打不开那扇门,人凭据也当不了机器。两张表、两个中间件、两种 401。

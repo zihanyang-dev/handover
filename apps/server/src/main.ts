@@ -165,7 +165,8 @@ async function stop(signal: string): Promise<void> {
   const deadline = new Promise<void>((resolve) => setTimeout(resolve, GRACE_MS).unref())
   await Promise.race([drained, deadline])
 
-  waker.stop()
+  // Awaited, so the pool below is not closed under a round that is still asking.
+  await waker.stop()
 
   // Their own connections, so they are their own to close.
   await listening.stop()
