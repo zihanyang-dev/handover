@@ -59,14 +59,14 @@ export function SpacePeople({
 
 function PanelHeading() {
   return (
-    <header className="mb-8">
+    <header className="mb-9">
       <h1
         id="space-people-title"
-        className="text-[24px] leading-8 font-semibold tracking-[-0.02em] text-panel-ink"
+        className="m-0 text-[26px] leading-8 font-semibold tracking-[-0.02em] text-panel-ink"
       >
         People
       </h1>
-      <p className="mt-1 text-[14px] leading-5 text-panel-ink-soft">
+      <p className="m-0 mt-2 text-[16px] leading-6 text-panel-ink-soft">
         Manage people in this Space and what they may do.
       </p>
     </header>
@@ -88,7 +88,7 @@ function MemberList({
 
   return (
     <section aria-labelledby="members-title">
-      <h2 id="members-title" className="mb-2 text-[14px] leading-5 font-medium text-panel-ink">
+      <h2 id="members-title" className="m-0 mb-2 text-[14px] leading-5 font-medium text-panel-ink">
         Members <span className="font-normal text-panel-ink-quiet">{people.length}</span>
       </h2>
       <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">

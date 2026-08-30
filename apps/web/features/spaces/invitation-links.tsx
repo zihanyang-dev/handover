@@ -24,17 +24,20 @@ export function InvitationLinks({ slug }: { readonly slug: string }) {
 
   return (
     <section className="mb-9 border-b border-panel-line pb-8" aria-labelledby="invite-link-title">
-      <div className="flex items-start justify-between gap-6 max-sm:flex-col max-sm:gap-3">
-        <div>
-          <h2 id="invite-link-title" className="text-[14px] leading-5 font-medium text-panel-ink">
+      <div className="flex items-center justify-between gap-6 max-sm:flex-col max-sm:items-stretch max-sm:gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2
+            id="invite-link-title"
+            className="m-0 text-[14px] leading-5 font-medium text-panel-ink"
+          >
             Invite link
           </h2>
-          <p className="mt-0.5 max-w-[560px] text-[13px] leading-[18px] text-panel-ink-muted">
+          <p className="m-0 max-w-[560px] text-[13px] leading-[18px] text-panel-ink-muted">
             Anyone with this link can join. Stop it as soon as it is no longer needed.
           </p>
         </div>
         <button
-          className="h-8 shrink-0 rounded-[6px] border-0 bg-primary px-3 text-[14px] font-medium text-white hover:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="h-7 shrink-0 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           type="button"
           disabled={make.isPending}
           onClick={() => {

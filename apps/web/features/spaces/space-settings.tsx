@@ -99,7 +99,7 @@ export function SpaceSettings({
           className="relative z-[1] min-h-0 min-w-0 grow overflow-y-auto bg-white focus:outline-none"
         >
           <CloseButton close={close} />
-          <div className="mx-auto w-full max-w-[880px] px-12 pt-10 pb-16 max-sm:px-5 max-sm:pt-12">
+          <div className="mx-auto w-full max-w-[920px] px-[60px] pt-9 pb-16 max-sm:px-5 max-sm:pt-12">
             {section === 'people' ? (
               <SpacePeople slug={space.slug} afterLeaving={afterLeaving} />
             ) : (
