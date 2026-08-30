@@ -90,7 +90,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
   await expect(page.getByText('In client.ts, hard-coded.')).toBeVisible({ timeout: 15_000 })
   await shot(page, '09-chat')
 
-  await page.getByRole('button', { name: 'Inbox' }).click()
+  await page.getByRole('link', { name: 'Inbox' }).click()
   await shot(page, '10-inbox')
 
   await page.goto('/settings')
