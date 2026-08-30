@@ -242,6 +242,10 @@ function SidebarViews({
         params={{ slug }}
         aria-current={active === 'inbox' ? 'page' : undefined}
         aria-label="Inbox"
+        data-selected={active === 'inbox'}
+        onClick={() => {
+          select('inbox')
+        }}
       >
         <span className="home-tab-icon">
           <InboxIcon />

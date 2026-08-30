@@ -179,7 +179,7 @@
 }
 
 .home-tab {
-  @apply flex h-8 min-w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 bg-transparent p-0 text-sm leading-[1.05rem] font-medium text-ink-muted;
+  @apply flex h-8 min-w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-0 bg-transparent p-0 text-sm leading-[1.05rem] font-medium text-ink-muted no-underline;
   padding-inline: 5px;
   margin-inline: 0;
   font-family: inherit;
@@ -191,30 +191,30 @@
 }
 
 .home-tab:hover,
-.home-tab:is([aria-pressed='true'], [aria-current='page']) {
+.home-tab:is([aria-pressed='true'], [data-selected='true']) {
   background: var(--interaction-hover);
 }
 
-.home-tab:is([aria-pressed='true'], [aria-current='page']) {
+.home-tab:is([aria-pressed='true'], [data-selected='true']) {
   padding-inline: 8px 0;
   margin-inline: 4px;
   color: var(--ink);
 }
 
-.home-tab:first-child:is([aria-pressed='true'], [aria-current='page']) {
+.home-tab:first-child:is([aria-pressed='true'], [data-selected='true']) {
   margin-inline: 0 4px;
 }
 
-.home-tab:last-child:is([aria-pressed='true'], [aria-current='page']) {
+.home-tab:last-child:is([aria-pressed='true'], [data-selected='true']) {
   margin-inline: 4px 0;
 }
 
-.home-tab:is([aria-pressed='true'], [aria-current='page']):hover {
+.home-tab:is([aria-pressed='true'], [data-selected='true']):hover {
   background: var(--interaction-hover-strong);
 }
 
 .home-tab:active,
-.home-tab:is([aria-pressed='true'], [aria-current='page']):active {
+.home-tab:is([aria-pressed='true'], [data-selected='true']):active {
   background: var(--interaction-pressed);
 }
 
@@ -222,7 +222,7 @@
   @apply relative flex shrink-0 items-center text-ink-quiet;
 }
 
-.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-icon {
+.home-tab:is([aria-pressed='true'], [data-selected='true']) .home-tab-icon {
   color: #383836;
 }
 
@@ -238,7 +238,7 @@
   transition: grid-template-columns 200ms ease-out;
 }
 
-.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-label {
+.home-tab:is([aria-pressed='true'], [data-selected='true']) .home-tab-label {
   grid-template-columns: 1fr;
 }
 
@@ -247,7 +247,7 @@
   overflow: hidden;
 }
 
-.home-tab:is([aria-pressed='true'], [aria-current='page']) .home-tab-label-clip {
+.home-tab:is([aria-pressed='true'], [data-selected='true']) .home-tab-label-clip {
   padding-inline-end: 12px;
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }

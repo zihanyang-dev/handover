@@ -62,6 +62,10 @@ describe('entering a Space', () => {
     expect(home.getAttribute('aria-pressed')).toBe('true')
     expect(chat.getAttribute('aria-pressed')).toBe('false')
     expect(inbox.getAttribute('aria-current')).toBeNull()
+    expect(inbox.getAttribute('data-selected')).toBe('false')
+    expect(switches.querySelectorAll('[aria-pressed="true"], [data-selected="true"]')).toHaveLength(
+      1,
+    )
 
     await userEvent.click(chat)
 
@@ -76,7 +80,21 @@ describe('entering a Space', () => {
     await userEvent.click(inbox)
 
     expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined()
+    expect(inbox.getAttribute('aria-current')).toBe('page')
+    expect(inbox.getAttribute('data-selected')).toBe('true')
+    expect(switches.querySelectorAll('[aria-pressed="true"], [data-selected="true"]')).toHaveLength(
+      1,
+    )
     expect(router.state.location.pathname).toBe('/s/acme/inbox')
+
+    await userEvent.click(chat)
+
+    expect(chat.getAttribute('aria-pressed')).toBe('true')
+    expect(inbox.getAttribute('aria-current')).toBe('page')
+    expect(inbox.getAttribute('data-selected')).toBe('false')
+    expect(switches.querySelectorAll('[aria-pressed="true"], [data-selected="true"]')).toHaveLength(
+      1,
+    )
   })
 
   it('keeps pinned conversations directly under Home', async () => {
