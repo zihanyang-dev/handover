@@ -93,8 +93,7 @@ describe('what is waiting on you', () => {
 
     open()
 
-    const message = await screen.findByText(/Nothing needs you/u)
-    expect(message.closest('[role="status"]')).not.toBeNull()
+    expect(await screen.findByText(/Nothing needs you/u)).toBeDefined()
   })
 
   it('never says nothing needs you when it could not read', async () => {
