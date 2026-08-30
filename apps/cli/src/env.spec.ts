@@ -6,31 +6,41 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { FROM_SOURCE, howToRunThis, whereToConnect } from './env.ts'
+import { FROM_SOURCE, howToRunThis, howToStartThis, whereToConnect } from './env.ts'
 
 describe('how to run this program again', () => {
-  it('is the runtime and the file, when this is running from source', () => {
-    expect(howToRunThis(['/usr/bin/node', '/opt/handover/main.js'])).toBe(
-      '/usr/bin/node /opt/handover/main.js',
+  it('is the runtime and the script, when this is a checkout', () => {
+    expect(howToRunThis(['/usr/bin/node', '/app/src/main.ts'], '/usr/bin/node')).toBe(
+      '/usr/bin/node /app/src/main.ts',
     )
   })
 
-  it('is the binary on its own, when there is no script to hand to a runtime', () => {
-    // A single-file build reports itself as both, and telling an agent to run it twice would be
-    // telling it something that does not work.
-    expect(howToRunThis(['/usr/local/bin/handover', '/usr/local/bin/handover'])).toBe(
-      '/usr/local/bin/handover',
-    )
+  /**
+   * The one that was wrong in the first release.
+   *
+   * A compiled build reports `["bun", "/$bunfs/root/handover-darwin-arm64"]` — a word that is not
+   * a path, and a path inside a virtual root that is not on disk. Taken at face value, the
+   * service file was written with `/$bunfs/…` as its first argument and the service exited
+   * saying "no such command", and the line handed to an agent was one no agent could run.
+   */
+  it('is the binary alone, when this is the one file somebody downloaded', () => {
+    const argv = ['bun', '/$bunfs/root/handover-darwin-arm64']
+
+    expect(howToRunThis(argv, '/usr/local/bin/handover')).toBe('/usr/local/bin/handover')
+    expect(howToStartThis(argv, '/usr/local/bin/handover')).toEqual({
+      executable: '/usr/local/bin/handover',
+      before: [],
+    })
   })
 
   it('quotes a path with a space in it, because somewhere on somebody machine there is one', () => {
-    expect(howToRunThis(['/Applications/My Tools/handover'])).toBe(
+    expect(howToRunThis(['bun', '/$bunfs/root/x'], '/Applications/My Tools/handover')).toBe(
       "'/Applications/My Tools/handover'",
     )
   })
 
-  it('falls back to the name, rather than to something that cannot be run', () => {
-    expect(howToRunThis([])).toBe('handover')
+  it('falls back to the binary, rather than to something that cannot be run', () => {
+    expect(howToRunThis([], '/usr/local/bin/handover')).toBe('/usr/local/bin/handover')
   })
 })
 

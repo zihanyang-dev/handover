@@ -102,25 +102,51 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 /**
- * How to run this program again, exactly as it was run.
+ * How to start this program again: what to execute, and what has to come before its own arguments.
  *
- * The agent has to be able to say things back — "I am waiting on you", "this is finished" — and
- * what it is told to run must be a command that actually works on the machine it is on. `handover`
- * usually is on the PATH, because that is how it got connected in the first place. It is not when
- * this is running from source, and it is not when somebody put the binary somewhere a service's
- * PATH does not reach.
+ * Two shapes, and telling them apart is the whole job. A checkout is a runtime holding a script,
+ * so both are needed. A downloaded build is one file and there is no script to hand anybody.
  *
- * So nothing is assumed. A compiled binary is its own path; source is the runtime and the file.
- * Either way the agent is handed something it can run without looking for anything.
+ * What a compiled build puts in `argv` is neither of those things: Bun reports
+ * `["bun", "/$bunfs/root/handover-darwin-arm64", …]` — the first is a bare word rather than a
+ * path, and the second is inside Bun's own virtual root, which exists for the process and for
+ * nothing else. `process.execPath` is the one value that is true in both shapes.
+ *
+ * Asking the filesystem does not work, and that was the second wrong answer: `existsSync` is
+ * Bun's, so from inside the binary `/$bunfs/root/…` is a file that exists. It is not a file any
+ * shell can run, and a shell is exactly who runs it — the shim an agent calls is `/bin/sh`.
+ * So both halves of what Bun reports are read instead, and either one alone is enough.
+ *
+ * This was wrong in exactly the two places it is used, for every downloaded binary and for no
+ * checkout — which is why running from source could never find it. The service file was written
+ * with `/$bunfs/…` as its first argument, so the service parsed that as the command, said "no
+ * such command" and exited; and the line handed to an agent said `bun /$bunfs/…`, which an agent
+ * cannot run either.
  */
-export function howToRunThis(argv: readonly string[] = process.argv): string {
-  const [runtime, file] = argv
-  if (runtime === undefined) return 'handover'
+export function howToStartThis(
+  argv: readonly string[] = process.argv,
+  execPath: string = process.execPath,
+): { readonly executable: string; readonly before: readonly string[] } {
+  const [runtime, script] = argv
+  if (script === undefined) return { executable: execPath, before: [] }
 
-  // A single-file build reports itself as both — there is no script to hand to a runtime.
-  if (file === undefined || runtime === file) return quoted(runtime)
+  // Bun's virtual root, and the bare word it puts where a runtime's path goes. Either says there
+  // is no script here. Both are read rather than one, so a change to how Bun spells the first
+  // does not quietly bring back a service file nothing can start.
+  const isOneFile = script.startsWith('/$bunfs/') || runtime === undefined || !runtime.includes('/')
+  if (isOneFile) return { executable: execPath, before: [] }
 
-  return `${quoted(runtime)} ${quoted(file)}`
+  return { executable: execPath, before: [script] }
+}
+
+/** The same thing as one line, for handing to an agent that has to run it. */
+export function howToRunThis(
+  argv: readonly string[] = process.argv,
+  execPath: string = process.execPath,
+): string {
+  const { executable, before } = howToStartThis(argv, execPath)
+
+  return [executable, ...before].map(quoted).join(' ')
 }
 
 /** A path with a space in it is one word, and somewhere on somebody's machine there is one. */

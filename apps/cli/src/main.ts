@@ -19,7 +19,14 @@ import { parseArgs, promisify } from 'node:util'
 import { apiFor } from './api.ts'
 import { keepCheckingIn, reportOnce, type Reported } from './checking-in.ts'
 import { askToConnect, connectWithKey, SAID, waitToBeLetIn, type Connected } from './connect.ts'
-import { VERSION, howToRunThis, machineEnvironment, readEnv, whereToConnect } from './env.ts'
+import {
+  VERSION,
+  howToRunThis,
+  howToStartThis,
+  machineEnvironment,
+  readEnv,
+  whereToConnect,
+} from './env.ts'
 import { newerRelease } from './newer.ts'
 import { offering } from './offering.ts'
 import { reachableAs } from './reachable.ts'
@@ -81,6 +88,7 @@ const { values, positionals } = parseArgs({
 
 const env = readEnv()
 const machineName = values.name ?? hostname()
+const startsThis = howToStartThis()
 
 const system = forEveryone(values, process.getuid?.() ?? 1)
 const where = attachmentPath(env.configHome, system)
@@ -88,18 +96,6 @@ const command = positionals[0] ?? 'connect'
 
 /** Long enough for any throttle a service manager holds a name through, short enough to give up in. */
 const PATIENCE_SECONDS = 30
-
-/**
- * This program's own path, for the service file to point at.
- *
- * Loud when it is missing rather than written as an empty argument: a service whose command is
- * half-formed starts, does nothing, and says nothing about why.
- */
-function entryPoint(): string {
-  const here = process.argv[1]
-  if (here === undefined) throw new Error('cannot tell where this program lives')
-  return here
-}
 
 /** Straight to stderr: stdout belongs to whatever a person might want to pipe. */
 function say(line: string): void {
@@ -265,8 +261,10 @@ async function handOver(): Promise<void> {
     {
       // Absolute, and never resolved through a shell: a typo in a profile must not be able to
       // stop a service from starting.
-      executable: process.execPath,
-      args: [entryPoint(), 'run', ...(system ? ['--system'] : ['--user'])],
+      executable: startsThis.executable,
+      // Whatever it takes to reach `main` — a script for a checkout, nothing at all for the one
+      // file somebody downloaded. See `howToStartThis`.
+      args: [...startsThis.before, 'run', ...(system ? ['--system'] : ['--user'])],
       system,
       label: 'dev.handover.machine',
       // Taken from this terminal, where it is already right. A service inherits four directories
