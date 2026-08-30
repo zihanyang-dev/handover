@@ -74,5 +74,7 @@ fi
 
 say "installed $("$BIN_DIR/handover" version) at $BIN_DIR/handover"
 say ""
-say "next: cd into the project you want it to work in, then run"
-say "  handover connect"
+# With the address on it. This build has no idea which Handover somebody means, and says so
+# rather than guessing — so the line to run is the one on the page that sent them here.
+say "next: open your Space, add a machine, and run the line it gives you. It looks like"
+say "  handover connect --origin https://your-handover --key XXXX-XXXX"
