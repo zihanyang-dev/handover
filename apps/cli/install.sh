@@ -64,15 +64,37 @@ fi
 
 chmod +x "$work/handover"
 
+# A stock Apple Silicon Mac has no `/usr/local/bin` at all — Homebrew lives in `/opt/homebrew`
+# and nothing else ever makes it. Without this, `[ -w ]` was false for a directory that did not
+# exist, the script went to `sudo`, and `curl … | sh` sat there waiting for a password it had
+# never said it wanted. Made without root wherever that is possible.
+if [ ! -d "$BIN_DIR" ]; then
+  if ! mkdir -p "$BIN_DIR" 2>/dev/null; then
+    say "creating $BIN_DIR needs root; asking for it"
+    sudo mkdir -p "$BIN_DIR" || die "could not create $BIN_DIR"
+  fi
+fi
+
 # Written where the person can reach it, and with sudo only if that is what it takes to get there.
 if [ -w "$BIN_DIR" ]; then
   mv "$work/handover" "$BIN_DIR/handover"
 else
+  # Said before it blocks, not after: `curl … | sh` that stops dead at an unexplained prompt
+  # reads as a hung download.
   say "$BIN_DIR needs root; asking for it"
-  sudo mv "$work/handover" "$BIN_DIR/handover"
+  sudo mv "$work/handover" "$BIN_DIR/handover" || die "could not write to $BIN_DIR"
 fi
 
 say "installed $("$BIN_DIR/handover" version) at $BIN_DIR/handover"
+
+# A binary nobody can type the name of is a binary nobody has. Said rather than assumed: this
+# may have landed somewhere sensible that this particular shell has never been told about.
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) say ""
+     say "$BIN_DIR is not on your PATH. Either add it, or run it by its full path:"
+     say "  $BIN_DIR/handover" ;;
+esac
 say ""
 # With the address on it. This build has no idea which Handover somebody means, and says so
 # rather than guessing — so the line to run is the one on the page that sent them here.
