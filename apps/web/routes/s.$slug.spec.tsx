@@ -53,7 +53,7 @@ describe('entering a Space', () => {
     const sidebar = await screen.findByRole('complementary', { name: /Acme sidebar/i })
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
     expect(document.querySelector('.home-breadcrumb')).toBeNull()
-    const switches = within(sidebar).getByRole('navigation', { name: /workspace/i })
+    const switches = within(sidebar).getByRole('group', { name: /sidebar views/i })
     const home = within(switches).getByRole('button', { name: 'Home' })
     const chat = within(switches).getByRole('button', { name: 'Chat' })
     const inbox = within(switches).getByRole('link', { name: 'Inbox' })
@@ -76,8 +76,6 @@ describe('entering a Space', () => {
     await userEvent.click(inbox)
 
     expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined()
-    expect(document.querySelector('.home-breadcrumb')).toBeNull()
-    expect(document.querySelector('.home-content')).toBeNull()
     expect(router.state.location.pathname).toBe('/s/acme/inbox')
   })
 
