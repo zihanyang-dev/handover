@@ -193,7 +193,7 @@ function SidebarViewButton({
 }) {
   return (
     <button
-      className="home-tab"
+      className="home-nav-item"
       type="button"
       aria-pressed={active}
       aria-label={label}
@@ -201,12 +201,8 @@ function SidebarViewButton({
         select(view)
       }}
     >
-      <span className="home-tab-icon">{icon}</span>
-      <span className="home-tab-label">
-        <span className="home-tab-label-clip">
-          <span className="home-tab-label-text">{label}</span>
-        </span>
-      </span>
+      <span className="home-nav-icon">{icon}</span>
+      <span className="home-nav-label">{label}</span>
     </button>
   )
 }
@@ -221,38 +217,42 @@ function SidebarViews({
   readonly select: (view: SidebarView) => void
 }) {
   return (
-    <div className="home-tabbar" role="group" aria-label="Sidebar views">
-      <SidebarViewButton
-        view="home"
-        label="Home"
-        icon={<HomeIcon />}
-        active={active === 'home'}
-        select={select}
-      />
-      <SidebarViewButton
-        view="chat"
-        label="Chat"
-        icon={<ChatIcon />}
-        active={active === 'chat'}
-        select={select}
-      />
-      <Link
-        className="home-tab"
-        to="/s/$slug/inbox"
-        params={{ slug }}
-        aria-current={active === 'inbox' ? 'page' : undefined}
-        aria-label="Inbox"
-      >
-        <span className="home-tab-icon">
-          <InboxIcon />
-        </span>
-        <span className="home-tab-label">
-          <span className="home-tab-label-clip">
-            <span className="home-tab-label-text">Inbox</span>
-          </span>
-        </span>
-      </Link>
-    </div>
+    <nav className="home-primary-nav" aria-label="Workspace">
+      <ul>
+        <li>
+          <SidebarViewButton
+            view="home"
+            label="Home"
+            icon={<HomeIcon />}
+            active={active === 'home'}
+            select={select}
+          />
+        </li>
+        <li>
+          <SidebarViewButton
+            view="chat"
+            label="Chat"
+            icon={<ChatIcon />}
+            active={active === 'chat'}
+            select={select}
+          />
+        </li>
+        <li>
+          <Link
+            className="home-nav-item"
+            to="/s/$slug/inbox"
+            params={{ slug }}
+            aria-current={active === 'inbox' ? 'page' : undefined}
+            aria-label="Inbox"
+          >
+            <span className="home-nav-icon">
+              <InboxIcon />
+            </span>
+            <span className="home-nav-label">Inbox</span>
+          </Link>
+        </li>
+      </ul>
+    </nav>
   )
 }
 
@@ -345,7 +345,7 @@ function MainPane({
   readonly openButton: RefObject<HTMLButtonElement | null>
   readonly children: ReactNode
 }) {
-  const canvas = where === 'Home' || where === 'Chat'
+  const canvas = where === 'Home' || where === 'Chat' || where === 'Inbox'
 
   return (
     <main className="home-main">
