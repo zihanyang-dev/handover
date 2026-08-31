@@ -59,7 +59,7 @@ jobs:
           name: looks
           path: |
             e2e/looks/
-            e2e/test-results/
+            test-results/
           if-no-files-found: ignore
 
   update:
