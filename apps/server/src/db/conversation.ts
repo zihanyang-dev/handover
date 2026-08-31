@@ -10,14 +10,15 @@
  */
 
 import { sql, type ExpressionBuilder, type SelectQueryBuilder } from 'kysely'
-import type { DB, Json } from '../../generated/db.ts'
+import type { DB } from '../../generated/db.ts'
 import { working, type Working } from '../conversation/busy.ts'
 import {
   ACTIVITY,
-  Asked,
-  ENDINGS,
-  type Message,
+  type Asked,
+  ends,
   type Reported,
+  sameQuestion,
+  wentWrong,
 } from '../conversation/transcript.ts'
 import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
@@ -188,16 +189,6 @@ async function openedBefore(tx: Tx, beginning: Beginning): Promise<Begun | undef
     return { kind: 'id-taken' }
 
   return { kind: 'begun', conversationId: beginning.conversationId }
-}
-
-function sameQuestion(stored: Json, asked: Asked): boolean {
-  const read = Asked.safeParse(stored)
-  return (
-    read.success &&
-    read.data.text === asked.text &&
-    read.data.model === asked.model &&
-    read.data.effort === asked.effort
-  )
 }
 
 /**
@@ -371,26 +362,6 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
 
     return written
   })
-}
-
-/** Whether this is the message that says how a turn went. */
-function ends(message: Message): boolean {
-  return message.role === 'activity' && ENDINGS.includes(message.content.activityType)
-}
-
-/**
- * Whether that ending was trouble, as opposed to a turn that simply finished.
- *
- * `cancelled` is not: somebody asked for it, and a conversation somebody handed over carries on
- * from an interruption the same way it carries on from anything else.
- */
-function wentWrong(message: Message): boolean {
-  if (message.role !== 'activity') return false
-
-  return (
-    message.content.activityType === ACTIVITY.failed ||
-    message.content.activityType === ACTIVITY.unknown
-  )
 }
 
 /**

@@ -24,6 +24,7 @@ import { handOffTo } from '../db/conversation.ts'
 import { handWorkTo } from '../db/membership.ts'
 import { handOver, stopsWorking, takeBack, waitingOn, writesOutput } from '../db/task.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
+import { asStopped, HowItStopped } from '../task/stopping.ts'
 import { type Failure, UNAVAILABLE, refused } from './failure.ts'
 import {
   aMachine,
@@ -78,25 +79,6 @@ const NO_AGENT: Failure<409> = {
 const CALLED = { key: z.string().min(1).max(200) }
 
 const goal = z.string().min(1).max(2000)
-
-/**
- * The agent stopping, and why.
- *
- * Three, and `working` is not among them: an agent can stop itself and can never start itself.
- * What starts it again is a person saying something, a piece of work it handed out coming back,
- * or the clock. **The union is the state machine**, so nothing has to explain it a second time.
- */
-const HowItStopped = z
-  .discriminatedUnion('state', [
-    z.object({ state: z.literal('wait'), question: z.string().min(1).max(4000) }),
-    z.object({ state: z.literal('sleep'), until: z.iso.datetime() }),
-    z.object({
-      state: z.literal('done'),
-      ending: z.enum(['done', 'cannot']),
-      text: z.string().min(1).max(4000),
-    }),
-  ])
-  .openapi('HowItStopped')
 
 const Waiting = named('Waiting', {
   conversationId: z.uuid(),
@@ -283,11 +265,7 @@ function stopping({ db }: TaskApi) {
       const stopped = await stopsWorking(
         db,
         { conversationId: c.req.valid('param').id, machineId: c.get('machineId'), key: asked.key },
-        asked.how.state === 'sleep'
-          ? { state: 'sleep', until: new Date(asked.how.until) }
-          : asked.how.state === 'wait'
-            ? { state: 'wait', question: asked.how.question }
-            : { state: 'done', ending: asked.how.ending, said: asked.how.text },
+        asStopped(asked.how),
       )
 
       return stopped.kind === 'noted' ? nothing(c, 204) : refused(c, NOT_HANDED_OVER)

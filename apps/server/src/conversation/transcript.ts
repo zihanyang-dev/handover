@@ -127,12 +127,24 @@ export const ACTIVITY = {
 } as const
 
 /** The activities that close a turn. A conversation is busy until one of these is its last word. */
-export const ENDINGS: readonly string[] = [
+const ENDINGS: readonly string[] = [
   ACTIVITY.done,
   ACTIVITY.cancelled,
   ACTIVITY.failed,
   ACTIVITY.unknown,
 ]
+
+/**
+ * The endings that are trouble, as opposed to a turn that simply finished.
+ *
+ * `cancelled` is not: somebody asked for it, and a conversation somebody handed over carries on
+ * from an interruption the same way it carries on from anything else.
+ *
+ * Beside {@link ENDINGS} because it is the same kind of fact about the same words. Kept where the
+ * words are, so that adding one is one decision in one place rather than a value here and a rule
+ * somewhere that reads rows.
+ */
+const TROUBLE: readonly string[] = [ACTIVITY.failed, ACTIVITY.unknown]
 
 /** Who each line is from, and what a line from them holds. The four, written once. */
 const FROM = {
@@ -215,3 +227,39 @@ export function unreadable(seq: number, at: Date): Spoken {
 export const ROLES = Message.options.map((one) => one.shape.role.value)
 
 export type Asked = z.infer<typeof Asked>
+
+/** Whether this is the message that says how a turn went. */
+export function ends(message: Message): boolean {
+  return message.role === 'activity' && ENDINGS.includes(message.content.activityType)
+}
+
+/** Whether that ending was trouble, rather than a turn that simply finished. */
+export function wentWrong(message: Message): boolean {
+  return message.role === 'activity' && TROUBLE.includes(message.content.activityType)
+}
+
+/**
+ * One question written the same way, whatever order its fields arrived in and whichever of the
+ * optional ones were left out.
+ */
+function written(asked: Asked): string {
+  return JSON.stringify(
+    Object.entries(asked)
+      .filter(([, value]) => value !== undefined)
+      .sort(([one], [other]) => one.localeCompare(other)),
+  )
+}
+
+/**
+ * Whether something already stored is the same question being asked again.
+ *
+ * Through the schema rather than field by field. Written out, a question that grew a fourth thing
+ * a person can choose would still match on the three somebody had listed here, and a second
+ * attempt at a *different* question would be handed the first one's conversation — silently, with
+ * nothing anywhere going red.
+ */
+export function sameQuestion(stored: unknown, asked: Asked): boolean {
+  const read = Asked.safeParse(stored)
+
+  return read.success && written(read.data) === written(asked)
+}

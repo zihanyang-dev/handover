@@ -17,10 +17,11 @@
 import { sql, type Expression } from 'kysely'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
+import { STATE } from '../task/state.ts'
 import type { Database, Tx } from './connection.ts'
 import { atOnceFor } from './machine.ts'
 import { append } from './message.ts'
-import { STATE, waitsForAPerson } from './task.ts'
+import { waitsForAPerson } from './task.ts'
 
 /** A question waiting to be answered, as the machine that just took it is told. */
 export type Taken = {

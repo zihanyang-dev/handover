@@ -449,7 +449,7 @@ describe('handing a piece of it to somebody else', () => {
     await stopsWorking(db, reporting(child.conversationId, 'fin'), {
       state: 'done',
       ending: 'done',
-      said: 'added it',
+      text: 'added it',
     })
     await asks(child.conversationId, 'later', 'one more thing while you are there')
 
@@ -572,7 +572,7 @@ describe('handing a piece of it to somebody else', () => {
     await stopsWorking(db, reporting(off.conversationId, 'fin'), {
       state: 'done',
       ending: 'done',
-      said: 'on branch sub/xxx',
+      text: 'on branch sub/xxx',
     })
 
     expect(await nextTurn()).toBe(conversation)
@@ -755,7 +755,7 @@ describe('a machine that was taken away mid-flight', () => {
     const said = await stopsWorking(
       db,
       { conversationId: conversation, machineId: MACHINE, key: 'gone/done' },
-      { state: 'done', ending: 'done', said: 'all finished' },
+      { state: 'done', ending: 'done', text: 'all finished' },
     )
 
     expect(said).toEqual({ kind: 'nothing-to-report' })
@@ -854,7 +854,7 @@ describe('taking it back', () => {
     await stopsWorking(
       db,
       { conversationId: conversation, machineId: MACHINE, key: 'first/done' },
-      { state: 'done', ending: 'done', said: 'changed and tested' },
+      { state: 'done', ending: 'done', text: 'changed and tested' },
     )
 
     const proposalSeq = await proposes(

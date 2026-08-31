@@ -23,28 +23,16 @@
  */
 
 import { sql } from 'kysely'
-import { z } from 'zod'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS, type Whereabouts } from '../machine/presence.ts'
+import { Proposal } from '../task/proposal.ts'
+import { STATE, type State } from '../task/state.ts'
+import { type HowItStopped, said } from '../task/stopping.ts'
 import type { Database, Tx } from './connection.ts'
 import { held } from './conversation.ts'
 import { stillItsToWriteOn } from './machine.ts'
 import { append, type Saying } from './message.ts'
 import { wakeMachine } from './waking.ts'
-
-/** What it is up to, as far as anything that decides is concerned. Four, and no fifth. */
-export const STATE = {
-  /** Nobody has to do anything for it to move: it should be running, or about to be. */
-  working: 'working',
-  /** It asked its owner something. Only they can start it again. */
-  wait: 'wait',
-  /** It is waiting out a moment. Only the clock can start it again. */
-  sleep: 'sleep',
-  /** Over. Nothing starts it again — a second hand-over is a second piece of work. */
-  done: 'done',
-} as const
-
-type State = (typeof STATE)[keyof typeof STATE]
 
 /** The piece of work running in one conversation, if there is one. */
 export type Task = {
@@ -118,11 +106,6 @@ export type HandingOver = Saying & {
   /** The transcript identity of the exact card the person confirmed. */
   readonly proposalSeq: number
 }
-
-const Proposal = z.object({
-  activityType: z.literal(ACTIVITY.proposed),
-  text: z.string().min(1).max(2000),
-})
 
 /**
  * The one card a person can confirm now, if this is its sequence number.
@@ -351,18 +334,6 @@ async function reports(
   })
 }
 
-/** How a piece of work stops working, and why. Three, because `working` is nobody else to set. */
-export type HowItStopped =
-  /** It asked whoever handed this out. Only they start it again. */
-  | { readonly state: 'wait'; readonly question: string }
-  /** It is waiting out a moment. Only the clock starts it again. */
-  | { readonly state: 'sleep'; readonly until: Date }
-  /** Over, one way or the other. Nothing starts it again. */
-  | { readonly state: 'done'; readonly ending: Ending; readonly said: string }
-
-/** How a piece of work ended, in the words a person reads. */
-type Ending = 'done' | 'cannot'
-
 /**
  * The agent stops working, and says why.
  *
@@ -396,16 +367,6 @@ export async function stopsWorking(
   })
 }
 
-/** The moment, for a person reading the conversation later. */
-function said(how: HowItStopped): { readonly activityType: string } & Record<string, unknown> {
-  if (how.state === 'wait') return { activityType: ACTIVITY.asked, text: how.question }
-  if (how.state === 'sleep') {
-    return { activityType: ACTIVITY.asleep, until: how.until.toISOString() }
-  }
-
-  return { activityType: ACTIVITY.finished, ending: how.ending, text: how.said }
-}
-
 /**
  * Tells whoever handed this out, when there is now something for them.
  *
@@ -436,7 +397,7 @@ async function tellWhoeverWasWaiting(tx: Tx, task: Task, how: HowItStopped): Pro
 
   await note(tx, parent.conversationId, `back/${task.id}/${how.state}`, {
     activityType: ACTIVITY.handedBack,
-    text: how.state === 'wait' ? how.question : how.said,
+    text: how.state === 'wait' ? how.question : how.text,
     goal: task.goal,
     ...(how.state === 'done' ? { ending: how.ending } : {}),
   })
