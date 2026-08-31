@@ -131,10 +131,10 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
       >
         {!online && (
           <span
-            className="inline-flex h-7 items-center gap-1.5 text-[12px] font-medium text-ink-muted"
+            className="inline-flex h-7 items-center gap-1.5 text-copy-xxs font-medium text-ink-muted"
             role="status"
           >
-            <span className="size-1.5 rounded-full bg-[var(--ink-faint)]" aria-hidden />
+            <span className="size-1.5 rounded-full bg-ink-faint" aria-hidden />
             Offline
           </span>
         )}

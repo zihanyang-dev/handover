@@ -12,14 +12,16 @@ import { avatarPath } from '../avatar.ts'
 import { Models } from '../conversation/offers.ts'
 import type { Database } from '../db/connection.ts'
 import {
+  addMachineToSpace,
   checkIn,
   machinesIn,
+  machinesOwnedBy,
   removeMachine,
+  removeMachineFromSpace,
   sayGoodbye,
   setAgentSettings,
   type Installed,
 } from '../db/machine.ts'
-import { handMachineTo } from '../db/membership.ts'
 import { forgetStranded, stopsWantedOn, takeOne, type Taken } from '../db/turn.ts'
 import {
   agentsFound,
@@ -30,18 +32,7 @@ import {
 import type { Waiting } from '../machine/waiting.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
 import { type Failure, UNAVAILABLE, refused } from './failure.ts'
-import {
-  aMachine,
-  aMember,
-  aPerson,
-  anOwner,
-  list,
-  named,
-  nothing,
-  refuses,
-  rowId,
-  sends,
-} from './route.ts'
+import { aMachine, aMember, aPerson, list, named, nothing, refuses, rowId, sends } from './route.ts'
 
 export type MachineApi = {
   readonly db: Database
@@ -56,19 +47,6 @@ export type MachineApi = {
  * being one between the two, and the CLI already knows to stop for good when it hears this.
  */
 const NOT_OURS: Failure<401> = { reason: 'no-machine', recovery: 'start-over', status: 401 }
-
-/**
- * Whoever it was handed to is not here, or the machine is not there to hand over.
- *
- * One answer for both, because a handover is written in the statement that checks — and by the
- * time it comes back, "no rows" cannot say which. What to do about either is the same: look at
- * the screen again, which is showing what is actually true.
- */
-const CANNOT_HAND_OVER: Failure<404> = {
-  reason: 'cannot-hand-over',
-  recovery: 'start-over',
-  status: 404,
-}
 
 /**
  * One agent a machine found, reported by command name rather than by kind.
@@ -174,11 +152,8 @@ const Asking = named('SomethingToAnswer', {
    */
   goal: z.string().nullable(),
   /**
-   * Which of the three places this turn works in. The machine turns it into a path.
-   *
-   * Nothing here has ever seen that disk, which is the point: a path that turns out to be wrong
-   * is something the machine says on the turn it tries to use it, and a sandbox answers the same
-   * three cases with a root of its own.
+   * Which of two places this turn works in: its own folder, or under the work that opened it.
+   * The server chooses the relationship; the machine only turns it into a path under its root.
    */
   where: WhereToWork,
   /**
@@ -254,9 +229,8 @@ const Machine = named('Machine', {
    * of them happens in that person's files. Only its owner can disconnect it, and a page that did
    * not say which was which would be offering everybody a button that only works on one.
    *
-   * The id as well as the name, because the screen that hands a machine to somebody else has to
-   * leave its present owner out of that list — and two people in one Space can share a display
-   * name. It is the same id `/spaces/{slug}/members` already gives every member.
+   * The id as well as the name, because two people in one Space can share a display name and the
+   * relationship still has to name exactly one machine.
    */
   ownerUserId: rowId,
   ownerName: z.string(),
@@ -268,21 +242,31 @@ const Machine = named('Machine', {
    * rather than filled in — a version this deployment guessed would be read as one it was told.
    */
   version: z.string().optional(),
-  /**
-   * The directory it was connected in, when it is a build that says so.
-   *
-   * What a screen offers as "my project" when somebody opens a conversation on this machine. Not
-   * where anything runs: where a conversation works is that conversation's, and this is only the
-   * one path a person can pick without typing one.
-   */
   presence: Presence,
   agents: z.array(Agent).readonly(),
 })
 
-const Machines = list('machines', Machine)
+const MachineWork = named('MachineWork', {
+  conversationId: rowId,
+  goal: z.string(),
+  /** Kept open for an older or newer server state; the screen names unknown states as received. */
+  state: z.string(),
+})
 
-/** Who a machine is being handed to. */
-const HandMachineTo = named('HandMachineTo', { ownerUserId: rowId })
+const SpaceMachine = Machine.extend({
+  /** Work that will stop moving here if this Space can no longer use the machine. */
+  working: z.array(MachineWork).readonly(),
+}).openapi('SpaceMachine')
+
+const Machines = list('machines', SpaceMachine)
+
+const OwnedMachine = Machine.extend({
+  spaces: z.array(named('MachineSpace', { slug: z.string(), displayName: z.string() })).readonly(),
+}).openapi('OwnedMachine')
+
+const OwnedMachines = z
+  .object({ machines: z.array(OwnedMachine).readonly() })
+  .openapi('OwnedMachines')
 
 /**
  * What an owner decides about one agent. A patch: what is left out is left alone.
@@ -301,9 +285,11 @@ export function machineApi(deps: MachineApi) {
     polling(deps),
     leaving(deps),
     listing(deps),
+    listingOwned(deps),
+    sharingWithSpace(deps),
+    stoppingSharingWithSpace(deps),
     decidingAboutAgent(deps),
     detaching(deps),
-    handingOver(deps),
   ]
 }
 
@@ -334,38 +320,6 @@ function whereItWorks(taken: Taken): z.infer<typeof WhereToWork> {
   return taken.subtaskOf === null
     ? { kind: 'its-own' }
     : { kind: 'under', conversationId: taken.subtaskOf }
-}
-
-/**
- * Handing one to somebody else here.
- *
- * Whoever approved it still approved it — that is history and does not move. What moves is which
- * Spaces it can be reached from and who may disconnect it.
- *
- * `PATCH` and not a `POST` to some transfer: nothing is created. One field of a thing that
- * already exists says somebody else's name now.
- */
-function handingOver({ db }: MachineApi) {
-  return anOwner(db).patch('/spaces/{slug}/machines/{id}', {
-    summary: 'Hand a machine to somebody else here',
-    params: { id: rowId },
-    body: HandMachineTo,
-    answers: {
-      204: 'It is theirs',
-      404: refuses(CANNOT_HAND_OVER, 'No such Space, no such machine, or nobody here by that name'),
-    },
-
-    run: async (c) => {
-      const handed = await handMachineTo(db, {
-        spaceId: c.get('space').id,
-        machineId: c.req.valid('param').id,
-        userId: c.req.valid('json').ownerUserId,
-      })
-      if (handed.kind === 'not-a-member') return refused(c, CANNOT_HAND_OVER)
-
-      return nothing(c, 204)
-    },
-  })
 }
 
 /**
@@ -457,11 +411,11 @@ function leaving({ db }: MachineApi) {
   })
 }
 
-/** Every machine this Space can reach — its members' — here or not. */
+/** Every live machine explicitly available in this Space, here or not. */
 function listing({ db }: MachineApi) {
   return aMember(db).get('/spaces/{slug}/machines', {
     summary: 'The machines this Space can reach',
-    answers: { 200: sends(Machines, 'Every member\u2019s machines, here or not') },
+    answers: { 200: sends(Machines, 'Every machine explicitly available here') },
 
     run: async (c) => {
       // `asOf` comes back with them, from the same clock that wrote `last_seen_at`. A `new Date()`
@@ -476,6 +430,7 @@ function listing({ db }: MachineApi) {
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
         agents: machine.agents.map((agent) => asOffered(machine.id, agent)),
+        working: machine.working,
       }))
 
       return c.json({ machines }, 200)
@@ -483,13 +438,79 @@ function listing({ db }: MachineApi) {
   })
 }
 
+/** Every live machine controlled by this person, including where each is available. */
+function listingOwned({ db }: MachineApi) {
+  return aPerson(db).get('/me/machines', {
+    summary: 'Your machines',
+    answers: { 200: sends(OwnedMachines, 'Every live machine you control') },
+
+    run: async (c) => {
+      const seen = await machinesOwnedBy(db, c.get('userId'))
+      const machines = seen.machines.map((machine) => ({
+        id: machine.id,
+        name: machine.name,
+        version: machine.version,
+        ownerUserId: machine.ownerUserId,
+        ownerName: machine.ownerName,
+        yours: true,
+        presence: onTheWire(machine.whereabouts, seen.asOf),
+        agents: machine.agents.map((agent) => asOffered(machine.id, agent)),
+        spaces: machine.spaces,
+      }))
+
+      return c.json({ machines }, 200)
+    },
+  })
+}
+
+/** Shares one of your existing machines with the current Space. */
+function sharingWithSpace({ db }: MachineApi) {
+  return aMember(db).put('/spaces/{slug}/machines/{id}', {
+    summary: 'Share one of your machines with this Space',
+    params: { id: rowId },
+    answers: {
+      204: 'Available here',
+      404: refuses(UNAVAILABLE, 'You have no live machine with that id'),
+    },
+
+    run: async (c) => {
+      const shared = await addMachineToSpace(db, {
+        spaceId: c.get('space').id,
+        machineId: c.req.valid('param').id,
+        userId: c.get('userId'),
+      })
+      return shared ? nothing(c, 204) : refused(c, UNAVAILABLE)
+    },
+  })
+}
+
+/** Stops sharing with this Space; the machine remains connected everywhere else. */
+function stoppingSharingWithSpace({ db }: MachineApi) {
+  return aMember(db).delete('/spaces/{slug}/machines/{id}', {
+    summary: 'Stop sharing a machine with this Space',
+    params: { id: rowId },
+    answers: {
+      204: 'No longer available here',
+      404: refuses(UNAVAILABLE, 'No removable machine with that id is available here'),
+    },
+
+    run: async (c) => {
+      const stoppedSharing = await removeMachineFromSpace(db, {
+        spaceId: c.get('space').id,
+        machineId: c.req.valid('param').id,
+        userId: c.get('userId'),
+      })
+      return stoppedSharing ? nothing(c, 204) : refused(c, UNAVAILABLE)
+    },
+  })
+}
+
 /**
  * Deciding about one agent on one of your machines: what it is called, and how much it takes on.
  *
- * Both follow the owner, not a Space: the same laptop appears in every Space its owner is in, and
- * an agent called something different in each — or allowed more in one room than another — would
- * be a different agent to each. Under `/me` for that reason: it is not a Space's to change, and
- * no Space is named in the path.
+ * Both follow the owner, not a Space: every Space where this laptop is explicitly available sees
+ * the same decision. A different name or limit in each room would make one installation read as
+ * several agents. Under `/me` for that reason: it is not a Space's to change.
  */
 function decidingAboutAgent({ db }: MachineApi) {
   return aPerson(db).patch('/me/machines/{id}/agents/{kind}', {
@@ -518,9 +539,8 @@ function decidingAboutAgent({ db }: MachineApi) {
 /**
  * Disconnecting one, which is also what stops its credential working.
  *
- * Yours, not a Space's. A machine belongs to whoever connected it, so nobody else can take it
- * away — and there is nothing to take it out *of*: where it can be reached from follows from
- * where its owner is a member.
+ * Yours, not a Space's. A machine belongs to whoever connected it, so nobody else can disconnect
+ * it. This is deliberately distinct from removing one Space's explicit relationship.
  */
 function detaching({ db }: MachineApi) {
   return aPerson(db).delete('/me/machines/{id}', {

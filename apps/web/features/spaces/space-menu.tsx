@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { components } from '../../generated/api.ts'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { meQuery } from '../identity/me.ts'
 import { useSignOut } from '../identity/sign-out.tsx'
 import { SpaceEmojiPicker } from './emoji-picker.tsx'
@@ -20,16 +21,10 @@ import { useChangeSpaceEmoji } from './space.ts'
 
 type Space = components['schemas']['Space']
 
-/**
- * What this account is called here: the address a code is sent to, or its display name.
- *
- * Nothing at all until `/me` has answered. An empty string in its place is a line that says the
- * account has no name, which is not what "we have not asked yet" means.
- */
+/** The chosen name in this compact menu, without turning an email fallback into a label. */
 function accountName(me: components['schemas']['Me'] | undefined): string | undefined {
   if (me === undefined) return undefined
-
-  return me.credentials.find((credential) => credential.kind === 'email')?.address ?? me.displayName
+  return nameUnlessAddress(me.displayName) ?? 'Account'
 }
 
 /** How many people are here, once that is known. A Space always has one, so nought is never true. */
@@ -124,17 +119,6 @@ export function SpaceMenu({
       <div className="space-menu-account">
         <p>{accountName(me.data)}</p>
         <ul>
-          <li>
-            <button
-              type="button"
-              onClick={() => {
-                openSettings('account')
-              }}
-            >
-              <SettingsIcon />
-              <span>Account settings</span>
-            </button>
-          </li>
           {(me.data?.spaces ?? []).map((one) => (
             <li key={one.id}>
               <Link to="/s/$slug" params={{ slug: one.slug }} onClick={close}>

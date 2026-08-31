@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
-import { Connect } from '../features/machines/connect.tsx'
+import { Connect, connectSearch } from '../features/machines/connect.tsx'
 
 /**
  * The way in that is typed.
@@ -10,10 +10,11 @@ import { Connect } from '../features/machines/connect.tsx'
  * `/connect/{code}`, which is the same screen reached the other way.
  */
 function Screen() {
-  return <Connect typed="" />
+  return <Connect typed="" spaceSlug={Route.useSearch().space} />
 }
 
 export const Route = createFileRoute('/connect')({
+  validateSearch: connectSearch,
   beforeLoad: async ({ context, location }) => onlySignedIn(context.queryClient, location),
   component: Screen,
 })

@@ -89,12 +89,14 @@ export interface EmailCodes {
 export interface Enrolments {
   approved_at: Timestamp | null
   approved_by: string | null
+  approved_space_id: string | null
   claimed_at: Timestamp | null
   created_at: Generated<Timestamp>
   expires_at: Timestamp
   id: Generated<string>
   machine_name: string | null
   refused_at: Timestamp | null
+  replaces_machine_id: string | null
   secret_hash: string
   user_code: string | null
 }
@@ -151,6 +153,14 @@ export interface Outputs {
   updated_at: Generated<Timestamp>
 }
 
+export interface SpaceMachines {
+  added_by: string | null
+  created_at: Generated<Timestamp>
+  machine_id: string
+  removed_at: Timestamp | null
+  space_id: string
+}
+
 export interface Spaces {
   created_at: Generated<Timestamp>
   display_name: string
@@ -201,6 +211,7 @@ export interface DB {
   memberships: Memberships
   messages: Messages
   outputs: Outputs
+  space_machines: SpaceMachines
   spaces: Spaces
   tasks: Tasks
   turns: Turns

@@ -5,24 +5,87 @@
  * Space who can still reach its machines, or who still gets its work in their Inbox. Nothing
  * breaks, no test goes red, and the only symptom is a person seeing something they should not.
  *
- * Membership is read from many places — the door on every Space route, whether a machine can be
- * reached, whose machines a Space lists, whose work is waiting. Each of them has to say
- * `revoked_at is null`, and one of them forgetting looks exactly like the others.
+ * Membership and machine availability are read from many places — the door on every Space route,
+ * whether a machine can be reached, whose machines a Space lists, whose work is waiting. Each
+ * query has to exclude the rows whose relationship ended, and one forgetting looks exactly like
+ * the others.
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
 const DB = 'apps/server/src/db'
 
-/** Every query in one file, with the verb that began it, cut where one ends and the next does. */
-function queries(source: string): readonly { readonly verb: string; readonly rest: string }[] {
-  const cut = source.split(/\.(selectFrom|updateTable|deleteFrom|insertInto)\(/u)
+const ENDING = [
+  { table: 'memberships', column: 'revoked_at' },
+  { table: 'space_machines', column: 'removed_at' },
+] as const
 
-  return cut
-    .slice(1)
-    .flatMap((piece, at) => (at % 2 === 0 ? [{ verb: piece, rest: cut[at + 2] ?? '' }] : []))
+const TOUCHES_EXISTING_ROWS = new Set([
+  'selectFrom',
+  'updateTable',
+  'deleteFrom',
+  'innerJoin',
+  'leftJoin',
+  'rightJoin',
+  'fullJoin',
+])
+
+type Query = {
+  readonly table: (typeof ENDING)[number]['table']
+  readonly column: (typeof ENDING)[number]['column']
+  readonly line: number
+  readonly source: string
+}
+
+function outerQuery(query: ts.Node): ts.Node {
+  const parent = query.parent
+  const continuesProperty = ts.isPropertyAccessExpression(parent) && parent.expression === query
+  const callsProperty = ts.isCallExpression(parent) && parent.expression === query
+  if (!continuesProperty && !callsProperty) return query
+
+  return outerQuery(parent)
+}
+
+function relationshipRead(node: ts.Node, file: ts.SourceFile): Query | undefined {
+  if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression))
+    return undefined
+
+  const method = node.expression.name.text
+  const tableArgument = node.arguments[0]
+  if (!TOUCHES_EXISTING_ROWS.has(method) || tableArgument === undefined) return undefined
+  if (!ts.isStringLiteral(tableArgument)) return undefined
+
+  const ending = ENDING.find(
+    ({ table }) => tableArgument.text === table || tableArgument.text.startsWith(`${table} as `),
+  )
+  if (ending === undefined) return undefined
+
+  const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
+  return {
+    table: ending.table,
+    column: ending.column,
+    line,
+    source: outerQuery(node).getText(file),
+  }
+}
+
+/** Every query-builder chain that reads a relationship, including relationships joined later. */
+function queries(path: string, source: string): readonly Query[] {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const found: Query[] = []
+
+  function visit(node: ts.Node): void {
+    const query = relationshipRead(node, file)
+    if (query !== undefined) found.push(query)
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(file)
+  return found
 }
 
 function everySource(from: string): readonly string[] {
@@ -34,27 +97,25 @@ function everySource(from: string): readonly string[] {
   })
 }
 
-/** A query that reads memberships and never says which of them still count. */
+/** A query that reads a revocable relationship and never says which rows still count. */
 function forgetful(): readonly string[] {
   return everySource(DB).flatMap((path) => {
     const source = readFileSync(path, 'utf8')
 
-    return queries(source).flatMap((query, at) => {
-      // An insert names no rows to leave out, so it is exempt by shape rather than by a list.
-      if (query.verb === 'insertInto') return []
-      const reads = /'memberships/u.test(query.rest)
+    return queries(path, source).flatMap((query) => {
+      if (query.source.includes(query.column)) return []
 
-      return reads && !query.rest.includes('revoked_at')
-        ? [`${path.replace(`${DB}/`, '')} query ${String(at + 1)}`]
-        : []
+      return [
+        `${path.replace(`${DB}/`, '')}:${String(query.line)} reads ${query.table} without ${query.column}`,
+      ]
     })
   })
 }
 
-describe('reading who is in a Space', () => {
-  it('never forgets to leave out the people who were removed', async () => {
-    // Writing into `memberships` is exempt by shape: an insert names no rows to filter. Reading
-    // one and not saying which of them count is the whole of this rule.
+describe('reading a relationship that can end', () => {
+  it('never forgets to leave out people or machines that were removed', async () => {
+    // An insert is exempt by shape: it names no existing rows to filter. Reading, updating or
+    // deleting a relationship without saying which rows still count is the whole of this rule.
     expect(forgetful()).toEqual([])
   })
 })

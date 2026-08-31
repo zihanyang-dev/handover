@@ -4,9 +4,11 @@
  * What one line of it is made of is `message.ts`, and what is being run in it is `turn.ts`. This
  * file is the conversation itself — the thing a person opens, talks into and scrolls.
  *
- * Reads take no locks. Every path that writes takes them in this order:
- *   1. the `conversations` row, so only one writer at a time decides what comes next
- *   2. the `messages` rows appended under it
+ * Reads take no locks. An existing machine-authenticated write takes its `conversations` and
+ * `machines` rows, then its `space_machines` relationship, then appends `messages`. Opening has no
+ * conversation yet: it takes the client-id advisory lock, the machine, then the Space relationship
+ * before inserting the conversation and its first message. The relationship is always last among
+ * existing rows, matching `machine.ts`.
  */
 
 import { sql, type ExpressionBuilder, type SelectQueryBuilder } from 'kysely'
@@ -23,7 +25,7 @@ import {
 import type { AgentKind } from '../machine/agent-kind.ts'
 import { presence } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
-import { reachableFrom, stillItsToWriteOn } from './machine.ts'
+import { lockMachineInSpace, stillItsToWriteOn } from './machine.ts'
 import { append, alreadySaid, type Saying, type Said, type Speaking } from './message.ts'
 import { backToWork, openTaskOn, underwayIn, waitsForAPerson, type Underway } from './task.ts'
 import { endTurn, openTurn, owedAnAnswer, stillOwed } from './turn.ts'
@@ -46,7 +48,7 @@ export type SaidToAgent = Said | { readonly kind: 'no-agent' }
  * bargain from the other side.
  */
 export async function held(tx: Tx, saying: Saying) {
-  return tx
+  const conversation = await tx
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
     .select([
@@ -62,6 +64,13 @@ export async function held(tx: Tx, saying: Saying) {
     .where('machines.removed_at', 'is', null)
     .forUpdate()
     .executeTakeFirst()
+  if (conversation === undefined) return undefined
+
+  const relationship = await lockMachineInSpace(tx, {
+    spaceId: saying.spaceId,
+    machineId: conversation.machineId,
+  })
+  return relationship === undefined ? undefined : conversation
 }
 
 export type Beginning = {
@@ -100,62 +109,72 @@ export type Begun =
  * message never calls this function and therefore has nothing to leave behind.
  */
 export async function beginConversation(db: Database, beginning: Beginning): Promise<Begun> {
-  return db.transaction().execute(async (tx) => {
-    // There is no conversation row to lock yet. This transaction-scoped lock gives concurrent
-    // retries of the client UUID one writer; unrelated conversations never wait on each other.
-    await sql`select pg_advisory_xact_lock(hashtextextended(${beginning.conversationId}, 0))`.execute(
-      tx,
-    )
+  return db.transaction().execute(async (tx) => await openConversation(tx, beginning))
+}
 
-    const repeated = await openedBefore(tx, beginning)
-    if (repeated !== undefined) return repeated
+async function openConversation(tx: Tx, beginning: Beginning): Promise<Begun> {
+  // There is no conversation row to lock yet. This transaction-scoped lock gives concurrent
+  // retries of the client UUID one writer; unrelated conversations never wait on each other.
+  await sql`select pg_advisory_xact_lock(hashtextextended(${beginning.conversationId}, 0))`.execute(
+    tx,
+  )
 
-    const machine = await tx
-      .selectFrom('machines')
-      .select([
-        'machines.id',
-        'machines.last_seen_at as lastSeenAt',
-        'machines.left_at as leftAt',
-        sql<Date>`now()`.as('asOf'),
-      ])
-      .where('machines.id', '=', beginning.machineId)
-      .where('machines.removed_at', 'is', null)
-      .where(reachableFrom(beginning.spaceId))
-      .forUpdate()
-      .executeTakeFirst()
+  const repeated = await openedBefore(tx, beginning)
+  if (repeated !== undefined) return repeated
 
-    if (machine === undefined) return { kind: 'no-machine' }
-    if (presence(machine, machine.asOf).state === 'gone') return { kind: 'machine-away' }
+  const machine = await tx
+    .selectFrom('machines')
+    .select([
+      'machines.id',
+      'machines.last_seen_at as lastSeenAt',
+      'machines.left_at as leftAt',
+      sql<Date>`now()`.as('asOf'),
+    ])
+    .where('machines.id', '=', beginning.machineId)
+    .where('machines.removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+  if (machine === undefined) return { kind: 'no-machine' }
+  if (presence(machine, machine.asOf).state === 'gone') return { kind: 'machine-away' }
 
-    const agent = await tx
-      .selectFrom('agents')
-      .select('kind')
-      .where('machine_id', '=', machine.id)
-      .where('kind', '=', beginning.agentKind)
-      .executeTakeFirst()
-    if (agent === undefined) return { kind: 'no-agent' }
-
-    await tx
-      .insertInto('conversations')
-      .values({
-        id: beginning.conversationId,
-        space_id: beginning.spaceId,
-        machine_id: machine.id,
-        agent_kind: beginning.agentKind,
-      })
-      .execute()
-
-    const said = await append(tx, {
-      conversationId: beginning.conversationId,
-      key: `opening:${beginning.conversationId}`,
-      message: { role: 'user', content: beginning.asked },
-      saidBy: beginning.saidBy,
-    })
-    if (said.kind !== 'said') throw new Error('a new conversation already had its first message')
-
-    await backToWork(tx, beginning.conversationId, machine.id)
-    return { kind: 'begun', conversationId: beginning.conversationId }
+  const relationship = await lockMachineInSpace(tx, {
+    spaceId: beginning.spaceId,
+    machineId: machine.id,
   })
+  if (relationship === undefined) return { kind: 'no-machine' }
+
+  const agent = await tx
+    .selectFrom('agents')
+    .select('kind')
+    .where('machine_id', '=', machine.id)
+    .where('kind', '=', beginning.agentKind)
+    .executeTakeFirst()
+  if (agent === undefined) return { kind: 'no-agent' }
+
+  return openOnMachine(tx, beginning, machine.id)
+}
+
+async function openOnMachine(tx: Tx, beginning: Beginning, machineId: string): Promise<Begun> {
+  await tx
+    .insertInto('conversations')
+    .values({
+      id: beginning.conversationId,
+      space_id: beginning.spaceId,
+      machine_id: machineId,
+      agent_kind: beginning.agentKind,
+    })
+    .execute()
+
+  const said = await append(tx, {
+    conversationId: beginning.conversationId,
+    key: `opening:${beginning.conversationId}`,
+    message: { role: 'user', content: beginning.asked },
+    saidBy: beginning.saidBy,
+  })
+  if (said.kind !== 'said') throw new Error('a new conversation already had its first message')
+
+  await backToWork(tx, beginning.conversationId, machineId)
+  return { kind: 'begun', conversationId: beginning.conversationId }
 }
 
 /** The same client id after a lost response is the same opening, not another conversation. */
@@ -371,17 +390,27 @@ export async function machineSays(db: Database, reporting: Reporting): Promise<S
  * up, and one that started over instead says so by its own means — overwriting here would lose the
  * pointer to the record of everything that came before.
  */
-export async function noteAgentSession(
-  db: Database,
-  noting: { readonly conversationId: string; readonly machineId: string; readonly session: string },
-): Promise<void> {
-  await db
+type AgentSessionName = {
+  readonly conversationId: string
+  readonly machineId: string
+  readonly session: string
+}
+
+export async function noteAgentSession(db: Database, noting: AgentSessionName): Promise<boolean> {
+  return db.transaction().execute(async (tx) => await recordAgentSession(tx, noting))
+}
+
+async function recordAgentSession(tx: Tx, noting: AgentSessionName): Promise<boolean> {
+  const conversation = await stillItsToWriteOn(tx, noting)
+  if (conversation === undefined) return false
+
+  await tx
     .updateTable('conversations')
     .set({ agent_session_id: noting.session })
-    .where('id', '=', noting.conversationId)
-    .where('machine_id', '=', noting.machineId)
+    .where('id', '=', conversation)
     .where('agent_session_id', 'is', null)
     .execute()
+  return true
 }
 
 export type Standing = {
@@ -748,15 +777,14 @@ export type HandingOff = {
  */
 export async function handOffTo(db: Database, handing: HandingOff): Promise<HandedOff> {
   return db.transaction().execute(async (tx) => {
+    const mineId = await stillItsToWriteOn(tx, handing)
+    if (mineId === undefined) return { kind: 'nothing-to-hand-off' }
+
     const mine = await tx
       .selectFrom('conversations')
       .select(['id', 'space_id as spaceId'])
-      .where('id', '=', handing.conversationId)
-      .where('machine_id', '=', handing.machineId)
-      .forUpdate()
-      .executeTakeFirst()
-
-    if (mine === undefined) return { kind: 'nothing-to-hand-off' }
+      .where('id', '=', mineId)
+      .executeTakeFirstOrThrow()
 
     const parent = await openTaskOn(tx, mine.id)
     if (parent === undefined) return { kind: 'nothing-to-hand-off' }

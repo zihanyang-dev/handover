@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { signedIn } from '../../pretend/signed-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
-const server = setupServer()
+const server = setupServer(http.get('*/me/machines', () => HttpResponse.json({ machines: [] })))
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: 'error' })

@@ -18,9 +18,10 @@ import type { components } from '../../generated/api.ts'
 import {
   agentsOn,
   machinesIn,
-  useDisconnectMachine,
-  useHandMachineTo,
+  useShareMachineWithSpace,
   useAgentSettings,
+  useDisconnectMachine,
+  useStopSharingMachineWithSpace,
 } from './machine-list.ts'
 
 const server = setupServer()
@@ -37,13 +38,14 @@ afterAll(() => {
 
 const MACHINE_ID = '11111111-1111-4111-8111-111111111111'
 
-const MINA_MBP: components['schemas']['Machine'] = {
+const MINA_MBP: components['schemas']['SpaceMachine'] = {
   id: MACHINE_ID,
   name: 'mina-mbp',
   ownerUserId: '00000000-0000-4000-8000-000000000001',
   ownerName: 'Mina',
   yours: true,
   presence: { state: 'here' },
+  working: [],
   agents: [
     {
       kind: 'claude-code',
@@ -125,7 +127,7 @@ describe('naming an agent', () => {
       }),
     )
 
-    const screen = watching(() => useAgentSettings('acme'))
+    const screen = watching(() => useAgentSettings())
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })
@@ -152,7 +154,7 @@ describe('naming an agent', () => {
       }),
     )
 
-    const screen = watching(() => useAgentSettings('acme'))
+    const screen = watching(() => useAgentSettings())
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })
@@ -168,6 +170,60 @@ describe('naming an agent', () => {
   })
 })
 
+describe('changing which Spaces may use one', () => {
+  it('adds one here and reads this Space again', async () => {
+    const list = listing()
+    const asked: string[] = []
+    server.use(
+      list.handler,
+      http.put(`*/spaces/acme/machines/${MACHINE_ID}`, ({ request }) => {
+        asked.push(new URL(request.url).pathname)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const screen = watching(() => useShareMachineWithSpace('acme'))
+    await waitFor(() => {
+      expect(list.asked.times).toBe(1)
+    })
+
+    screen.result.current.it.mutate({
+      params: { path: { slug: 'acme', id: MACHINE_ID } },
+    })
+
+    await waitFor(() => {
+      expect(list.asked.times).toBe(2)
+    })
+    expect(asked).toEqual([`/spaces/acme/machines/${MACHINE_ID}`])
+  })
+
+  it('removes only this Space and reads its list again', async () => {
+    const list = listing()
+    const asked: string[] = []
+    server.use(
+      list.handler,
+      http.delete(`*/spaces/acme/machines/${MACHINE_ID}`, ({ request }) => {
+        asked.push(new URL(request.url).pathname)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const screen = watching(() => useStopSharingMachineWithSpace('acme'))
+    await waitFor(() => {
+      expect(list.asked.times).toBe(1)
+    })
+
+    screen.result.current.it.mutate({
+      params: { path: { slug: 'acme', id: MACHINE_ID } },
+    })
+
+    await waitFor(() => {
+      expect(list.asked.times).toBe(2)
+    })
+    expect(asked).toEqual([`/spaces/acme/machines/${MACHINE_ID}`])
+  })
+})
+
 describe('disconnecting one of your own', () => {
   it('asks under /me, because a machine is not a Space’s to take away', async () => {
     const list = listing()
@@ -180,7 +236,7 @@ describe('disconnecting one of your own', () => {
       }),
     )
 
-    const screen = watching(() => useDisconnectMachine('acme'))
+    const screen = watching(() => useDisconnectMachine())
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })
@@ -191,34 +247,5 @@ describe('disconnecting one of your own', () => {
       expect(list.asked.times).toBe(2)
     })
     expect(asked).toEqual([`/me/machines/${MACHINE_ID}`])
-  })
-})
-
-describe('handing a machine to somebody here', () => {
-  it('asks inside the Space, because who is here is what makes it possible', async () => {
-    const list = listing()
-    const asked: string[] = []
-    server.use(
-      list.handler,
-      http.patch(`*/spaces/acme/machines/${MACHINE_ID}`, ({ request }) => {
-        asked.push(new URL(request.url).pathname)
-        return new HttpResponse(null, { status: 204 })
-      }),
-    )
-
-    const screen = watching(() => useHandMachineTo('acme'))
-    await waitFor(() => {
-      expect(list.asked.times).toBe(1)
-    })
-
-    screen.result.current.it.mutate({
-      params: { path: { slug: 'acme', id: MACHINE_ID } },
-      body: { ownerUserId: '22222222-2222-4222-8222-222222222222' },
-    })
-
-    await waitFor(() => {
-      expect(list.asked.times).toBe(2)
-    })
-    expect(asked).toEqual([`/spaces/acme/machines/${MACHINE_ID}`])
   })
 })

@@ -2,9 +2,8 @@
  * A key a machine with no browser comes in with.
  *
  * Making one *is* the approving: whoever made it has already decided what the code path asks a
- * person to decide later — that the machine will be theirs. It names nobody else, because a
- * machine belongs to whoever connected it and where it can be reached from follows from where
- * they are a member.
+ * person to decide later — that the machine will be theirs. A Space-scoped screen can additionally
+ * record its current Space; the key remains opaque, so the machine does not choose that scope.
  *
  * One query rather than a mutation each screen fires its own way. A key is made once per arrival,
  * and the cache is what stops a strict-mode double mount minting two — which matters more than it
@@ -15,16 +14,15 @@ import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { api, cached } from '../../api.ts'
 
-/** Named by the call that mints one, so nothing else can claim the same slot by accident. */
-const MACHINE_KEY = cached.queryOptions('post', '/me/machine-keys', {}).queryKey
-
-function machineKey() {
+function machineKey(space: string | undefined) {
+  const request = space === undefined ? {} : { params: { query: { space } } }
+  const queryKey = cached.queryOptions('post', '/me/machine-keys', request).queryKey
   return queryOptions({
-    queryKey: MACHINE_KEY,
+    queryKey,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: async () => {
-      const { data, error } = await api.POST('/me/machine-keys', {})
+      const { data, error } = await api.POST('/me/machine-keys', request)
       if (data === undefined) throw error
 
       return data
@@ -65,9 +63,10 @@ export type Keyed =
   | { readonly state: 'expired'; readonly again: () => void }
   | { readonly state: 'unavailable'; readonly again: () => void }
 
-export function useMachineKey(active: boolean): Keyed {
+export function useMachineKey(active: boolean, space?: string): Keyed {
   const client = useQueryClient()
-  const key = useQuery({ ...machineKey(), enabled: active })
+  const options = machineKey(space)
+  const key = useQuery({ ...options, enabled: active })
   const [secondsLeft, setSecondsLeft] = useState<number>()
 
   useEffect(() => {
@@ -87,7 +86,7 @@ export function useMachineKey(active: boolean): Keyed {
 
   const again = (): void => {
     setSecondsLeft(undefined)
-    void client.resetQueries({ queryKey: MACHINE_KEY })
+    void client.resetQueries({ queryKey: options.queryKey })
   }
 
   if (key.isError) return { state: 'unavailable', again }

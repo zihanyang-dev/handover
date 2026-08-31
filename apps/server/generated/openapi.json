@@ -794,11 +794,76 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "existingMachines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExistingMachine"
+            }
           }
         },
         "required": [
           "machineName",
-          "expiresAt"
+          "expiresAt",
+          "existingMachines"
+        ]
+      },
+      "ExistingMachine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "presence"
+        ]
+      },
+      "Presence": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "here"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "gone"
+                ]
+              },
+              "since": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "state",
+              "since"
+            ]
+          }
         ]
       },
       "LetItIn": {
@@ -807,6 +872,13 @@
           "userCode": {
             "type": "string",
             "maxLength": 64
+          },
+          "replaceMachineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "spaceSlug": {
+            "type": "string"
           }
         },
         "required": [
@@ -1081,7 +1153,7 @@
           "machines": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Machine"
+              "$ref": "#/components/schemas/SpaceMachine"
             }
           }
         },
@@ -1089,82 +1161,23 @@
           "machines"
         ]
       },
-      "Machine": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ownerUserId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "ownerName": {
-            "type": "string"
-          },
-          "yours": {
-            "type": "boolean"
-          },
-          "version": {
-            "type": "string"
-          },
-          "presence": {
-            "$ref": "#/components/schemas/Presence"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MachineAgent"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "ownerUserId",
-          "ownerName",
-          "yours",
-          "presence",
-          "agents"
-        ]
-      },
-      "Presence": {
-        "oneOf": [
+      "SpaceMachine": {
+        "allOf": [
           {
-            "type": "object",
-            "properties": {
-              "state": {
-                "type": "string",
-                "enum": [
-                  "here"
-                ]
-              }
-            },
-            "required": [
-              "state"
-            ]
+            "$ref": "#/components/schemas/Machine"
           },
           {
             "type": "object",
             "properties": {
-              "state": {
-                "type": "string",
-                "enum": [
-                  "gone"
-                ]
-              },
-              "since": {
-                "type": "string",
-                "format": "date-time"
+              "working": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MachineWork"
+                }
               }
             },
             "required": [
-              "state",
-              "since"
+              "working"
             ]
           }
         ]
@@ -1211,6 +1224,119 @@
           "models"
         ]
       },
+      "MachineWork": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId",
+          "goal",
+          "state"
+        ]
+      },
+      "Machine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "yours": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MachineAgent"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "ownerUserId",
+          "ownerName",
+          "yours",
+          "presence",
+          "agents"
+        ]
+      },
+      "OwnedMachines": {
+        "type": "object",
+        "properties": {
+          "machines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnedMachine"
+            }
+          }
+        },
+        "required": [
+          "machines"
+        ]
+      },
+      "OwnedMachine": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Machine"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "spaces": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MachineSpace"
+                }
+              }
+            },
+            "required": [
+              "spaces"
+            ]
+          }
+        ]
+      },
+      "MachineSpace": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "displayName"
+        ]
+      },
       "AgentSettings": {
         "type": "object",
         "properties": {
@@ -1226,18 +1352,6 @@
             "maximum": 16
           }
         }
-      },
-      "HandMachineTo": {
-        "type": "object",
-        "properties": {
-          "ownerUserId": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "ownerUserId"
-        ]
       },
       "Conversations": {
         "type": "object",
@@ -3786,7 +3900,37 @@
             }
           },
           "404": {
-            "description": "Nothing is waiting under that code",
+            "description": "Nothing is waiting, or that machine cannot be reconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Your machines",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every live machine you control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnedMachines"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Nobody is signed in here",
             "content": {
               "application/json": {
                 "schema": {
@@ -3806,6 +3950,16 @@
             "browserSession": []
           }
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "space",
+            "in": "query"
+          }
+        ],
         "responses": {
           "201": {
             "description": "The key, shown this once and never again",
@@ -3819,6 +3973,16 @@
           },
           "401": {
             "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing is waiting under that code",
             "content": {
               "application/json": {
                 "schema": {
@@ -3927,7 +4091,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Every member’s machines, here or not",
+            "description": "Every machine explicitly available here",
             "content": {
               "application/json": {
                 "schema": {
@@ -3948,6 +4112,112 @@
           },
           "404": {
             "description": "No such Space",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spaces/{slug}/machines/{id}": {
+      "put": {
+        "summary": "Share one of your machines with this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Available here"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "You have no live machine with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Stop sharing a machine with this Space",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No longer available here"
+          },
+          "401": {
+            "description": "Nobody is signed in here",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No removable machine with that id is available here",
             "content": {
               "application/json": {
                 "schema": {
@@ -4072,90 +4342,6 @@
           },
           "404": {
             "description": "You have no machine with that id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/spaces/{slug}/machines/{id}": {
-      "patch": {
-        "summary": "Hand a machine to somebody else here",
-        "security": [
-          {
-            "browserSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "slug",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HandMachineTo"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "It is theirs"
-          },
-          "400": {
-            "description": "The body was not the shape it claims",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Nobody is signed in here",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Only an owner can do this",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Failure"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such Space, no such machine, or nobody here by that name",
             "content": {
               "application/json": {
                 "schema": {
@@ -4762,6 +4948,16 @@
           },
           "401": {
             "description": "That is not a live machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Failure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "That conversation was not given to this machine",
             "content": {
               "application/json": {
                 "schema": {

@@ -1,8 +1,8 @@
 /**
  * Somebody else in this Space, with a laptop of their own.
  *
- * The membership is written here rather than joined through the product, because nothing shipped
- * yet lets anybody join a Space — and what these tests are about is what a second member sees.
+ * The membership is written directly because these tests begin after joining; the invitation
+ * journey has its own boundary tests, while this file owns what machine routes do for a member.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -91,7 +91,7 @@ async function attached(
   await enrolments.request('/me/machines', {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ userCode: asked.userCode }),
+    body: JSON.stringify({ userCode: asked.userCode, spaceSlug: SLUG }),
   })
 
   const collected = (await (
@@ -337,17 +337,101 @@ describe('disconnecting one', () => {
 })
 
 describe('which Spaces can reach it', () => {
-  it('is every Space its owner is in, without connecting it again', async () => {
-    // The whole of it. A laptop belongs to a person, and that person is in as many Spaces as
-    // they are in — so a second Space is not a second enrolment.
+  it('lets a Space owner remove somebody else’s relationship without disconnecting the machine', async () => {
+    const stranger = await alsoHere()
+    const machine = await attached('rui-mbp', stranger.cookie)
+
+    const removed = await app.request(`/spaces/${SLUG}/machines/${machine.id}`, {
+      method: 'DELETE',
+      headers: { cookie: COOKIE },
+    })
+
+    expect(removed.status).toBe(204)
+    expect((await seenInSpace()).machines).toEqual([])
+    expect((await asMachine(machine.token, '/machines/current/poll')).status).toBe(200)
+  })
+
+  it('lets a machine owner remove their own relationship without disconnecting it', async () => {
+    const stranger = await alsoHere()
+    const machine = await attached('rui-mbp', stranger.cookie)
+
+    const removed = await app.request(`/spaces/${SLUG}/machines/${machine.id}`, {
+      method: 'DELETE',
+      headers: { cookie: stranger.cookie },
+    })
+
+    expect(removed.status).toBe(204)
+    expect((await seenInSpace()).machines).toEqual([])
+    expect((await asMachine(machine.token, '/machines/current/poll')).status).toBe(200)
+  })
+
+  it('does not let another member remove a machine they do not own', async () => {
+    const machine = await attached()
+    const stranger = await alsoHere()
+
+    const removed = await app.request(`/spaces/${SLUG}/machines/${machine.id}`, {
+      method: 'DELETE',
+      headers: { cookie: stranger.cookie },
+    })
+
+    expect(removed.status).toBe(404)
+    expect((await seenInSpace()).machines).toMatchObject([{ id: machine.id }])
+  })
+
+  it('does not follow its owner into another Space, and appears after an explicit add', async () => {
     const machine = await attached()
     const other = await anotherSpace()
 
-    const answered = await app.request(`/spaces/${other}/machines`, { headers: { cookie: COOKIE } })
+    const before = await app.request(`/spaces/${other}/machines`, { headers: { cookie: COOKIE } })
+    expect(((await before.json()) as { machines: unknown[] }).machines).toEqual([])
 
-    expect(answered.status).toBe(200)
-    expect(((await answered.json()) as { machines: { id: string }[] }).machines).toMatchObject([
+    const added = await app.request(`/spaces/${other}/machines/${machine.id}`, {
+      method: 'PUT',
+      headers: { cookie: COOKIE },
+    })
+    expect(added.status).toBe(204)
+
+    const after = await app.request(`/spaces/${other}/machines`, { headers: { cookie: COOKIE } })
+    expect(((await after.json()) as { machines: { id: string }[] }).machines).toMatchObject([
       { id: machine.id },
+    ])
+  })
+
+  it('shows the open work that would stop moving if this Space stopped using it', async () => {
+    const machine = await attached()
+    const conversationId = await conversationOn(machine)
+    await db
+      .insertInto('tasks')
+      .values([
+        {
+          conversation_id: conversationId,
+          owner_user_id: PERSON,
+          goal: 'already shipped',
+          state: 'done',
+          ended_at: new Date(),
+        },
+        {
+          conversation_id: conversationId,
+          owner_user_id: PERSON,
+          goal: 'keep the release moving',
+          state: 'working',
+        },
+      ])
+      .execute()
+
+    const answered = await app.request(`/spaces/${SLUG}/machines`, { headers: { cookie: COOKIE } })
+    const seen = (await answered.json()) as {
+      machines: {
+        id: string
+        working: { conversationId: string; goal: string; state: string }[]
+      }[]
+    }
+
+    expect(seen.machines).toMatchObject([
+      {
+        id: machine.id,
+        working: [{ conversationId, goal: 'keep the release moving', state: 'working' }],
+      },
     ])
   })
 

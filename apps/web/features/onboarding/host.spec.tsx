@@ -69,6 +69,9 @@ describe('the second onboarding step — a machine', () => {
     expect(await screen.findByRole('heading', { name: /connect a machine/i })).toBeDefined()
     expect(screen.getByRole('img', { name: /step 2 of 2/i })).toBeDefined()
     expect(screen.getByText(/^handover connect --origin https?:\/\/\S+$/u)).toBeDefined()
+    expect(screen.getByRole('link', { name: /use a connection code/i }).getAttribute('href')).toBe(
+      '/connect?space=acme',
+    )
     expect(screen.queryByText(/--key/u)).toBeNull()
   })
 

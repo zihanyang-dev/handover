@@ -85,7 +85,7 @@ async function attached(machineName = 'mina-mbp'): Promise<{ token: string; id: 
   await enrolments.request('/me/machines', {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: COOKIE },
-    body: JSON.stringify({ userCode: asked.userCode }),
+    body: JSON.stringify({ userCode: asked.userCode, spaceSlug: SLUG }),
   })
 
   const collected = (await (

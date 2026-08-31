@@ -31,7 +31,7 @@ function aFace() {
 }
 
 type Space = components['schemas']['Space']
-type Machine = components['schemas']['Machine']
+type Machine = components['schemas']['SpaceMachine']
 type Conversation = components['schemas']['Conversation']
 type Machines = components['schemas']['Machines']
 type Conversations = components['schemas']['Conversations']
@@ -41,10 +41,12 @@ type PretendAgent = Omit<Machine['agents'][number], 'avatarUrl' | 'name' | 'atOn
   /** How many at a time, when a test is about that. Nearly none of them are. */
   readonly atOnce?: number
 }
-type PretendMachine = Omit<Machine, 'agents' | 'ownerUserId'> & {
+type PretendMachine = Omit<Machine, 'agents' | 'ownerUserId' | 'working'> & {
   readonly agents: readonly PretendAgent[]
   /** Whose it is. Defaulted to whoever is signed in, which is what `yours` says on nearly all of them. */
   readonly ownerUserId?: string
+  /** Open work is only named by tests about stopping sharing; every other machine carries none. */
+  readonly working?: Machine['working']
 }
 type PretendConversation = Omit<Conversation, 'pinned' | 'startedByYou'> & {
   readonly pinned?: boolean
@@ -55,6 +57,7 @@ type PretendConversation = Omit<Conversation, 'pinned' | 'startedByYou'> & {
 function completeMachine(machine: PretendMachine): Machine {
   return {
     ownerUserId: SOMEBODY,
+    working: [],
     ...machine,
     agents: machine.agents.map((agent) => ({
       name: null,

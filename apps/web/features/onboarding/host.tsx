@@ -7,7 +7,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowClockwise,
@@ -44,8 +44,16 @@ function SkipChoice({ onSkip }: { readonly onSkip: () => void }) {
 }
 
 /** The direct way in, disclosed only when somebody asks for the fallback. */
-function KeyCommand({ active, onSkip }: { readonly active: boolean; readonly onSkip: () => void }) {
-  const key = useMachineKey(active)
+function KeyCommand({
+  active,
+  slug,
+  onSkip,
+}: {
+  readonly active: boolean
+  readonly slug: string
+  readonly onSkip: () => void
+}) {
+  const key = useMachineKey(active, slug)
 
   if (key.state === 'expired' || key.state === 'unavailable') {
     const expired = key.state === 'expired'
@@ -88,10 +96,12 @@ function StatusLine({
   message,
   onSkip,
   quiet = false,
+  enterCodeFor,
 }: {
   readonly message: string
   readonly onSkip: () => void
   readonly quiet?: boolean
+  readonly enterCodeFor?: string
 }) {
   return (
     <div className="host-status-row">
@@ -99,23 +109,30 @@ function StatusLine({
         <span className="host-waiting-dot" aria-hidden />
         <span>{message}</span>
       </div>
+      {enterCodeFor !== undefined && (
+        <Link className="host-enter-code" to="/connect" search={{ space: enterCodeFor }}>
+          Use a connection code
+        </Link>
+      )}
       <SkipChoice onSkip={onSkip} />
     </div>
   )
 }
 
 /** The normal code-and-approval path first; a key is an explicit fallback. */
-function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
+function ConnectionCommand({
+  slug,
+  onSkip,
+}: {
+  readonly slug: string
+  readonly onSkip: () => void
+}) {
   const [usingKey, setUsingKey] = useState(false)
 
   return (
     <div className="host-command-switch">
-      <div
-        className="host-method-picker"
-        data-method={usingKey ? 'key' : 'terminal'}
-        role="group"
-        aria-label="Connection method"
-      >
+      <fieldset className="host-method-picker" data-method={usingKey ? 'key' : 'terminal'}>
+        <legend className="sr-only">Connection method</legend>
         <button
           type="button"
           aria-label="Use the regular command"
@@ -138,7 +155,7 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
         >
           One-time key
         </button>
-      </div>
+      </fieldset>
 
       <div className="host-command-panes">
         <div
@@ -152,7 +169,7 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
               {/* The address is on this line for the same reason it is on the one beside it:
                   a downloaded binary knows nothing about where it landed, and this page does. */}
               <ShellCommand command={`handover connect --origin ${globalThis.location.origin}`} />
-              <StatusLine message="Waiting for a machine…" onSkip={onSkip} />
+              <StatusLine message="Waiting for a machine…" onSkip={onSkip} enterCodeFor={slug} />
             </div>
           </div>
         </div>
@@ -163,7 +180,7 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
           aria-hidden={!usingKey}
           inert={!usingKey}
         >
-          <KeyCommand active={usingKey} onSkip={onSkip} />
+          <KeyCommand active={usingKey} slug={slug} onSkip={onSkip} />
         </div>
       </div>
     </div>
@@ -171,11 +188,9 @@ function ConnectionCommand({ onSkip }: { readonly onSkip: () => void }) {
 }
 
 function HostAgentCard({
-  slug,
   machine,
   agent,
 }: {
-  readonly slug: string
   readonly machine: Machine
   readonly agent: Machine['agents'][number]
 }) {
@@ -191,7 +206,7 @@ function HostAgentCard({
       </span>
       <span className="host-agent-copy">
         {machine.yours ? (
-          <AgentName slug={slug} machineId={machine.id} agent={agent} />
+          <AgentName machineId={machine.id} agent={agent} />
         ) : (
           <strong>{agentName(agent.kind, agent.name)}</strong>
         )}
@@ -204,11 +219,9 @@ function HostAgentCard({
 }
 
 function AgentName({
-  slug,
   machineId,
   agent,
 }: {
-  readonly slug: string
   readonly machineId: string
   readonly agent: Machine['agents'][number]
 }) {
@@ -216,7 +229,7 @@ function AgentName({
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const name = nameDraft ?? agent.name ?? ''
-  const naming = useAgentSettings(slug)
+  const naming = useAgentSettings()
 
   const control = editing ? (
     <AgentNameForm
@@ -300,7 +313,6 @@ function AgentNameForm({
       }}
     >
       <input
-        autoFocus
         aria-label={`Name ${type}`}
         maxLength={48}
         placeholder={`Name ${type}`}
@@ -359,7 +371,6 @@ function Arrived({ slug }: { readonly slug: string }) {
                 {machine.agents.map((agent) => (
                   <HostAgentCard
                     key={`${agent.kind}:${agent.name ?? ''}`}
-                    slug={slug}
                     machine={machine}
                     agent={agent}
                   />
@@ -436,7 +447,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
 
           {slug !== undefined && (
             <div className="stack-tight">
-              {!arrived && <ConnectionCommand onSkip={goIn} />}
+              {!arrived && <ConnectionCommand slug={slug} onSkip={goIn} />}
               <Arrived slug={slug} />
             </div>
           )}

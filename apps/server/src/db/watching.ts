@@ -71,6 +71,26 @@ export async function noteWritten(tx: Tx, conversationId: string, upTo: number):
   await announce(tx, { conversationId, watched: { seen: 'written', upTo } })
 }
 
+/** Wakes every open stream in a Space so each one rechecks the membership it is serving. */
+export async function noteSpaceMembershipChanged(tx: Tx, spaceId: string): Promise<void> {
+  const conversations = await tx
+    .selectFrom('conversations')
+    .leftJoin('messages', 'messages.conversation_id', 'conversations.id')
+    .select(['conversations.id', (eb) => eb.fn.max('messages.seq').as('upTo')])
+    .where('conversations.space_id', '=', spaceId)
+    .groupBy('conversations.id')
+    .execute()
+
+  // One notification per conversation because the in-process watcher map is keyed that way. A
+  // removed member may have any subset open, and no process knows which subset another holds.
+  for (const conversation of conversations) {
+    await announce(tx, {
+      conversationId: conversation.id,
+      watched: { seen: 'written', upTo: Number(conversation.upTo ?? 0) },
+    })
+  }
+}
+
 /**
  * Checks a machine may be heard about this conversation, then says what it saw.
  *

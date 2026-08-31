@@ -1,11 +1,9 @@
 /**
- * What has to be settled before somebody's way in stops working.
+ * What has to be settled before somebody's way into a Space stops working.
  *
- * The one screen in this product that refuses to act until a person has decided something. Their
- * machines go with them and their pieces of work stop, and neither is something this can choose
- * for them — so each one is listed, each one is moved or stopped by hand, and the button stays
- * disabled until nothing is left. Tailscale's lesson, the other way round: deleting a user there
- * deletes their devices and everything running on them, with no list and no pause.
+ * Their open work needs a person's decision, so each piece is moved or stopped by hand. Their
+ * machines remain theirs; the removal transaction only ends this Space's relationships, and this
+ * screen says that consequence without making it another decision.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -14,7 +12,6 @@ import { reasonOf } from '../../api.ts'
 import { MenuSelect } from '../../components/ui/menu-select.tsx'
 import type { components } from '../../generated/api.ts'
 import { useHandWorkTo, useTakeBack, whatItIsDoing } from '../conversations/work.ts'
-import { useHandMachineTo } from '../machines/machine-list.ts'
 import { useRemoveMember, whatTheyHold } from './people.ts'
 
 type Member = components['schemas']['Member']
@@ -36,9 +33,9 @@ export function RemovalChecklist({
   const held = useQuery(whatTheyHold(slug, person.userId))
   const remove = useRemoveMember(slug)
   const recipients = people.filter((candidate) => candidate.userId !== person.userId)
-  // Not yet read is not the same as nothing left, and this is the guard on the one button that
-  // cannot be undone: until the answer is here it stays as though something were still held.
-  const holdsNothing = held.data !== undefined && nothingLeft(held.data)
+  // Not yet read is not the same as settled, and this is the guard on the one button that cannot
+  // be undone. Machine relationships are consequences shown below, not work this screen decides.
+  const workIsSettled = held.data !== undefined && hasNoOpenWork(held.data)
 
   return (
     <section aria-labelledby="remove-person-title">
@@ -49,10 +46,10 @@ export function RemovalChecklist({
       >
         ← Back to people
       </button>
-      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-ink">
+      <h2 id="remove-person-title" className="text-copy-m leading-6 font-semibold text-ink">
         {person.you ? 'Leave this Space' : `Remove ${person.displayName}`}
       </h2>
-      <p className="mt-1 text-[13px] leading-[18px] text-ink-muted">
+      <p className="mt-1 text-[13px] leading-4.5 text-ink-muted">
         Resolve everything still held here before access is removed. Nothing is moved or stopped
         automatically.
       </p>
@@ -78,16 +75,16 @@ export function RemovalChecklist({
       )}
       <div className="mt-6 flex items-center justify-end gap-2 pt-4">
         <button
-          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-fill"
+          className="h-8 rounded-md border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-fill"
           type="button"
           onClick={back}
         >
           Cancel
         </button>
         <button
-          className="h-8 rounded-[6px] border-0 bg-danger-fill px-3 text-[13px] font-medium text-white hover:bg-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
+          className="h-8 rounded-md border-0 bg-danger-fill px-3 text-[13px] font-medium text-white hover:bg-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
           type="button"
-          disabled={!holdsNothing || remove.isPending}
+          disabled={!workIsSettled || remove.isPending}
           onClick={() => {
             remove.mutate(
               { params: { path: { slug, userId: person.userId } } },
@@ -103,8 +100,11 @@ export function RemovalChecklist({
   )
 }
 
-/** Whether there is anything left to settle, asked the one way, by both readers of the answer. */
-function nothingLeft(held: Held): boolean {
+function hasNoOpenWork(held: Held): boolean {
+  return held.working.length === 0
+}
+
+function hasNothingToShow(held: Held): boolean {
   return held.working.length === 0 && held.machines.length === 0
 }
 
@@ -119,7 +119,7 @@ function HeldRows({
   readonly recipients: readonly Member[]
   readonly readAgain: () => void
 }) {
-  if (nothingLeft(held))
+  if (hasNothingToShow(held))
     return (
       <p className="mt-5 rounded-[7px] bg-fill p-3 text-[13px] text-ink-secondary">
         Nothing is still theirs here.
@@ -149,13 +149,12 @@ function HeldRows({
           <h3 className="mb-2 text-[13px] font-medium text-ink-secondary">Machines</h3>
           <ul className="m-0 list-none space-y-1 p-0">
             {held.machines.map((machine) => (
-              <MachineResolution
-                key={machine.id}
-                slug={slug}
-                machine={machine}
-                recipients={recipients}
-                readAgain={readAgain}
-              />
+              <li key={machine.id} className="py-2">
+                <p className="text-[13px] font-medium text-ink">{machine.name}</p>
+                <p className="mt-0.5 text-copy-xxs text-ink-quiet">
+                  It will be removed from this Space. The machine and other Spaces are unaffected.
+                </p>
+              </li>
             ))}
           </ul>
         </div>
@@ -181,7 +180,7 @@ function WorkResolution({
   return (
     <li className="py-3">
       <p className="text-[13px] font-medium text-ink">{work.goal}</p>
-      <p className="mt-0.5 text-[12px] text-ink-quiet">
+      <p className="mt-0.5 text-copy-xxs text-ink-quiet">
         {whatItIsDoing(work.state)} · {work.machineName}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -208,41 +207,6 @@ function WorkResolution({
   )
 }
 
-function MachineResolution({
-  slug,
-  machine,
-  recipients,
-  readAgain,
-}: {
-  readonly slug: string
-  readonly machine: Held['machines'][number]
-  readonly recipients: readonly Member[]
-  readonly readAgain: () => void
-}) {
-  const transfer = useHandMachineTo(slug)
-
-  return (
-    <li className="py-3">
-      <p className="text-[13px] font-medium text-ink">{machine.name}</p>
-      <p className="mt-0.5 text-[12px] text-ink-quiet">
-        {machine.inUse === 0 ? 'Not in use' : `${machine.inUse} active conversations`}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <TransferChoice
-          people={recipients}
-          pending={transfer.isPending}
-          act={(ownerUserId) => {
-            transfer.mutate(
-              { params: { path: { slug, id: machine.id } }, body: { ownerUserId } },
-              { onSuccess: readAgain },
-            )
-          }}
-        />
-      </div>
-    </li>
-  )
-}
-
 function TransferChoice({
   people,
   pending,
@@ -257,7 +221,7 @@ function TransferChoice({
 
   return (
     <>
-      <div className="w-full max-w-[220px]">
+      <div className="w-full max-w-55">
         <MenuSelect
           label="New owner"
           value={ownerUserId}

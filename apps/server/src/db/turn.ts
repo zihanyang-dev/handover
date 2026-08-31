@@ -9,6 +9,10 @@
  * two machines racing both run it and one of them loses; ending one is a conditional update, so a
  * turn ends once. Nothing is inferred, and nothing is decided in TypeScript.
  *
+ * A claim first takes the machine advisory lock. Its insert and answer are one SQL statement; then
+ * it takes the `space_machines` row before commit. If removal got there first, the provisional turn
+ * is deleted inside the same transaction and nobody can observe it.
+ *
  * `forgetStranded` is the one path here that writes into the transcript as well, and it must: the
  * ledger saying a turn is over while the transcript still reads as running would be a conversation
  * that looks alive to anybody who scrolls it. Both halves go in one transaction.
@@ -19,7 +23,7 @@ import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS } from '../machine/presence.ts'
 import { STATE } from '../task/state.ts'
 import type { Database, Tx } from './connection.ts'
-import { atOnceFor } from './machine.ts'
+import { atOnceFor, lockMachineInSpace } from './machine.ts'
 import { append } from './message.ts'
 import { waitsForAPerson } from './task.ts'
 
@@ -86,7 +90,7 @@ function beingAsked(machineId: string) {
   return sql`
     asked as (
       -- Somebody is sitting in front of it: their last question, if nobody took it.
-      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
+      select c.id as conversation_id, c.space_id, c.agent_kind, c.agent_session_id,
              last.seq, last.content, last.created_at, 'user'::text as role, null::text as goal,
              ${whatItWasOpenedFor()} as subtask_of, ${hasRunBefore()} as ran_before
         from conversations c
@@ -112,7 +116,7 @@ function carryingOn(machineId: string) {
   return sql`    carrying_on as (
       -- Somebody handed it over: the last line of it, whatever that line is. It is not answering
       -- anything — it is carrying on — so the turn begins after whatever came last.
-      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
+      select c.id as conversation_id, c.space_id, c.agent_kind, c.agent_session_id,
              last.seq, last.content, last.created_at, last.role, k.goal,
              ${whatItWasOpenedFor()} as subtask_of, ${hasRunBefore()} as ran_before
         from conversations c
@@ -255,6 +259,12 @@ function owedATurn(machineId: string) {
            select 1 from machines here
             where here.id = ${machineId} and here.removed_at is null
          )
+         and exists (
+           select 1 from space_machines available
+            where available.space_id = owed.space_id
+              and available.machine_id = ${machineId}
+              and available.removed_at is null
+         )
        order by created_at
        limit 1
     )`
@@ -296,6 +306,8 @@ export async function takeOne(db: Database, machineId: string): Promise<Taken | 
   return db.transaction().execute(async (tx) => takingOne(tx, machineId))
 }
 
+type ClaimedTurn = Taken & { readonly spaceId: string }
+
 async function takingOne(tx: Tx, machineId: string): Promise<Taken | undefined> {
   // How many an agent is already running is a count, and a count under read committed is a lie
   // the moment a second instance is counting too: each sees its own snapshot, neither sees the
@@ -310,7 +322,7 @@ async function takingOne(tx: Tx, machineId: string): Promise<Taken | undefined> 
   // Written by hand because the correctness *is* the SQL: claiming and reading back what was
   // claimed happen in one statement, against one snapshot. Two statements would hand the same
   // turn to two machines, and the builder version would still have to be read as this to see it.
-  const taken = await sql<Taken>`
+  const taken = await sql<ClaimedTurn>`
     with ${owedATurn(machineId)},
     claimed as (
       insert into turns (conversation_id, after_seq, machine_id)
@@ -319,6 +331,7 @@ async function takingOne(tx: Tx, machineId: string): Promise<Taken | undefined> 
       returning conversation_id, after_seq
     )
     select w.conversation_id  as "conversationId",
+           w.space_id         as "spaceId",
            w.agent_kind       as "agentKind",
            w.agent_session_id as "agentSession",
            w.seq              as "afterSeq",
@@ -336,7 +349,34 @@ async function takingOne(tx: Tx, machineId: string): Promise<Taken | undefined> 
       ${everythingSaidSince()}
   `.execute(tx)
 
-  return taken.rows[0]
+  return keepClaimIfAvailable(tx, machineId, taken.rows[0])
+}
+
+async function keepClaimIfAvailable(
+  tx: Tx,
+  machineId: string,
+  claimed: ClaimedTurn | undefined,
+): Promise<Taken | undefined> {
+  if (claimed === undefined) return undefined
+
+  const relationship = await lockMachineInSpace(tx, {
+    spaceId: claimed.spaceId,
+    machineId,
+  })
+  if (relationship === undefined) {
+    // The claim is still inside this transaction, so erasing it is invisible. The relationship
+    // was removed first; committing a turn now would make the late writer win anyway.
+    await tx
+      .deleteFrom('turns')
+      .where('conversation_id', '=', claimed.conversationId)
+      .where('after_seq', '=', claimed.afterSeq)
+      .where('machine_id', '=', machineId)
+      .execute()
+    return undefined
+  }
+
+  const { spaceId: _spaceId, ...answer } = claimed
+  return answer
 }
 
 /**

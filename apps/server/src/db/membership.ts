@@ -14,7 +14,7 @@
 import { expressionBuilder, sql, type Expression, type SqlBool, type UpdateObject } from 'kysely'
 import type { DB } from '../../generated/db.ts'
 import type { Database, Tx } from './connection.ts'
-import { reachableFrom } from './machine.ts'
+import { noteSpaceMembershipChanged } from './watching.ts'
 
 export const ROLE = {
   /** Asks people in, takes them out, names the Space, and makes other owners. */
@@ -144,6 +144,8 @@ async function itsTurnToChangeOwners(tx: Tx, spaceId: string): Promise<void> {
   await sql`select pg_advisory_xact_lock(hashtext(${`owners:${spaceId}`}))`.execute(tx)
 }
 
+type MembershipKey = { readonly spaceId: string; readonly userId: string }
+
 /**
  * One change to the row that says somebody is here, made the way all of them have to be made.
  *
@@ -153,38 +155,30 @@ async function itsTurnToChangeOwners(tx: Tx, spaceId: string): Promise<void> {
  * "nothing changed" as "they are not a member", because a `where` that matched nothing and a
  * person who was never here are the same answer to whoever asked.
  *
- * Written once because it was written twice: {@link becomes} and {@link removes} were the same
- * fourteen lines apart from what they `set`, and a third caller would have been a third copy of a
- * rule nobody had stated. `enrolment.ts` names a change to a row the same way.
+ * Written once because {@link becomes} and any later single-row change must not copy this rule.
  */
 async function changes(
   db: Database,
-  who: { readonly spaceId: string; readonly userId: string },
+  who: MembershipKey,
   what: UpdateObject<DB, 'memberships'>,
 ): Promise<Moved> {
-  return orTheLastOwner(async () =>
-    db.transaction().execute(async (tx) => {
-      await itsTurnToChangeOwners(tx, who.spaceId)
+  return orTheLastOwner(db, async (tx) => {
+    await itsTurnToChangeOwners(tx, who.spaceId)
 
-      const changed = await tx
-        .updateTable('memberships')
-        .set(what)
-        .where('space_id', '=', who.spaceId)
-        .where('user_id', '=', who.userId)
-        .where('revoked_at', 'is', null)
-        .returning('user_id')
-        .executeTakeFirst()
+    const changed = await tx
+      .updateTable('memberships')
+      .set(what)
+      .where('space_id', '=', who.spaceId)
+      .where('user_id', '=', who.userId)
+      .where('revoked_at', 'is', null)
+      .returning('user_id')
+      .executeTakeFirst()
 
-      return changed === undefined ? { kind: 'not-a-member' } : { kind: 'moved' }
-    }),
-  )
+    return changed === undefined ? { kind: 'not-a-member' } : { kind: 'moved' }
+  })
 }
 
-export async function becomes(
-  db: Database,
-  who: { readonly spaceId: string; readonly userId: string },
-  role: Role,
-): Promise<Moved> {
+export async function becomes(db: Database, who: MembershipKey, role: Role): Promise<Moved> {
   return changes(db, who, { role })
 }
 
@@ -195,11 +189,56 @@ export async function becomes(
  * has decided one at a time. Linear does not reassign a removed member's open issues either, and
  * Devin lets a running session finish; deciding for somebody is worse than asking them.
  */
-export async function removes(
-  db: Database,
-  who: { readonly spaceId: string; readonly userId: string },
-): Promise<Moved> {
-  return changes(db, who, { revoked_at: sql<Date>`clock_timestamp()` })
+export async function removes(db: Database, who: MembershipKey): Promise<Moved> {
+  return orTheLastOwner(db, async (tx) => await removeMember(tx, who))
+}
+
+async function removeMember(tx: Tx, who: MembershipKey): Promise<Moved> {
+  await itsTurnToChangeOwners(tx, who.spaceId)
+
+  const membership = await lockMembership(tx, who)
+  if (membership === undefined) return { kind: 'not-a-member' }
+
+  await removeOwnedMachinesFromSpace(tx, who)
+  await revokeMembership(tx, who)
+  await noteSpaceMembershipChanged(tx, who.spaceId)
+  return { kind: 'moved' }
+}
+
+async function lockMembership(tx: Tx, who: MembershipKey) {
+  return tx
+    .selectFrom('memberships')
+    .select('user_id')
+    .where('space_id', '=', who.spaceId)
+    .where('user_id', '=', who.userId)
+    .where('revoked_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+}
+
+async function removeOwnedMachinesFromSpace(tx: Tx, who: MembershipKey): Promise<void> {
+  const ownedMachines = tx
+    .selectFrom('machines')
+    .select('id')
+    .where('owner_user_id', '=', who.userId)
+
+  await tx
+    .updateTable('space_machines')
+    .set({ removed_at: sql<Date>`clock_timestamp()` })
+    .where('space_id', '=', who.spaceId)
+    .where('machine_id', 'in', ownedMachines)
+    .where('removed_at', 'is', null)
+    .execute()
+}
+
+async function revokeMembership(tx: Tx, who: MembershipKey): Promise<void> {
+  await tx
+    .updateTable('memberships')
+    .set({ revoked_at: sql<Date>`clock_timestamp()` })
+    .where('space_id', '=', who.spaceId)
+    .where('user_id', '=', who.userId)
+    .where('revoked_at', 'is', null)
+    .execute()
 }
 
 /** The name the migration raises under, which is how a refusal gets back here as an answer. */
@@ -213,9 +252,11 @@ const KEEPS_AN_OWNER = 'memberships_keep_an_owner'
  * that would break it is rolled back by the same thing that noticed. Asked here as well, this
  * would be a second copy of the rule, and the day the two disagreed the wrong one would win.
  */
-async function orTheLastOwner(change: () => Promise<Moved>): Promise<Moved> {
+async function orTheLastOwner(db: Database, change: (tx: Tx) => Promise<Moved>): Promise<Moved> {
   try {
-    return await change()
+    // The owner constraint is deferred, so the refusal is raised by commit. This function owns the
+    // transaction to keep that commit inside the catch rather than outside the translated answer.
+    return await db.transaction().execute(change)
   } catch (trouble: unknown) {
     if ((trouble as { constraint?: string }).constraint === KEEPS_AN_OWNER) {
       return { kind: 'the-last-owner' }
@@ -326,32 +367,7 @@ export async function handWorkTo(
   return Number(moved.numUpdatedRows) === 0 ? { kind: 'not-a-member' } : { kind: 'moved' }
 }
 
-/**
- * Hands one machine to somebody else in this Space.
- *
- * The same shape and the same reason, one table along. Since `20260909` the row may move: who
- * approved a machine and whose it is are two questions, and only the first is history.
- */
-export async function handMachineTo(
-  db: Database,
-  moving: { readonly spaceId: string; readonly machineId: string; readonly userId: string },
-): Promise<Handed> {
-  const moved = await db
-    .updateTable('machines')
-    .set({ owner_user_id: moving.userId })
-    .where('id', '=', moving.machineId)
-    .where('removed_at', 'is', null)
-    .where(reachableFrom(moving.spaceId))
-    .where(stillAMember(moving.spaceId, moving.userId))
-    .executeTakeFirst()
-
-  return Number(moved.numUpdatedRows) === 0 ? { kind: 'not-a-member' } : { kind: 'moved' }
-}
-
-export async function whatTheyHold(
-  db: Database,
-  who: { readonly spaceId: string; readonly userId: string },
-): Promise<Held> {
+export async function whatTheyHold(db: Database, who: MembershipKey): Promise<Held> {
   const working = await db
     .selectFrom('tasks')
     .innerJoin('conversations', 'conversations.id', 'tasks.conversation_id')
@@ -370,6 +386,7 @@ export async function whatTheyHold(
 
   const machines = await db
     .selectFrom('machines')
+    .innerJoin('space_machines', 'space_machines.machine_id', 'machines.id')
     .select((eb) => [
       'machines.id as id',
       'machines.name as name',
@@ -385,6 +402,8 @@ export async function whatTheyHold(
     ])
     .where('machines.owner_user_id', '=', who.userId)
     .where('machines.removed_at', 'is', null)
+    .where('space_machines.space_id', '=', who.spaceId)
+    .where('space_machines.removed_at', 'is', null)
     .orderBy('machines.created_at')
     .execute()
 

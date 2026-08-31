@@ -71,63 +71,22 @@ create unique index memberships_one_owner_at_least on … -- 不行:唯一索引
 
 ## 「不替你决定」怎么落成代码
 
-移除一个人时,先算出**他名下还有什么**,一件一件交给人处理。
-
-```
-他还在跑的活    tasks where owner_user_id = 他 and ended_at is null
-他的机器        machines where owner_user_id = 他 and removed_at is null
-                其中「有人在用」= 这台机器上有没结束的对话
-```
-
-两样都是**读出来的,不是存的**,和这套代码里其它每一处一样。
+移除一个人时,先算出他还在负责的 work,一件一件交给人处理。机器不是责任转移:它仍属于控制它的人;
+成员移除的事务只撤销这个人在当前 Space 的 `space_machines`,不全局断开机器,也不影响其它 Space。
 
 **一件事换主人**是一列的写入(`tasks.owner_user_id`),而 Inbox 是查 `owner_user_id` 的,
 所以通知自动跟着走 ——
 [Devin 的定时任务是同一个做法:归属换了,通知跟着换](https://docs.devin.ai/product-guides/scheduled-sessions)。
 
-**一台机器换主人**是 `machines.owner_user_id`,而它现在被一条复合外键钉在
-`enrolments.approved_by` 上(「机器不能和批准它的人不一致」)。**换主人要连着改批准记录**,
-或者把那条外键换成一条只说「主人存在」的约束 —— 见「要动的现有东西」。
-
-**没有任何一条自动路径。** 移除一个人不会停掉他的活,也不会转移它们:
-[Linear 不重新分配他开着的 issue](https://www.stitchflow.com/user-management/linear/manual)、
-[Devin 的在跑 session 一直跑到自然结束](https://docs.devin.ai/enterprise/security-access/sso/guide)。
-清单是产品,不是提示。
-
----
-
-## 「机器不能和批准它的人不一致」怎么让开路
-
-`20260906` 那条复合外键把 `machines.owner_user_id` 钉在 `enrolments.approved_by` 上。换主人要
-改前者,而后者不能改 —— 所以这条约束要么让路,要么换主人做不成。
-
-**定的是:它变成一条只在 `insert` 时检查的约束触发器。**
-
-理由是这两列在这一片之前问的是同一个问题,之后不是了:
-
-```
-enrolments.approved_by     谁说的「可以」。发生过一次,然后就是历史
-machines.owner_user_id     现在是谁的。会变
-```
-
-那条外键说的是「它们永远相等」,而真正值得守的规矩是「**它们在机器领凭据的那一刻相等**」——
-也就是**一台机器不能出生在错误的人名下**。出生之后归属会动,那不是不一致,那是换了主人。
-
-**为什么不是「代码保证插入时相等就行」:** 因为 `20260906` 自己写下的理由还成立 ——
-`code-style.md` 9:迟到的写者必须在 SQL 里失败。所以它从外键变成触发器,不是从外键变成注释。
-房子里已经有这个做法:`20260908` 那条「一个 Space 一开始就有 owner」就是一条约束触发器,
-而且同样是 insert 也管。
-
-**为什么不是改 `approved_by`:** 那是改历史。`prd.md` 05 ⑦ 承诺的正是反面 ——
-他说过的话、他交办过的事,永远还写着他的名字。为了让一条约束好过而改一行历史,
-是把这一片的承诺卖掉换一次迁移方便。而且 `approved_by` 全库只有一处读:机器领凭据时
-给 `owner_user_id` 播种。它就是历史,没有别的身份。
+正在跑的 work 仍然不自动停止或转移。机器关系会自动撤销,因为它不是判断「工作怎么办」,只是让已经离开
+的人不能继续把自己的电脑分享给这个 Space;历史 Conversation 和机器本身都不删。单独停止分享机器时,
+Space machine projection 先列出它仍承载的 work;清单为空前屏幕不提交删除关系的动作。
 
 ---
 
 ## 换主人
 
-两条接口,在下面的清单里。两条都收 `{ ownerUserId }`。
+只有 work 换主人,接口收 `{ ownerUserId }`。
 
 **一件事换主人是一列的写入**(`tasks.owner_user_id`),而 Inbox 查的就是这一列,所以通知自动
 跟着走 —— [Devin 的定时任务是同一个做法:归属换了,通知跟着换](https://docs.devin.ai/product-guides/scheduled-sessions)。
@@ -169,7 +128,6 @@ DELETE /spaces/{slug}/members/{userId}      移除(自己退出也是这条)
 GET    /spaces/{slug}/members/{userId}/held 移除之前:他名下还有什么
 
 PATCH  /spaces/{slug}/conversations/{id}/task  一件事换主人
-PATCH  /spaces/{slug}/machines/{id}            一台机器换主人
 ```
 
 **加入是 `POST /me/spaces`,不是 `POST /spaces/{slug}/members`。** 发生的事是
@@ -185,11 +143,10 @@ PATCH  /spaces/{slug}/machines/{id}            一台机器换主人
 
 ```
 memberships 长出 role 和 revoked_at        每一处读成员资格的地方都要排掉被撤销的:
-                                          reachableFrom(机器可达性)· requireMember(那道门)
-                                          machinesIn · waitingOn(Inbox)· 每一处 join
+                                          requireMember(那道门)· waitingOn(Inbox)· 每一处 join
 
-machines 的复合外键                        「机器不能和批准它的人不一致」在换主人时挡路。
-                                          **定了:变成只在 insert 时检查。** 见下一节
+space_machines                             成员移除同时撤销这个人在当前 Space 的机器关系;
+                                          重新加入不自动恢复
 
 01 的 design「不建:权限字段」              有消费者了(谁能邀请、谁能移除、谁能改名)。
                                           那句话要改成「只有两个角色,而且不会再多」

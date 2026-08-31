@@ -28,12 +28,12 @@ export function HandoverControl({
   return (
     <div className="ml-auto flex items-center gap-2">
       {say.isError && (
-        <span className="text-[12px] text-danger-strong" role="alert">
+        <span className="text-copy-xxs text-danger-strong" role="alert">
           Could not ask for a handover. Try again.
         </span>
       )}
       <button
-        className="h-7 rounded-[6px] border border-line-firm bg-white px-2.5 text-[12px] font-medium text-ink-secondary hover:bg-fill disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="h-7 rounded-md border border-line-firm bg-white px-2.5 text-copy-xxs font-medium text-ink-secondary hover:bg-fill disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         disabled={say.isPending}
         onClick={() => {
@@ -68,12 +68,12 @@ export function HandoverProposal({
   return (
     <article className="my-4 border-l-2 border-primary/40 py-1 pl-4" aria-label="Proposed handover">
       <p className="text-[13px] leading-5 font-medium text-ink-muted">Proposed handover</p>
-      <p className="mt-1.5 text-[14px] leading-5 font-medium text-ink">{goal}</p>
-      <p className="mt-1.5 text-[12px] leading-[17px] text-ink-muted">
+      <p className="mt-1.5 text-copy-xs leading-5 font-medium text-ink">{goal}</p>
+      <p className="mt-1.5 text-copy-xxs leading-4.25 text-ink-muted">
         Nothing carries on by itself until you confirm this goal.
       </p>
       {location !== undefined && (
-        <p className="mt-1 text-[12px] leading-[17px] text-ink-quiet">{location.machine}</p>
+        <p className="mt-1 text-copy-xxs leading-4.25 text-ink-quiet">{location.machine}</p>
       )}
       <div className="mt-3 flex items-center justify-end gap-2">
         {status === 'handed-over' && (
@@ -87,7 +87,7 @@ export function HandoverProposal({
         )}
         {available && (
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus max-lg:h-10"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus max-lg:h-10"
             type="button"
             disabled={handOver.isPending}
             onClick={() => {
