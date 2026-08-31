@@ -4,9 +4,16 @@
 # reasons `check` never can — a font, a graphics library, a browser build — and a functional suite
 # that inherited those failures would be a suite people learn to re-run rather than read.
 #
-# The pictures live in `e2e/looks/`, taken on Linux, which is what this runs on. Changing how
-# something looks on purpose means running this workflow by hand with `update` ticked and
-# committing what it hands back; there is no way to take them from a Mac, and that is the point.
+# The pictures live in `e2e/looks/`, taken on Linux, which is what this runs on; there is no way
+# to take them from a Mac, and that is the point.
+#
+# Changing how something looks on purpose is two steps, in this order on purpose. The push fails
+# and hands back the three pictures — what it was, what it is, and where they differ. Somebody
+# looks. If it is the change they meant, they run this again with `update` ticked and it writes
+# the new ones itself.
+#
+# Never the other way round. A run that accepted its own output whenever it failed would turn
+# every regression into the new truth on the way past, and the check would be a check in name.
 name: looks
 
 on:
@@ -25,6 +32,9 @@ permissions:
 
 jobs:
   looks:
+    # Everything except the deliberate re-take, which is its own job below because it is the only
+    # one that may write.
+    if: ${{ !inputs.update }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -40,7 +50,7 @@ jobs:
       # does not come with.
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm db:up
-      - run: ${{ inputs.update && 'pnpm looks:before' || 'pnpm looks' }}
+      - run: pnpm looks
       # Both ways round: the pictures when they were asked for, and the differences when they were
       # not. A failure nobody can look at is a failure nobody can judge.
       - if: always()
@@ -51,3 +61,37 @@ jobs:
             e2e/looks/
             e2e/test-results/
           if-no-files-found: ignore
+
+  update:
+    # Only ever by hand, and only after somebody has seen what they are accepting: this runs when
+    # the failure above has already handed them the difference.
+    if: ${{ inputs.update }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Credentials kept, unlike every other checkout here, because this job's whole purpose is to
+      # write back what it took. Nothing else in this workflow can.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm db:up
+      - run: pnpm looks:before
+      # Pushed with the repository's own token, which is what keeps this from being a loop: a push
+      # made with it starts no further run.
+      - name: Commit the pictures, if they moved
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add e2e/looks
+          if git diff --cached --quiet; then
+            echo 'Nothing moved. The pictures already say what the screens say.'
+            exit 0
+          fi
+          git commit -m 'Take the pictures again, from where the styling is now'
+          git push origin HEAD:${{ github.ref_name }}
