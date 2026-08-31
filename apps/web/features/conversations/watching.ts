@@ -357,6 +357,9 @@ export function useSayingYouAreTyping(slug: string, id: string): () => void {
 
     api
       .POST('/spaces/{slug}/conversations/{id}/typing', { params: { path: { slug, id } } })
+      // Nobody is told, because nobody would do anything about it. This says somebody is
+      // typing; it is already gone in five seconds, and a failure to deliver it is the same
+      // outcome as not having typed.
       .catch(() => undefined)
   }
 }

@@ -427,12 +427,21 @@ async function openTurnsOn(
   db: Database,
   machineId: string,
 ): Promise<readonly { conversationId: string; afterSeq: number }[]> {
-  return db
-    .selectFrom('turns')
-    .select(['conversation_id as conversationId', 'after_seq as afterSeq'])
-    .where('machine_id', '=', machineId)
-    .where('ended_at', 'is', null)
-    .execute()
+  return (
+    db
+      .selectFrom('turns')
+      .select(['conversation_id as conversationId', 'after_seq as afterSeq'])
+      .where('machine_id', '=', machineId)
+      .where('ended_at', 'is', null)
+      // By conversation, because {@link forgetStranded} locks each of these rows in the order they
+      // arrive in. Unordered, Postgres may hand them back differently on two executions — and two
+      // is what happens when a machine's restart report times out and is sent again. Both
+      // transactions then take the same conversations in different orders, which is a deadlock, and
+      // Postgres answers it by killing one: a restart that reports a fault for no reason a person
+      // can see. `rules/locks.spec.ts` is what keeps the next loop of this shape ordered.
+      .orderBy('conversation_id')
+      .execute()
+  )
 }
 
 /**

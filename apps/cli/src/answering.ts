@@ -371,7 +371,16 @@ type LiveWriter = {
   readonly drain: () => Promise<void>
 }
 
-/** A serial, short-cadence writer for ephemeral events, bounded by transport-sized pieces. */
+/**
+ * A serial, short-cadence writer for ephemeral events, bounded by transport-sized pieces.
+ *
+ * A send that fails is dropped and nothing is told. What goes through here is the live preview of
+ * an agent's output; the durable copy is written by the turn itself when it ends. Retrying would
+ * put the same words in twice, and reporting it would be an error about a preview frame. What
+ * must not be dropped is the chain — one failure may not stop every later piece from being
+ * offered — which is why the `.catch` in {@link enqueue} settles it rather than leaving it
+ * rejected.
+ */
 function liveWriter(send: (said: Unkept) => Promise<void>): LiveWriter {
   let sent = Promise.resolve()
   let pendingOutput: Extract<Unkept, { readonly said: 'output' }>[] = []
