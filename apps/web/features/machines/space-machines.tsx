@@ -6,6 +6,7 @@
  * person out — see `member-removal.tsx`.
  */
 
+import { AT_ONCE_AT_MOST } from '@handover/universal'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -25,16 +26,6 @@ import {
 } from './machine-list.ts'
 
 type Member = components['schemas']['Member']
-
-/**
- * The most this box offers.
- *
- * A mirror of `AT_ONCE_AT_MOST` in `apps/server/src/machine/at-once.ts`, which is the authority
- * along with the column's own constraint. Here so the spinner stops where the server does rather
- * than letting somebody type a number that comes back refused; anything that gets past it is
- * still refused there, and said so below.
- */
-const AT_MOST_AT_ONCE = 16
 
 export function SpaceMachines({ slug }: { readonly slug: string }) {
   const machines = useQuery(machinesIn(slug))
@@ -114,6 +105,17 @@ function MachineRow({
             <h2 className="truncate text-[14px] font-semibold text-panel-ink">{machine.name}</h2>
             <Presence machine={machine} />
           </div>
+          {/* Whose it is. A Space with two people in it has two people's laptops in it, and what
+              an agent does on one of them happens in that person's files — so a list of machines
+              that does not say which is which is a list nobody can choose from. The contract
+              carries `ownerName` for this and nothing else. */}
+          <p className="mt-0.5 truncate text-[12px] leading-[17px] text-panel-ink-quiet">
+            {machine.yours ? 'Yours' : machine.ownerName}
+            {/* Which build it is running, and nothing when it has never said — a machine too old
+                to report one is shown as such rather than filled in with a guess. It is the first
+                string anybody quotes when a machine will not do what they expect. */}
+            {machine.version !== undefined && ` · handover ${machine.version}`}
+          </p>
         </div>
       </div>
       <AgentSettings slug={slug} machine={machine} />
@@ -265,7 +267,7 @@ function AgentDecisions({
             className="h-8 w-[72px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
             type="number"
             min={1}
-            max={AT_MOST_AT_ONCE}
+            max={AT_ONCE_AT_MOST}
             value={atOnce}
             aria-invalid={!isUsable}
             aria-describedby={isUsable ? undefined : atOnceError}
@@ -278,7 +280,7 @@ function AgentDecisions({
       </form>
       {!isUsable && (
         <p id={atOnceError} className="mt-2 text-[12px] text-panel-danger" role="alert">
-          At once is a whole number between 1 and {AT_MOST_AT_ONCE}.
+          At once is a whole number between 1 and {AT_ONCE_AT_MOST}.
         </p>
       )}
       {decide.isError && (
@@ -291,7 +293,7 @@ function AgentDecisions({
 }
 
 function usableAtOnce(wanted: number): boolean {
-  return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_MOST_AT_ONCE
+  return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_ONCE_AT_MOST
 }
 
 function TransferMachine({

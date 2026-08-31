@@ -6,6 +6,7 @@
  * the weaker of the two everywhere.
  */
 
+import { AT_ONCE_AT_MOST } from '@handover/universal'
 import { z } from '@hono/zod-openapi'
 import { avatarPath } from '../avatar.ts'
 import { Models } from '../conversation/offers.ts'
@@ -26,7 +27,6 @@ import {
   AGENT_KIND_NAMES,
   type AgentKind,
 } from '../machine/agent-kind.ts'
-import { AT_ONCE_AT_MOST } from '../machine/at-once.ts'
 import type { Waiting } from '../machine/waiting.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
 import { type Failure, UNAVAILABLE, refused } from './failure.ts'
