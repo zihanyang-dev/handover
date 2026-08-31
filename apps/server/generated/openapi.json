@@ -1153,12 +1153,95 @@
           "machines": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Machine"
+              "$ref": "#/components/schemas/SpaceMachine"
             }
           }
         },
         "required": [
           "machines"
+        ]
+      },
+      "SpaceMachine": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Machine"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "working": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MachineWork"
+                }
+              }
+            },
+            "required": [
+              "working"
+            ]
+          }
+        ]
+      },
+      "MachineAgent": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "atOnce": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "atOnce",
+          "avatarUrl",
+          "version",
+          "models"
+        ]
+      },
+      "MachineWork": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversationId",
+          "goal",
+          "state"
         ]
       },
       "Machine": {
@@ -1202,48 +1285,6 @@
           "yours",
           "presence",
           "agents"
-        ]
-      },
-      "MachineAgent": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "claude-code",
-              "codex"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "nullable": true
-          },
-          "atOnce": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 16
-          },
-          "avatarUrl": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "models": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Model"
-            },
-            "maxItems": 100
-          }
-        },
-        "required": [
-          "kind",
-          "name",
-          "atOnce",
-          "avatarUrl",
-          "version",
-          "models"
         ]
       },
       "OwnedMachines": {
@@ -4084,7 +4125,7 @@
     },
     "/spaces/{slug}/machines/{id}": {
       "put": {
-        "summary": "Make one of your machines available in this Space",
+        "summary": "Share one of your machines with this Space",
         "security": [
           {
             "browserSession": []
@@ -4136,7 +4177,7 @@
         }
       },
       "delete": {
-        "summary": "Remove a machine from this Space",
+        "summary": "Stop sharing a machine with this Space",
         "security": [
           {
             "browserSession": []

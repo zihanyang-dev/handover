@@ -79,7 +79,8 @@ create unique index memberships_one_owner_at_least on … -- 不行:唯一索引
 [Devin 的定时任务是同一个做法:归属换了,通知跟着换](https://docs.devin.ai/product-guides/scheduled-sessions)。
 
 正在跑的 work 仍然不自动停止或转移。机器关系会自动撤销,因为它不是判断「工作怎么办」,只是让已经离开
-的人不能继续把自己的电脑提供给这个 Space;历史 Conversation 和机器本身都不删。
+的人不能继续把自己的电脑分享给这个 Space;历史 Conversation 和机器本身都不删。单独停止分享机器时,
+Space machine projection 先列出它仍承载的 work;清单为空前屏幕不提交删除关系的动作。
 
 ---
 

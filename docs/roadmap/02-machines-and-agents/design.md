@@ -21,7 +21,7 @@ enrolments
   replaces_machine_id → machines(可空)
                               ← 人明确选择重新连接哪个身份;绝不从名字猜
   approved_space_id → spaces(可空)
-                              ← 从一个 Space 的 Add machine 发起时,收取凭据后原子加到那里
+                              ← 从一个 Space 的 Share a machine 发起时,收取凭据后原子分享到那里
   refused_at(可空)          ← 被拒绝和从没批过是两件事
   claimed_at(可空)          ← 已经换成机器了,不能再换第二次
   expires_at
@@ -94,7 +94,7 @@ Conversation 的 `(space_id, machine_id)` 复合外键指向这张表。新 Conv
 `prd.md` 01 的承诺 ⑥ 说的是**不存在和不是成员,同一个回答**。
 
 **批准首先只回答「这是不是你的」;是否加到当前 Space 是浏览器的明确意图。** 从 Account 连接时,
-`approved_space_id` 为空,机器只出现在 Your machines。从 Acme 的 Add machine 发起时,浏览器在批准动作上
+`approved_space_id` 为空,机器只出现在 Your machines。从 Acme 的 Share a machine 发起时,浏览器在批准动作上
 带 Acme;CLI 仍然不知道 Space、也不能枚举 Space。收取凭据的事务创建或重连机器后,同时 upsert Acme 的
 `space_machines`。
 
@@ -394,17 +394,21 @@ POST   /machines/current/poll            机器报到,带上扫到的东西、�
                                          没活就挂住,最多 25 秒
                                          → { pollSeconds: 0, lookFor, asking?, stopping? }
 DELETE /machines/current/session         说再见,立刻转离线
-GET    /spaces/{slug}/machines           当前 Space 明确添加的机器
-PUT    /spaces/{slug}/machines/{id}      把自己一台既有机器添加到当前 Space
-DELETE /spaces/{slug}/machines/{id}      只从当前 Space 移除;主人或 Space owner
+GET    /spaces/{slug}/machines           当前 Space 明确分享的机器,以及每台仍承载的 work
+PUT    /spaces/{slug}/machines/{id}      把自己一台既有机器分享给当前 Space
+DELETE /spaces/{slug}/machines/{id}      停止与当前 Space 分享;主人或 Space owner
 PATCH  /me/machines/{id}/agents/{kind}   给自己机器上已发现的 agent 起名,或恢复默认名
 DELETE /me/machines/{id}                 全局 Disconnect,凭据和所有 Space 同时失效
 ```
 
 `/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验「这个 id 是不是你」,而凭据本来就说明了你是谁。
 
-CLI 的发起和回绝不带 Space。浏览器若从某个 Space 的 Add machine 发起,在批准或生成 key 时明确记录该
+CLI 的发起和回绝不带 Space。浏览器若从某个 Space 的 Share a machine 发起,在批准或生成 key 时明确记录该
 Space;CLI 仍不枚举也不选择 Space。Account 发起则只连接到 Your machines。
+
+屏幕把 `space_machines` 这条关系说成 sharing:Share a machine / Stop sharing。停止分享的确认从同一个
+GET projection 读取该机器在当前 Space 中所有 `tasks.ended_at is null` 的 work,逐件显示 goal、状态和 Chat。
+清单不为空时屏幕不提交 DELETE;清单不是另一个 authority,只是让人先处理完,再撤销关系。
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
 

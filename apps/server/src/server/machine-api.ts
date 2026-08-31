@@ -246,7 +246,19 @@ const Machine = named('Machine', {
   agents: z.array(Agent).readonly(),
 })
 
-const Machines = list('machines', Machine)
+const MachineWork = named('MachineWork', {
+  conversationId: rowId,
+  goal: z.string(),
+  /** Kept open for an older or newer server state; the screen names unknown states as received. */
+  state: z.string(),
+})
+
+const SpaceMachine = Machine.extend({
+  /** Work that will stop moving here if this Space can no longer use the machine. */
+  working: z.array(MachineWork).readonly(),
+}).openapi('SpaceMachine')
+
+const Machines = list('machines', SpaceMachine)
 
 const OwnedMachine = Machine.extend({
   spaces: z.array(named('MachineSpace', { slug: z.string(), displayName: z.string() })).readonly(),
@@ -274,8 +286,8 @@ export function machineApi(deps: MachineApi) {
     leaving(deps),
     listing(deps),
     listingOwned(deps),
-    attachingToSpace(deps),
-    removingFromSpace(deps),
+    sharingWithSpace(deps),
+    stoppingSharingWithSpace(deps),
     decidingAboutAgent(deps),
     detaching(deps),
   ]
@@ -418,6 +430,7 @@ function listing({ db }: MachineApi) {
         yours: machine.ownerUserId === c.get('userId'),
         presence: onTheWire(machine.whereabouts, seen.asOf),
         agents: machine.agents.map((agent) => asOffered(machine.id, agent)),
+        working: machine.working,
       }))
 
       return c.json({ machines }, 200)
@@ -450,10 +463,10 @@ function listingOwned({ db }: MachineApi) {
   })
 }
 
-/** Adds one of your existing machines to the current Space. */
-function attachingToSpace({ db }: MachineApi) {
+/** Shares one of your existing machines with the current Space. */
+function sharingWithSpace({ db }: MachineApi) {
   return aMember(db).put('/spaces/{slug}/machines/{id}', {
-    summary: 'Make one of your machines available in this Space',
+    summary: 'Share one of your machines with this Space',
     params: { id: rowId },
     answers: {
       204: 'Available here',
@@ -461,20 +474,20 @@ function attachingToSpace({ db }: MachineApi) {
     },
 
     run: async (c) => {
-      const added = await addMachineToSpace(db, {
+      const shared = await addMachineToSpace(db, {
         spaceId: c.get('space').id,
         machineId: c.req.valid('param').id,
         userId: c.get('userId'),
       })
-      return added ? nothing(c, 204) : refused(c, UNAVAILABLE)
+      return shared ? nothing(c, 204) : refused(c, UNAVAILABLE)
     },
   })
 }
 
-/** Removes only the current Space's use; the machine remains connected everywhere else. */
-function removingFromSpace({ db }: MachineApi) {
+/** Stops sharing with this Space; the machine remains connected everywhere else. */
+function stoppingSharingWithSpace({ db }: MachineApi) {
   return aMember(db).delete('/spaces/{slug}/machines/{id}', {
-    summary: 'Remove a machine from this Space',
+    summary: 'Stop sharing a machine with this Space',
     params: { id: rowId },
     answers: {
       204: 'No longer available here',
@@ -482,12 +495,12 @@ function removingFromSpace({ db }: MachineApi) {
     },
 
     run: async (c) => {
-      const removed = await removeMachineFromSpace(db, {
+      const stoppedSharing = await removeMachineFromSpace(db, {
         spaceId: c.get('space').id,
         machineId: c.req.valid('param').id,
         userId: c.get('userId'),
       })
-      return removed ? nothing(c, 204) : refused(c, UNAVAILABLE)
+      return stoppedSharing ? nothing(c, 204) : refused(c, UNAVAILABLE)
     },
   })
 }

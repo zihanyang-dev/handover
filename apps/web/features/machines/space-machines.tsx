@@ -11,16 +11,17 @@ import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
 import { SettingsHeading } from '../../components/ui/settings-heading.tsx'
+import { whatItIsDoing } from '../conversations/work.ts'
 import { nameUnlessAddress } from '../identity/account-name.ts'
 import { peopleIn } from '../spaces/people.ts'
 import { AgentMark, agentKindName } from './agent.tsx'
 import {
   machinesIn,
   ownedMachines,
-  useAddMachineToSpace,
+  useShareMachineWithSpace,
   useAgentSettings,
   useDisconnectMachine,
-  useRemoveMachineFromSpace,
+  useStopSharingMachineWithSpace,
   type Machine,
   type OwnedMachine,
 } from './machine-list.ts'
@@ -107,9 +108,9 @@ function AvailableSpaceMachines({
   readonly mine: readonly OwnedMachine[]
   readonly canRemoveAny: boolean
 }) {
-  const [adding, setAdding] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const present = new Set(machines.map((machine) => machine.id))
-  const machinesToAdd = mine.filter((machine) => !present.has(machine.id))
+  const machinesToShare = mine.filter((machine) => !present.has(machine.id))
 
   return (
     <section aria-labelledby="space-machines-title">
@@ -120,22 +121,23 @@ function AvailableSpaceMachines({
           <button
             className={primaryAction}
             type="button"
-            aria-expanded={adding}
-            aria-controls="add-machine-to-space"
+            aria-expanded={sharing}
+            aria-controls="share-machine-with-space"
             onClick={() => {
-              setAdding((open) => !open)
+              setSharing((open) => !open)
             }}
           >
-            Add machine
+            Share a machine
           </button>
         }
       />
-      {adding && (
-        <AddMachine
+      {sharing && (
+        <ShareMachine
           slug={slug}
-          machines={machinesToAdd}
+          spaceName={name}
+          machines={machinesToShare}
           close={() => {
-            setAdding(false)
+            setSharing(false)
           }}
         />
       )}
@@ -158,25 +160,29 @@ function AvailableSpaceMachines({
   )
 }
 
-function AddMachine({
+function ShareMachine({
   slug,
+  spaceName,
   machines,
   close,
 }: {
   readonly slug: string
+  readonly spaceName: string
   readonly machines: readonly OwnedMachine[]
   readonly close: () => void
 }) {
-  const add = useAddMachineToSpace(slug)
+  const share = useShareMachineWithSpace(slug)
   return (
     <div
-      id="add-machine-to-space"
+      id="share-machine-with-space"
       className="mb-8 rounded-[8px] border border-line-firm bg-fill p-3"
     >
-      <p className="m-0 text-[13px] font-medium text-ink">Choose one of your machines</p>
+      <p className="m-0 text-[13px] font-medium text-ink">
+        Choose one of your machines to share with {spaceName}
+      </p>
       {machines.length === 0 ? (
         <p className="mt-1 text-[12px] text-ink-quiet">
-          There is no other connected machine to add.
+          There is no other connected machine to share.
         </p>
       ) : (
         <div className="mt-3 flex flex-col gap-1">
@@ -185,9 +191,9 @@ function AddMachine({
               key={machine.id}
               className="flex min-h-9 items-center justify-between rounded-[6px] border-0 bg-white px-3 text-left text-[13px] text-ink hover:bg-[var(--interaction-hover)]"
               type="button"
-              disabled={add.isPending}
+              disabled={share.isPending}
               onClick={() => {
-                add.mutate({ params: { path: { slug, id: machine.id } } }, { onSuccess: close })
+                share.mutate({ params: { path: { slug, id: machine.id } } }, { onSuccess: close })
               }}
             >
               <span>{machine.name}</span>
@@ -201,11 +207,11 @@ function AddMachine({
         to="/connect"
         search={{ space: slug }}
       >
-        Connect a new machine
+        Connect and share a new machine
       </Link>
-      {add.isError && (
+      {share.isError && (
         <p className="mt-2 text-[12px] text-danger-ink" role="alert">
-          Could not add it. Try again.
+          Could not share it with {spaceName}. Try again.
         </p>
       )}
     </div>
@@ -286,7 +292,7 @@ function SpaceMachineRow({
   slug,
   spaceName,
 }: {
-  readonly machine: ShownMachine
+  readonly machine: Machine
   readonly canRemove: boolean
   readonly slug: string
   readonly spaceName: string
@@ -298,7 +304,7 @@ function SpaceMachineRow({
     <li className="py-5">
       <MachineHeading machine={machine} note={`Controlled by ${controller}`} />
       <AgentList machine={machine} editable={false} />
-      {canRemove && <RemoveFromSpace machine={machine} slug={slug} spaceName={spaceName} />}
+      {canRemove && <StopSharing machine={machine} slug={slug} spaceName={spaceName} />}
     </li>
   )
 }
@@ -539,16 +545,16 @@ function DisconnectMachine({ machine }: { readonly machine: OwnedMachine }) {
   )
 }
 
-function RemoveFromSpace({
+function StopSharing({
   machine,
   slug,
   spaceName,
 }: {
-  readonly machine: ShownMachine
+  readonly machine: Machine
   readonly slug: string
   readonly spaceName: string
 }) {
-  const remove = useRemoveMachineFromSpace(slug)
+  const stopSharing = useStopSharingMachineWithSpace(slug)
   const [confirming, setConfirming] = useState(false)
   if (!confirming)
     return (
@@ -556,46 +562,97 @@ function RemoveFromSpace({
         className={quietDanger}
         type="button"
         onClick={() => {
-          remove.reset()
+          stopSharing.reset()
           setConfirming(true)
         }}
       >
-        Remove from {spaceName}
+        Stop sharing with {spaceName}
       </button>
     )
   return (
     <div className="mt-4 ml-12 rounded-[7px] bg-fill p-3 max-sm:ml-0">
       <p className="m-0 text-[13px] text-ink-body">
-        Remove {machine.name} from {spaceName}? This does not disconnect it or affect other Spaces.
+        Stop sharing {machine.name} with {spaceName}? The machine stays connected and other Spaces
+        are not affected.
       </p>
+      <WorkStillUsingMachine machine={machine} slug={slug} spaceName={spaceName} />
       <div className="mt-3 flex gap-2">
         <button
           className={dangerAction}
           type="button"
-          disabled={remove.isPending}
+          aria-describedby={
+            machine.working.length > 0 ? `machine-work-note-${machine.id}` : undefined
+          }
+          disabled={machine.working.length > 0 || stopSharing.isPending}
           onClick={() => {
-            remove.mutate({ params: { path: { slug, id: machine.id } } })
+            stopSharing.mutate({ params: { path: { slug, id: machine.id } } })
           }}
         >
-          Remove
+          Stop sharing
         </button>
         <button
           className={secondaryAction}
           type="button"
+          autoFocus
           onClick={() => {
-            remove.reset()
+            stopSharing.reset()
             setConfirming(false)
           }}
         >
           Cancel
         </button>
       </div>
-      {remove.isError && (
+      {stopSharing.isError && (
         <p className="mt-2 text-[12px] text-danger-ink" role="alert">
-          Could not remove it from {spaceName}. Try again.
+          Could not stop sharing it with {spaceName}. Try again.
         </p>
       )}
     </div>
+  )
+}
+
+function WorkStillUsingMachine({
+  machine,
+  slug,
+  spaceName,
+}: {
+  readonly machine: Machine
+  readonly slug: string
+  readonly spaceName: string
+}) {
+  if (machine.working.length === 0)
+    return <p className="mt-2 text-[12px] text-ink-muted">No work is running on it here.</p>
+
+  return (
+    <section className="mt-3" aria-labelledby={`machine-work-${machine.id}`}>
+      <h4 id={`machine-work-${machine.id}`} className="m-0 text-[12px] font-semibold text-ink">
+        Work still using this machine
+      </h4>
+      <p
+        id={`machine-work-note-${machine.id}`}
+        className="mt-1 text-[12px] leading-[17px] text-ink-muted"
+      >
+        Resolve or stop this work in {spaceName} before you stop sharing. Open each Chat to decide
+        what to do.
+      </p>
+      <ul className="mt-2 list-none space-y-1 p-0">
+        {machine.working.map((work) => (
+          <li
+            key={work.conversationId}
+            className="flex items-center justify-between gap-3 text-[12px]"
+          >
+            <Link
+              className="min-w-0 truncate font-medium text-primary no-underline hover:underline"
+              to="/s/$slug/c/$id"
+              params={{ slug, id: work.conversationId }}
+            >
+              {work.goal}
+            </Link>
+            <span className="shrink-0 text-ink-quiet">{whatItIsDoing(work.state)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -605,7 +662,7 @@ function EmptyMachines() {
       <Laptop className="mx-auto mb-3 text-ink-quiet" aria-hidden />
       <p className="text-[14px] font-medium text-ink-body">No machines here</p>
       <p className="mt-1 text-[13px] text-ink-quiet">
-        Add one of your machines to let its Agents work in this Space.
+        Share one of your machines to let its Agents work in this Space.
       </p>
     </div>
   )

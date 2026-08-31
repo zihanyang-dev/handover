@@ -139,6 +139,17 @@ test('hand work over, find its question in Inbox, and take it back', async ({ pa
     timeout: 15_000,
   })
 
+  // Stopping this Space from using the machine would strand this exact work. The confirmation
+  // must name it before the relationship is changed, not make the interruption discoverable only
+  // after the agent stops answering.
+  await openSpaceSettings(page)
+  await page.getByRole('tab', { name: 'Machines' }).click()
+  await page.getByRole('button', { name: /^Stop sharing with /u }).click()
+  await expect(page.getByRole('heading', { name: 'Work still using this machine' })).toBeVisible()
+  await expect(page.getByRole('link', { name: goal })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+
   const autonomous = await waitsForATurn(machine)
   await machine.stops(autonomous, {
     state: 'wait',

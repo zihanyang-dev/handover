@@ -625,6 +625,13 @@ describe('entering a Space', () => {
             yours: false,
             presence: { state: 'here' },
             agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
+            working: [
+              {
+                conversationId: '22222222-2222-4222-8222-222222222222',
+                goal: 'Keep the release moving',
+                state: 'working',
+              },
+            ],
           },
         ],
       }),
@@ -685,10 +692,14 @@ describe('entering a Space', () => {
     expect(within(settings).queryByText('rui@example.com')).toBeNull()
     expect(within(settings).queryByRole('spinbutton', { name: 'At once' })).toBeNull()
     expect(within(settings).queryByText('/Users/mina/code/thing')).toBeNull()
-    await userEvent.click(within(settings).getByRole('button', { name: 'Add machine' }))
-    expect(within(settings).getByText('There is no other connected machine to add.')).toBeDefined()
+    await userEvent.click(within(settings).getByRole('button', { name: 'Share a machine' }))
     expect(
-      within(settings).getByRole('link', { name: 'Connect a new machine' }).getAttribute('href'),
+      within(settings).getByText('There is no other connected machine to share.'),
+    ).toBeDefined()
+    expect(
+      within(settings)
+        .getByRole('link', { name: 'Connect and share a new machine' })
+        .getAttribute('href'),
     ).toBe('/connect?space=acme')
     await userEvent.click(within(settings).getByRole('tab', { name: 'People' }))
     expect(
@@ -696,7 +707,16 @@ describe('entering a Space', () => {
     ).toContain('/join/hi_secret')
     expect(within(settings).getByRole('button', { name: 'Replace link' })).toBeDefined()
     await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
-    expect(within(settings).getByRole('button', { name: 'Remove from Acme' })).toBeDefined()
+    await userEvent.click(within(settings).getByRole('button', { name: 'Stop sharing with Acme' }))
+    expect(within(settings).getByText('Work still using this machine')).toBeDefined()
+    expect(within(settings).getByText('Keep the release moving')).toBeDefined()
+    expect(within(settings).getByText('Working')).toBeDefined()
+    expect(
+      within(settings).getByRole('link', { name: 'Keep the release moving' }).getAttribute('href'),
+    ).toBe('/s/acme/c/22222222-2222-4222-8222-222222222222')
+    expect(
+      within(settings).getByRole('button', { name: 'Stop sharing' }).hasAttribute('disabled'),
+    ).toBe(true)
     expect(router.state.location.pathname).toBe('/s/acme')
 
     await userEvent.keyboard('{Escape}')

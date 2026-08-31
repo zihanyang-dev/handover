@@ -47,7 +47,7 @@ handover connect
 
 **不让机器或 CLI 选 Space。** 批准首先只问「这是不是你的」;机器属于它的主人,不是某个 Space。
 是否同时添加给一个 Space,由人打开这张批准页的旅程决定:从 Account 来就只进 Your machines;从 Acme
-的 Add machine 来,页面会在批准前说它也会提供给 Acme。加入了哪些 Space 不能替人回答这个问题。
+的 Share a machine 来,页面会在批准前说它也会分享给 Acme。加入了哪些 Space 不能替人回答这个问题。
 
 批准之后,终端那边自己就好了,不用回去粘任何东西。
 
@@ -58,7 +58,7 @@ handover connect
 Space 里出现这台机器:名字、是谁的、在线、以及**它上面有哪些 agent**。
 
 ```
-mina-mbp                你的 · 在线             [ 从 Acme 移除 ]
+mina-mbp                你的 · 在线             [ 停止与 Acme 分享 ]
   Claude Code   2.1.4
   Codex         0.9.0
 
@@ -104,9 +104,11 @@ Your machines 里彻底断开。别人的电脑能在这个 Space 使用,但别�
 机器正在在线也可以被明确重新连接,但页面必须先说旧凭据会失效。没有这个选择时,一次凭据丢失会把同一个
 Claude Code / Codex 留成一份离线、一份在线,而人无法从 agent 名字判断该点哪一个。
 
-### ⑦ 从一个 Space 移除,或者彻底断开
+### ⑦ 停止与一个 Space 分享,或者彻底断开
 
-从 Space 里移除只撤销这一处关系:凭据仍然有效,机器继续出现在 Your machines 和其它 Space。
+停止分享只撤销这一处关系:凭据仍然有效,机器继续出现在 Your machines 和其它 Space。确认之前先列出
+这台机器在当前 Space 里仍承载的 work;清单不为空时不能点 Stop sharing,先逐件打开 Chat 处理。关系不会
+先被撤销、再让人从 agent 不回答这件事猜出后果。
 
 在 Account 里 Disconnect 才会彻底拔掉。它让凭据立刻失效、从所有 Space 消失;那台机器上的服务下一次
 报到时会说自己被移除了然后退出。
@@ -140,19 +142,19 @@ sudo handover connect --key hk_…
 **一台机器属于连它的那个人。** Account 里的「Your machines」是这个人的完整清单:连接、重连、
 agent 设置和彻底断开都只在这里做。
 
-**一个 Space 能不能用它是另一件事,而且必须明确添加。** 加入一个 Space 不会顺便开放电脑;从 Space
-里的 Machines 点 Add machine,可以选一台自己的既有机器,也可以在同一条旅程里连接一台新的。
+**一个 Space 能不能用它是另一件事,而且必须明确分享。** 加入一个 Space 不会顺便开放电脑;从 Space
+里的 Machines 点 Share a machine,可以选一台自己的既有机器,也可以在同一条旅程里连接并分享一台新的。
 
 ```
 你加入一个新 Space          → 那里没有自动多出任何机器
-你把 mina-mbp 添加给 Acme  → Acme 的成员都看得见、用得了
-你把它从 Acme 移除          → Beta 不受影响,机器本身也没断开
-你离开 Acme                 → 你添加在 Acme 的关系撤销;重新加入不自动恢复
+你把 mina-mbp 分享给 Acme  → Acme 的成员都看得见、用得了
+你停止与 Acme 分享          → Beta 不受影响,机器本身也没断开
+你离开 Acme                 → 你分享给 Acme 的关系撤销;重新加入不自动恢复
 ```
 
-**彻底断开和从一个 Space 移除不是一个动作。** 只有主人能在 Account 里 Disconnect;它让凭据失效,
-并从所有 Space 消失。机器主人和 Space owner 可以在当前 Space 里 Remove from this Space;它只撤销
-这里的使用关系。
+**彻底断开和停止与一个 Space 分享不是一个动作。** 只有主人能在 Account 里 Disconnect;它让凭据失效,
+并从所有 Space 消失。机器主人和 Space owner 可以在当前 Space 里 Stop sharing;它只撤销这里的使用关系,
+而且确认前会列出这台机器上仍在运行的 work,清单为空后才允许继续。
 
 团队拥有的构建服务器仍然是以后的一条旅程。这一片只做个人控制的机器,不拿一个多态 owner 为未来占位。
 
@@ -202,20 +204,21 @@ agent 设置和彻底断开都只在这里做。
 ⑤ 掉线是掉线,不是消失。回来不用重新批准;凭据丢失后可明确重新连接原身份,不复制 agent
 ⑥ 生成的钥匙只显示一次,之后连我们也读不出来
 ⑦ agent 是发现出来的:装了就有,卸了就没;主人起的名字不被下一次发现覆盖
-⑧ 全局 Disconnect 让凭据失效并影响所有 Space;Remove from Space 只影响当前 Space
+⑧ 全局 Disconnect 让凭据失效并影响所有 Space;Stop sharing 只影响当前 Space,且有 work 时先处理再允许
 ```
 
 ## 完成标准
 
 ```
 从 Account 连接一台机器 → 它出现在 Your machines,没有自动出现在任何新 Space
-从 Acme 添加自己的既有机器 → Acme 看得见,Beta 不受影响
-从 Acme 连接一台新机器 → 一条旅程完成连接并添加给 Acme
+与 Acme 分享自己的既有机器 → Acme 看得见,Beta 不受影响
+从 Acme 连接一台新机器 → 一条旅程完成连接并分享给 Acme
 网页上生成钥匙,在一台没有浏览器的机器上接入,不需要批准;onboarding 完成当前 Space 的添加
 关掉命令 → 离线;再跑起来 → 在线,没有重新批准;丢掉凭据再接入 → 可保留原 machine id 且没有重复 agent
 装一个新 agent → 下次报到时出现;改名 → 每个 Space 一致;卸载再装 → 名字仍在
 一个 agent 都没有的机器:接得上,并且说清缺什么
 码过期、输错、被拒绝、已用过 → 四种各自说自己那句
+停止与 Acme 分享一台仍承载 work 的机器 → 确认前逐件看见,按钮不可用;处理完才能停止分享
 在 Account 里 Disconnect → 那边的命令自己退出
 一把钥匙用过之后再用 → 拒绝
 机器的凭据拿去调 /me → 拒绝

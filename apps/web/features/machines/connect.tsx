@@ -51,7 +51,7 @@ function waitingFor(code: string) {
  * The half that is answered, once there is something to answer about.
  *
  * One question and one answer: is that your machine. The machine and CLI never choose a Space.
- * When this page came from a Space's Add machine journey, that destination is already explicit and
+ * When this page came from a Space's Share a machine journey, that destination is already explicit and
  * is said before approval; the Account journey leaves the machine private.
  */
 type ExistingMachine = components['schemas']['MachineWaiting']['existingMachines'][number]

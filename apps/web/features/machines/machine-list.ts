@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { cached } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
-export type Machine = components['schemas']['Machine']
+export type Machine = components['schemas']['SpaceMachine']
 export type OwnedMachine = components['schemas']['OwnedMachine']
 
 /**
@@ -125,7 +125,7 @@ export function useAgentSettings() {
   })
 }
 
-export function useAddMachineToSpace(slug: string) {
+export function useShareMachineWithSpace(slug: string) {
   const client = useQueryClient()
   return cached.useMutation('put', '/spaces/{slug}/machines/{id}', {
     onSuccess: async () =>
@@ -136,7 +136,7 @@ export function useAddMachineToSpace(slug: string) {
   })
 }
 
-export function useRemoveMachineFromSpace(slug: string) {
+export function useStopSharingMachineWithSpace(slug: string) {
   const client = useQueryClient()
   return cached.useMutation('delete', '/spaces/{slug}/machines/{id}', {
     onSuccess: async () =>

@@ -163,6 +163,13 @@ export async function sayGoodbye(db: Database, machineId: string): Promise<void>
     .execute()
 }
 
+/** Work that has not ended and still depends on this machine being available here. */
+type MachineWork = {
+  readonly conversationId: string
+  readonly goal: string
+  readonly state: string
+}
+
 /**
  * A machine as a Space screen shows it. Whether it is here is worked out from `whereabouts`.
  *
@@ -188,6 +195,8 @@ type Machine = {
   readonly spaces: readonly { readonly slug: string; readonly displayName: string }[]
 }
 
+type SpaceMachine = Machine & { readonly working: readonly MachineWork[] }
+
 /**
  * What was there, and the moment it was true.
  *
@@ -197,9 +206,9 @@ type Machine = {
  * either way and every machine in a Space reads as gone, or as here forever — and nothing would
  * raise an error, the page would simply lie.
  */
-export type Seen = {
+export type Seen<Shown extends Machine = Machine> = {
   readonly asOf: Date
-  readonly machines: readonly Machine[]
+  readonly machines: readonly Shown[]
 }
 
 type MachineRow = {
@@ -350,7 +359,7 @@ function reachableFrom(spaceId: string) {
 }
 
 /** Every live machine explicitly available in this Space. */
-export async function machinesIn(db: Database, spaceId: string): Promise<Seen> {
+export async function machinesIn(db: Database, spaceId: string): Promise<Seen<SpaceMachine>> {
   // One transaction, so `now()` and every row it is compared against are the same instant.
   return db.transaction().execute(async (tx) => attachedIn(tx, spaceId))
 }
@@ -511,7 +520,7 @@ function liveSpaceIdsOwnedBy(db: Database, userId: string) {
     .where('revoked_at', 'is', null)
 }
 
-async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
+async function attachedIn(tx: Tx, spaceId: string): Promise<Seen<SpaceMachine>> {
   const { asOf } = await tx.selectNoFrom(sql<Date>`now()`.as('asOf')).executeTakeFirstOrThrow()
 
   const machineRows = await tx
@@ -525,15 +534,47 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
 
   if (machineRows.length === 0) return { asOf, machines: [] }
 
-  const installations = await installedOn(
-    tx,
-    machineRows.map((machine) => machine.id),
-  )
+  const machineIds = machineRows.map((machine) => machine.id)
+  const installations = await installedOn(tx, machineIds)
+  const working = await openWorkOn(tx, spaceId, machineIds)
 
   return {
     asOf,
-    machines: machineRows.map((machine) => asMachine(machine, installations, [])),
+    machines: machineRows.map((machine) => ({
+      ...asMachine(machine, installations, []),
+      working: workOn(machine.id, working),
+    })),
   }
+}
+
+type MachineWorkRow = MachineWork & { readonly machineId: string }
+
+async function openWorkOn(
+  tx: Tx,
+  spaceId: string,
+  machineIds: readonly string[],
+): Promise<readonly MachineWorkRow[]> {
+  return tx
+    .selectFrom('tasks')
+    .innerJoin('conversations', 'conversations.id', 'tasks.conversation_id')
+    .select([
+      'conversations.machine_id as machineId',
+      'tasks.conversation_id as conversationId',
+      'tasks.goal',
+      'tasks.state',
+    ])
+    .where('conversations.space_id', '=', spaceId)
+    .where('conversations.machine_id', 'in', machineIds)
+    .where('tasks.ended_at', 'is', null)
+    .orderBy('tasks.created_at')
+    .execute()
+}
+
+function workOn(machineId: string, found: readonly MachineWorkRow[]): readonly MachineWork[] {
+  return found.flatMap((work) => {
+    if (work.machineId !== machineId) return []
+    return [{ conversationId: work.conversationId, goal: work.goal, state: work.state }]
+  })
 }
 
 function asMachine(

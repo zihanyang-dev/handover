@@ -397,6 +397,44 @@ describe('which Spaces can reach it', () => {
     ])
   })
 
+  it('shows the open work that would stop moving if this Space stopped using it', async () => {
+    const machine = await attached()
+    const conversationId = await conversationOn(machine)
+    await db
+      .insertInto('tasks')
+      .values([
+        {
+          conversation_id: conversationId,
+          owner_user_id: PERSON,
+          goal: 'already shipped',
+          state: 'done',
+          ended_at: new Date(),
+        },
+        {
+          conversation_id: conversationId,
+          owner_user_id: PERSON,
+          goal: 'keep the release moving',
+          state: 'working',
+        },
+      ])
+      .execute()
+
+    const answered = await app.request(`/spaces/${SLUG}/machines`, { headers: { cookie: COOKIE } })
+    const seen = (await answered.json()) as {
+      machines: {
+        id: string
+        working: { conversationId: string; goal: string; state: string }[]
+      }[]
+    }
+
+    expect(seen.machines).toMatchObject([
+      {
+        id: machine.id,
+        working: [{ conversationId, goal: 'keep the release moving', state: 'working' }],
+      },
+    ])
+  })
+
   it('says whose each one is, because one of them is somebody else\u2019s laptop', async () => {
     // What an agent does on a machine happens in its owner's files. Two rows called `mbp` with
     // nothing else on them would be a page that cannot say which one that is.

@@ -18,10 +18,10 @@ import type { components } from '../../generated/api.ts'
 import {
   agentsOn,
   machinesIn,
-  useAddMachineToSpace,
+  useShareMachineWithSpace,
   useAgentSettings,
   useDisconnectMachine,
-  useRemoveMachineFromSpace,
+  useStopSharingMachineWithSpace,
 } from './machine-list.ts'
 
 const server = setupServer()
@@ -38,13 +38,14 @@ afterAll(() => {
 
 const MACHINE_ID = '11111111-1111-4111-8111-111111111111'
 
-const MINA_MBP: components['schemas']['Machine'] = {
+const MINA_MBP: components['schemas']['SpaceMachine'] = {
   id: MACHINE_ID,
   name: 'mina-mbp',
   ownerUserId: '00000000-0000-4000-8000-000000000001',
   ownerName: 'Mina',
   yours: true,
   presence: { state: 'here' },
+  working: [],
   agents: [
     {
       kind: 'claude-code',
@@ -181,7 +182,7 @@ describe('changing which Spaces may use one', () => {
       }),
     )
 
-    const screen = watching(() => useAddMachineToSpace('acme'))
+    const screen = watching(() => useShareMachineWithSpace('acme'))
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })
@@ -207,7 +208,7 @@ describe('changing which Spaces may use one', () => {
       }),
     )
 
-    const screen = watching(() => useRemoveMachineFromSpace('acme'))
+    const screen = watching(() => useStopSharingMachineWithSpace('acme'))
     await waitFor(() => {
       expect(list.asked.times).toBe(1)
     })

@@ -1898,7 +1898,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Make one of your machines available in this Space */
+        /** Share one of your machines with this Space */
         put: {
             parameters: {
                 query?: never;
@@ -1939,7 +1939,7 @@ export interface paths {
             };
         };
         post?: never;
-        /** Remove a machine from this Space */
+        /** Stop sharing a machine with this Space */
         delete: {
             parameters: {
                 query?: never;
@@ -3693,7 +3693,25 @@ export interface components {
             isDefault: boolean;
         };
         Machines: {
-            machines: components["schemas"]["Machine"][];
+            machines: components["schemas"]["SpaceMachine"][];
+        };
+        SpaceMachine: components["schemas"]["Machine"] & {
+            working: components["schemas"]["MachineWork"][];
+        };
+        MachineAgent: {
+            /** @enum {string} */
+            kind: "claude-code" | "codex";
+            name: string | null;
+            atOnce: number;
+            avatarUrl: string;
+            version: string;
+            models: components["schemas"]["Model"][];
+        };
+        MachineWork: {
+            /** Format: uuid */
+            conversationId: string;
+            goal: string;
+            state: string;
         };
         Machine: {
             /** Format: uuid */
@@ -3706,15 +3724,6 @@ export interface components {
             version?: string;
             presence: components["schemas"]["Presence"];
             agents: components["schemas"]["MachineAgent"][];
-        };
-        MachineAgent: {
-            /** @enum {string} */
-            kind: "claude-code" | "codex";
-            name: string | null;
-            atOnce: number;
-            avatarUrl: string;
-            version: string;
-            models: components["schemas"]["Model"][];
         };
         OwnedMachines: {
             machines: components["schemas"]["OwnedMachine"][];
