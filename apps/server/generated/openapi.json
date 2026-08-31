@@ -1308,6 +1308,9 @@
             "type": "string",
             "nullable": true
           },
+          "startedByYou": {
+            "type": "boolean"
+          },
           "pinned": {
             "type": "boolean"
           },
@@ -1323,6 +1326,7 @@
           "startedAt",
           "opening",
           "startedBy",
+          "startedByYou",
           "pinned",
           "working"
         ]
@@ -1709,16 +1713,11 @@
           },
           "body": {
             "type": "string"
-          },
-          "writtenAt": {
-            "type": "string",
-            "format": "date-time"
           }
         },
         "required": [
           "title",
-          "body",
-          "writtenAt"
+          "body"
         ]
       },
       "Under": {

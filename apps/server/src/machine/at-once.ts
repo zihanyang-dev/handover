@@ -19,17 +19,3 @@
  * has no row at all. `machine.spec.ts` is where the two are held to each other.
  */
 export const AT_ONCE_BY_DEFAULT = 3
-
-/**
- * The most anybody may ask one agent to run at the same time.
- *
- * Two agents on one machine each allowed this many is thirty-two agent processes, and every one of
- * them spawns builds and test runs of its own — which is already past what a laptop does well.
- * Nothing was measured to arrive at it; it is a ceiling under the numbers that would obviously
- * break the machine, so that a typo in a box cannot.
- *
- * The column carries the same bound, and `machine.spec.ts` holds the two to each other: apart,
- * the failure is a value this deployment accepts and the database then refuses — a person told
- * their laptop is broken when what happened is that they typed 20.
- */
-export const AT_ONCE_AT_MOST = 16

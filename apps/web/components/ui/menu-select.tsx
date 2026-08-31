@@ -87,7 +87,7 @@ function ChoicesMenu<Value extends string>({
             ref={(element) => {
               options.current[index] = element
             }}
-            className="flex h-8 w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-panel-ink hover:bg-[var(--interaction-hover)] focus:bg-[var(--interaction-hover)] focus:outline-none"
+            className="flex h-8 w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-ink hover:bg-[var(--interaction-hover)] focus:bg-[var(--interaction-hover)] focus:outline-none"
             type="button"
             role="menuitemradio"
             aria-checked={choice.value === value}
@@ -104,9 +104,9 @@ function ChoicesMenu<Value extends string>({
       </div>
       {dangerAction !== undefined && (
         <>
-          <hr className="my-1 h-px border-0 bg-panel-line" />
+          <hr className="my-1 h-px border-0 bg-line" />
           <button
-            className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-panel-danger-quiet hover:bg-panel-danger-wash focus:bg-panel-danger-wash focus:outline-none"
+            className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-danger-quiet hover:bg-danger-wash focus:bg-danger-wash focus:outline-none"
             type="button"
             role="menuitem"
             onClick={() => {
@@ -170,8 +170,8 @@ export function MenuSelect<Value extends string>({
         ref={trigger}
         className={
           stretch
-            ? 'flex h-8 w-full min-w-[96px] items-center justify-between gap-2 rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink-soft hover:bg-panel-fill aria-expanded:bg-panel-fill focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-panel-ink-off'
-            : 'flex h-7 min-w-[96px] items-center justify-between gap-2 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-normal text-panel-ink-soft hover:bg-[var(--interaction-hover)] aria-expanded:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-panel-ink-off'
+            ? 'flex h-8 w-full min-w-[96px] items-center justify-between gap-2 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink-secondary hover:bg-fill aria-expanded:bg-fill focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
+            : 'flex h-7 min-w-[96px] items-center justify-between gap-2 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-normal text-ink-secondary hover:bg-[var(--interaction-hover)] aria-expanded:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
         }
         type="button"
         aria-label={label}
@@ -190,7 +190,7 @@ export function MenuSelect<Value extends string>({
         }}
       >
         <span>{current}</span>
-        <ChevronDown className="size-3 shrink-0 text-panel-ink-quiet" aria-hidden />
+        <ChevronDown className="size-3 shrink-0 text-ink-quiet" aria-hidden />
       </button>
 
       {open && (

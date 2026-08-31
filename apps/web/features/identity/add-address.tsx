@@ -76,7 +76,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
       )}
 
       <label
-        className="mb-1 block text-[12px] leading-4 font-normal text-panel-ink-muted"
+        className="mb-1 block text-[12px] leading-4 font-normal text-ink-muted"
         htmlFor={field}
       >
         Add another email
@@ -84,7 +84,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
       <div className="flex max-w-[480px] items-center gap-2">
         <input
           id={field}
-          className="h-8 min-w-0 flex-1 rounded-[5px] border border-panel-line-firm bg-white px-3 text-[14px] leading-5 text-panel-ink outline-none transition-colors placeholder:text-panel-ink-off focus:border-focus focus:ring-1 focus:ring-focus"
+          className="h-8 min-w-0 flex-1 rounded-[5px] border border-line-firm bg-white px-3 text-[14px] leading-5 text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-focus focus:ring-1 focus:ring-focus"
           type="email"
           autoComplete="email"
           placeholder="you@example.com"
@@ -96,7 +96,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
           }}
         />
         <button
-          className="h-8 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-8 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={address.trim() === '' || send.isPending}
         >
@@ -144,7 +144,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       )}
 
       <label
-        className="mb-1 block text-[12px] leading-4 font-normal text-panel-ink-muted"
+        className="mb-1 block text-[12px] leading-4 font-normal text-ink-muted"
         htmlFor={field}
       >
         Code sent to {sent.address}
@@ -152,7 +152,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       <div className="flex max-w-[360px] items-center gap-2">
         <input
           id={field}
-          className="h-8 min-w-0 flex-1 rounded-[5px] border border-panel-line-firm bg-white px-3 text-[14px] leading-5 tracking-[0.16em] text-panel-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
+          className="h-8 min-w-0 flex-1 rounded-[5px] border border-line-firm bg-white px-3 text-[14px] leading-5 tracking-[0.16em] text-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={sent.digits}
@@ -169,7 +169,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
           }}
         />
         <button
-          className="h-8 shrink-0 cursor-pointer rounded-md border-0 bg-transparent px-2 text-[14px] leading-[16.8px] font-medium text-panel-ink-muted hover:bg-panel-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="h-8 shrink-0 cursor-pointer rounded-md border-0 bg-transparent px-2 text-[14px] leading-[16.8px] font-medium text-ink-muted hover:bg-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           type="button"
           onClick={onDone}
         >

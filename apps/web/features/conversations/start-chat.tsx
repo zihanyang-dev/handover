@@ -30,7 +30,7 @@ export function StartChat({
   if (machines.isPending)
     return (
       <p
-        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-ink-muted"
         role="status"
       >
         Looking…
@@ -39,7 +39,7 @@ export function StartChat({
   if (machines.isError)
     return (
       <p
-        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-ink-muted"
         role="alert"
       >
         Could not read this agent. Try again.
@@ -52,7 +52,7 @@ export function StartChat({
   if (agent === undefined)
     return (
       <p
-        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-ink-muted"
         role="alert"
       >
         This agent is not available.
@@ -134,7 +134,7 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
             className="inline-flex h-7 items-center gap-1.5 text-[12px] font-medium text-ink-muted"
             role="status"
           >
-            <span className="size-1.5 rounded-full bg-[var(--ink-tertiary)]" aria-hidden />
+            <span className="size-1.5 rounded-full bg-[var(--ink-faint)]" aria-hidden />
             Offline
           </span>
         )}

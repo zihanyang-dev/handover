@@ -19,95 +19,114 @@
 @import './styles/chat.css' layer(states);
 @import './styles/space-shell.css' layer(states);
 
-/* A light neutral foundation. Scoped surfaces may override these values without forking utilities. */
+/*
+ * One palette.
+ *
+ * Every colour the product uses is named here and nowhere else, and every name says what the
+ * colour is *for* rather than how dark it is — `--ink-quiet`, never `--grey-300`. A surface may
+ * re-answer these names inside its own scope, the way `.auth` does; it may not invent new ones.
+ *
+ * That rule is the whole of this file, and it is new. Before it there were five families: an
+ * `--ink-*` ramp, a numbered `--grey-*`/`--neutral-*` one, `--panel-*`, `--sidebar-*`, and a
+ * `--chat-*` set that arrived with vendored markup and was Ant Design's palette — so a link in a
+ * conversation, the product's main screen, was a different blue from every other link in it.
+ * Three of the five were the same six greys typed again: `#5f5e5b`, `#5f5e59` and `#5f5d59` were
+ * three names for one colour, and `--chat-delete: #c9362b` was `--danger: #c9372c` off by one.
+ *
+ * `rules/palette.spec.ts` is what keeps a rename from leaving a name behind, and
+ * `rules/colours.spec.ts` is what keeps a sixth family from starting.
+ */
 :root {
-  --primary: #0075de;
-  --base: #ffffff;
-  --base-secondary: #f7f7f5;
-  --danger: #c9372c;
-  --success: #3e7a1e;
-  --basic: #74736f;
-  --tertiary: #37352f;
-  --tertiary-light: #5f5e5b;
-  --content: var(--tertiary);
-  --content-2: #1f1f1f;
-  /* The ramp inside a Space, measured from the live Notion app. It sits beside the older one
-     above — `--content`, `--basic`, `--tertiary-light` — which the way in still uses. Two ramps
-     one or two values apart is one ramp too many; collapsing them is a decision, not a tidy-up,
-     so both are named and neither is guessed at. */
+  /* Ink, darkest first — six steps, because six is what the screens actually tell apart. */
   --ink: #2c2c2b;
+  --ink-body: #4f4d49;
   --ink-secondary: #5f5e59;
   --ink-muted: #7d7a75;
   --ink-quiet: #8e8b86;
-  --ink-placeholder: #a19e99;
-  --ink-tertiary: #ada9a3;
+  --ink-faint: #aaa8a3;
+
+  /* Ground, lightest first: the page, a panel lifted off it, a quiet field, a firmer one, a
+     hover. Measured from the live Notion app. */
+  --base: #ffffff;
+  --surface: #fbfaf9;
+  --fill: #f7f6f4;
+  --fill-firm: #f0efed;
+  --fill-hover: #e7e5e2;
+
+  /* One line that separates, one that encloses. */
+  --line: #e9e8e6;
+  --line-firm: #d7d5d2;
+
+  /* The product's blue: the one it links in, presses with, and focuses on. */
+  --primary: #0075de;
+  --primary-strong: #0069c8;
+  --primary-deep: #005fb5;
+  --primary-wash: #e7f3ff;
+  --focus: #2383e2;
+
+  /* Reds, because they are different sentences: one says a thing failed, one is a control that
+     will destroy something, one is the ground under a warning, one is the warning's own ink.
+     Merged, a hover state would read as an error. */
+  --danger: #c9372c;
+  --danger-strong: #b42318;
+  --danger-quiet: #9b2c2c;
+  --danger-fill: #d44c47;
+  --danger-fill-hover: #c33f3a;
+  --danger-wash: #fdf0ef;
+  --danger-notice: #fff7f6;
+  --danger-line: #f1cbc8;
+  --danger-ink: #7d2925;
+
+  /* A thing that worked, a machine that is here, and the dot beside it. */
+  --success: #3e7a1e;
+  --good: #4c7a4b;
+  --good-mark: #4c9a55;
+
+  /* The one blue notice: a link that will only ever be shown once. */
+  --notice: #f4f9fe;
+  --notice-line: #d9e8f8;
 
   /* An agent wears its maker's colour. Nothing else in the product may use these. */
   --agent-claude: #d97757;
   --agent-codex: #2b292a;
   --agent-other: var(--ink-secondary);
 
-  /* The panels inside a Space — Settings, the work rail, the removal checklist — measured from
-     the live Notion app. A third ramp, and one too many: every step here is within a value or two
-     of one above it. Named rather than folded into them, for the same reason the two above are
-     both named — collapsing twenty greys is a design decision with visible consequences, and this
-     review's job was to find that nobody had made it, not to make it while nobody was looking.
-     What is enforced is that they are named at all: `rules/style.spec.ts` refuses a new colour
-     written into a screen as a hex. */
-  --panel-ink: #2f2e2b;
-  --panel-ink-body: #4f4d49;
-  --panel-ink-soft: #5f5d59;
-  --panel-ink-muted: #777570;
-  --panel-ink-quiet: #898781;
-  --panel-ink-off: #aaa8a3;
-  --panel-line: #e9e8e6;
-  --panel-line-firm: #d7d5d2;
-  --panel-ground: #fbfaf9;
-  --panel-fill: #f7f6f4;
-  --panel-fill-firm: #f0efed;
-  /* Four reds, because they are four different sentences: one says a thing failed, one is a
-     control that will destroy something, one is the ground under a warning, one is the warning's
-     own ink. Merged, a hover state would read as an error. */
-  --panel-danger: #b42318;
-  --panel-danger-quiet: #9b2c2c;
-  --panel-danger-fill: #d44c47;
-  --panel-danger-fill-hover: #c33f3a;
-  --panel-danger-wash: #fdf0ef;
-  --panel-danger-notice: #fff7f6;
-  --panel-danger-line: #f1cbc8;
-  --panel-danger-ink: #7d2925;
-  /* A machine that is here, and the dot beside it. */
-  --panel-good: #4c7a4b;
-  --panel-good-mark: #4c9a55;
-  /* The one blue notice on these screens: a link that will only ever be shown once. */
-  --panel-notice: #f4f9fe;
-  --panel-notice-line: #d9e8f8;
-  /* What a modal is shown against, and what lifts it. Measured from the same app; heavier than
-     `--surface-raised-shadow`, which is a menu's, because this one covers the whole screen. */
-  --panel-scrim: rgba(15, 15, 15, 0.6);
-  --panel-dialog-shadow:
+  /* What a surface does under a pointer, and the hairlines around it. Mixed from `--ink` rather
+     than written as their own warm blacks: a state is the ink at low alpha, so moving the ink
+     moves them with it. `in srgb` because mixing towards `transparent` is an alpha change and
+     nothing else — there is no hue to interpolate. */
+  --interaction-hover: color-mix(in srgb, var(--ink) 5%, transparent);
+  --interaction-hover-strong: color-mix(in srgb, var(--ink) 8%, transparent);
+  --interaction-pressed: color-mix(in srgb, var(--ink) 10%, transparent);
+  --keyline-faint: color-mix(in srgb, var(--ink) 6%, transparent);
+  --keyline: color-mix(in srgb, var(--ink) 11%, transparent);
+  --keyline-firm: color-mix(in srgb, var(--ink) 14%, transparent);
+
+  /* What a thing casts when it is lifted off the page, as a colour rather than a whole shadow —
+     the geometry differs per control, the ink under it does not. */
+  --cast-faint: color-mix(in srgb, var(--ink) 4%, transparent);
+  --cast: color-mix(in srgb, var(--ink) 8%, transparent);
+  --cast-firm: color-mix(in srgb, var(--ink) 22%, transparent);
+  /* The primary colour cast the same way, for the controls that are themselves primary. The
+     composer's send button, its focus ring and the way in's tinted choice were six separate
+     blues before this, and none of them was `--primary`. */
+  --primary-cast-faint: color-mix(in srgb, var(--primary) 8%, transparent);
+  --primary-cast: color-mix(in srgb, var(--primary) 18%, transparent);
+  --primary-cast-strong: color-mix(in srgb, var(--primary) 29%, transparent);
+
+  /* The card a step of the way in sits on — named once, because onboarding and the
+     machine-connect page had written the same six declarations twice. */
+  --card-shadow: 0 1px 2px var(--cast-faint), 0 10px 30px -18px var(--cast-firm);
+  /* What a modal is shown against, and what lifts it — heavier than `--surface-raised-shadow`,
+     which is a menu's, because this one covers the whole screen. */
+  --scrim: rgba(15, 15, 15, 0.6);
+  --dialog-shadow:
     0 24px 48px rgba(25, 25, 25, 0.24), 0 4px 12px rgba(25, 25, 25, 0.14),
     0 0 0 1px rgba(42, 28, 0, 0.07);
+  --surface-raised-shadow:
+    0 1.25rem 1.5rem rgba(25, 25, 25, 0.05), 0 0.3125rem 0.5rem rgba(25, 25, 25, 0.027),
+    0 0 0 1px rgba(42, 28, 0, 0.07);
 
-  --primary-100: #e7f3ff;
-  --primary-200: #0069c8;
-  --primary-500: var(--primary);
-  --primary-600: #005fb5;
-  --grey-15: var(--content);
-  --grey-100: var(--tertiary-light);
-  --grey-300: var(--basic);
-  --grey-500: var(--basic);
-  --grey-700: #d3d2cf;
-  --grey-800: #e9e9e7;
-  --grey-900: #f1f1ef;
-  --grey-950: var(--base-secondary);
-  --grey-970: var(--base);
-  --grey-985: var(--base);
-  --neutral-300: #787774;
-  --neutral-500: #00000024;
-  --neutral-900: #00000014;
-  --neutral-950: #0000001a;
-  --red-500: var(--danger);
   --text-xxs: 0.75rem;
   --text-xs: 0.875rem;
   --text-s: 1rem;
@@ -116,89 +135,57 @@
   --text-xl: 2rem;
   --radius: 0.75rem;
   --radius-lg: 1rem;
-  --control: 2.75rem;
-  --focus: #2383e2;
-  /* Measured from the live Notion app: quiet controls use warm-black state fills, while
-     action buttons share one 6px radius, one keyline and one pair of interaction timings. */
   --interaction-radius: 0.375rem;
-  --interaction-keyline: rgba(28, 19, 1, 0.11);
-  --interaction-hover: rgba(33, 27, 23, 0.05);
-  --interaction-hover-strong: rgba(33, 27, 23, 0.08);
-  --interaction-pressed: rgba(33, 27, 23, 0.1);
-  --choice-hover: #37352f0f;
-  --choice-divider: #37352f17;
+  --control: 2.75rem;
   --interaction-instant: 20ms;
   --interaction-fast: 100ms;
-  --surface-raised-shadow:
-    0 1.25rem 1.5rem rgba(25, 25, 25, 0.05), 0 0.3125rem 0.5rem rgba(25, 25, 25, 0.027),
-    0 0 0 1px rgba(42, 28, 0, 0.07);
   --font: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* `inline` keeps utilities bound to the nearest scoped token, notably the auth surface. */
 @theme inline {
-  --color-primary: var(--primary);
-  --color-base: var(--base);
-  --color-base-secondary: var(--base-secondary);
-  --color-danger: var(--danger);
-  --color-success: var(--success);
-  --color-basic: var(--basic);
-  --color-tertiary: var(--tertiary);
-  --color-tertiary-light: var(--tertiary-light);
-  --color-content: var(--content);
-  --color-content-2: var(--content-2);
-  --color-primary-100: var(--primary-100);
-  --color-primary-200: var(--primary-200);
-  --color-primary-500: var(--primary-500);
-  --color-primary-600: var(--primary-600);
-  --color-grey-15: var(--grey-15);
-  --color-grey-100: var(--grey-100);
-  --color-grey-300: var(--grey-300);
-  --color-grey-500: var(--grey-500);
-  --color-grey-700: var(--grey-700);
-  --color-grey-800: var(--grey-800);
-  --color-grey-900: var(--grey-900);
-  --color-grey-950: var(--grey-950);
-  --color-grey-970: var(--grey-970);
-  --color-grey-985: var(--grey-985);
-  --color-neutral-300: var(--neutral-300);
-  --color-neutral-500: var(--neutral-500);
-  --color-neutral-900: var(--neutral-900);
-  --color-neutral-950: var(--neutral-950);
-  --color-red-500: var(--red-500);
   --color-ink: var(--ink);
+  --color-ink-body: var(--ink-body);
   --color-ink-secondary: var(--ink-secondary);
   --color-ink-muted: var(--ink-muted);
   --color-ink-quiet: var(--ink-quiet);
-  --color-ink-placeholder: var(--ink-placeholder);
+  --color-ink-faint: var(--ink-faint);
+  --color-base: var(--base);
+  --color-surface: var(--surface);
+  --color-fill: var(--fill);
+  --color-fill-firm: var(--fill-firm);
+  --color-fill-hover: var(--fill-hover);
+  --color-line: var(--line);
+  --color-line-firm: var(--line-firm);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-deep: var(--primary-deep);
+  --color-primary-wash: var(--primary-wash);
+  --color-focus: var(--focus);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-quiet: var(--danger-quiet);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-fill-hover: var(--danger-fill-hover);
+  --color-danger-wash: var(--danger-wash);
+  --color-danger-notice: var(--danger-notice);
+  --color-danger-line: var(--danger-line);
+  --color-danger-ink: var(--danger-ink);
+  --color-success: var(--success);
+  --color-good: var(--good);
+  --color-good-mark: var(--good-mark);
+  --color-notice: var(--notice);
+  --color-notice-line: var(--notice-line);
   --color-agent-claude: var(--agent-claude);
   --color-agent-codex: var(--agent-codex);
   --color-agent-other: var(--agent-other);
-  --color-panel-ink: var(--panel-ink);
-  --color-panel-ink-body: var(--panel-ink-body);
-  --color-panel-ink-soft: var(--panel-ink-soft);
-  --color-panel-ink-muted: var(--panel-ink-muted);
-  --color-panel-ink-quiet: var(--panel-ink-quiet);
-  --color-panel-ink-off: var(--panel-ink-off);
-  --color-panel-line: var(--panel-line);
-  --color-panel-line-firm: var(--panel-line-firm);
-  --color-panel-ground: var(--panel-ground);
-  --color-panel-fill: var(--panel-fill);
-  --color-panel-fill-firm: var(--panel-fill-firm);
-  --color-panel-danger: var(--panel-danger);
-  --color-panel-danger-quiet: var(--panel-danger-quiet);
-  --color-panel-danger-fill: var(--panel-danger-fill);
-  --color-panel-danger-fill-hover: var(--panel-danger-fill-hover);
-  --color-panel-danger-wash: var(--panel-danger-wash);
-  --color-panel-danger-notice: var(--panel-danger-notice);
-  --color-panel-danger-line: var(--panel-danger-line);
-  --color-panel-danger-ink: var(--panel-danger-ink);
-  --color-panel-good: var(--panel-good);
-  --color-panel-good-mark: var(--panel-good-mark);
-  --color-panel-notice: var(--panel-notice);
-  --color-panel-notice-line: var(--panel-notice-line);
-  --color-focus: var(--focus);
+  --color-keyline-faint: var(--keyline-faint);
+  --color-keyline: var(--keyline);
+  --color-keyline-firm: var(--keyline-firm);
+  --color-cast-faint: var(--cast-faint);
+  --color-cast: var(--cast);
+  --color-cast-firm: var(--cast-firm);
   --font-body: var(--font);
   --font-mono: var(--font-mono);
   --text-copy-xxs: var(--text-xxs);
@@ -223,7 +210,7 @@
   }
 
   body {
-    @apply m-0 min-h-dvh bg-base font-body text-copy-xs leading-[1.5] text-content antialiased;
+    @apply m-0 min-h-dvh bg-base font-body text-copy-xs leading-[1.5] text-ink antialiased;
   }
 
   h1 {

@@ -46,7 +46,11 @@ type PretendMachine = Omit<Machine, 'agents' | 'ownerUserId'> & {
   /** Whose it is. Defaulted to whoever is signed in, which is what `yours` says on nearly all of them. */
   readonly ownerUserId?: string
 }
-type PretendConversation = Omit<Conversation, 'pinned'> & { readonly pinned?: boolean }
+type PretendConversation = Omit<Conversation, 'pinned' | 'startedByYou'> & {
+  readonly pinned?: boolean
+  /** Whose it is. Defaulted to the person asking, which is what nearly every test's is. */
+  readonly startedByYou?: boolean
+}
 
 function completeMachine(machine: PretendMachine): Machine {
   return {
@@ -81,7 +85,11 @@ export function theSpace({
     ),
     http.get(`*/spaces/${slug}/conversations`, () =>
       HttpResponse.json<Conversations>({
-        conversations: conversations.map((conversation) => ({ pinned: false, ...conversation })),
+        conversations: conversations.map((conversation) => ({
+          pinned: false,
+          startedByYou: true,
+          ...conversation,
+        })),
       }),
     ),
     http.post(

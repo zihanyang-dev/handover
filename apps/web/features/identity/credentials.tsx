@@ -33,7 +33,7 @@ export function Credentials() {
     <section className="mb-[58px]" aria-labelledby={heading}>
       <h2
         id={heading}
-        className="m-0 mb-0 border-b border-panel-line pb-3 text-[16px] leading-6 font-medium text-ink"
+        className="m-0 mb-0 border-b border-line pb-3 text-[16px] leading-6 font-medium text-ink"
       >
         How you get in
       </h2>
@@ -52,7 +52,7 @@ export function Credentials() {
       </ul>
 
       {connect.isError && (
-        <p className="m-0 mt-2 text-[13px] leading-5 text-panel-danger" role="alert">
+        <p className="m-0 mt-2 text-[13px] leading-5 text-danger-strong" role="alert">
           That login method could not be connected. Try again.
         </p>
       )}
@@ -103,7 +103,7 @@ function CredentialRow({
         <span className="shrink-0 text-[13px] leading-5 text-ink-muted">Ready</span>
       ) : (
         <button
-          className="h-7 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-7 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={pending}
           onClick={() => {

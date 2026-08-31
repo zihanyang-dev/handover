@@ -42,13 +42,13 @@ export function SpacePeople({
 
   if (people.isPending)
     return (
-      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
+      <p className="py-10 text-center text-[14px] text-ink-muted" role="status">
         Looking for people…
       </p>
     )
   if (people.isError)
     return (
-      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="alert">
+      <p className="py-10 text-center text-[14px] text-ink-muted" role="alert">
         Could not read the people here. Try again.
       </p>
     )
@@ -101,8 +101,8 @@ function MemberList({
 
   return (
     <section aria-labelledby="members-title">
-      <h2 id="members-title" className="m-0 mb-2 text-[14px] leading-5 font-medium text-panel-ink">
-        Members <span className="font-normal text-panel-ink-quiet">{people.length}</span>
+      <h2 id="members-title" className="m-0 mb-2 text-[14px] leading-5 font-medium text-ink">
+        Members <span className="font-normal text-ink-quiet">{people.length}</span>
       </h2>
       <ul className="m-0 list-none space-y-1 p-0">
         {people.map((person) => (
@@ -149,9 +149,9 @@ function MemberRow({
   return (
     <li className="flex min-h-[52px] items-center gap-3 py-2">
       <img className="size-8 shrink-0 rounded-full" src={person.avatarUrl} alt="" />
-      <span className="min-w-0 grow truncate text-[14px] font-medium text-panel-ink">
+      <span className="min-w-0 grow truncate text-[14px] font-medium text-ink">
         {person.displayName}
-        {person.you && <span className="ml-1 font-normal text-panel-ink-quiet">You</span>}
+        {person.you && <span className="ml-1 font-normal text-ink-quiet">You</span>}
       </span>
       {isOwner ? (
         <MenuSelect
@@ -164,10 +164,10 @@ function MemberRow({
         />
       ) : (
         <>
-          <span className="text-[13px] capitalize text-panel-ink-muted">{person.role}</span>
+          <span className="text-[13px] capitalize text-ink-muted">{person.role}</span>
           {canRemove && (
             <button
-              className="h-7 rounded-[5px] border-0 bg-transparent px-2 text-[13px] text-panel-ink-muted hover:bg-panel-danger-wash hover:text-panel-danger-quiet focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+              className="h-7 rounded-[5px] border-0 bg-transparent px-2 text-[13px] text-ink-muted hover:bg-danger-wash hover:text-danger-quiet focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
               type="button"
               onClick={remove}
             >
@@ -197,7 +197,7 @@ function whyTheRoleStands(thrown: unknown): string {
 
 function RoleError({ thrown }: { readonly thrown: unknown }) {
   return (
-    <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+    <p className="mt-3 text-[13px] text-danger-strong" role="alert">
       {whyTheRoleStands(thrown)}
     </p>
   )

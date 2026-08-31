@@ -6,6 +6,7 @@
  * person out — see `member-removal.tsx`.
  */
 
+import { AT_ONCE_AT_MOST } from '@handover/universal'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -26,16 +27,6 @@ import {
 
 type Member = components['schemas']['Member']
 
-/**
- * The most this box offers.
- *
- * A mirror of `AT_ONCE_AT_MOST` in `apps/server/src/machine/at-once.ts`, which is the authority
- * along with the column's own constraint. Here so the spinner stops where the server does rather
- * than letting somebody type a number that comes back refused; anything that gets past it is
- * still refused there, and said so below.
- */
-const AT_MOST_AT_ONCE = 16
-
 export function SpaceMachines({ slug }: { readonly slug: string }) {
   const machines = useQuery(machinesIn(slug))
   const people = useQuery(peopleIn(slug))
@@ -44,13 +35,13 @@ export function SpaceMachines({ slug }: { readonly slug: string }) {
 
   if (machines.isPending || people.isPending)
     return (
-      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
+      <p className="py-10 text-center text-[14px] text-ink-muted" role="status">
         Looking for machines…
       </p>
     )
   if (machines.isError || people.isError)
     return (
-      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="alert">
+      <p className="py-10 text-center text-[14px] text-ink-muted" role="alert">
         Could not read the machines here. Try again.
       </p>
     )
@@ -62,7 +53,7 @@ export function SpaceMachines({ slug }: { readonly slug: string }) {
         title="Machines"
         action={
           <Link
-            className="inline-flex h-8 shrink-0 items-center rounded-[6px] bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="inline-flex h-8 shrink-0 items-center rounded-[6px] bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             to="/connect"
           >
             Connect machine
@@ -106,14 +97,25 @@ function MachineRow({
   return (
     <li className="relative py-3">
       <div className="flex items-start gap-3 pr-10">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[7px] bg-panel-fill text-panel-ink-muted">
+        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[7px] bg-fill text-ink-muted">
           <Laptop aria-hidden />
         </span>
         <div className="min-w-0 grow">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h2 className="truncate text-[14px] font-semibold text-panel-ink">{machine.name}</h2>
+            <h2 className="truncate text-[14px] font-semibold text-ink">{machine.name}</h2>
             <Presence machine={machine} />
           </div>
+          {/* Whose it is. A Space with two people in it has two people's laptops in it, and what
+              an agent does on one of them happens in that person's files — so a list of machines
+              that does not say which is which is a list nobody can choose from. The contract
+              carries `ownerName` for this and nothing else. */}
+          <p className="mt-0.5 truncate text-[12px] leading-[17px] text-ink-quiet">
+            {machine.yours ? 'Yours' : machine.ownerName}
+            {/* Which build it is running, and nothing when it has never said — a machine too old
+                to report one is shown as such rather than filled in with a guess. It is the first
+                string anybody quotes when a machine will not do what they expect. */}
+            {machine.version !== undefined && ` · handover ${machine.version}`}
+          </p>
         </div>
       </div>
       <AgentSettings slug={slug} machine={machine} />
@@ -133,15 +135,13 @@ function Presence({ machine }: { readonly machine: Machine }) {
     <span
       className={
         here
-          ? 'inline-flex items-center gap-1.5 text-[12px] text-panel-good'
-          : 'inline-flex items-center gap-1.5 text-[12px] text-panel-ink-quiet'
+          ? 'inline-flex items-center gap-1.5 text-[12px] text-good'
+          : 'inline-flex items-center gap-1.5 text-[12px] text-ink-quiet'
       }
     >
       <span
         className={
-          here
-            ? 'size-1.5 rounded-full bg-panel-good-mark'
-            : 'size-1.5 rounded-full bg-panel-ink-off'
+          here ? 'size-1.5 rounded-full bg-good-mark' : 'size-1.5 rounded-full bg-ink-faint'
         }
         aria-hidden
       />
@@ -153,7 +153,7 @@ function Presence({ machine }: { readonly machine: Machine }) {
 function AgentSettings({ slug, machine }: { readonly slug: string; readonly machine: Machine }) {
   if (machine.agents.length === 0)
     return (
-      <p className="mt-4 rounded-[7px] bg-panel-fill p-3 text-[13px] text-panel-ink-muted">
+      <p className="mt-4 rounded-[7px] bg-fill p-3 text-[13px] text-ink-muted">
         No agents found on this machine.
       </p>
     )
@@ -187,13 +187,11 @@ function AgentRow({
   return (
     <li>
       <div className="flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center text-panel-ink-muted [&_svg]:size-4">
+        <span className="flex size-5 items-center justify-center text-ink-muted [&_svg]:size-4">
           <AgentMark kind={agent.kind} />
         </span>
-        <span className="text-[13px] font-medium text-panel-ink-body">
-          {agentKindName(agent.kind)}
-        </span>
-        <span className="text-[12px] text-panel-ink-quiet">{agent.version}</span>
+        <span className="text-[13px] font-medium text-ink-body">{agentKindName(agent.kind)}</span>
+        <span className="text-[12px] text-ink-quiet">{agent.version}</span>
       </div>
       {machine.yours && <AgentDecisions slug={slug} machineId={machine.id} agent={agent} />}
     </li>
@@ -246,10 +244,10 @@ function AgentDecisions({
           save()
         }}
       >
-        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-panel-ink-muted">
+        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
           <span>Name</span>
           <input
-            className="h-8 w-full max-w-[280px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
+            className="h-8 w-full max-w-[280px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
             value={name}
             maxLength={48}
             placeholder={agentKindName(agent.kind)}
@@ -259,13 +257,13 @@ function AgentDecisions({
             }}
           />
         </label>
-        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-panel-ink-muted">
+        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
           <span>At once</span>
           <input
-            className="h-8 w-[72px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
+            className="h-8 w-[72px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
             type="number"
             min={1}
-            max={AT_MOST_AT_ONCE}
+            max={AT_ONCE_AT_MOST}
             value={atOnce}
             aria-invalid={!isUsable}
             aria-describedby={isUsable ? undefined : atOnceError}
@@ -277,12 +275,12 @@ function AgentDecisions({
         </label>
       </form>
       {!isUsable && (
-        <p id={atOnceError} className="mt-2 text-[12px] text-panel-danger" role="alert">
-          At once is a whole number between 1 and {AT_MOST_AT_ONCE}.
+        <p id={atOnceError} className="mt-2 text-[12px] text-danger-strong" role="alert">
+          At once is a whole number between 1 and {AT_ONCE_AT_MOST}.
         </p>
       )}
       {decide.isError && (
-        <p className="mt-2 text-[12px] text-panel-danger" role="alert">
+        <p className="mt-2 text-[12px] text-danger-strong" role="alert">
           That could not be sent. Try again.
         </p>
       )}
@@ -291,7 +289,7 @@ function AgentDecisions({
 }
 
 function usableAtOnce(wanted: number): boolean {
-  return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_MOST_AT_ONCE
+  return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_ONCE_AT_MOST
 }
 
 function TransferMachine({
@@ -321,7 +319,7 @@ function TransferMachine({
         />
       </div>
       <button
-        className="h-8 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-45"
+        className="h-8 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-45"
         type="button"
         disabled={ownerUserId === '' || transfer.isPending}
         onClick={() => {
@@ -334,7 +332,7 @@ function TransferMachine({
         Transfer
       </button>
       {transfer.isError && (
-        <p className="w-full text-[12px] text-panel-danger" role="alert">
+        <p className="w-full text-[12px] text-danger-strong" role="alert">
           {whyItStayed(transfer.error)}
         </p>
       )}
@@ -380,7 +378,7 @@ function DisconnectMachine({
       <div ref={root} className="absolute top-3 right-0">
         <button
           ref={trigger}
-          className="flex size-7 items-center justify-center rounded-[5px] border-0 bg-transparent text-panel-ink-quiet hover:bg-[var(--interaction-hover)] hover:text-panel-ink"
+          className="flex size-7 items-center justify-center rounded-[5px] border-0 bg-transparent text-ink-quiet hover:bg-[var(--interaction-hover)] hover:text-ink"
           type="button"
           aria-label={`${machine.name} actions`}
           aria-haspopup="menu"
@@ -405,7 +403,7 @@ function DisconnectMachine({
             }}
           >
             <button
-              className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-panel-danger-quiet hover:bg-panel-danger-wash focus:bg-panel-danger-wash focus:outline-none"
+              className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-danger-quiet hover:bg-danger-wash focus:bg-danger-wash focus:outline-none"
               type="button"
               role="menuitem"
               onClick={() => {
@@ -448,8 +446,8 @@ function DisconnectConfirmation({
   readonly confirm: () => void
 }) {
   return (
-    <div className="w-full rounded-[7px] border border-panel-danger-line bg-panel-danger-notice p-3">
-      <p className="flex items-start gap-2 text-[13px] leading-[18px] text-panel-danger-ink">
+    <div className="w-full rounded-[7px] border border-danger-line bg-danger-notice p-3">
+      <p className="flex items-start gap-2 text-[13px] leading-[18px] text-danger-ink">
         <ExclamationTriangle className="mt-0.5 shrink-0" aria-hidden />
         Disconnecting {machine.name} revokes its credential. Agents on it become unreachable until
         it is connected again.
@@ -463,7 +461,7 @@ function DisconnectConfirmation({
           Cancel
         </button>
         <button
-          className="h-8 rounded-[5px] border-0 bg-panel-danger-fill px-3 text-[13px] font-medium text-white disabled:opacity-45"
+          className="h-8 rounded-[5px] border-0 bg-danger-fill px-3 text-[13px] font-medium text-white disabled:opacity-45"
           type="button"
           disabled={pending}
           onClick={confirm}
@@ -477,10 +475,10 @@ function DisconnectConfirmation({
 
 function EmptyMachines() {
   return (
-    <div className="rounded-[8px] border border-dashed border-panel-line-firm px-6 py-12 text-center">
-      <Laptop className="mx-auto mb-3 text-panel-ink-quiet" aria-hidden />
-      <p className="text-[14px] font-medium text-panel-ink-body">No machines here</p>
-      <p className="mt-1 text-[13px] text-panel-ink-quiet">
+    <div className="rounded-[8px] border border-dashed border-line-firm px-6 py-12 text-center">
+      <Laptop className="mx-auto mb-3 text-ink-quiet" aria-hidden />
+      <p className="text-[14px] font-medium text-ink-body">No machines here</p>
+      <p className="mt-1 text-[13px] text-ink-quiet">
         Run handover connect on the machine where an agent should work.
       </p>
     </div>

@@ -167,7 +167,13 @@ export async function joinWith(
       .where('invitations.secret_hash', '=', hashSecret(who.secret))
       .where('invitations.revoked_at', 'is', null)
       .where('invitations.expires_at', '>', sql<Date>`now()`)
-      .forUpdate()
+      // `of invitations`, not the whole `from`. The Space is joined for its slug and its id, and
+      // locking it as well is what made this and {@link inviteInto} take the same two tables in
+      // opposite orders — that one holds the Space while it replaces the link, this one held the
+      // link while it reached for the Space. Postgres calls that a deadlock and kills one of
+      // them: an owner pressing Replace at the moment somebody clicks the link, and the person
+      // clicking gets a fault. Reproduced against a real database before this line changed.
+      .forUpdate('invitations')
       .executeTakeFirst()
 
     if (open === undefined) return { kind: 'no-invitation' }

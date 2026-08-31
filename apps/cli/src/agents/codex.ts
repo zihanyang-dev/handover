@@ -460,6 +460,10 @@ function talk(where: string, sofar: string | null, env: NodeJS.ProcessEnv): Talk
       await terminateDescendants(current.server.pid)
       if (current.phase !== 'running') return
 
+      // Whether the interrupt lands is not what stops the turn — the descendants are already
+      // gone above, and `control.interrupted` is what turns the failure that follows into
+      // `cancelled` rather than `failed`. This is the polite half, and an app-server that will
+      // not take it has nothing left to be asked.
       await current.server
         .request('turn/interrupt', { threadId: current.threadId, turnId: current.turnId })
         .catch(() => undefined)

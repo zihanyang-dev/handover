@@ -10,6 +10,7 @@
  * fails it belongs in the app that needs it.
  */
 
+export { AT_ONCE_AT_MOST } from './at-once.ts'
 export { normalizeSlug, nextFreeSlug, type Slug } from './slug.ts'
 export { returnPath } from './return-path.ts'
 export { fitsInPiece, PIECE, textPieces, utf8Length, type TextPiece } from './piece.ts'

@@ -3667,6 +3667,7 @@ export interface components {
             startedAt: string;
             opening: string | null;
             startedBy: string | null;
+            startedByYou: boolean;
             pinned: boolean;
             working: components["schemas"]["Working"];
         };
@@ -3769,8 +3770,6 @@ export interface components {
         Output: {
             title: string;
             body: string;
-            /** Format: date-time */
-            writtenAt: string;
         };
         Under: {
             /** Format: uuid */

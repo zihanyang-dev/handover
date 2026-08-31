@@ -97,7 +97,7 @@ export function ChoiceMenu({
         ref={trigger}
         // The name is load-bearing, not decoration: the composer keeps its own ring while one of
         // these is open, and it finds out by looking for this — see `chat.css`.
-        className="chat-choice-trigger flex h-7 w-full max-w-36 min-w-0 cursor-pointer items-center overflow-hidden rounded-[3.125rem] border-0 bg-transparent px-3 font-[inherit] text-copy-xs/5 font-medium text-ellipsis whitespace-nowrap text-ink-muted hover:bg-[var(--choice-hover)] aria-expanded:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+        className="chat-choice-trigger flex h-7 w-full max-w-36 min-w-0 cursor-pointer items-center overflow-hidden rounded-[3.125rem] border-0 bg-transparent px-3 font-[inherit] text-copy-xs/5 font-medium text-ellipsis whitespace-nowrap text-ink-muted hover:bg-[var(--interaction-hover)] aria-expanded:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         type="button"
         aria-label={`${label}: ${current}`}
         aria-haspopup="menu"
@@ -191,7 +191,7 @@ function OpenChoices({
         remember={remember}
         choose={choose}
       />
-      <div className="mx-2 mt-2 mb-1.5 h-px bg-[var(--choice-divider)]" />
+      <div className="mx-2 mt-2 mb-1.5 h-px bg-[var(--keyline)]" />
       <p className="m-0 px-2 py-1 text-copy-xxs/5 font-semibold text-ink-muted">{section}</p>
       {alternatives.map((choice, index) => (
         <ChoiceOption
@@ -228,7 +228,7 @@ function ChoiceOption({
       ref={(element) => {
         remember(index, element)
       }}
-      className="group flex w-full min-h-7 cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left font-[inherit] text-copy-xs/5 text-ink hover:bg-[var(--choice-hover)] focus-visible:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-[featured=true]:min-h-[2.9375rem] data-[featured=true]:py-1"
+      className="group flex w-full min-h-7 cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left font-[inherit] text-copy-xs/5 text-ink hover:bg-[var(--interaction-hover)] focus-visible:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-[featured=true]:min-h-[2.9375rem] data-[featured=true]:py-1"
       data-featured={index === 0}
       type="button"
       role="menuitemradio"

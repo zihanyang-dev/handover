@@ -28,12 +28,12 @@ export function HandoverControl({
   return (
     <div className="ml-auto flex items-center gap-2">
       {say.isError && (
-        <span className="text-[12px] text-panel-danger" role="alert">
+        <span className="text-[12px] text-danger-strong" role="alert">
           Could not ask for a handover. Try again.
         </span>
       )}
       <button
-        className="h-7 rounded-[6px] border border-panel-line-firm bg-white px-2.5 text-[12px] font-medium text-panel-ink-soft hover:bg-panel-fill disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="h-7 rounded-[6px] border border-line-firm bg-white px-2.5 text-[12px] font-medium text-ink-secondary hover:bg-fill disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         disabled={say.isPending}
         onClick={() => {
@@ -67,32 +67,30 @@ export function HandoverProposal({
 
   return (
     <article className="my-4 border-l-2 border-primary/40 py-1 pl-4" aria-label="Proposed handover">
-      <p className="text-[13px] leading-5 font-medium text-panel-ink-muted">Proposed handover</p>
-      <p className="mt-1.5 text-[14px] leading-5 font-medium text-panel-ink">{goal}</p>
-      <p className="mt-1.5 text-[12px] leading-[17px] text-panel-ink-muted">
+      <p className="text-[13px] leading-5 font-medium text-ink-muted">Proposed handover</p>
+      <p className="mt-1.5 text-[14px] leading-5 font-medium text-ink">{goal}</p>
+      <p className="mt-1.5 text-[12px] leading-[17px] text-ink-muted">
         Nothing carries on by itself until you confirm this goal.
       </p>
       {location !== undefined && (
-        <p className="mt-1 text-[12px] leading-[17px] text-panel-ink-quiet">
+        <p className="mt-1 text-[12px] leading-[17px] text-ink-quiet">
           {location.machine}
           {location.directory === undefined ? null : ` · ${location.directory}`}
         </p>
       )}
       <div className="mt-3 flex items-center justify-end gap-2">
         {status === 'handed-over' && (
-          <span className="inline-flex h-8 items-center gap-1.5 text-[13px] font-medium text-panel-good">
+          <span className="inline-flex h-8 items-center gap-1.5 text-[13px] font-medium text-good">
             <Check2Circle aria-hidden /> Handed over
           </span>
         )}
-        {status === 'superseded' && (
-          <span className="text-[13px] text-panel-ink-quiet">Superseded</span>
-        )}
+        {status === 'superseded' && <span className="text-[13px] text-ink-quiet">Superseded</span>}
         {status === 'underway' && (
-          <span className="text-[13px] text-panel-ink-quiet">Another goal is underway</span>
+          <span className="text-[13px] text-ink-quiet">Another goal is underway</span>
         )}
         {available && (
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus max-lg:h-10"
+            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus max-lg:h-10"
             type="button"
             disabled={handOver.isPending}
             onClick={() => {
@@ -104,7 +102,7 @@ export function HandoverProposal({
         )}
       </div>
       {handOver.isError && (
-        <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+        <p className="mt-3 text-[13px] text-danger-strong" role="alert">
           {whyItDidNotGoOver(handOver.error)}
         </p>
       )}

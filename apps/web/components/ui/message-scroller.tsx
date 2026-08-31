@@ -45,7 +45,7 @@ export function MessageScrollerContent({
 }: ComponentProps<typeof MessageScrollerPrimitive.Content>) {
   return (
     <MessageScrollerPrimitive.Content
-      data-slot="message-scroller-content"
+      data-slot="message-scroller-ink"
       className={cn('flex h-max min-h-full flex-col', className)}
       {...props}
     />

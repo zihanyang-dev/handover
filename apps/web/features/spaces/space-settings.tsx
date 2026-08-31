@@ -34,7 +34,7 @@ function settingsTabs(me: Me | undefined): readonly Tab[] {
       group: 'Account',
       icon:
         me === undefined ? (
-          <span className="size-6 rounded-full bg-panel-fill" aria-hidden />
+          <span className="size-6 rounded-full bg-fill" aria-hidden />
         ) : (
           <img className="size-6 rounded-full object-cover" src={me.avatarUrl} alt="" />
         ),
@@ -103,7 +103,7 @@ export function SpaceSettings({
   return (
     <dialog
       ref={dialog}
-      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center border-0 bg-transparent p-0 open:flex backdrop:bg-[var(--panel-scrim)]"
+      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center border-0 bg-transparent p-0 open:flex backdrop:bg-[var(--scrim)]"
       aria-label={`${space.displayName} settings`}
       onKeyDown={closeOnEscape}
       onCancel={(event) => {
@@ -116,7 +116,7 @@ export function SpaceSettings({
         if (event.target === event.currentTarget) close()
       }}
     >
-      <section className="relative flex h-[calc(100%-100px)] max-h-full w-[90vw] max-w-[1512px] flex-row overflow-hidden rounded-[12px] bg-white shadow-[var(--panel-dialog-shadow)] max-sm:flex-col">
+      <section className="relative flex h-[calc(100%-100px)] max-h-full w-[90vw] max-w-[1512px] flex-row overflow-hidden rounded-[12px] bg-white shadow-[var(--dialog-shadow)] max-sm:flex-col">
         <SettingsSections section={section} choose={setSection} />
         <TabPanel
           name="space-settings"
@@ -175,7 +175,7 @@ function SettingsSections({
   const me = useQuery(meQuery)
 
   return (
-    <aside className="h-full w-[240px] shrink-0 overflow-y-auto bg-panel-ground px-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:px-3 max-sm:py-2">
+    <aside className="h-full w-[240px] shrink-0 overflow-y-auto bg-surface px-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:px-3 max-sm:py-2">
       <TabList
         name="space-settings"
         label="Settings"
@@ -186,7 +186,7 @@ function SettingsSections({
         }}
         orientation="vertical"
         className="settings-tab-list flex flex-col gap-0.5 max-sm:flex-row"
-        tabClassName="settings-tab flex h-7 w-full cursor-pointer items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[14px] leading-5 font-medium text-panel-ink-soft hover:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-selected:bg-[var(--interaction-hover-strong)] aria-selected:text-panel-ink max-sm:h-9 max-sm:w-auto max-sm:flex-1 max-sm:justify-center"
+        tabClassName="settings-tab flex h-7 w-full cursor-pointer items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[14px] leading-5 font-medium text-ink-secondary hover:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-selected:bg-[var(--interaction-hover-strong)] aria-selected:text-ink max-sm:h-9 max-sm:w-auto max-sm:flex-1 max-sm:justify-center"
         renderTab={renderSection}
         renderGroup={renderGroup}
       />
@@ -197,7 +197,7 @@ function SettingsSections({
 function renderGroup(group: string): ReactNode {
   return (
     <p
-      className={`settings-tab-group m-0 px-2 py-1.5 text-[12px] leading-4 font-medium text-panel-ink-quiet${group === 'Space' ? ' mt-4' : ''}`}
+      className={`settings-tab-group m-0 px-2 py-1.5 text-[12px] leading-4 font-medium text-ink-quiet${group === 'Space' ? ' mt-4' : ''}`}
       role="presentation"
     >
       {group}
@@ -209,7 +209,7 @@ function renderSection(tab: Tab): ReactNode {
   return (
     <>
       <span
-        className={`flex shrink-0 items-center justify-center text-panel-ink-muted${tab.id === 'account' ? ' size-6 -ml-1' : ' size-4'}`}
+        className={`flex shrink-0 items-center justify-center text-ink-muted${tab.id === 'account' ? ' size-6 -ml-1' : ' size-4'}`}
       >
         {tab.icon}
       </span>
@@ -222,7 +222,7 @@ function CloseButton({ close }: { readonly close: () => void }) {
   return (
     <div className="absolute top-[11px] right-[11px] z-10 size-6">
       <button
-        className="group flex size-full cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-panel-ink-quiet focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="group flex size-full cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-ink-quiet focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         aria-label="Close settings"
         onClick={close}

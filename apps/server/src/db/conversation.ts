@@ -435,6 +435,8 @@ export type Standing = {
    * say who wrote it.
    */
   readonly startedBy: string | null
+  /** Whether {@link startedBy} is the person asking. False when nobody has spoken yet. */
+  readonly startedByYou: boolean
   /** This person's mark, not a property shared by everybody else in the Space. */
   readonly pinned: boolean
   readonly working: Working
@@ -453,7 +455,7 @@ export type Standing = {
  * second copy of something one message already says, and would disagree with it the day anything
  * about that line changes. `architecture.md` §2.
  */
-function theFirstLine(eb: ExpressionBuilder<DB, 'conversations'>) {
+function theFirstLine(eb: ExpressionBuilder<DB, 'conversations'>, asking: string) {
   const said = <T>(from: SelectQueryBuilder<DB, 'conversations' | 'messages' | 'users', T>) =>
     from
       .whereRef('messages.conversation_id', '=', 'conversations.id')
@@ -471,6 +473,18 @@ function theFirstLine(eb: ExpressionBuilder<DB, 'conversations'>) {
         .innerJoin('users', 'users.id', 'messages.said_by')
         .select('users.display_name as startedBy'),
     ).as('startedBy'),
+    /*
+     * Whether that line is this person's, answered here rather than by handing over the id and
+     * letting the browser compare. `startedBy` is a display name and two people in one Space may
+     * share one, so a name is not something "is this mine" can be decided from — the same reason
+     * {@link peopleIn} sends `you` beside `userId` instead of expecting a match on the name.
+     *
+     * `coalesce` because a conversation nobody has spoken in yet has no line to own: the subquery
+     * is null there, and null is not an answer to a yes-or-no question.
+     */
+    sql<boolean>`coalesce(${said(
+      eb.selectFrom('messages').select(sql<boolean>`messages.said_by = ${asking}`.as('mine')),
+    )}, false)`.as('startedByYou'),
   ]
 }
 
@@ -497,7 +511,7 @@ export async function conversationsIn(
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       sql<Date>`now()`.as('asOf'),
-      ...theFirstLine(eb),
+      ...theFirstLine(eb, userId),
       stillOwed(sql.ref('conversations.id')).as('unfinished'),
     ])
     .where('conversations.space_id', '=', spaceId)
@@ -512,6 +526,7 @@ export async function conversationsIn(
     startedAt: row.startedAt,
     opening: row.opening,
     startedBy: row.startedBy,
+    startedByYou: row.startedByYou,
     pinned: row.pinnedAt !== null,
     working: working(row.unfinished, presence(row, row.asOf)),
   }))

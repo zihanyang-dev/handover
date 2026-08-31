@@ -79,7 +79,7 @@ function Answer({
       </p>
 
       <button
-        className="button h-7 min-h-7 rounded-[var(--interaction-radius)] border-0 bg-transparent px-2 py-0 text-copy-xs font-normal text-content shadow-none transition-colors duration-100 ease-in-out enabled:hover:bg-[var(--interaction-hover)] enabled:active:bg-[var(--interaction-pressed)] focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)]"
+        className="button h-7 min-h-7 rounded-[var(--interaction-radius)] border-0 bg-transparent px-2 py-0 text-copy-xs font-normal text-ink shadow-none transition-colors duration-100 ease-in-out enabled:hover:bg-[var(--interaction-hover)] enabled:active:bg-[var(--interaction-pressed)] focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)]"
         type="button"
         disabled={pending}
         onClick={() => {
@@ -96,7 +96,7 @@ function Answer({
 function Answered({ letIn }: { readonly letIn: boolean }) {
   return (
     <main className="connect-page">
-      <section className="connect-card connect-result">
+      <section className="step-card connect-card connect-result">
         <p className="said said-good" role="status">
           <CheckCircleFill aria-hidden />
           {letIn ? 'That machine is in. Its terminal will say so.' : 'Turned away.'}
@@ -162,7 +162,7 @@ export function Connect({ typed }: { readonly typed: string }) {
   return (
     <main className="connect-page">
       <form
-        className="connect-card"
+        className="step-card connect-card"
         onSubmit={(event) => {
           event.preventDefault()
           setAsked(code.trim())

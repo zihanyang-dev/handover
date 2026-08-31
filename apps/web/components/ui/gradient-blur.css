@@ -8,6 +8,6 @@
   @apply pointer-events-none absolute inset-0 z-0 block h-full w-full;
 }
 
-.gradient-blur-content {
+.gradient-blur-ink {
   @apply relative z-1 min-h-dvh;
 }

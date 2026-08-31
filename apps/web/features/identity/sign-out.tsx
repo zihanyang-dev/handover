@@ -40,7 +40,7 @@ export function SignOut() {
     <section aria-labelledby="account-session-heading">
       <h2
         id="account-session-heading"
-        className="m-0 border-b border-panel-line pb-3 text-[16px] leading-6 font-medium text-ink"
+        className="m-0 border-b border-line pb-3 text-[16px] leading-6 font-medium text-ink"
       >
         Session
       </h2>
@@ -52,7 +52,7 @@ export function SignOut() {
           <span className="block truncate text-[14px] leading-5 text-ink-muted">{account}</span>
         </span>
         <button
-          className="h-7 shrink-0 cursor-pointer rounded-md border border-panel-line-firm bg-white px-2 text-[14px] leading-[16.8px] font-medium text-panel-ink hover:bg-panel-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:text-panel-ink-off"
+          className="h-7 shrink-0 cursor-pointer rounded-md border border-line-firm bg-white px-2 text-[14px] leading-[16.8px] font-medium text-ink hover:bg-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:text-ink-faint"
           type="button"
           disabled={signOut.isPending}
           onClick={() => {

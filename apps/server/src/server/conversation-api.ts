@@ -91,6 +91,11 @@ const Conversation = named('Conversation', {
   opening: z.string().nullable(),
   /** Who asked it. Null before anybody has, and on conversations older than names. */
   startedBy: z.string().nullable(),
+  /**
+   * Whether that was this person. Answered here because {@link startedBy} is a display name and
+   * two people in one Space may share one, so the browser cannot decide it by comparing.
+   */
+  startedByYou: z.boolean(),
   /** This person's own mark on it. Nobody else's list changes when it is set. */
   pinned: z.boolean(),
   working: Working,
@@ -124,11 +129,7 @@ const HandedOff = named('HandedOff', {
 })
 
 /** Something it wrote on purpose. Not what it happened to touch on the way. */
-const Output = named('Output', {
-  title: z.string(),
-  body: z.string(),
-  writtenAt: z.iso.datetime(),
-})
+const Output = named('Output', { title: z.string(), body: z.string() })
 
 /** The piece of work that handed this one out. */
 const Under = named('Under', { conversationId: z.uuid(), goal: z.string() })
@@ -534,7 +535,7 @@ function asUnderway(underway: Reading['underway']) {
       agentKind: one.agentKind,
       presence: onTheWire(one.whereabouts, underway.asOf),
     })),
-    outputs: underway.outputs.map((one) => ({ ...one, writtenAt: one.writtenAt.toISOString() })),
+    outputs: underway.outputs,
     under: underway.under,
   }
 }

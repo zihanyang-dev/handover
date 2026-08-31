@@ -46,11 +46,11 @@ export function InvitationLinks({
   return (
     <section className="mb-12" aria-labelledby="invite-link-title">
       <div className="flex items-center justify-between gap-6">
-        <h2 id="invite-link-title" className="m-0 text-[14px] leading-5 font-medium text-panel-ink">
+        <h2 id="invite-link-title" className="m-0 text-[14px] leading-5 font-medium text-ink">
           Invite link
         </h2>
         <button
-          className="h-7 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="h-7 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           type="button"
           disabled={make.isPending}
           onClick={() => {
@@ -68,7 +68,7 @@ export function InvitationLinks({
         </button>
       </div>
       {make.isError && (
-        <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+        <p className="mt-3 text-[13px] text-danger-strong" role="alert">
           {whyThereIsNoLink(make.error)}
         </p>
       )}
@@ -105,13 +105,13 @@ function OpenLink({
     return <ActiveLink slug={slug} link={revealed} full={revealed.link} forget={forget} />
   if (links.isPending)
     return (
-      <p className="mt-4 text-[13px] text-panel-ink-muted" role="status">
+      <p className="mt-4 text-[13px] text-ink-muted" role="status">
         Reading links…
       </p>
     )
   if (links.isError)
     return (
-      <p className="mt-4 text-[13px] text-panel-danger" role="alert">
+      <p className="mt-4 text-[13px] text-danger-strong" role="alert">
         Could not read invite link.
       </p>
     )
@@ -137,16 +137,16 @@ function ActiveLink({
       className="mt-3 flex min-h-10 min-w-0 items-center gap-2 border-0 px-1 py-1"
       aria-label="Active invite link"
     >
-      <Link45deg className="shrink-0 text-panel-ink-muted" aria-hidden />
+      <Link45deg className="shrink-0 text-ink-muted" aria-hidden />
       {full === undefined ? (
-        <span className="min-w-0 grow text-[13px] text-panel-ink-soft">Invite link active</span>
+        <span className="min-w-0 grow text-[13px] text-ink-secondary">Invite link active</span>
       ) : (
-        <span className="min-w-0 grow truncate text-[13px] text-panel-ink-body" title={full}>
+        <span className="min-w-0 grow truncate text-[13px] text-ink-body" title={full}>
           {full}
         </span>
       )}
       {full !== undefined && <Copy text={full} what="link" />}
-      <span className="shrink-0 text-[12px] text-panel-ink-quiet">
+      <span className="shrink-0 text-[12px] text-ink-quiet">
         Expires {shortDate(link.expiresAt)}
       </span>
       <DisableLink slug={slug} linkId={link.id} forget={forget} />
@@ -167,7 +167,7 @@ function DisableLink({
 
   return (
     <button
-      className="h-7 shrink-0 rounded-[5px] border-0 bg-transparent px-2 text-[12px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+      className="h-7 shrink-0 rounded-[5px] border-0 bg-transparent px-2 text-[12px] font-medium text-danger-quiet hover:bg-danger-wash disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
       type="button"
       aria-label="Disable invite link"
       disabled={stop.isPending}

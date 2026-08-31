@@ -1115,6 +1115,32 @@ describe('what the second person in a Space can see', () => {
   })
 })
 
+describe('who started a conversation', () => {
+  it('is answered for the person asking, rather than handed to them as a name to compare', async () => {
+    // `prd.md` 06 asks the sidebar to say who started each one. It cannot be decided in the
+    // browser: `startedBy` is a display name and two people in one Space may share one, so the
+    // answer travels as its own field the way `peopleIn`'s `you` does.
+    const rui = await alsoHere()
+    const mine = await opened('mine')
+    const theirs = await beginConversation(db, {
+      conversationId: randomUUID(),
+      spaceId: SPACE,
+      machineId: MACHINE,
+      agentKind: 'claude-code',
+      saidBy: rui,
+      asked: { text: 'theirs' },
+    })
+    if (theirs.kind !== 'begun') throw new Error(`the fixture could not open one: ${theirs.kind}`)
+
+    const seen = new Map((await conversationsIn(db, SPACE, PERSON)).map((one) => [one.id, one]))
+
+    expect(seen.get(mine)?.startedByYou).toBe(true)
+    expect(seen.get(theirs.conversationId)?.startedByYou).toBe(false)
+    // And the name still travels, because it is what the row shows once it knows to show one.
+    expect(seen.get(theirs.conversationId)?.startedBy).not.toBeNull()
+  })
+})
+
 describe('two people saying something before either is answered', () => {
   it('sends both to the agent, oldest first, each with a name', async () => {
     // Measured before this existed: only the second line was ever sent, and the first sat in the

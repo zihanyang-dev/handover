@@ -143,7 +143,20 @@ function ConversationRow({
         params={{ slug, id: conversation.id }}
       >
         <ChatIcon />
-        <span className="chat-history-title">{titleOf(conversation)}</span>
+        <span className="chat-history-title">
+          {/* Whose conversation this is, before what it is about — `06-who-said-what/prd.md` asks
+              for it in that order, and a Space with two people in it is two people's agents doing
+              two people's work in two people's files.
+
+              Not shown when it is yours. The machine list says `Yours` in the same situation
+              because it is a short list somebody chooses a machine from; this is a history
+              somebody scans, and their own name down every row of it is a column of noise that
+              makes the one row that is not theirs harder to see. */}
+          {!conversation.startedByYou && conversation.startedBy !== null && (
+            <span className="chat-history-starter">{conversation.startedBy}</span>
+          )}
+          {titleOf(conversation)}
+        </span>
         {showAge && <time dateTime={conversation.startedAt}>{ageOf(conversation.startedAt)}</time>}
       </Link>
       <button
@@ -180,18 +193,26 @@ export function PinnedChats({ slug }: { readonly slug: string }) {
       >
         Pin
       </button>
-      {expanded && (
-        <ul id="pinned-conversations" className="chat-history">
-          {pinned.map((conversation) => (
-            <ConversationRow
-              key={conversation.id}
-              slug={slug}
-              conversation={conversation}
-              showAge={false}
-            />
-          ))}
-        </ul>
-      )}
+      {/* A read that failed and a Space with nothing pinned in it are not the same thing, and
+          rendered the same way the quieter one wins: somebody sees the list they pinned things
+          to, empty, and believes it. */}
+      {expanded &&
+        (conversations.isError ? (
+          <p className="empty" role="alert">
+            Could not read your conversations. Try again.
+          </p>
+        ) : (
+          <ul id="pinned-conversations" className="chat-history">
+            {pinned.map((conversation) => (
+              <ConversationRow
+                key={conversation.id}
+                slug={slug}
+                conversation={conversation}
+                showAge={false}
+              />
+            ))}
+          </ul>
+        ))}
     </section>
   )
 }
@@ -206,14 +227,27 @@ export function ChatSidebar({ slug }: { readonly slug: string }) {
       <div className="chat-sidebar-scroll">
         <section className="chat-agents" aria-labelledby="agents-heading">
           <h2 id="agents-heading">Agents</h2>
-          <ul>
-            {agents.map((agent) => (
-              <AgentChoice key={`${agent.machineId}/${agent.kind}`} slug={slug} agent={agent} />
-            ))}
-          </ul>
+          {/* Empty, this heading says the machines in this Space have no agents on them — which
+              is the sentence somebody acts on by going to connect one they already connected. */}
+          {machines.isError ? (
+            <p className="empty" role="alert">
+              Could not read your machines. Try again.
+            </p>
+          ) : (
+            <ul>
+              {agents.map((agent) => (
+                <AgentChoice key={`${agent.machineId}/${agent.kind}`} slug={slug} agent={agent} />
+              ))}
+            </ul>
+          )}
         </section>
 
         <div className="chat-groups">
+          {conversations.isError && (
+            <p className="empty" role="alert">
+              Could not read your conversations. Try again.
+            </p>
+          )}
           {grouped(conversations.data ?? []).map((group) => (
             <section key={group.label} aria-labelledby={groupId(group.label)}>
               <h2 id={groupId(group.label)}>{group.label}</h2>

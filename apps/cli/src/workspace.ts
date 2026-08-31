@@ -119,6 +119,10 @@ export async function prepareWorkspace(working: Working, workRoot: string): Prom
 
   if (!isAbsolute(path)) return { kind: 'not-an-absolute-path', path }
 
+  // Nothing when there is nothing there, which is the question being asked. Any other reason
+  // `stat` fails — a permission, a broken link — reads the same way here on purpose: the next
+  // lines decide what to do about a path this process cannot use, and why it cannot is the
+  // same answer to them.
   const there = await stat(path).catch(() => undefined)
   if (there?.isDirectory() !== true) return { kind: 'no-such-directory', path }
 
