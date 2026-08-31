@@ -11,24 +11,29 @@ check (approved_space_id is null or approved_at is not null);
 create table space_machines (
   space_id uuid not null references spaces (id),
   machine_id uuid not null references machines (id),
-  added_by uuid not null references users (id),
+  added_by uuid references users (id),
   created_at timestamptz not null default now(),
   removed_at timestamptz,
   primary key (space_id, machine_id)
 );
 
+create index space_machines_by_machine
+on space_machines (machine_id)
+where removed_at is null;
+
 -- Keep every historical conversation referentially valid, even when its machine owner has since
--- left. These rows are history only until the active-membership backfill below clears removed_at.
-insert into space_machines (space_id, machine_id, added_by, removed_at)
-select distinct conversations.space_id, conversations.machine_id, machines.owner_user_id, now()
+-- left. Nobody explicitly added these relationships, so added_by stays null. These rows are
+-- history only until the active-membership backfill below clears removed_at.
+insert into space_machines (space_id, machine_id, removed_at)
+select distinct conversations.space_id, conversations.machine_id, now()
 from conversations
-join machines on machines.id = conversations.machine_id
 on conflict (space_id, machine_id) do nothing;
 
--- Preserve what every current Space can reach at deployment. Future memberships do not run this:
+-- Preserve what every current Space can reach at deployment. Nobody performed the new explicit
+-- action for these relationships, so added_by stays null. Future memberships do not run this:
 -- after the migration, adding a machine is its own explicit action.
-insert into space_machines (space_id, machine_id, added_by)
-select memberships.space_id, machines.id, machines.owner_user_id
+insert into space_machines (space_id, machine_id)
+select memberships.space_id, machines.id
 from machines
 join memberships on memberships.user_id = machines.owner_user_id
 where machines.removed_at is null and memberships.revoked_at is null

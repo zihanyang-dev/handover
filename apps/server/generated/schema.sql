@@ -290,7 +290,7 @@ CREATE TABLE public.outputs (
 CREATE TABLE public.space_machines (
     space_id uuid NOT NULL,
     machine_id uuid NOT NULL,
-    added_by uuid NOT NULL,
+    added_by uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     removed_at timestamp with time zone
 );
@@ -722,6 +722,13 @@ CREATE INDEX messages_asked ON public.messages USING btree (conversation_id, seq
 --
 
 CREATE INDEX messages_said_by ON public.messages USING btree (said_by) WHERE (said_by IS NOT NULL);
+
+
+--
+-- Name: space_machines_by_machine; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX space_machines_by_machine ON public.space_machines USING btree (machine_id) WHERE (removed_at IS NULL);
 
 
 --

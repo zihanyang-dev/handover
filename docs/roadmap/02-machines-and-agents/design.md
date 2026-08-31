@@ -46,9 +46,10 @@ agent_settings
   主人给一个安装的全局设置。独立于发现事实,所以一次没扫到不会把人的决定删掉
 
 space_machines
-  space_id · machine_id · added_by · created_at · removed_at(可空)
+  space_id · machine_id · added_by(可空) · created_at · removed_at(可空)
   唯一(space_id, machine_id)
   一行 = 这个 Space 是否可以使用这台机器;移除保留历史,重新添加清掉 removed_at
+  added_by 只在有人执行显式添加时有值;迁移为旧关系补的行没有这个动作,所以为空
 
 Conversation 的 `(space_id, machine_id)` 复合外键指向这张表。新 Conversation、派发和机器写回都锁住
 当前 active 关系再继续;移除拿同一行锁,所以两边只能有一个先提交。历史 Conversation 仍可读,但关系移除后

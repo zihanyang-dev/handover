@@ -154,7 +154,7 @@ export interface Outputs {
 }
 
 export interface SpaceMachines {
-  added_by: string
+  added_by: string | null
   created_at: Generated<Timestamp>
   machine_id: string
   removed_at: Timestamp | null
