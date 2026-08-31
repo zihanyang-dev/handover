@@ -10,6 +10,7 @@ describe('conversation transcript', () => {
       machineId: 'm-1',
       working: { state: 'idle' },
       offers: [],
+      earlier: false,
     }
     const current = {
       ...base,
@@ -44,5 +45,49 @@ describe('conversation transcript', () => {
     } as Transcript
 
     expect(mergeTranscript(current, tail).messages.map((message) => message.seq)).toEqual([1, 2, 3])
+  })
+})
+
+describe('a page of older lines and a catch-up at the same time', () => {
+  type Transcript = Exclude<Parameters<typeof mergeTranscript>[0], null | undefined>
+
+  const line = (seq: number) =>
+    ({
+      seq,
+      at: new Date().toISOString(),
+      role: 'user' as const,
+      said: null,
+      content: { text: `line ${seq}` },
+    }) as Transcript['messages'][number]
+
+  const transcript = (messages: readonly ReturnType<typeof line>[], earlier: boolean) =>
+    ({
+      id: 'conversation',
+      agentKind: 'codex',
+      machineId: 'm-1',
+      working: { state: 'idle' },
+      offers: [],
+      earlier,
+      messages,
+    }) as unknown as Transcript
+
+  it('keeps the older lines when the tail lands after them', () => {
+    // Somebody scrolls up, the page before arrives, and a message comes in while the read that
+    // fetches it is still in flight. Built from the snapshot taken before that read left, the
+    // answer would be the tail on top of a transcript that no longer had the older page in it —
+    // the history they just asked for, gone.
+    const withOlder = transcript([line(1), line(2), line(3), line(4)], false)
+    const tail = transcript([line(5)], true)
+
+    const merged = mergeTranscript(withOlder, tail)
+
+    expect(merged.messages.map((one) => one.seq)).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('says a line once when two reads both carry it', () => {
+    const held = transcript([line(3), line(4)], true)
+    const overlapping = transcript([line(4), line(5)], true)
+
+    expect(mergeTranscript(held, overlapping).messages.map((one) => one.seq)).toEqual([3, 4, 5])
   })
 })

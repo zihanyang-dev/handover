@@ -1,6 +1,7 @@
 /** Reading and writing the durable conversation transcript and its list projection. */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
@@ -92,7 +93,20 @@ export function useConversation(slug: string, id: string) {
       if (data === undefined)
         throw new Error(`could not read the conversation (${response.status})`)
 
-      return { ...data, messages: [...held, ...data.messages] }
+      // Read again rather than merged into the snapshot taken before the request. A page of older
+      // lines can be put in front while this one is in flight, and building the answer out of what
+      // was there when it left would throw that page away — somebody scrolls up, a message
+      // arrives, and the history they just asked for vanishes.
+      const now = client.getQueryData<Transcript | null>(queryKey)
+
+      return mergeTranscript(now, {
+        ...data,
+        // Kept from what is already here when this was a catch-up. Asking for what came after a
+        // line prepends nothing, so whether there is anything earlier is unchanged — and the
+        // server, answering only about the page it just sent, would say yes and undo a reader who
+        // had already scrolled to the beginning.
+        earlier: last === undefined ? data.earlier : (now?.earlier ?? data.earlier),
+      })
     },
     // Only while something is happening. A finished conversation is finished, and asking again
     // every second would be this page pretending it might not be.
@@ -210,4 +224,45 @@ export function useSetPinned(slug: string, id: string) {
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })
+}
+
+/**
+ * The page before the one on screen, put in front of it.
+ *
+ * Written here rather than as another `useQuery` because it is not a query: there is one
+ * transcript and this grows it backwards. A second query keyed by page would be a second copy of
+ * the same conversation, and the two would disagree the moment anybody said anything.
+ *
+ * `reading` is what a scroll handler needs to keep its position: the page must not move under
+ * somebody while the older lines are on their way.
+ */
+export function useEarlier(slug: string, id: string) {
+  const client = useQueryClient()
+  const [reading, setReading] = useState(false)
+
+  const read = useCallback(async () => {
+    const queryKey = transcriptOf(slug, id)
+    const sofar = client.getQueryData<Transcript | null>(queryKey)
+    const earliest = sofar?.messages[0]?.seq
+    if (sofar === null || sofar === undefined || !sofar.earlier || earliest === undefined) return
+
+    setReading(true)
+    try {
+      const { data } = await api.GET('/spaces/{slug}/conversations/{id}', {
+        params: { path: { slug, id }, query: { before: earliest } },
+      })
+      if (data === undefined) return
+
+      // The same merge the read uses, so there is one rule for putting lines into a transcript
+      // rather than two that can disagree. It is keyed by `seq`, which is what makes two reads in
+      // flight harmless: a line that arrives twice is one line.
+      client.setQueryData<Transcript | null>(queryKey, (held) =>
+        held == null ? held : mergeTranscript(held, data),
+      )
+    } finally {
+      setReading(false)
+    }
+  }, [client, id, slug])
+
+  return { reading, read }
 }

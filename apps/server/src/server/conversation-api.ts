@@ -180,6 +180,13 @@ const Transcript = named('Transcript', {
    */
   offers: Models,
   messages: z.array(Message).readonly(),
+  /**
+   * Whether anything was said before the first line here.
+   *
+   * About this page and not the conversation. False is "you are looking at the beginning", and
+   * it is the only thing that stops a page asking for what came before for ever.
+   */
+  earlier: z.boolean(),
   underway: Underway.optional(),
 })
 
@@ -260,10 +267,18 @@ function reading({ db }: ConversationApi) {
        * The last line the reader already has.
        *
        * Everything past it is everything they are missing, because a transcript is only appended
-       * to. Left out, they get all of it — which is what somebody opening a conversation for the
-       * first time wants, and what asking again every second is not.
+       * to — and all of it, however much arrived, because a catch-up handed back a page at a time
+       * would be a page that goes on being behind.
        */
       after: z.coerce.number().int().min(0).optional(),
+      /**
+       * The earliest line the reader already has, when they are asking for what came before it.
+       *
+       * The other direction, and the only one that is a page: a year of conversation scrolled
+       * through from the end. With both left out the read is the end of the transcript, which is
+       * where somebody opening one is looking — and what used to be the whole of it, however long.
+       */
+      before: z.coerce.number().int().min(1).optional(),
     },
     answers: { 200: sends(Transcript, 'In order, oldest first'), 404: NOT_THERE },
 
@@ -272,6 +287,7 @@ function reading({ db }: ConversationApi) {
         conversationId: c.req.valid('param').id,
         spaceId: c.get('space').id,
         after: c.req.valid('query').after,
+        before: c.req.valid('query').before,
       })
 
       return transcript === undefined

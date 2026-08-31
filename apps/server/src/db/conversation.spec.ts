@@ -796,3 +796,59 @@ describe('a turn and the conversation it is on', () => {
     ).rejects.toThrow(/violates foreign key constraint/u)
   })
 })
+
+describe('a transcript longer than a screen', () => {
+  /** Sixty lines, which is more than one read hands back. */
+  async function long(): Promise<{
+    readonly conversationId: string
+    readonly seqs: readonly number[]
+  }> {
+    const conversationId = await opened('line 1')
+    for (let n = 2; n <= 60; n += 1) await asks(conversationId, `turn-${n}`, `line ${n}`)
+
+    const all = await conversationWith(db, { conversationId, spaceId: SPACE, after: 0 })
+    return { conversationId, seqs: (all?.messages ?? []).map((one) => one.seq) }
+  }
+
+  it('opens at the end of it, not at the beginning', async () => {
+    // Opening a year-long conversation used to read every line of it before anything appeared,
+    // and what somebody wants when they arrive is the last thing said, not the first.
+    const { conversationId, seqs } = await long()
+
+    const read = await conversationWith(db, { conversationId, spaceId: SPACE })
+    expect(read?.messages).toHaveLength(50)
+    expect(read?.messages.at(-1)?.seq).toBe(seqs.at(-1))
+    expect(read?.earlier).toBe(true)
+  })
+
+  it('walks back to the beginning, over every line exactly once', async () => {
+    const { conversationId, seqs } = await long()
+
+    const seen: number[] = []
+    let page = await conversationWith(db, { conversationId, spaceId: SPACE })
+    for (let guard = 0; page !== undefined && guard < 20; guard += 1) {
+      seen.unshift(...page.messages.map((one) => one.seq))
+      if (!page.earlier) break
+      page = await conversationWith(db, {
+        conversationId,
+        spaceId: SPACE,
+        before: page.messages[0]?.seq,
+      })
+    }
+
+    // Every line, in order, none twice and none skipped — which is the whole of what a page has
+    // to promise, and the thing an offset would break the moment anybody said something.
+    expect(seen).toEqual([...seqs])
+    // And it stopped: `earlier` going false is the only thing that ends the walk.
+    expect(page?.earlier).toBe(false)
+  })
+
+  it('still hands back everything past a line, however much arrived', async () => {
+    // A catch-up is not a page. Somebody away for an hour is missing an hour, and fifty at a time
+    // would be a page that goes on being behind.
+    const { conversationId, seqs } = await long()
+
+    const all = await conversationWith(db, { conversationId, spaceId: SPACE, after: 0 })
+    expect(all?.messages).toHaveLength(seqs.length)
+  })
+})

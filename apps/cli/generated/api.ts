@@ -2236,6 +2236,7 @@ export interface paths {
             parameters: {
                 query?: {
                     after?: number | null;
+                    before?: number;
                 };
                 header?: never;
                 path: {
@@ -3776,6 +3777,7 @@ export interface components {
             working: components["schemas"]["Working"];
             offers: components["schemas"]["Model"][];
             messages: components["schemas"]["Message"][];
+            earlier: boolean;
             underway?: components["schemas"]["Underway"];
         };
         Message: {

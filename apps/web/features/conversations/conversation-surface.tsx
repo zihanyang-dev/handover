@@ -5,7 +5,7 @@
  * interacted with, so its scrolling and composer remain one geometry instead of two page states.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ArrowDown } from 'react-bootstrap-icons'
 import {
   MessageScroller,
@@ -19,7 +19,7 @@ import { ChatMessage, ChatMessageText } from './chat-message.tsx'
 import { ToolRun, type ToolMessage } from './chat-tools.tsx'
 import { ConversationComposer, type PendingUserMessage } from './conversation-composer.tsx'
 import { HandoverControl, HandoverProposal, type ProposalStatus } from './conversation-work.tsx'
-import type { useConversation, Message } from './conversation.ts'
+import { useEarlier, type useConversation, type Message } from './conversation.ts'
 import {
   getLatestUserPrompt,
   promptToPin,
@@ -30,6 +30,15 @@ import { useWatching, type LiveOutput, type LiveTurn } from './watching.ts'
 import { WorkPanel } from './work-panel.tsx'
 
 export const CHAT_SCROLL_EDGE_PX = 48
+
+/**
+ * How near the top counts as asking for what came before.
+ *
+ * Not zero. A page that only asks when scrolling has already stopped dead at the top is a page
+ * that pauses every time somebody reaches the beginning of what they have; this puts the read in
+ * flight while there is still a screenful left to read.
+ */
+const CHAT_EARLIER_AT_PX = 320
 const PROMPT_TOP_GAP_PX = 24
 
 export type ChatAgent = {
@@ -221,6 +230,43 @@ function useDistanceFromLatest() {
   return { viewport, hasScrolledAway, noteScrollPosition }
 }
 
+/**
+ * Reaching the top asks for the page before, and the page does not move under whoever asked.
+ *
+ * The compensation is manual on purpose. Browsers do have scroll anchoring, and it is exactly
+ * this — but MDN says plainly it "does not work in some of the most widely-used browsers", and it
+ * switches itself off when a margin, a padding, a height or a transform changes on the anchor or
+ * anything above it. A transcript row is all four of those while it renders. So the height is
+ * measured before the lines arrive and the difference is given back to `scrollTop` after, which
+ * is what every chat that gets this right ends up doing.
+ *
+ * `scrollHeight` and not the first row's offset: rows above the fold are not laid out yet at the
+ * moment the read returns, and asking one where it is would be asking before it is anywhere.
+ */
+function useTheWayBack(viewport: RefObject<HTMLDivElement | null>, earlier: () => Promise<void>) {
+  const asking = useRef(false)
+
+  return async (): Promise<void> => {
+    const element = viewport.current
+    if (element === null || asking.current) return
+    if (element.scrollTop > CHAT_EARLIER_AT_PX) return
+
+    asking.current = true
+    const before = element.scrollHeight
+    try {
+      await earlier()
+    } finally {
+      asking.current = false
+    }
+
+    // After paint, or the height is the one from before the lines were put in.
+    requestAnimationFrame(() => {
+      const grown = element.scrollHeight - before
+      if (grown > 0) element.scrollTop += grown
+    })
+  }
+}
+
 function ConversationMain({
   blocked,
   slug,
@@ -249,6 +295,8 @@ function ConversationMain({
   const { agentKind, messages, offers, working, underway } = conversation
   const { scrollToEnd } = useMessageScroller()
   const { viewport, hasScrolledAway, noteScrollPosition } = useDistanceFromLatest()
+  const { read: readEarlier } = useEarlier(slug, id)
+  const askForEarlier = useTheWayBack(viewport, readEarlier)
 
   return (
     <div className="flex min-w-0 flex-1 flex-col" inert={blocked ? true : undefined}>
@@ -256,7 +304,10 @@ function ConversationMain({
         <MessageScrollerViewport
           ref={viewport}
           className="chat-scroll"
-          onScroll={noteScrollPosition}
+          onScroll={() => {
+            noteScrollPosition()
+            void askForEarlier()
+          }}
         >
           <MessageScrollerContent className="chat-scroll-content">
             <Transcript
