@@ -124,11 +124,7 @@ const HandedOff = named('HandedOff', {
 })
 
 /** Something it wrote on purpose. Not what it happened to touch on the way. */
-const Output = named('Output', {
-  title: z.string(),
-  body: z.string(),
-  writtenAt: z.iso.datetime(),
-})
+const Output = named('Output', { title: z.string(), body: z.string() })
 
 /** The piece of work that handed this one out. */
 const Under = named('Under', { conversationId: z.uuid(), goal: z.string() })
@@ -534,7 +530,7 @@ function asUnderway(underway: Reading['underway']) {
       agentKind: one.agentKind,
       presence: onTheWire(one.whereabouts, underway.asOf),
     })),
-    outputs: underway.outputs.map((one) => ({ ...one, writtenAt: one.writtenAt.toISOString() })),
+    outputs: underway.outputs,
     under: underway.under,
   }
 }

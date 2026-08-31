@@ -682,7 +682,6 @@ type HandedOff = {
 type Written = {
   readonly title: string
   readonly body: string
-  readonly writtenAt: Date
 }
 
 /** Everything about the piece of work in one conversation, or nothing when it is just talk. */
@@ -761,12 +760,17 @@ async function whatItHandedOut(db: Database | Tx, taskId: string): Promise<reado
 
 /** What it wrote on purpose, newest first. */
 async function whatItWrote(db: Database | Tx, taskId: string): Promise<readonly Written[]> {
-  return db
-    .selectFrom('outputs')
-    .select(['title', 'body', 'updated_at as writtenAt'])
-    .where('task_id', '=', taskId)
-    .orderBy('updated_at', 'desc')
-    .execute()
+  return (
+    db
+      .selectFrom('outputs')
+      .select(['title', 'body'])
+      .where('task_id', '=', taskId)
+      // Ordered on a column nobody is handed: newest first is this function's promise to keep, not
+      // a date for a screen to re-sort by. Selecting it as well put a timestamp in every response
+      // that nothing has ever read.
+      .orderBy('updated_at', 'desc')
+      .execute()
+  )
 }
 
 /** The piece of work that handed this one out, when an agent did. */

@@ -3769,8 +3769,6 @@ export interface components {
         Output: {
             title: string;
             body: string;
-            /** Format: date-time */
-            writtenAt: string;
         };
         Under: {
             /** Format: uuid */

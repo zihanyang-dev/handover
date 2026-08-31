@@ -1709,16 +1709,11 @@
           },
           "body": {
             "type": "string"
-          },
-          "writtenAt": {
-            "type": "string",
-            "format": "date-time"
           }
         },
         "required": [
           "title",
-          "body",
-          "writtenAt"
+          "body"
         ]
       },
       "Under": {
