@@ -19,10 +19,17 @@ type Listener = (event: MessageEvent<string>) => void
 class TestEventSource {
   static readonly open = new Map<string, TestEventSource>()
 
+  // The three the real one exposes, because a page reads `EventSource.CLOSED` to tell the
+  // browser's own retry from the browser having given up, and there is no other way to ask.
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+
   onmessage: Listener | null = null
   onopen: (() => void) | null = null
   onerror: (() => void) | null = null
   closed = false
+  readyState: number = TestEventSource.CONNECTING
   readonly url: string
   readonly named = new Map<string, Set<Listener>>()
 
@@ -32,7 +39,9 @@ class TestEventSource {
     // Never in the constructor: the real one connects over a network, and nobody has had a chance
     // to say what to do when it opens until after `new` has returned.
     queueMicrotask(() => {
-      if (!this.closed) this.onopen?.()
+      if (this.closed) return
+      this.readyState = TestEventSource.OPEN
+      this.onopen?.()
     })
   }
 
@@ -48,6 +57,7 @@ class TestEventSource {
 
   close(): void {
     this.closed = true
+    this.readyState = TestEventSource.CLOSED
     TestEventSource.open.delete(this.url)
   }
 }

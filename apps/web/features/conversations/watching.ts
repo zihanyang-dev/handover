@@ -160,6 +160,104 @@ function watch(slug: string, id: string): EventSource {
   return new EventSource(`/spaces/${slug}/conversations/${id}/live`, { withCredentials: true })
 }
 
+/** How long before asking again, after the browser has given up on a stream for good. */
+const ASK_AGAIN_FROM_MS = 1000
+const ASK_AGAIN_UP_TO_MS = 30_000
+
+/** What one stream's frames mean, kept apart from the question of when there is a stream. */
+type Listening = {
+  readonly opened: () => void
+  readonly arrived: (event: MessageEvent<string>) => void
+}
+
+/**
+ * Keeps a stream open for exactly as long as somebody is looking at this page, and returns the way
+ * to stop.
+ *
+ * A browser is free to freeze a tab nobody is looking at, and a frozen tab's connection dies
+ * without an `error` event ever reaching the page. Nothing fires, so nothing reconnects, so the
+ * catch-up an open would have done never happens — and coming back finds a stream that is only
+ * pretending, on a page that quietly stopped hearing an hour ago. Closing on the way out and
+ * opening on the way back is what the platform asks for, and it is also what lets the page be
+ * cached at all: <https://web.dev/articles/bfcache>.
+ *
+ * Three events for one rule, each for a way of leaving the other two miss. `visibilitychange` is
+ * the everyday one — another tab, another app, a phone going to sleep. `pagehide` is the page
+ * being put away, which is the moment the connection has to be gone for the page to be kept.
+ * `pageshow` is it being taken out again, and that is the one return `visibilitychange` is not
+ * promised to announce.
+ */
+export function streamWhileLookedAt(open: () => EventSource, listening: Listening): () => void {
+  let live: EventSource | undefined
+  let asking: ReturnType<typeof setTimeout> | undefined
+  let askAgainIn = ASK_AGAIN_FROM_MS
+
+  function stop(): void {
+    if (asking !== undefined) clearTimeout(asking)
+    asking = undefined
+    live?.close()
+    live = undefined
+  }
+
+  function start(): void {
+    if (live !== undefined || asking !== undefined) return
+    if (document.visibilityState === 'hidden') return
+
+    const stream = open()
+    live = stream
+
+    stream.onopen = () => {
+      // It answered, so whatever it took to get here is not what the next failure is worth.
+      askAgainIn = ASK_AGAIN_FROM_MS
+      listening.opened()
+    }
+    stream.onmessage = listening.arrived
+
+    // The browser retries by itself, and while it is doing that this has nothing to add — a second
+    // stream opened here would mean hearing everything twice. The one case it will not retry is a
+    // server that answered and said no: a 401 whose session ran out, a 404, the wrong content
+    // type. Then it is closed for good and only the page can ask again, which it does slower each
+    // time, because asking the instant a server says no is asking as fast as that server can
+    // refuse.
+    stream.onerror = () => {
+      if (stream.readyState !== EventSource.CLOSED) return
+
+      stop()
+      asking = setTimeout(() => {
+        asking = undefined
+        start()
+      }, askAgainIn)
+      askAgainIn = Math.min(askAgainIn * 2, ASK_AGAIN_UP_TO_MS)
+    }
+  }
+
+  function lookedAt(): void {
+    if (document.visibilityState === 'hidden') {
+      stop()
+      return
+    }
+    // Somebody is here now. Whatever wait a failed stream had earned was earned against nobody
+    // watching, and making a person who just came back sit through the rest of it is the page
+    // being slow at the one moment it is being looked at.
+    if (asking !== undefined) clearTimeout(asking)
+    asking = undefined
+    askAgainIn = ASK_AGAIN_FROM_MS
+    start()
+  }
+
+  start()
+  document.addEventListener('visibilitychange', lookedAt)
+  window.addEventListener('pagehide', stop)
+  window.addEventListener('pageshow', lookedAt)
+
+  return () => {
+    document.removeEventListener('visibilitychange', lookedAt)
+    window.removeEventListener('pagehide', stop)
+    window.removeEventListener('pageshow', lookedAt)
+    stop()
+  }
+}
+
 type TranscriptWanted =
   | { readonly kind: 'nothing' }
   | { readonly kind: 'latest' }
@@ -304,32 +402,29 @@ export function useWatching(
   )
 
   useEffect(() => {
-    const live = watch(slug, id)
     const read = transcriptReader(client, transcriptOf(slug, id))
 
-    // Whatever arrived while this browser was not connected arrived while it was not connected. A
-    // stream that reconnects without catching up is a page that stays behind by however long it
-    // was away, and neither end can tell that from an agent that went quiet.
-    live.onopen = () => {
-      read()
-    }
+    return streamWhileLookedAt(() => watch(slug, id), {
+      // Whatever arrived while this browser was not connected arrived while it was not connected.
+      // A stream that reconnects without catching up is a page that stays behind by however long
+      // it was away, and neither end can tell that from an agent that went quiet.
+      opened: () => {
+        read()
+      },
 
-    // Everything the server names — its heartbeat — reaches a listener for that name and never
-    // this one, which is the browser's rule. So what arrives here is only ever a real frame, and
-    // anything unreadable is already nothing: `readWatched` parses defensively.
-    live.onmessage = (event: MessageEvent<string>) => {
-      const watched = readWatched(event.data)
-      if (watched === undefined) return
+      // Everything the server names — its heartbeat — reaches a listener for that name and never
+      // this one, which is the browser's rule. So what arrives here is only ever a real frame, and
+      // anything unreadable is already nothing: `readWatched` parses defensively.
+      arrived: (event) => {
+        const watched = readWatched(event.data)
+        if (watched === undefined) return
 
-      if (watched.seen === 'written') read(watched.upTo)
-      else if (watched.seen === 'moment')
-        setLiveTurn((current) => nextLiveTurn(current, watched.moment))
-      else showTyping({ id: watched.userId, name: watched.who })
-    }
-
-    return () => {
-      live.close()
-    }
+        if (watched.seen === 'written') read(watched.upTo)
+        else if (watched.seen === 'moment')
+          setLiveTurn((current) => nextLiveTurn(current, watched.moment))
+        else showTyping({ id: watched.userId, name: watched.who })
+      },
+    })
   }, [slug, id, client, showTyping])
 
   return { liveTurn: { ...liveTurn, typing }, startTurn }
