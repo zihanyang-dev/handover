@@ -93,15 +93,20 @@ export function useConversation(slug: string, id: string) {
       if (data === undefined)
         throw new Error(`could not read the conversation (${response.status})`)
 
-      return {
+      // Read again rather than merged into the snapshot taken before the request. A page of older
+      // lines can be put in front while this one is in flight, and building the answer out of what
+      // was there when it left would throw that page away — somebody scrolls up, a message
+      // arrives, and the history they just asked for vanishes.
+      const now = client.getQueryData<Transcript | null>(queryKey)
+
+      return mergeTranscript(now, {
         ...data,
         // Kept from what is already here when this was a catch-up. Asking for what came after a
         // line prepends nothing, so whether there is anything earlier is unchanged — and the
         // server, answering only about the page it just sent, would say yes and undo a reader who
         // had already scrolled to the beginning.
-        earlier: last === undefined ? data.earlier : (sofar?.earlier ?? data.earlier),
-        messages: [...held, ...data.messages],
-      }
+        earlier: last === undefined ? data.earlier : (now?.earlier ?? data.earlier),
+      })
     },
     // Only while something is happening. A finished conversation is finished, and asking again
     // every second would be this page pretending it might not be.
@@ -248,19 +253,11 @@ export function useEarlier(slug: string, id: string) {
       })
       if (data === undefined) return
 
+      // The same merge the read uses, so there is one rule for putting lines into a transcript
+      // rather than two that can disagree. It is keyed by `seq`, which is what makes two reads in
+      // flight harmless: a line that arrives twice is one line.
       client.setQueryData<Transcript | null>(queryKey, (held) =>
-        held == null
-          ? held
-          : // Only what is genuinely before what is held. Two reads in flight, or a line that
-            // arrived between them, would otherwise put the same thing on screen twice.
-            {
-              ...held,
-              earlier: data.earlier,
-              messages: [
-                ...data.messages.filter((one) => one.seq < (held.messages[0]?.seq ?? 0)),
-                ...held.messages,
-              ],
-            },
+        held == null ? held : mergeTranscript(held, data),
       )
     } finally {
       setReading(false)
