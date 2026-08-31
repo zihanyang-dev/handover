@@ -15,7 +15,7 @@
 }
 
 .home-breadcrumb {
-  @apply m-0 flex min-w-0 items-center gap-1.5 text-[0.8125rem] text-grey-500;
+  @apply m-0 flex min-w-0 items-center gap-1.5 text-[0.8125rem] text-ink-muted;
 }
 
 .home-breadcrumb span:first-child {
@@ -23,16 +23,16 @@
 }
 
 .home-breadcrumb strong {
-  color: var(--content);
+  color: var(--ink);
   font-weight: 400;
 }
 
-.home-content {
+.home-ink {
   @apply mx-auto w-[min(100%,52rem)] px-16 pt-20 pb-32;
 }
 
-.home-content h1 {
-  color: var(--content);
+.home-ink h1 {
+  color: var(--ink);
   font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.035em;
@@ -40,12 +40,12 @@
 }
 
 .home-state {
-  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-[var(--content)];
+  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-[var(--ink)];
 }
 
 .home-state p,
 .home-state a {
-  color: var(--grey-500);
+  color: var(--ink-muted);
   font-size: 0.875rem;
 }
 
@@ -76,7 +76,7 @@
     top: 0;
     left: 0;
     width: min(var(--home-sidebar-width, 16.875rem), 100vw);
-    box-shadow: 0.25rem 0 1.5rem #0f0f0f14;
+    box-shadow: 0.25rem 0 1.5rem var(--cast);
   }
 
   .home-sidebar {
@@ -106,7 +106,7 @@
     width: min(20rem, calc(100vw - 2rem));
   }
 
-  .home-content {
+  .home-ink {
     padding: 3.5rem 1.5rem 6rem;
   }
 }
@@ -114,7 +114,7 @@
 /* ── inside a Space ──────────────────────────────────────────────────────
  *
  * The same surfaces the sign-in face and onboarding are built from: white on
- * `--grey-950`, one hairline of `--grey-800`, `--radius` corners, and colour only
+ * `--fill`, one hairline of `--line`, `--radius` corners, and colour only
  * where it means something. Nothing here has a palette of its own.
  */
 
@@ -124,7 +124,7 @@
 
 .panel-head h2,
 .panel-head h3 {
-  @apply m-0 text-copy-xs font-semibold text-content;
+  @apply m-0 text-copy-xs font-semibold text-ink;
 }
 
 .inbox-row-link {
@@ -142,7 +142,7 @@
 
 .row-name strong {
   font-weight: 600;
-  color: var(--content);
+  color: var(--ink);
 }
 
 .inbox-row-copy {
@@ -151,7 +151,7 @@
 }
 
 .row-name a {
-  color: var(--content);
+  color: var(--ink);
   text-decoration: none;
 }
 
@@ -160,10 +160,10 @@
 }
 
 .row-where {
-  @apply text-copy-xxs text-grey-500;
+  @apply text-copy-xxs text-ink-muted;
 }
 
 /* A state, said in a shape rather than only in a word — read at a glance, in a list. */
 .chip {
-  @apply inline-flex items-center whitespace-nowrap rounded-md bg-grey-900 px-1.75 py-0.25 text-copy-xxs font-medium text-grey-100;
+  @apply inline-flex items-center whitespace-nowrap rounded-md bg-fill-firm px-1.75 py-0.25 text-copy-xxs font-medium text-ink-secondary;
 }

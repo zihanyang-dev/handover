@@ -10,31 +10,20 @@
  */
 
 .auth {
-  --base: #ffffff; /* notion's white */
-  --content: #34322d; /* manus --text-primary */
-  --basic: #6f6e6a; /* AA-muted ink on white */
-  --tertiary-light: #5e5e5b; /* manus --text-secondary */
-  --primary: #0075de; /* notion's blue */
-  --primary-200: #0069c8;
-  --primary-500: #0075de;
-  --focus: #2383e2; /* notion login's computed focus ring */
-  --grey-300: #74736f; /* readable placeholder ink */
-  --grey-800: #0000001f; /* hairlines */
-  --grey-900: #f7f7f5;
-  --grey-970: #ffffff;
-  --grey-985: #ffffff;
-  --neutral-950: #0000001f; /* 12% black: their 6% hairline reads as no button at all */
-  --neutral-500: #00000024; /* manus --border-dark, the focus ring */
-  --neutral-900: #0000000f;
-  --danger: #c9372c; /* AA error ink on white */
-  --success: #3e7a1e;
-  --control: 2.5rem; /* manus controls are 40px */
-  --radius: 0.5rem; /* manus fields and the primary button are 8px */
+  /* Only what is different about the way in. Its ink, its blue and its reds are the product's,
+     so a button here cannot drift from a button there — only from a button on this surface.
+
+     Its controls are smaller and its corners tighter than inside a Space, and its hairline is
+     black at low alpha rather than a solid grey, which is what lets it sit on the gradient behind
+     the card without banding against it. */
+  --control: 2.5rem;
+  --radius: 0.5rem;
+  --line: #0000001f;
 
   /* Keep the way in high enough to read as the start of a journey instead of a dialog floating
      around the vertical midpoint. Equal side padding keeps the 360px column truly centered. */
-  @apply relative grid min-h-dvh bg-base px-6 pt-[clamp(5rem,9vh,5.5rem)] pb-12 text-content;
-  place-content: start center;
+  @apply relative grid min-h-dvh bg-base px-6 pt-[clamp(5rem,9vh,5.5rem)] pb-12 text-ink;
+  place-ink: start center;
   place-items: start center;
   /* The product's own face: the system stack read as generic SaaS. */
 }
@@ -60,7 +49,7 @@
 /* Off, but still a button: the frame stays, only the words fade. */
 .auth .button-secondary:disabled {
   opacity: 1;
-  color: var(--basic);
+  color: var(--ink-muted);
 }
 
 .auth .button {
@@ -80,8 +69,8 @@
   position: relative;
   border-radius: 0.625rem;
   box-shadow:
-    inset 0 0 0 0.5px var(--neutral-950),
-    0 1px 2px -0.5px #16191d0a;
+    inset 0 0 0 0.5px var(--keyline),
+    0 1px 2px -0.5px var(--cast-faint);
   background: var(--base);
 }
 
@@ -95,7 +84,7 @@
 
 .auth .button-secondary:focus-visible {
   box-shadow:
-    inset 0 0 0 0.5px var(--neutral-950),
+    inset 0 0 0 0.5px var(--keyline),
     0 0 0 2px var(--base),
     0 0 0 4px var(--focus);
 }
@@ -107,7 +96,7 @@
 
 /* Manus's disabled primary is a solid grey that owns being off, not a faded black. */
 .auth .button-primary:disabled {
-  background: #898988;
+  background: var(--ink-quiet);
   opacity: 1;
 }
 
@@ -121,10 +110,6 @@
 /* The code and asking again share one row, exactly the width of the Continue below it. */
 .auth-code-row {
   @apply grid grid-cols-[1fr_auto] gap-x-3 gap-y-2;
-}
-
-.auth-code-row .auth-error {
-  @apply col-span-full;
 }
 
 /* The countdown words change length every second; the button holds its width. */
@@ -150,7 +135,7 @@
 
 .auth-wordmark {
   display: block;
-  color: #2b292a;
+  color: var(--ink);
   transform: translateY(-0.2rem);
 }
 
@@ -178,7 +163,7 @@
 }
 
 .auth .or {
-  color: var(--basic);
+  color: var(--ink-muted);
 }
 
 /* The code is six digits at control height, sharing a row with asking again. */

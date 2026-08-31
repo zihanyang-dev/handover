@@ -149,7 +149,7 @@ export function ConversationSurface({
         {underway !== undefined && (
           <button
             ref={workTrigger}
-            className="ml-auto h-7 shrink-0 whitespace-nowrap rounded-[6px] border border-panel-line-firm px-2.5 text-[12px] font-medium text-panel-ink-soft lg:hidden"
+            className="ml-auto h-7 shrink-0 whitespace-nowrap rounded-[6px] border border-line-firm px-2.5 text-[12px] font-medium text-ink-secondary lg:hidden"
             type="button"
             aria-controls="conversation-work-panel"
             aria-expanded={mobileWorkOpen}
@@ -178,8 +178,8 @@ export function ConversationSurface({
             id="conversation-work-panel"
             className={
               mobileWorkOpen
-                ? 'absolute inset-0 z-30 h-full w-full shrink-0 bg-white lg:static lg:z-auto lg:block lg:w-[360px] lg:border-l lg:border-panel-line'
-                : 'hidden h-full shrink-0 bg-white lg:block lg:w-[360px] lg:border-l lg:border-panel-line'
+                ? 'absolute inset-0 z-30 h-full w-full shrink-0 bg-white lg:static lg:z-auto lg:block lg:w-[360px] lg:border-l lg:border-line'
+                : 'hidden h-full shrink-0 bg-white lg:block lg:w-[360px] lg:border-l lg:border-line'
             }
             aria-label="Work details"
             role={mobileWorkOpen ? 'dialog' : 'complementary'}
@@ -258,7 +258,7 @@ function ConversationMain({
           className="chat-scroll"
           onScroll={noteScrollPosition}
         >
-          <MessageScrollerContent className="chat-scroll-content">
+          <MessageScrollerContent className="chat-scroll-ink">
             <Transcript
               slug={slug}
               id={id}
@@ -586,7 +586,7 @@ function ReplyContent({
   readonly liveOutputs: ReadonlyMap<string, LiveOutput>
 }) {
   return (
-    <div className="chat-agent-reply-content">
+    <div className="chat-agent-reply-ink">
       {blocks.map((block) => {
         if (block.kind === 'tools') {
           return (

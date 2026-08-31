@@ -43,26 +43,26 @@ export function RemovalChecklist({
   return (
     <section aria-labelledby="remove-person-title">
       <button
-        className="mb-4 border-0 bg-transparent text-[13px] text-panel-ink-muted hover:text-panel-ink"
+        className="mb-4 border-0 bg-transparent text-[13px] text-ink-muted hover:text-ink"
         type="button"
         onClick={back}
       >
         ← Back to people
       </button>
-      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-panel-ink">
+      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-ink">
         {person.you ? 'Leave this Space' : `Remove ${person.displayName}`}
       </h2>
-      <p className="mt-1 text-[13px] leading-[18px] text-panel-ink-muted">
+      <p className="mt-1 text-[13px] leading-[18px] text-ink-muted">
         Resolve everything still held here before access is removed. Nothing is moved or stopped
         automatically.
       </p>
       {held.isPending && (
-        <p className="py-6 text-[13px] text-panel-ink-muted" role="status">
+        <p className="py-6 text-[13px] text-ink-muted" role="status">
           Checking what they still hold…
         </p>
       )}
       {held.isError && (
-        <p className="py-6 text-[13px] text-panel-ink-muted" role="alert">
+        <p className="py-6 text-[13px] text-ink-muted" role="alert">
           Could not read what they still hold. Try again.
         </p>
       )}
@@ -78,14 +78,14 @@ export function RemovalChecklist({
       )}
       <div className="mt-6 flex items-center justify-end gap-2 pt-4">
         <button
-          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-panel-fill"
+          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-fill"
           type="button"
           onClick={back}
         >
           Cancel
         </button>
         <button
-          className="h-8 rounded-[6px] border-0 bg-panel-danger-fill px-3 text-[13px] font-medium text-white hover:bg-panel-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
+          className="h-8 rounded-[6px] border-0 bg-danger-fill px-3 text-[13px] font-medium text-white hover:bg-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
           type="button"
           disabled={!holdsNothing || remove.isPending}
           onClick={() => {
@@ -121,7 +121,7 @@ function HeldRows({
 }) {
   if (nothingLeft(held))
     return (
-      <p className="mt-5 rounded-[7px] bg-panel-fill p-3 text-[13px] text-panel-ink-soft">
+      <p className="mt-5 rounded-[7px] bg-fill p-3 text-[13px] text-ink-secondary">
         Nothing is still theirs here.
       </p>
     )
@@ -130,7 +130,7 @@ function HeldRows({
     <div className="mt-5 space-y-5">
       {held.working.length > 0 && (
         <div>
-          <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Pieces of work</h3>
+          <h3 className="mb-2 text-[13px] font-medium text-ink-secondary">Pieces of work</h3>
           <ul className="m-0 list-none space-y-1 p-0">
             {held.working.map((work) => (
               <WorkResolution
@@ -146,7 +146,7 @@ function HeldRows({
       )}
       {held.machines.length > 0 && (
         <div>
-          <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Machines</h3>
+          <h3 className="mb-2 text-[13px] font-medium text-ink-secondary">Machines</h3>
           <ul className="m-0 list-none space-y-1 p-0">
             {held.machines.map((machine) => (
               <MachineResolution
@@ -180,8 +180,8 @@ function WorkResolution({
 
   return (
     <li className="py-3">
-      <p className="text-[13px] font-medium text-panel-ink">{work.goal}</p>
-      <p className="mt-0.5 text-[12px] text-panel-ink-quiet">
+      <p className="text-[13px] font-medium text-ink">{work.goal}</p>
+      <p className="mt-0.5 text-[12px] text-ink-quiet">
         {whatItIsDoing(work.state)} · {work.machineName}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -223,8 +223,8 @@ function MachineResolution({
 
   return (
     <li className="py-3">
-      <p className="text-[13px] font-medium text-panel-ink">{machine.name}</p>
-      <p className="mt-0.5 text-[12px] text-panel-ink-quiet">
+      <p className="text-[13px] font-medium text-ink">{machine.name}</p>
+      <p className="mt-0.5 text-[12px] text-ink-quiet">
         {machine.inUse === 0 ? 'Not in use' : `${machine.inUse} active conversations`}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -293,8 +293,8 @@ function SmallButton({
     <button
       className={
         isDestructive
-          ? 'h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash disabled:opacity-45'
-          : 'h-8 rounded-[5px] border border-panel-line-firm px-2 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill disabled:opacity-45'
+          ? 'h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-danger-quiet hover:bg-danger-wash disabled:opacity-45'
+          : 'h-8 rounded-[5px] border border-line-firm px-2 text-[13px] font-medium text-ink-body hover:bg-fill disabled:opacity-45'
       }
       type="button"
       disabled={disabled}
@@ -321,7 +321,7 @@ function whyTheyAreStillHere(thrown: unknown): string {
 
 function RemovalError({ thrown }: { readonly thrown: unknown }) {
   return (
-    <p className="mt-3 text-[13px] text-panel-danger" role="alert">
+    <p className="mt-3 text-[13px] text-danger-strong" role="alert">
       {whyTheyAreStillHere(thrown)}
     </p>
   )

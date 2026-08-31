@@ -74,9 +74,9 @@ export function Steps({
           />
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 text-center text-copy-xxs text-basic">
+      <div className="mt-2 grid grid-cols-2 text-center text-copy-xxs text-ink-muted">
         {LEGS.map((leg, i) => (
-          <span key={leg} className={!done && i + 1 === step ? 'font-medium text-content' : ''}>
+          <span key={leg} className={!done && i + 1 === step ? 'font-medium text-ink' : ''}>
             {leg}
           </span>
         ))}

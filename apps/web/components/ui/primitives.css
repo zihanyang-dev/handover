@@ -9,7 +9,7 @@
   }
 
   .card {
-    @apply w-full max-w-sm rounded-panel bg-base-secondary p-8;
+    @apply w-full max-w-sm rounded-panel bg-fill p-8;
   }
 
   .stack {
@@ -21,23 +21,23 @@
   }
 
   .lede {
-    @apply m-0 text-copy-xs text-basic;
+    @apply m-0 text-copy-xs text-ink-muted;
   }
 
   .note {
-    @apply m-0 text-copy-xxs text-basic;
+    @apply m-0 text-copy-xxs text-ink-muted;
   }
 
   .address {
-    @apply font-mono text-content;
+    @apply font-mono text-ink;
   }
 
   .label {
-    @apply text-copy-xxs font-medium text-tertiary-light;
+    @apply text-copy-xxs font-medium text-ink-secondary;
   }
 
   .field {
-    @apply h-[var(--control)] w-full rounded-ui bg-grey-970 px-3.5 py-0 text-copy-xs text-content shadow-[inset_0_0_0_1px_var(--neutral-950)] transition-[background-color,box-shadow] duration-200 placeholder:text-grey-300 focus:bg-grey-985 focus:shadow-[inset_0_0_0_1px_var(--neutral-500)] focus:outline-none focus-within:bg-grey-985 focus-within:shadow-[inset_0_0_0_1px_var(--neutral-500)] focus-within:outline-none disabled:opacity-40;
+    @apply h-[var(--control)] w-full rounded-ui bg-base px-3.5 py-0 text-copy-xs text-ink shadow-[inset_0_0_0_1px_var(--keyline)] transition-[background-color,box-shadow] duration-200 placeholder:text-ink-muted focus:bg-base focus:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus:outline-none focus-within:bg-base focus-within:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus-within:outline-none disabled:opacity-40;
     border: 0;
     font-family: inherit;
   }
@@ -54,17 +54,17 @@
   }
 
   .button-primary {
-    @apply bg-primary text-grey-985 enabled:hover:bg-primary-200;
+    @apply bg-primary text-base enabled:hover:bg-primary-strong;
   }
 
   .button-primary:enabled:active {
-    background: var(--primary-600);
+    background: var(--primary-deep);
   }
 
   .button-secondary {
-    color: var(--content);
+    color: var(--ink);
     background: var(--base);
-    box-shadow: inset 0 0 0 1px var(--interaction-keyline);
+    box-shadow: inset 0 0 0 1px var(--keyline);
   }
 
   .button-secondary:enabled:hover {
@@ -80,13 +80,13 @@
   }
 
   .or {
-    @apply grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-copy-xxs text-grey-300;
+    @apply grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-copy-xxs text-ink-muted;
   }
 
   .or::before,
   .or::after {
     content: '';
-    @apply h-px bg-grey-800;
+    @apply h-px bg-line;
   }
 
   .said {
@@ -113,7 +113,7 @@
  * precedence at mixed semantic/utility call sites. */
 @layer states {
   .panel {
-    @apply rounded-ui border border-grey-800 bg-base px-4.5 py-4;
+    @apply rounded-ui border border-line bg-base px-4.5 py-4;
   }
 
   .panel + .panel {
@@ -130,11 +130,11 @@
 
   .row + .row,
   .rows > li + li > .row {
-    border-top: 1px solid var(--grey-900);
+    border-top: 1px solid var(--fill-firm);
   }
 
   .empty {
-    @apply m-0 text-copy-xxs leading-[1.6] text-grey-500;
+    @apply m-0 text-copy-xxs leading-[1.6] text-ink-muted;
   }
 
   .beside {
@@ -144,4 +144,16 @@
   .beside > :first-child {
     @apply min-w-0 flex-auto;
   }
+}
+
+/* The card a single step sits on: the way in's steps, and the page a machine opens from a
+   terminal. It was written out twice, identically, in two feature stylesheets — the second even
+   said it was "the same quiet surface used by onboarding" and then copied it. */
+.step-card {
+  width: min(33rem, 100%);
+  padding: 1.5rem;
+  border: 1px solid var(--keyline-faint);
+  border-radius: 1rem;
+  background: var(--base);
+  box-shadow: var(--card-shadow);
 }

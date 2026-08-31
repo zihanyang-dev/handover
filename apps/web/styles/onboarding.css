@@ -2,7 +2,7 @@
    The progress rail owns half the desktop viewport; the task itself stays a readable 480px. */
 .onboarding-page {
   @apply px-6 pt-[clamp(5.5rem,12vh,7rem)] pb-16;
-  place-content: start center;
+  place-ink: start center;
   place-items: start center;
 }
 
@@ -10,29 +10,17 @@
   @apply flex w-[min(50vw,48rem)] flex-col gap-8;
 }
 
-.onboarding-content {
+.onboarding-ink {
   @apply flex w-120 max-w-full self-center flex-col gap-5;
 }
 
 /* One quiet surface makes the step read as a single task without turning it into a modal. */
-.onboarding-step-card {
-  width: min(33rem, 100%);
-  padding: 1.5rem;
-  border: 1px solid #0000000f;
-  border-radius: 1rem;
-  background: var(--base);
-  box-shadow:
-    0 1px 2px #0000000a,
-    0 10px 30px -18px #00000038;
-}
-
 /* Creation is always explicit. Its form rises from positive Y into one continuous drawer. */
 .space-picker {
   --panel-open-dur: 400ms;
   --panel-close-dur: 350ms;
   --panel-translate-y: calc(187px * 0.5);
   --panel-blur: 2px;
-  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   @apply flex flex-col gap-3;
 }
@@ -42,7 +30,7 @@
 }
 
 .space-picker-label {
-  @apply m-0 text-copy-xxs font-medium text-basic;
+  @apply m-0 text-copy-xxs font-medium text-ink-muted;
 }
 
 .space-spread-toggle {
@@ -54,7 +42,7 @@
   border: 0;
   border-radius: var(--interaction-radius);
   background: transparent;
-  color: var(--grey-500);
+  color: var(--ink-muted);
   cursor: pointer;
   transition:
     background-color var(--interaction-fast) ease-in-out,
@@ -63,7 +51,7 @@
 
 .space-spread-toggle:hover {
   background: var(--interaction-hover);
-  color: var(--content);
+  color: var(--ink);
 }
 
 .space-spread-toggle:active {
@@ -77,7 +65,7 @@
 
 .space-spread-toggle svg {
   transform: rotate(90deg);
-  transition: transform 240ms var(--panel-ease);
+  transition: transform 240ms var(--ease-settle);
 }
 
 .space-spread-toggle[aria-expanded='true'] svg {
@@ -86,7 +74,7 @@
 
 .space-choice-deck {
   @apply relative;
-  transition: height 320ms var(--panel-ease);
+  transition: height 320ms var(--ease-settle);
   will-change: height;
 }
 
@@ -98,7 +86,7 @@
   @apply min-w-0;
   transform-origin: center top;
   transition:
-    transform 320ms var(--panel-ease),
+    transform 320ms var(--ease-settle),
     opacity 160ms ease-out;
   will-change: transform;
 }
@@ -106,7 +94,7 @@
 /* Notion's current public Card surface: white, a 10% black keyline, 12px radius, and
    elevation that appears only on interaction. The deck supplies the composition. */
 .space-choice-position .space-choice {
-  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-[var(--neutral-950)] bg-white px-3.5 py-3;
+  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-[var(--keyline)] bg-white px-3.5 py-3;
   transform-origin: center top;
 }
 
@@ -165,22 +153,22 @@
 }
 
 .space-choice-position .space-choice:hover {
-  border-color: var(--neutral-950);
+  border-color: var(--keyline);
   background: var(--base);
   box-shadow:
-    0 0.175px 1.041px #00000003,
-    0 0.8px 2.925px #00000005,
-    0 2.025px 7.847px #00000007,
-    0 4px 18px #0000000a;
+    0 0.175px 1.041px var(--cast-faint),
+    0 0.8px 2.925px var(--cast-faint),
+    0 2.025px 7.847px var(--cast-faint),
+    0 4px 18px var(--cast-faint);
   transform: translateY(-0.1875rem);
 }
 
 .space-choice-position .space-choice-arrow {
-  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-[var(--neutral-300)] opacity-55;
+  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-[var(--ink-muted)] opacity-55;
   transform: translateY(-50%);
   transition:
     opacity 160ms ease-out,
-    transform 180ms var(--panel-ease);
+    transform 180ms var(--ease-settle);
 }
 
 .space-choice-position .space-choice:hover .space-choice-arrow,
@@ -190,7 +178,7 @@
 }
 
 .space-choice {
-  @apply flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl border border-[#e7e6e4] bg-white px-3.5 py-2 text-left text-content;
+  @apply flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--line)] bg-white px-3.5 py-2 text-left text-ink;
   font: inherit;
   transition:
     transform 180ms var(--panel-ease, ease-out),
@@ -200,9 +188,9 @@
 }
 
 .space-choice:hover {
-  border-color: #dcdad7;
-  background: var(--base-secondary);
-  box-shadow: 0 0.25rem 0.75rem #0f0f0f0a;
+  border-color: var(--line-firm);
+  background: var(--fill);
+  box-shadow: 0 0.25rem 0.75rem var(--cast-faint);
   transform: translateY(-1px);
 }
 
@@ -228,20 +216,20 @@
 }
 
 .space-choice-new {
-  @apply w-full border-[#0075de2e] bg-[#0075de0d] px-3 shadow-none;
+  @apply w-full border-[var(--primary-cast)] bg-[var(--primary-cast-faint)] px-3 shadow-none;
   transform: none;
 }
 
 .space-choice-new:hover {
-  border-color: #0075de4a;
-  background: #0075de14;
+  border-color: var(--primary-cast-strong);
+  background: var(--primary-cast-faint);
   box-shadow: none;
   transform: none;
 }
 
 .space-choice-new[aria-expanded='true'] {
-  border-color: #0075de4a;
-  background: var(--base-secondary);
+  border-color: var(--primary-cast-strong);
+  background: var(--fill);
 }
 
 /* This sheet belongs to the viewport, not to the row that opened it. Keeping it non-modal leaves
@@ -253,15 +241,15 @@
 .space-create-disclosure {
   width: min(36rem, 100%);
   padding: 0.625rem 1.25rem max(1.25rem, env(safe-area-inset-bottom));
-  border: 1px solid #00000012;
+  border: 1px solid var(--keyline-faint);
   border-bottom: 0;
   border-radius: 1rem 1rem 0 0;
   background: var(--base);
-  box-shadow: 0 -0.75rem 2.5rem #0f0f0f12;
+  box-shadow: 0 -0.75rem 2.5rem var(--cast);
 }
 
 .space-create-drawer-handle {
-  @apply mx-auto mb-1 block h-1 w-9 rounded-full bg-[#d9d8d5];
+  @apply mx-auto mb-1 block h-1 w-9 rounded-full bg-[var(--line-firm)];
 }
 
 .space-create-drawer-head {
@@ -275,7 +263,7 @@
 }
 
 .space-create-drawer-head button {
-  @apply grid size-8 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 text-grey-500;
+  @apply grid size-8 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 text-ink-muted;
   transition:
     background-color var(--interaction-fast) ease-in-out,
     color var(--interaction-fast) ease-in-out;
@@ -283,7 +271,7 @@
 
 .space-create-drawer-head button:hover {
   background: var(--interaction-hover);
-  color: var(--content);
+  color: var(--ink);
 }
 
 .space-create-drawer-head button:active {
@@ -301,9 +289,9 @@
   pointer-events: none;
   transform: translateY(var(--panel-translate-y));
   transition:
-    transform var(--panel-close-dur) var(--panel-ease),
-    opacity var(--panel-close-dur) var(--panel-ease),
-    filter var(--panel-close-dur) var(--panel-ease);
+    transform var(--panel-close-dur) var(--ease-settle),
+    opacity var(--panel-close-dur) var(--ease-settle),
+    filter var(--panel-close-dur) var(--ease-settle);
   will-change: transform, opacity, filter;
 }
 
@@ -313,9 +301,9 @@
   pointer-events: auto;
   transform: translateY(0);
   transition:
-    transform var(--panel-open-dur) var(--panel-ease),
-    opacity var(--panel-open-dur) var(--panel-ease),
-    filter var(--panel-open-dur) var(--panel-ease);
+    transform var(--panel-open-dur) var(--ease-settle),
+    opacity var(--panel-open-dur) var(--ease-settle),
+    filter var(--panel-open-dur) var(--ease-settle);
 }
 
 .auth .space-create-form {
@@ -331,7 +319,7 @@
   grid-template-columns: 2.75rem minmax(0, 1fr);
   border-radius: 0.5rem;
   background: var(--base);
-  box-shadow: inset 0 0 0 1px var(--neutral-950);
+  box-shadow: inset 0 0 0 1px var(--keyline);
 }
 
 .space-create-name-control:focus-within {
@@ -393,7 +381,7 @@
 }
 
 .space-create-form .label {
-  color: var(--basic);
+  color: var(--ink-muted);
   font-weight: 500;
 }
 
@@ -405,7 +393,7 @@
   height: 2.75rem;
   padding-inline: 0.75rem;
   border-radius: 0.5rem;
-  box-shadow: inset 0 0 0 1px var(--neutral-950);
+  box-shadow: inset 0 0 0 1px var(--keyline);
 }
 
 /* The emoji and name are one control. The outside ring owns their only boundary. */
@@ -447,7 +435,7 @@
 }
 
 .space-choice-copy small {
-  color: var(--basic);
+  color: var(--ink-muted);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
 }
@@ -458,12 +446,12 @@
 
 .space-choice-arrow {
   flex: 0 0 auto;
-  color: #b5b3b0;
+  color: var(--ink-faint);
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .space-url {
-  @apply bg-base-secondary font-mono text-copy-xxs text-basic;
+  @apply bg-fill font-mono text-copy-xxs text-ink-muted;
 }
 
 .space-url:disabled {
@@ -494,7 +482,7 @@
 .host-agents-label,
 .host-agents-empty {
   margin: 0;
-  color: var(--basic);
+  color: var(--ink-muted);
   font-size: var(--text-xxs);
 }
 
@@ -519,7 +507,7 @@
   padding: 0.625rem;
   align-items: center;
   gap: 0.75rem;
-  border: 1px solid var(--neutral-950);
+  border: 1px solid var(--keyline);
   border-radius: 0.75rem;
   background: var(--base);
 }
@@ -535,9 +523,9 @@
   display: block;
   width: 3rem;
   height: 3rem;
-  border: 1px solid #0000000a;
+  border: 1px solid var(--cast-faint);
   border-radius: 0.75rem;
-  background: var(--base-secondary);
+  background: var(--fill);
   object-fit: cover;
 }
 
@@ -553,7 +541,7 @@
   border-radius: 50%;
   background: var(--base);
   color: var(--agent-codex);
-  box-shadow: 0 1px 3px #0f0f0f24;
+  box-shadow: 0 1px 3px var(--cast-firm);
 }
 
 .host-agent[data-agent='claude-code'] .host-agent-mark {
@@ -574,7 +562,7 @@
 
 .host-agent-copy strong {
   overflow: hidden;
-  color: var(--content);
+  color: var(--ink);
   font-size: var(--text-xxs);
   font-weight: 600;
   text-overflow: ellipsis;
@@ -583,7 +571,7 @@
 
 .host-agent-copy small {
   overflow: hidden;
-  color: var(--basic);
+  color: var(--ink-muted);
   font-family: var(--font-mono);
   font-size: 0.625rem;
   text-overflow: ellipsis;
@@ -607,7 +595,7 @@
 }
 
 .host-agent-name-view strong[data-empty='true'] {
-  color: var(--basic);
+  color: var(--ink-muted);
   font-weight: 500;
 }
 
@@ -621,12 +609,12 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: var(--basic);
+  color: var(--ink-muted);
 }
 
 .host-agent-name-view button:hover {
   background: var(--interaction-hover);
-  color: var(--content);
+  color: var(--ink);
 }
 
 .host-agent-name-view button:focus-visible {
@@ -644,18 +632,18 @@
   min-width: 0;
   height: 1.75rem;
   padding: 0 0.5rem;
-  border: 1px solid #00000012;
+  border: 1px solid var(--keyline-faint);
   border-radius: 0.375rem;
   outline: 0;
   background: var(--base);
-  color: var(--content);
+  color: var(--ink);
   font: inherit;
   font-size: var(--text-xxs);
   font-weight: 500;
 }
 
 .host-agent-name input:hover {
-  border-color: #0000002e;
+  border-color: var(--keyline-firm);
 }
 
 .host-agent-name input:focus {
@@ -713,7 +701,7 @@
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 0.625rem;
-  background: #f3f2f0;
+  background: var(--fill-firm);
 }
 
 .host-method-picker::before {
@@ -726,8 +714,8 @@
   border-radius: 0.4375rem;
   background: var(--base);
   box-shadow:
-    0 1px 2px #0000000d,
-    0 0 0 1px #0000000a;
+    0 1px 2px var(--cast-faint),
+    0 0 0 1px var(--cast-faint);
   content: '';
   transform: translate3d(0, 0, 0);
   transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -747,7 +735,7 @@
   border: 0;
   border-radius: 0.4375rem;
   background: transparent;
-  color: var(--basic);
+  color: var(--ink-muted);
   font: inherit;
   font-size: var(--text-xxs);
   font-weight: 500;
@@ -755,7 +743,7 @@
 }
 
 .host-method-picker button[data-active='true'] {
-  color: var(--content);
+  color: var(--ink);
 }
 
 .host-method-picker button:focus-visible {
@@ -809,12 +797,12 @@
   display: flex;
   min-height: 2.5rem;
   align-items: center;
-  justify-content: space-between;
+  justify-ink: space-between;
   gap: 0.75rem;
   margin-top: 0.75rem;
   padding: 0.25rem 0.25rem 0.25rem 0.75rem;
   border-radius: 0.625rem;
-  background: #0075de0a;
+  background: var(--primary-cast-faint);
 }
 
 .host-key-placeholder {
@@ -826,7 +814,7 @@
   margin: 0;
   align-items: center;
   gap: 0.5rem;
-  color: var(--basic);
+  color: var(--ink-muted);
   font-size: var(--text-xxs);
 }
 
@@ -836,7 +824,7 @@
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 0 0 0.1875rem #0075de12;
+  box-shadow: 0 0 0 0.1875rem var(--primary-cast-faint);
   animation: host-waiting 1.6s ease-in-out infinite;
 }
 
@@ -847,7 +835,7 @@
 }
 
 .host-waiting[data-quiet='true'] .host-waiting-dot {
-  background: var(--neutral-300);
+  background: var(--ink-muted);
   box-shadow: none;
   animation: none;
 }
@@ -858,12 +846,12 @@
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
   align-items: center;
-  justify-content: center;
+  justify-ink: center;
   gap: 0.5rem;
-  border: 1px solid var(--neutral-950);
+  border: 1px solid var(--keyline);
   border-radius: 0.5rem;
   background: var(--base);
-  color: var(--content);
+  color: var(--ink);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xxs);
@@ -874,8 +862,8 @@
 }
 
 .host-key-refresh:hover {
-  border-color: #0000001f;
-  background: var(--base-secondary);
+  border-color: var(--keyline);
+  background: var(--fill);
 }
 
 .host-key-refresh:focus-visible {
@@ -890,7 +878,7 @@
 
 .host-skip {
   display: inline-flex;
-  width: max-content;
+  width: max-ink;
   margin: 0 -0.5rem 0 auto;
   padding: 0.375rem 0.5rem;
   align-items: center;
@@ -898,7 +886,7 @@
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
-  color: var(--neutral-300);
+  color: var(--ink-muted);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xxs);
@@ -906,12 +894,12 @@
 }
 
 .host-skip:hover {
-  color: var(--content);
+  color: var(--ink);
 }
 
 .host-skip svg {
   flex: 0 0 auto;
-  transition: transform 160ms var(--panel-ease);
+  transition: transform 160ms var(--ease-settle);
 }
 
 .host-skip:hover svg {
@@ -932,7 +920,7 @@
     width: min(48rem, calc(100vw - 2rem));
   }
 
-  .onboarding-content {
+  .onboarding-ink {
     width: 100%;
   }
 
