@@ -27,11 +27,11 @@
   font-weight: 400;
 }
 
-.home-ink {
+.home-content {
   @apply mx-auto w-[min(100%,52rem)] px-16 pt-20 pb-32;
 }
 
-.home-ink h1 {
+.home-content h1 {
   color: var(--ink);
   font-size: 2.5rem;
   font-weight: 700;
@@ -106,7 +106,7 @@
     width: min(20rem, calc(100vw - 2rem));
   }
 
-  .home-ink {
+  .home-content {
     padding: 3.5rem 1.5rem 6rem;
   }
 }

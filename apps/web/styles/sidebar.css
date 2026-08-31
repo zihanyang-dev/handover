@@ -113,8 +113,6 @@
 .home-close-sidebar,
 .home-open-sidebar {
   @apply grid shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent p-0 text-ink-muted;
-  @apply size-6 rounded-md;
-  transition: background var(--interaction-fast) ease-in-out;
 }
 
 .home-close-sidebar {
@@ -151,6 +149,11 @@
   width: 1.25rem;
   height: 1.25rem;
   fill: currentColor;
+}
+
+.home-open-sidebar {
+  @apply size-6 rounded-md;
+  transition: background var(--interaction-fast) ease-in-out;
 }
 
 .home-open-sidebar svg {
@@ -315,6 +318,13 @@
   white-space: nowrap;
 }
 
+/* Quiet enough that the title is still what the eye lands on: this answers "is this one mine",
+   which is a question somebody asks of the whole list at once rather than of one row. */
+.chat-history-starter {
+  margin-right: 0.375rem;
+  color: var(--ink-quiet);
+}
+
 .space-menu-space-copy > span {
   color: var(--ink-muted);
   font-size: 0.875rem;
@@ -361,14 +371,16 @@
   line-height: 1.05rem;
   text-align: left;
   text-decoration: none;
-  cursor: pointer;
-  font-weight: 500;
 }
 
 .space-menu-actions > button:not(:disabled),
 .space-menu-actions > a,
 .space-menu-account a,
 .space-menu-account li > button,
+.space-menu-sign-out {
+  cursor: pointer;
+}
+
 .space-menu-actions > button:not(:disabled):hover,
 .space-menu-actions > a:hover,
 .space-menu-account a:hover,
@@ -417,6 +429,10 @@
 
 .space-menu-account li:last-child a {
   color: var(--focus);
+}
+
+.space-menu-sign-out {
+  font-weight: 500;
 }
 
 .space-emoji-popover {
@@ -524,7 +540,7 @@
   }
 
   .settings-tab {
-    justify-ink: center;
+    justify-content: center;
     width: 100%;
     min-width: 0;
   }
@@ -555,7 +571,7 @@
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  justify-ink: center;
+  justify-content: center;
 }
 
 .home-sidebar-panel[data-tab='inbox'] .panel-head,
@@ -568,7 +584,7 @@
   min-height: 13.75rem;
   flex-direction: column;
   align-items: center;
-  justify-ink: center;
+  justify-content: center;
   overflow: hidden;
   padding-inline: 1.25rem;
   text-align: center;
@@ -666,7 +682,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  flex-direction: column;
 }
 
 .chat-agents ul {
@@ -765,6 +780,10 @@
   margin-top: 0.5rem;
 }
 
+.chat-history {
+  flex-direction: column;
+}
+
 .chat-history-row {
   position: relative;
   display: flex;
@@ -805,13 +824,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Quiet enough that the title is still what the eye lands on: this answers "is this one mine",
-   which is a question somebody asks of the whole list at once rather than of one row. */
-.chat-history-starter {
-  margin-right: 0.375rem;
-  color: var(--ink-quiet);
 }
 
 .chat-history-summary time {

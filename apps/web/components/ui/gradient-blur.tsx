@@ -216,7 +216,7 @@ export function GradientBlur({ children }: GradientBlurProps) {
   return (
     <div ref={rootRef} className="gradient-blur-field">
       <canvas ref={canvasRef} className="gradient-blur-canvas" aria-hidden />
-      <div className="gradient-blur-ink">{children}</div>
+      <div className="gradient-blur-content">{children}</div>
     </div>
   )
 }

@@ -23,7 +23,7 @@
   /* Keep the way in high enough to read as the start of a journey instead of a dialog floating
      around the vertical midpoint. Equal side padding keeps the 360px column truly centered. */
   @apply relative grid min-h-dvh bg-base px-6 pt-[clamp(5rem,9vh,5.5rem)] pb-12 text-ink;
-  place-ink: start center;
+  place-content: start center;
   place-items: start center;
   /* The product's own face: the system stack read as generic SaaS. */
 }

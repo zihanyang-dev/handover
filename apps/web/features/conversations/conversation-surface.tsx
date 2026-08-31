@@ -258,7 +258,7 @@ function ConversationMain({
           className="chat-scroll"
           onScroll={noteScrollPosition}
         >
-          <MessageScrollerContent className="chat-scroll-ink">
+          <MessageScrollerContent className="chat-scroll-content">
             <Transcript
               slug={slug}
               id={id}
@@ -586,7 +586,7 @@ function ReplyContent({
   readonly liveOutputs: ReadonlyMap<string, LiveOutput>
 }) {
   return (
-    <div className="chat-agent-reply-ink">
+    <div className="chat-agent-reply-content">
       {blocks.map((block) => {
         if (block.kind === 'tools') {
           return (

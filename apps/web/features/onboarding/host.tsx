@@ -429,7 +429,7 @@ export function ConnectHost({ forSlug }: { readonly forSlug: string | undefined 
       <div className="onboarding-shell">
         <Steps step={2} done={leaving} mark={leaving || arrived ? 'success' : 'working'} />
 
-        <section className="onboarding-ink step-card host-stack">
+        <section className="onboarding-content step-card host-stack">
           <div className="auth-head host-head">
             <h1>Connect a machine</h1>
           </div>

@@ -330,7 +330,7 @@ function MainPane({
       {canvas ? (
         children
       ) : (
-        <section className="home-ink" aria-labelledby="home-title">
+        <section className="home-content" aria-labelledby="home-title">
           <h1 id="home-title">{where}</h1>
           {children}
         </section>

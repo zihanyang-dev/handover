@@ -2,7 +2,7 @@
    The progress rail owns half the desktop viewport; the task itself stays a readable 480px. */
 .onboarding-page {
   @apply px-6 pt-[clamp(5.5rem,12vh,7rem)] pb-16;
-  place-ink: start center;
+  place-content: start center;
   place-items: start center;
 }
 
@@ -10,7 +10,7 @@
   @apply flex w-[min(50vw,48rem)] flex-col gap-8;
 }
 
-.onboarding-ink {
+.onboarding-content {
   @apply flex w-120 max-w-full self-center flex-col gap-5;
 }
 
@@ -797,7 +797,7 @@
   display: flex;
   min-height: 2.5rem;
   align-items: center;
-  justify-ink: space-between;
+  justify-content: space-between;
   gap: 0.75rem;
   margin-top: 0.75rem;
   padding: 0.25rem 0.25rem 0.25rem 0.75rem;
@@ -846,7 +846,7 @@
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
   align-items: center;
-  justify-ink: center;
+  justify-content: center;
   gap: 0.5rem;
   border: 1px solid var(--keyline);
   border-radius: 0.5rem;
@@ -878,7 +878,7 @@
 
 .host-skip {
   display: inline-flex;
-  width: max-ink;
+  width: max-content;
   margin: 0 -0.5rem 0 auto;
   padding: 0.375rem 0.5rem;
   align-items: center;
@@ -920,7 +920,7 @@
     width: min(48rem, calc(100vw - 2rem));
   }
 
-  .onboarding-ink {
+  .onboarding-content {
     width: 100%;
   }
 

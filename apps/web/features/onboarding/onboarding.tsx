@@ -438,7 +438,7 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
       <div className="onboarding-shell">
         <Steps step={1} done={done} mark={done ? 'success' : 'thinking'} />
 
-        <section className="onboarding-ink step-card">
+        <section className="onboarding-content step-card">
           <Arrival result={result} />
 
           {me.isPending && (
