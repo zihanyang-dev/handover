@@ -1381,6 +1381,9 @@
               "$ref": "#/components/schemas/Message"
             }
           },
+          "earlier": {
+            "type": "boolean"
+          },
           "underway": {
             "$ref": "#/components/schemas/Underway"
           }
@@ -1391,7 +1394,8 @@
           "machineId",
           "working",
           "offers",
-          "messages"
+          "messages",
+          "earlier"
         ]
       },
       "Message": {
@@ -4333,6 +4337,15 @@
             },
             "required": false,
             "name": "after",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "required": false,
+            "name": "before",
             "in": "query"
           }
         ],

@@ -1,6 +1,7 @@
 /** Reading and writing the durable conversation transcript and its list projection. */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
@@ -92,7 +93,15 @@ export function useConversation(slug: string, id: string) {
       if (data === undefined)
         throw new Error(`could not read the conversation (${response.status})`)
 
-      return { ...data, messages: [...held, ...data.messages] }
+      return {
+        ...data,
+        // Kept from what is already here when this was a catch-up. Asking for what came after a
+        // line prepends nothing, so whether there is anything earlier is unchanged — and the
+        // server, answering only about the page it just sent, would say yes and undo a reader who
+        // had already scrolled to the beginning.
+        earlier: last === undefined ? data.earlier : (sofar?.earlier ?? data.earlier),
+        messages: [...held, ...data.messages],
+      }
     },
     // Only while something is happening. A finished conversation is finished, and asking again
     // every second would be this page pretending it might not be.
@@ -210,4 +219,53 @@ export function useSetPinned(slug: string, id: string) {
     },
     onSuccess: async () => client.invalidateQueries({ queryKey: conversationsIn(slug).queryKey }),
   })
+}
+
+/**
+ * The page before the one on screen, put in front of it.
+ *
+ * Written here rather than as another `useQuery` because it is not a query: there is one
+ * transcript and this grows it backwards. A second query keyed by page would be a second copy of
+ * the same conversation, and the two would disagree the moment anybody said anything.
+ *
+ * `reading` is what a scroll handler needs to keep its position: the page must not move under
+ * somebody while the older lines are on their way.
+ */
+export function useEarlier(slug: string, id: string) {
+  const client = useQueryClient()
+  const [reading, setReading] = useState(false)
+
+  const read = useCallback(async () => {
+    const queryKey = transcriptOf(slug, id)
+    const sofar = client.getQueryData<Transcript | null>(queryKey)
+    const earliest = sofar?.messages[0]?.seq
+    if (sofar === null || sofar === undefined || !sofar.earlier || earliest === undefined) return
+
+    setReading(true)
+    try {
+      const { data } = await api.GET('/spaces/{slug}/conversations/{id}', {
+        params: { path: { slug, id }, query: { before: earliest } },
+      })
+      if (data === undefined) return
+
+      client.setQueryData<Transcript | null>(queryKey, (held) =>
+        held == null
+          ? held
+          : // Only what is genuinely before what is held. Two reads in flight, or a line that
+            // arrived between them, would otherwise put the same thing on screen twice.
+            {
+              ...held,
+              earlier: data.earlier,
+              messages: [
+                ...data.messages.filter((one) => one.seq < (held.messages[0]?.seq ?? 0)),
+                ...held.messages,
+              ],
+            },
+      )
+    } finally {
+      setReading(false)
+    }
+  }, [client, id, slug])
+
+  return { reading, read }
 }

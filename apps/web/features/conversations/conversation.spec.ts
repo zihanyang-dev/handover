@@ -10,6 +10,7 @@ describe('conversation transcript', () => {
       machineId: 'm-1',
       working: { state: 'idle' },
       offers: [],
+      earlier: false,
     }
     const current = {
       ...base,

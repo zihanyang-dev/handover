@@ -574,8 +574,16 @@ export type Reading = {
    * unread, like a message's content — the layer that puts it on the wire answers for its shape.
    */
   readonly offers: unknown
-  /** Everything since what the reader said it had, or the whole of it when they said nothing. */
+  /** Everything since what the reader said it had, or the end of it when they said nothing. */
   readonly messages: readonly Stored[]
+  /**
+   * Whether anything was said before the first line here.
+   *
+   * About the page and not the conversation, which is what makes it the same answer to both
+   * questions a reader asks: false is "you are looking at the beginning", and it is the only
+   * thing that stops a page asking for more for ever.
+   */
+  readonly earlier: boolean
   /** The piece of work running in it, if somebody handed it over. Nothing when it is just talk. */
   readonly underway: Underway | undefined
 }
@@ -650,6 +658,14 @@ export type ToRead = {
   readonly conversationId: string
   readonly spaceId: string
   readonly after?: number | undefined
+  /**
+   * The earliest line a reader already has, when they are asking for what came before it.
+   *
+   * The other direction from {@link after}, and the only one that is a page: scrolling up through
+   * a history that may be a year long. Left out with `after` left out too, the read is the end of
+   * the transcript, which is where somebody opening one is looking.
+   */
+  readonly before?: number | undefined
 }
 
 async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined> {
@@ -692,11 +708,8 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
       'users.display_name as said',
     ])
     .where('messages.conversation_id', '=', conversation.id)
-    .orderBy('messages.seq')
 
-  const messages = await (
-    reading.after === undefined ? from : from.where('messages.seq', '>', reading.after)
-  ).execute()
+  const read = await transcriptFor(from, reading)
 
   return {
     ...conversation,
@@ -704,9 +717,58 @@ async function oneReading(tx: Tx, reading: ToRead): Promise<Reading | undefined>
       await owedAnAnswer(tx, conversation.id),
       presence(conversation, conversation.asOf),
     ),
-    messages,
+    ...read,
     underway: await underwayIn(tx, conversation.id),
   }
+}
+
+/**
+ * How much of a transcript one read hands back.
+ *
+ * A conversation is only ever appended to, so the whole of one has no upper bound — and opening a
+ * long one used to download every line of it before anything appeared. Fifty is what a screen
+ * holds a little more than: enough that arriving somewhere feels like arriving at the end of it,
+ * short enough that the wait is not the transcript.
+ *
+ * Not on the wire. Slack encodes its cursors opaquely for the same reason — a page size a caller
+ * can set is a page size a caller can get wrong, and there is no caller here that is not this
+ * product.
+ */
+const AT_A_TIME = 50
+
+type Reads = { readonly messages: readonly Stored[]; readonly earlier: boolean }
+
+/**
+ * Everything past a line, or the page ending at one.
+ *
+ * The two are different questions and only one of them is a page. `after` is a catch-up: whatever
+ * arrived while somebody was away is what they are missing, and handing that back fifty at a time
+ * would be a page that goes on being behind. `before`, and the first read of all, are the ones a
+ * person scrolls through.
+ *
+ * Read backwards and turned round, because "the last fifty" has no answer read forwards. One more
+ * than a page is asked for and thrown away: it is the whole of the evidence that there is
+ * something before this, and it costs one row rather than a second count over the table.
+ */
+async function transcriptFor(
+  from: SelectQueryBuilder<DB, 'messages' | 'users', Stored>,
+  reading: ToRead,
+): Promise<Reads> {
+  if (reading.after !== undefined) {
+    const messages = await from
+      .orderBy('messages.seq')
+      .where('messages.seq', '>', reading.after)
+      .execute()
+
+    return { messages, earlier: reading.after > 0 }
+  }
+
+  const back = from.orderBy('messages.seq', 'desc').limit(AT_A_TIME + 1)
+  const page = await (
+    reading.before === undefined ? back : back.where('messages.seq', '<', reading.before)
+  ).execute()
+
+  return { messages: page.slice(0, AT_A_TIME).reverse(), earlier: page.length > AT_A_TIME }
 }
 
 export type HandedOff =
