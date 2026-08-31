@@ -77,14 +77,6 @@ export type CheckingIn = {
    */
   readonly workRoot: string
   /**
-   * The directory this process is in, which is the one `handover connect` was run in.
-   *
-   * Reported, not used. Nothing runs here any more — every turn works in a folder of its own —
-   * but `03` promised an agent works in your files, and the only way that promise survives is
-   * for a person to be able to pick this directory when they open a conversation. A screen
-   * cannot offer it without having been told it.
-   */
-  /**
    * How to run this program again.
    *
    * Handed to the agent so it can say things back. Not named as `handover`, because that is an
@@ -130,7 +122,6 @@ export async function reportOnce(
     readonly restarted?: boolean
     /** Adds what each agent offers, the first time this process sees each version. */
     readonly offering?: Offering
-    /** The directory this machine was connected in, so a screen can offer it as "my project". */
   } = {},
 ): Promise<Reported> {
   const looked = await findAgents(lookFor, env)

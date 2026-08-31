@@ -48,9 +48,8 @@ export function useChangeRole(slug: string) {
 /**
  * Taking somebody out, which is also how somebody leaves.
  *
- * The machines read again as well: a machine belongs to whoever connected it, so one that was
- * reachable through this person is not reachable a moment later. A list that still showed it
- * would offer an agent nobody can reach.
+ * The machines read again as well: leaving revokes the relationships this person added for their
+ * machines in this Space. A list that still showed one would offer an agent nobody can reach.
  */
 export function useRemoveMember(slug: string) {
   const client = useQueryClient()

@@ -78,7 +78,7 @@ test('every screen, as it looks today', async ({ page, context }) => {
   await page.reload()
   await shot(page, '06-space-home')
 
-  const machine = await aMachine(await sessionOf(context), 'mina-mbp')
+  const machine = await aMachine(await sessionOf(context), 'mina-mbp', slug)
   await machine.poll()
   await page.getByRole('tab', { name: 'Chat' }).click()
   const agent = page.getByRole('link', { name: /on mina-mbp, ready/iu })

@@ -8,13 +8,14 @@
  */
 
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { render, renderHook, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { components } from '../../generated/api.ts'
 import { machinesIn } from '../machines/machine-list.ts'
+import { RemovalChecklist } from './member-removal.tsx'
 import { peopleIn, useChangeRole, useRemoveMember, whatTheyHold } from './people.ts'
 
 const server = setupServer()
@@ -178,7 +179,36 @@ describe('changing what somebody may do here', () => {
 })
 
 describe('taking somebody out', () => {
-  it('reads the machines again as well, because theirs went with them', async () => {
+  it('shows which machine relationships will end without making them block removal', async () => {
+    server.use(
+      http.get(`*/spaces/acme/members/${RUI.userId}/held`, () =>
+        HttpResponse.json({
+          working: [],
+          machines: [{ id: '44444444-4444-4444-8444-444444444444', name: 'rui-mbp', inUse: 0 }],
+        }),
+      ),
+    )
+    const { wrapper } = inABrowser()
+
+    render(
+      <RemovalChecklist
+        slug="acme"
+        person={RUI}
+        people={[MINA, RUI]}
+        back={() => {}}
+        removed={() => {}}
+      />,
+      { wrapper },
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Machines' })).toBeDefined()
+    expect(screen.getByText(/removed from this Space/u)).toBeDefined()
+    expect(
+      screen.getByRole('button', { name: 'Remove member' }).getAttribute('disabled'),
+    ).toBeNull()
+  })
+
+  it('reads the machines again as well, because their Space relationships ended', async () => {
     const counted = counting()
     server.use(
       ...counted.handlers,

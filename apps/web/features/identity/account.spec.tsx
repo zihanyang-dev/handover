@@ -9,7 +9,7 @@ import { signedIn } from '../../pretend/signed-in.ts'
 import { waysIn } from '../../pretend/ways-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
-const server = setupServer()
+const server = setupServer(http.get('*/me/machines', () => HttpResponse.json({ machines: [] })))
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: 'error' })

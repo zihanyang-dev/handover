@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
-import { Connect } from '../features/machines/connect.tsx'
+import { Connect, connectSearch } from '../features/machines/connect.tsx'
 
 /**
  * The same screen, reached by an address that already carries the code.
@@ -9,10 +9,11 @@ import { Connect } from '../features/machines/connect.tsx'
  * say "that code is not right", and a wrong address can only say nothing at all.
  */
 function Screen() {
-  return <Connect typed={Route.useParams().code} />
+  return <Connect typed={Route.useParams().code} spaceSlug={Route.useSearch().space} />
 }
 
 export const Route = createFileRoute('/connect_/$code')({
+  validateSearch: connectSearch,
   beforeLoad: async ({ context, location }) => onlySignedIn(context.queryClient, location),
   component: Screen,
 })

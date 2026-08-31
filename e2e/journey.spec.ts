@@ -26,10 +26,10 @@ test('talk to an agent, and read what it answers', async ({ page, context }) => 
   // ① Sign in from the front door and make a Space — which lands straight in it, with no first
   // Space special case, and offers to connect a machine on the way.
   await signsIn(page, 'mina')
-  await makesASpace(page)
+  const slug = await makesASpace(page)
 
   // ② A machine of theirs connects, and its agents appear without anybody refreshing.
-  const machine = await aMachine(await sessionOf(context), 'mina-mbp')
+  const machine = await aMachine(await sessionOf(context), 'mina-mbp', slug)
   await machine.poll()
   await picks(page, 'mina-mbp')
 
@@ -59,8 +59,8 @@ test('a machine that goes away stops the page saying its agent is ready', async 
   context,
 }) => {
   await signsIn(page, 'rui')
-  await makesASpace(page)
-  const machine = await aMachine(await sessionOf(context), 'rui-mbp')
+  const slug = await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'rui-mbp', slug)
   await machine.poll()
   await page.reload()
   await page.getByRole('tab', { name: 'Chat' }).click()
@@ -83,15 +83,18 @@ test('a machine that goes away stops the page saying its agent is ready', async 
 
 test('a machine owner changes agent settings and disconnects it', async ({ page, context }) => {
   await signsIn(page, 'machine-owner')
-  await makesASpace(page)
-  const machine = await aMachine(await sessionOf(context), 'settings-mbp')
+  const slug = await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'settings-mbp', slug)
   await machine.poll()
 
   await openSpaceSettings(page)
-  await page.getByRole('tab', { name: 'Machines' }).click()
-  await expect(page.getByRole('heading', { name: 'Machines' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Account' }).click()
+  await page.setViewportSize({ width: 400, height: 800 })
+  await expect(page.getByRole('heading', { name: 'Your machines' })).toBeVisible()
+  const scrollWidth = await page.evaluate<number>('document.documentElement.scrollWidth')
+  expect(scrollWidth).toBeLessThanOrEqual(400)
   await expect(page.getByText('settings-mbp')).toBeVisible({ timeout: 15_000 })
-  await page.getByLabel('Name').fill('Runner')
+  await page.getByLabel('Name', { exact: true }).fill('Runner')
   const atOnce = page.getByLabel('At once')
   await atOnce.fill('4')
   const saved = page.waitForResponse(
@@ -102,22 +105,20 @@ test('a machine owner changes agent settings and disconnects it', async ({ page,
   await page.getByRole('button', { name: 'Close settings' }).click()
 
   await openSpaceSettings(page)
-  await page.getByRole('tab', { name: 'Machines' }).click()
-  await expect(page.getByLabel('Name')).toHaveValue('Runner')
+  await page.getByRole('tab', { name: 'Account' }).click()
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Runner')
   await expect(page.getByLabel('At once')).toHaveValue('4')
-  await page.getByRole('button', { name: 'settings-mbp actions' }).click()
-  await page
-    .getByRole('menu', { name: 'settings-mbp actions' })
-    .getByRole('menuitem', { name: 'Disconnect machine' })
-    .click()
   await page.getByRole('button', { name: 'Disconnect machine' }).click()
-  await expect(page.getByText('No machines here')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Disconnect' }).click()
+  await expect(page.getByText('You have not connected a machine yet.')).toBeVisible({
+    timeout: 15_000,
+  })
 })
 
 test('hand work over, find its question in Inbox, and take it back', async ({ page, context }) => {
   await signsIn(page, 'handover-owner')
-  await makesASpace(page)
-  const machine = await aMachine(await sessionOf(context), 'handover-mbp')
+  const slug = await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'handover-mbp', slug)
   await machine.poll()
   await picks(page, 'handover-mbp')
 
@@ -137,6 +138,17 @@ test('hand work over, find its question in Inbox, and take it back', async ({ pa
   await expect(page.getByRole('heading', { name: 'Piece of work' })).toBeVisible({
     timeout: 15_000,
   })
+
+  // Stopping this Space from using the machine would strand this exact work. The confirmation
+  // must name it before the relationship is changed, not make the interruption discoverable only
+  // after the agent stops answering.
+  await openSpaceSettings(page)
+  await page.getByRole('tab', { name: 'Machines' }).click()
+  await page.getByRole('button', { name: /^Stop sharing with /u }).click()
+  await expect(page.getByRole('heading', { name: 'Work still using this machine' })).toBeVisible()
+  await expect(page.getByRole('link', { name: goal })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Close settings' }).click()
 
   const autonomous = await waitsForATurn(machine)
   await machine.stops(autonomous, {
@@ -188,8 +200,8 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
   // connection somebody is holding open. A screen test cannot reach it — it fakes `EventSource` —
   // so without this the whole path from a machine to a person's screen is unwalked.
   await signsIn(page, 'ilya')
-  await makesASpace(page)
-  const machine = await aMachine(await sessionOf(context), 'ilya-mbp')
+  const slug = await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'ilya-mbp', slug)
   await machine.poll()
   await picks(page, 'ilya-mbp')
 

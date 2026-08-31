@@ -30,7 +30,7 @@ test('an owner invites, promotes, removes, and revokes through Space Settings', 
   await mina.getByRole('button', { name: /^Join /u }).click()
   await mina.waitForURL((url) => url.pathname === `/s/${slug}`, { timeout: 20_000 })
 
-  const machine = await aMachine(await sessionOf(minaBrowser), 'mina-mbp')
+  const machine = await aMachine(await sessionOf(minaBrowser), 'mina-mbp', slug)
   await machine.poll()
   await picks(mina, 'mina-mbp')
   await mina.getByLabel(/^Message /u).fill('keep the release moving')
@@ -81,9 +81,11 @@ test('an owner invites, promotes, removes, and revokes through Space Settings', 
 
   await kai.getByRole('button', { name: 'Transfer' }).first().click()
   await expect(kai.getByText(goal)).not.toBeVisible({ timeout: 15_000 })
-  await kai.getByRole('button', { name: 'Transfer' }).click()
-  await expect(kai.getByText('Nothing is still theirs here.')).toBeVisible({ timeout: 15_000 })
-  await kai.getByRole('button', { name: 'Remove member' }).click()
+  await expect(kai.getByRole('heading', { name: 'Machines' })).toBeVisible({ timeout: 15_000 })
+  await expect(kai.getByText(/It will be removed from this Space/u)).toBeVisible()
+  const removeMember = kai.getByRole('button', { name: 'Remove member' })
+  await expect(removeMember).toBeEnabled()
+  await removeMember.click()
 
   await mina.reload()
   await expect(mina.getByText(/this space is not available/i)).toBeVisible({ timeout: 15_000 })

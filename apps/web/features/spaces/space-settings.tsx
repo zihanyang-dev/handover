@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { Laptop, People } from 'react-bootstrap-icons'
 import { TabList, TabPanel, type Tab } from '../../components/ui/tabs.tsx'
 import type { components } from '../../generated/api.ts'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { AccountSettings } from '../identity/account.tsx'
 import { meQuery } from '../identity/me.ts'
 import { SpaceMachines } from '../machines/space-machines.tsx'
@@ -26,11 +27,16 @@ type Me = components['schemas']['Me']
 
 export type SettingsSection = 'account' | 'people' | 'machines'
 
+function accountTabName(me: Me | undefined): string {
+  if (me === undefined) return 'Account'
+  return nameUnlessAddress(me.displayName) ?? 'Account'
+}
+
 function settingsTabs(me: Me | undefined): readonly Tab[] {
   return [
     {
       id: 'account',
-      label: me?.displayName ?? 'Account',
+      label: accountTabName(me),
       group: 'Account',
       icon:
         me === undefined ? (
@@ -103,7 +109,7 @@ export function SpaceSettings({
   return (
     <dialog
       ref={dialog}
-      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center border-0 bg-transparent p-0 open:flex backdrop:bg-[var(--scrim)]"
+      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center border-0 bg-transparent p-0 open:flex backdrop:bg-(--scrim)"
       aria-label={`${space.displayName} settings`}
       onKeyDown={closeOnEscape}
       onCancel={(event) => {
@@ -116,18 +122,19 @@ export function SpaceSettings({
         if (event.target === event.currentTarget) close()
       }}
     >
-      <section className="relative flex h-[calc(100%-100px)] max-h-full w-[90vw] max-w-[1512px] flex-row overflow-hidden rounded-[12px] bg-white shadow-[var(--dialog-shadow)] max-sm:flex-col">
+      <section className="relative flex h-[calc(100%-100px)] max-h-full w-[90vw] max-w-378 flex-row overflow-hidden rounded-xl bg-white shadow-(--dialog-shadow) max-sm:flex-col">
         <SettingsSections section={section} choose={setSection} />
         <TabPanel
           name="space-settings"
           active={section}
-          className="space-settings-panel relative z-[1] min-h-0 min-w-0 grow overflow-y-auto bg-white focus:outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="space-settings-panel relative z-1 min-h-0 min-w-0 grow overflow-y-auto bg-white focus:outline-none scrollbar-none [&::-webkit-scrollbar]:hidden"
         >
           <CloseButton close={close} />
-          <div className="mx-auto w-full max-w-[920px] px-[60px] pt-9 pb-16 max-sm:px-5 max-sm:pt-12">
+          <div className="mx-auto w-full max-w-230 px-15 pt-9 pb-16 max-sm:px-5 max-sm:pt-12">
             <SettingsContent
               section={section}
               slug={space.slug}
+              spaceName={space.displayName}
               afterLeaving={afterLeaving}
               revealedInvitation={revealedInvitation}
               revealInvitation={setRevealedInvitation}
@@ -142,12 +149,14 @@ export function SpaceSettings({
 function SettingsContent({
   section,
   slug,
+  spaceName,
   afterLeaving,
   revealedInvitation,
   revealInvitation,
 }: {
   readonly section: SettingsSection
   readonly slug: string
+  readonly spaceName: string
   readonly afterLeaving: () => void
   readonly revealedInvitation: RevealedInvitation | undefined
   readonly revealInvitation: (invitation: RevealedInvitation | undefined) => void
@@ -162,7 +171,7 @@ function SettingsContent({
         revealInvitation={revealInvitation}
       />
     )
-  return <SpaceMachines slug={slug} />
+  return <SpaceMachines slug={slug} name={spaceName} />
 }
 
 function SettingsSections({
@@ -175,7 +184,7 @@ function SettingsSections({
   const me = useQuery(meQuery)
 
   return (
-    <aside className="h-full w-[240px] shrink-0 overflow-y-auto bg-surface px-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:px-3 max-sm:py-2">
+    <aside className="h-full w-60 shrink-0 overflow-y-auto bg-surface px-2 pt-4 scrollbar-none [&::-webkit-scrollbar]:hidden max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:px-3 max-sm:py-2">
       <TabList
         name="space-settings"
         label="Settings"
@@ -197,7 +206,7 @@ function SettingsSections({
 function renderGroup(group: string): ReactNode {
   return (
     <p
-      className={`settings-tab-group m-0 px-2 py-1.5 text-[12px] leading-4 font-medium text-ink-quiet${group === 'Space' ? ' mt-4' : ''}`}
+      className={`settings-tab-group m-0 px-2 py-1.5 text-copy-xxs leading-4 font-medium text-ink-quiet${group === 'Space' ? ' mt-4' : ''}`}
       role="presentation"
     >
       {group}
@@ -220,14 +229,14 @@ function renderSection(tab: Tab): ReactNode {
 
 function CloseButton({ close }: { readonly close: () => void }) {
   return (
-    <div className="absolute top-[11px] right-[11px] z-10 size-6">
+    <div className="absolute top-2.75 right-2.75 z-10 size-6">
       <button
         className="group flex size-full cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-ink-quiet focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         aria-label="Close settings"
         onClick={close}
       >
-        <span className="flex size-[22px] items-center justify-center rounded-full bg-white transition-colors duration-100 ease-in-out group-hover:bg-[var(--interaction-hover)] group-active:bg-[var(--interaction-pressed)]">
+        <span className="flex size-5.5 items-center justify-center rounded-full bg-white transition-colors duration-100 ease-in-out group-hover:bg-(--interaction-hover) group-active:bg-(--interaction-pressed)">
           <CloseIcon />
         </span>
       </button>
@@ -238,7 +247,7 @@ function CloseButton({ close }: { readonly close: () => void }) {
 /** The 16px close mark measured from the same Settings dialog. */
 function CloseIcon() {
   return (
-    <svg className="size-[14px] shrink-0 fill-current" viewBox="0 0 16 16" aria-hidden>
+    <svg className="size-3.5 shrink-0 fill-current" viewBox="0 0 16 16" aria-hidden>
       <title>Close</title>
       <path d="M12.73 4.33a.75.75 0 1 0-1.06-1.06L8 6.94 4.33 3.27a.75.75 0 0 0-1.06 1.06L6.94 8l-3.67 3.67a.75.75 0 1 0 1.06 1.06L8 9.06l3.67 3.67a.75.75 0 0 0 1.06-1.06L9.06 8z" />
     </svg>

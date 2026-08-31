@@ -493,16 +493,19 @@ function naming({ db }: ConversationApi) {
     summary: 'Record what the agent calls this conversation',
     params: { id: rowId },
     body: AgentSession,
-    answers: { 204: 'Kept, unless it already had one' },
+    answers: {
+      204: 'Kept, unless it already had one',
+      404: refuses(UNAVAILABLE, 'That conversation was not given to this machine'),
+    },
 
     run: async (c) => {
-      await noteAgentSession(db, {
+      const noted = await noteAgentSession(db, {
         conversationId: c.req.valid('param').id,
         machineId: c.get('machineId'),
         session: c.req.valid('json').session,
       })
 
-      return nothing(c, 204)
+      return noted ? nothing(c, 204) : refused(c, UNAVAILABLE)
     },
   })
 }

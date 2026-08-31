@@ -8,7 +8,7 @@
 
 import { normalizeSlug } from '@handover/universal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ChevronRight, Plus, X } from 'react-bootstrap-icons'
 import { api, retryKey, retryKeyDone } from '../../api.ts'
@@ -18,11 +18,6 @@ import { ME, meQuery, type Me } from '../identity/me.ts'
 import { SpaceEmojiPicker } from '../spaces/emoji-picker.tsx'
 import { spaceRefusal } from '../spaces/refusal.ts'
 import { STEP_EXIT_MS, Steps } from './steps.tsx'
-
-function spaceFormPresentation(embedded: boolean, hasSpaces: boolean) {
-  if (embedded) return { className: 'stack-tight space-create-form', autoFocus: false }
-  return { className: 'stack-tight', autoFocus: !hasSpaces }
-}
 
 function SpaceFormHeading({ embedded }: { readonly embedded: boolean }) {
   if (embedded) return null
@@ -82,31 +77,9 @@ function SpaceEmojiField({
   )
 }
 
-/** One Space name, with its address appearing as it is typed. */
-function MakeSpace({
-  me,
-  onMade,
-  embedded = false,
-  active = true,
-}: {
-  readonly me: Me
-  readonly onMade: (slug: string) => void
-  readonly embedded?: boolean
-  readonly active?: boolean
-}) {
+function useMakeSpace(me: Me, space: string, emoji: string, onMade: (slug: string) => void) {
   const client = useQueryClient()
-  const spaceField = useId()
-  const urlField = useId()
-  const error = `${spaceField}-error`
-  const [space, setSpace] = useState('')
-  const [emoji, setEmoji] = useState('🏠')
-  const presentation = spaceFormPresentation(embedded, me.spaces.length > 0)
-  const slug = normalizeSlug(space)
-  // This is for a person to read, not an HTTP client to serialize. URL.href percent-encodes
-  // perfectly valid Unicode slugs and turns a name such as 你好 into noise.
-  const spaceUrl = slug === null ? '' : `${globalThis.location.origin}/s/${slug}`
-
-  const begin = useMutation({
+  return useMutation({
     mutationFn: async () => {
       const { data, error } = await api.POST('/spaces', {
         body: {
@@ -128,24 +101,55 @@ function MakeSpace({
         const person = current ?? me
         return {
           ...person,
-          spaces: [...person.spaces.filter((space) => space.slug !== made.slug), made],
+          spaces: [...person.spaces.filter((known) => known.slug !== made.slug), made],
         }
       })
       onMade(made.slug)
     },
   })
+}
 
-  const refused = spaceRefusal(begin.error)
+function spaceCreationFailure(thrown: unknown, isError: boolean): string | undefined {
+  const refused = spaceRefusal(thrown)
+  if (refused !== undefined) return refused
+  return isError ? 'That could not be sent. Try again shortly.' : undefined
+}
+
+/** One Space name, with its address appearing as it is typed. */
+function MakeSpace({
+  me,
+  onMade,
+  embedded = false,
+  active = true,
+}: {
+  readonly me: Me
+  readonly onMade: (slug: string) => void
+  readonly embedded?: boolean
+  readonly active?: boolean
+}) {
+  const spaceField = useId()
+  const urlField = useId()
+  const error = `${spaceField}-error`
+  const [space, setSpace] = useState('')
+  const [emoji, setEmoji] = useState('🏠')
+  const formClassName = embedded ? 'stack-tight space-create-form' : 'stack-tight'
+  const slug = normalizeSlug(space)
+  // This is for a person to read, not an HTTP client to serialize. URL.href percent-encodes
+  // perfectly valid Unicode slugs and turns a name such as 你好 into noise.
+  const spaceUrl = slug === null ? '' : `${globalThis.location.origin}/s/${slug}`
+
+  const begin = useMakeSpace(me, space, emoji, onMade)
+
   // Two different things to say. A refusal has words of its own; a call that never arrived has
   // none, and saying nothing at all would leave a button that looks like it did nothing.
-  const said = refused ?? (begin.isError ? 'That could not be sent. Try again shortly.' : undefined)
+  const said = spaceCreationFailure(begin.error, begin.isError)
 
   return (
     <>
       <SpaceFormHeading embedded={embedded} />
 
       <form
-        className={presentation.className}
+        className={formClassName}
         onSubmit={(event) => {
           event.preventDefault()
           begin.mutate()
@@ -160,7 +164,6 @@ function MakeSpace({
             <input
               id={spaceField}
               className="field"
-              autoFocus={presentation.autoFocus}
               placeholder="Acme"
               aria-invalid={said !== undefined}
               aria-describedby={error}
@@ -215,7 +218,7 @@ function SpaceCreateDrawer({
   readonly onClose: () => void
   readonly onMade: (slug: string) => void
 }) {
-  const drawer = useRef<HTMLDivElement>(null)
+  const drawer = useRef<HTMLElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -251,12 +254,11 @@ function SpaceCreateDrawer({
   }, [onClose, open])
 
   return (
-    <div
+    <section
       ref={drawer}
       id="new-space-form"
       className="space-create-drawer t-panel-slide"
       data-open={open}
-      role="region"
       aria-label="New Space drawer"
       aria-hidden={!open}
       inert={!open}
@@ -271,7 +273,7 @@ function SpaceCreateDrawer({
         </div>
         <MakeSpace me={me} embedded active={open} onMade={onMade} />
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -468,12 +470,20 @@ export function Onboarding({ result }: { readonly result: string | undefined }) 
           )}
 
           {me.isSuccess && !choosing && (
-            <MakeSpace
-              me={me.data}
-              onMade={(slug) => {
-                setLeave({ to: 'host', slug })
-              }}
-            />
+            <>
+              <MakeSpace
+                me={me.data}
+                onMade={(slug) => {
+                  setLeave({ to: 'host', slug })
+                }}
+              />
+              <Link
+                className="mt-4 inline-flex text-[13px] text-ink-muted no-underline hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                to="/settings"
+              >
+                Account settings
+              </Link>
+            </>
           )}
         </section>
       </div>

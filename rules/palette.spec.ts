@@ -23,8 +23,11 @@ const WEB = 'apps/web'
 /** `--name:` at the head of a declaration — the only place a custom property is given a value. */
 const DEFINED = /(?:^|[;{\s])(--[a-z][a-z0-9-]*)\s*:/gu
 
-/** `var(--name)` with nothing after the name: no fallback, so the definition must exist. */
-const REQUIRED = /var\(\s*(--[a-z][a-z0-9-]*)\s*\)/gu
+/**
+ * A required name, either as `var(--name)` or Tailwind v4's canonical `bg-(--name)` shorthand.
+ * Neither shape carries a fallback, so the definition must exist.
+ */
+const REQUIRED = /(?:var)?\(\s*(--[a-z][a-z0-9-]*)\s*\)/gu
 
 /**
  * A screen may hand one in two ways: through a style object, `style={{ '--sidebar-width': … }}`,

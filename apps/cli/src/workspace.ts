@@ -9,16 +9,16 @@
  * running exactly one thing, and the reason written into that migration was not parallelism — it
  * was that two agents in one directory overwrite each other's files. Two directories, no reason.
  *
- * The server says which of three cases this turn is; turning that into a path happens here and
- * nowhere else. A sandbox answers the same three cases with a root of its own, which is why no
- * path this file computes is ever sent back.
+ * The server says which of two cases this turn is; turning that into a path happens here and
+ * nowhere else. A sandbox answers the same two cases with a root of its own, which is why no path
+ * this file computes is ever sent back.
  */
 
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { components } from '../generated/api.ts'
 
-/** Which of the three places a turn works in, as the server says it. */
+/** Which of the two places a turn works in, as the server says it. */
 type WhereToWork = components['schemas']['WhereToWork']
 
 /** One turn, in the only things about it that decide where it happens and what that means. */

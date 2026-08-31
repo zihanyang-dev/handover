@@ -1590,7 +1590,36 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Your machines */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Every live machine you control */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OwnedMachines"];
+                    };
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
         put?: never;
         /** Say that machine is yours */
         post: {
@@ -1631,7 +1660,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description Nothing is waiting under that code */
+                /** @description Nothing is waiting, or that machine cannot be reconnected */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1660,7 +1689,9 @@ export interface paths {
         /** Make a key a machine can come in with, without anybody approving it later */
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    space?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -1678,6 +1709,15 @@ export interface paths {
                 };
                 /** @description Nobody is signed in here */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description Nothing is waiting under that code */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1813,7 +1853,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Every member’s machines, here or not */
+                /** @description Every machine explicitly available here */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1845,6 +1885,100 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/spaces/{slug}/machines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Share one of your machines with this Space */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Available here */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description You have no live machine with that id */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Stop sharing a machine with this Space */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No longer available here */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Nobody is signed in here */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description No removable machine with that id is available here */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1970,83 +2104,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/spaces/{slug}/machines/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Hand a machine to somebody else here */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    slug: string;
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["HandMachineTo"];
-                };
-            };
-            responses: {
-                /** @description It is theirs */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description The body was not the shape it claims */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Nobody is signed in here */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description Only an owner can do this */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-                /** @description No such Space, no such machine, or nobody here by that name */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Failure"];
-                    };
-                };
-            };
-        };
         trace?: never;
     };
     "/spaces/{slug}/conversations": {
@@ -2586,6 +2643,15 @@ export interface paths {
                 };
                 /** @description That is not a live machine credential */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Failure"];
+                    };
+                };
+                /** @description That conversation was not given to this machine */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3542,9 +3608,29 @@ export interface components {
             machineName: string;
             /** Format: date-time */
             expiresAt: string;
+            existingMachines: components["schemas"]["ExistingMachine"][];
+        };
+        ExistingMachine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+            presence: components["schemas"]["Presence"];
+        };
+        Presence: {
+            /** @enum {string} */
+            state: "here";
+        } | {
+            /** @enum {string} */
+            state: "gone";
+            /** Format: date-time */
+            since: string;
         };
         LetItIn: {
             userCode: string;
+            /** Format: uuid */
+            replaceMachineId?: string;
+            spaceSlug?: string;
         };
         MachineKey: {
             key: string;
@@ -3608,7 +3694,25 @@ export interface components {
             isDefault: boolean;
         };
         Machines: {
-            machines: components["schemas"]["Machine"][];
+            machines: components["schemas"]["SpaceMachine"][];
+        };
+        SpaceMachine: components["schemas"]["Machine"] & {
+            working: components["schemas"]["MachineWork"][];
+        };
+        MachineAgent: {
+            /** @enum {string} */
+            kind: "claude-code" | "codex";
+            name: string | null;
+            atOnce: number;
+            avatarUrl: string;
+            version: string;
+            models: components["schemas"]["Model"][];
+        };
+        MachineWork: {
+            /** Format: uuid */
+            conversationId: string;
+            goal: string;
+            state: string;
         };
         Machine: {
             /** Format: uuid */
@@ -3622,31 +3726,19 @@ export interface components {
             presence: components["schemas"]["Presence"];
             agents: components["schemas"]["MachineAgent"][];
         };
-        Presence: {
-            /** @enum {string} */
-            state: "here";
-        } | {
-            /** @enum {string} */
-            state: "gone";
-            /** Format: date-time */
-            since: string;
+        OwnedMachines: {
+            machines: components["schemas"]["OwnedMachine"][];
         };
-        MachineAgent: {
-            /** @enum {string} */
-            kind: "claude-code" | "codex";
-            name: string | null;
-            atOnce: number;
-            avatarUrl: string;
-            version: string;
-            models: components["schemas"]["Model"][];
+        OwnedMachine: components["schemas"]["Machine"] & {
+            spaces: components["schemas"]["MachineSpace"][];
+        };
+        MachineSpace: {
+            slug: string;
+            displayName: string;
         };
         AgentSettings: {
             name?: string | null;
             atOnce?: number;
-        };
-        HandMachineTo: {
-            /** Format: uuid */
-            ownerUserId: string;
         };
         Conversations: {
             conversations: components["schemas"]["Conversation"][];

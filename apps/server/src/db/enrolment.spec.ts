@@ -13,9 +13,12 @@ import {
   approveEnrolment,
   collectEnrolment,
   enrolmentWaiting,
+  existingMachinesFor,
   openEnrolment,
   refuseEnrolment,
 } from './enrolment.ts'
+import { addMachineToSpace, machineHolding } from './machine.ts'
+import { becomes, joins, removes, ROLE } from './membership.ts'
 import { createSpace } from './space.ts'
 import { arrive } from './user.ts'
 
@@ -70,6 +73,27 @@ async function ageOut(userCode: UserCode): Promise<void> {
     .set({ expires_at: sql<Date>`now() - interval '1 second'` })
     .where('user_code', '=', userCode)
     .execute()
+}
+
+async function connectedMachine(
+  machineName: string,
+  owner = PERSON,
+): Promise<{ readonly id: string; readonly token: string }> {
+  const secret = newEnrolmentSecret()
+  await openEnrolment(db, {
+    kind: 'key',
+    secretHash: secret.hash,
+    approvedBy: owner,
+  })
+  const token = `hm_${randomUUID()}`
+  const collected = await collectEnrolment(db, {
+    secretHash: secret.hash,
+    tokenHash: hashSecret(token),
+    machineName,
+  })
+  if (collected.kind !== 'granted') throw new Error('the fixture could not connect a machine')
+
+  return { id: collected.machineId, token }
 }
 
 describe('opening one', () => {
@@ -141,6 +165,212 @@ describe('answering one', () => {
     )
 
     expect(answers.filter((answer) => answer.kind === 'answered')).toHaveLength(1)
+  })
+
+  it('does not add a machine after its approver left the chosen Space before collection', async () => {
+    const membership = await db
+      .selectFrom('memberships')
+      .innerJoin('spaces', 'spaces.id', 'memberships.space_id')
+      .select(['memberships.space_id', 'spaces.slug'])
+      .where('memberships.user_id', '=', PERSON)
+      .where('memberships.revoked_at', 'is', null)
+      .executeTakeFirstOrThrow()
+    const asked = opening()
+    await openEnrolment(db, asked)
+    await approveEnrolment(db, asked.userCode, {
+      userId: PERSON,
+      approvedSpaceId: membership.space_id,
+    })
+    const otherAddress = `rui-${RUN}@example.com`
+    const other = await db
+      .transaction()
+      .execute(async (tx) =>
+        arrive(
+          tx,
+          { kind: 'email', subject: otherAddress },
+          { name: null, username: null, address: otherAddress },
+        ),
+      )
+    await joins(db, {
+      userId: other.userId,
+      spaceId: membership.space_id,
+      slug: membership.slug,
+    })
+    await becomes(db, { spaceId: membership.space_id, userId: other.userId }, ROLE.owner)
+    await removes(db, { spaceId: membership.space_id, userId: PERSON })
+
+    const collected = await collectEnrolment(db, {
+      secretHash: asked.secretHash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
+      machineName: asked.machineName,
+    })
+    if (collected.kind !== 'granted') throw new Error('the fixture could not connect a machine')
+    const available = await db
+      .selectFrom('space_machines')
+      .select('machine_id')
+      .where('space_id', '=', membership.space_id)
+      .where('machine_id', '=', collected.machineId)
+      .where('removed_at', 'is', null)
+      .executeTakeFirst()
+
+    expect(available).toBeUndefined()
+  })
+
+  it('offers only this person’s active, same-named identities for reconnection', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const mine = await connectedMachine(machineName)
+    const otherAddress = `rui-${RUN}@example.com`
+    const other = await db
+      .transaction()
+      .execute(async (tx) =>
+        arrive(
+          tx,
+          { kind: 'email', subject: otherAddress },
+          { name: null, username: null, address: otherAddress },
+        ),
+      )
+    await connectedMachine(machineName, other.userId)
+    await connectedMachine(`${machineName}-other`)
+
+    const candidates = await existingMachinesFor(db, {
+      ownerUserId: PERSON,
+      machineName,
+    })
+
+    expect(candidates.machines.map((machine) => machine.id)).toEqual([mine.id])
+  })
+
+  it('reconnects an existing identity only when the person explicitly chose it', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await connectedMachine(machineName)
+    const membership = await db
+      .selectFrom('memberships')
+      .select('space_id')
+      .where('user_id', '=', PERSON)
+      .where('revoked_at', 'is', null)
+      .executeTakeFirstOrThrow()
+    await addMachineToSpace(db, {
+      spaceId: membership.space_id,
+      machineId: existing.id,
+      userId: PERSON,
+    })
+    const asked = opening({ machineName })
+    await openEnrolment(db, asked)
+
+    expect(
+      await approveEnrolment(db, asked.userCode, {
+        userId: PERSON,
+        replaceMachineId: existing.id,
+      }),
+    ).toEqual({ kind: 'answered' })
+
+    const newToken = `hm_${randomUUID()}`
+    const collected = await collectEnrolment(db, {
+      secretHash: asked.secretHash,
+      tokenHash: hashSecret(newToken),
+      machineName,
+    })
+    const rows = await db
+      .selectFrom('machines')
+      .select(['id', 'token_hash', 'left_at'])
+      .where('owner_user_id', '=', PERSON)
+      .where('name', '=', machineName)
+      .where('removed_at', 'is', null)
+      .execute()
+
+    expect(collected).toEqual({ kind: 'granted', machineId: existing.id })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      id: existing.id,
+      token_hash: hashSecret(newToken),
+    })
+    expect(rows[0]?.left_at).toBeInstanceOf(Date)
+    expect(await machineHolding(db, hashSecret(existing.token))).toBeUndefined()
+    expect(await machineHolding(db, hashSecret(newToken))).toBe(existing.id)
+    expect(
+      await db
+        .selectFrom('space_machines')
+        .select('machine_id')
+        .where('space_id', '=', membership.space_id)
+        .where('machine_id', '=', existing.id)
+        .where('removed_at', 'is', null)
+        .executeTakeFirst(),
+    ).toEqual({ machine_id: existing.id })
+  })
+
+  it('lets only one uncollected reconnection replace the same identity', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await connectedMachine(machineName)
+    const first = opening({ machineName })
+    const second = opening({ machineName })
+    await openEnrolment(db, first)
+    await openEnrolment(db, second)
+
+    const answers = await Promise.all([
+      approveEnrolment(db, first.userCode, {
+        userId: PERSON,
+        replaceMachineId: existing.id,
+      }),
+      approveEnrolment(db, second.userCode, {
+        userId: PERSON,
+        replaceMachineId: existing.id,
+      }),
+    ])
+
+    expect(answers.map((answer) => answer.kind).sort()).toEqual(['answered', 'cannot-replace'])
+  })
+
+  it('releases an uncollected reconnection after its enrolment expires', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await connectedMachine(machineName)
+    const abandoned = opening({ machineName })
+    await openEnrolment(db, abandoned)
+    await approveEnrolment(db, abandoned.userCode, {
+      userId: PERSON,
+      replaceMachineId: existing.id,
+    })
+    await ageOut(abandoned.userCode)
+
+    const retried = opening({ machineName })
+    await openEnrolment(db, retried)
+
+    expect(
+      await approveEnrolment(db, retried.userCode, {
+        userId: PERSON,
+        replaceMachineId: existing.id,
+      }),
+    ).toEqual({ kind: 'answered' })
+  })
+
+  it('still creates another identity when the person explicitly chose another machine', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await connectedMachine(machineName)
+    const asked = opening({ machineName })
+    await openEnrolment(db, asked)
+    await approveEnrolment(db, asked.userCode, { userId: PERSON })
+
+    const collected = await collectEnrolment(db, {
+      secretHash: asked.secretHash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
+      machineName,
+    })
+
+    expect(collected).toMatchObject({ kind: 'granted' })
+    expect(collected).not.toMatchObject({ machineId: existing.id })
+  })
+
+  it('does not replace a differently named identity by id', async () => {
+    const existing = await connectedMachine(`other-${RUN.slice(0, 8)}`)
+    const asked = opening()
+    await openEnrolment(db, asked)
+
+    expect(
+      await approveEnrolment(db, asked.userCode, {
+        userId: PERSON,
+        replaceMachineId: existing.id,
+      }),
+    ).toEqual({ kind: 'cannot-replace' })
+    expect(await enrolmentWaiting(db, asked.userCode)).toBeDefined()
   })
 
   it('cannot be answered once it has run out', async () => {

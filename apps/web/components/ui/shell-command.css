@@ -1,5 +1,5 @@
 .shell-snippet {
-  @apply flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--keyline)] bg-white px-3 py-2.5 text-ink;
+  @apply flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-(--keyline) bg-white px-3 py-2.5 text-ink;
 }
 
 .shell-snippet code {

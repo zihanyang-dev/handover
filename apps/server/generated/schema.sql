@@ -189,10 +189,14 @@ CREATE TABLE public.enrolments (
     claimed_at timestamp with time zone,
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    replaces_machine_id uuid,
+    approved_space_id uuid,
     CONSTRAINT enrolments_approved_together CHECK (((approved_at IS NULL) = (approved_by IS NULL))),
     CONSTRAINT enrolments_asking_has_a_name_and_a_code CHECK (((machine_name IS NULL) = (user_code IS NULL))),
     CONSTRAINT enrolments_claimed_after_approval CHECK (((claimed_at IS NULL) OR (approved_at IS NOT NULL))),
-    CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL)))
+    CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL))),
+    CONSTRAINT enrolments_replacement_is_approved CHECK (((replaces_machine_id IS NULL) OR (approved_at IS NOT NULL))),
+    CONSTRAINT enrolments_space_is_approved CHECK (((approved_space_id IS NULL) OR (approved_at IS NOT NULL)))
 );
 
 
@@ -276,6 +280,19 @@ CREATE TABLE public.outputs (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT outputs_body_check CHECK (((btrim(body) <> ''::text) AND (octet_length(body) <= 65536))),
     CONSTRAINT outputs_title_check CHECK (((btrim(title) <> ''::text) AND (octet_length(title) <= 200)))
+);
+
+
+--
+-- Name: space_machines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.space_machines (
+    space_id uuid NOT NULL,
+    machine_id uuid NOT NULL,
+    added_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    removed_at timestamp with time zone
 );
 
 
@@ -561,6 +578,14 @@ ALTER TABLE ONLY public.outputs
 
 
 --
+-- Name: space_machines space_machines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.space_machines
+    ADD CONSTRAINT space_machines_pkey PRIMARY KEY (space_id, machine_id);
+
+
+--
 -- Name: spaces spaces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -651,6 +676,13 @@ CREATE UNIQUE INDEX email_codes_live ON public.email_codes USING btree (email, p
 
 
 --
+-- Name: enrolments_one_pending_replacement; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX enrolments_one_pending_replacement ON public.enrolments USING btree (replaces_machine_id) WHERE ((replaces_machine_id IS NOT NULL) AND (claimed_at IS NULL));
+
+
+--
 -- Name: enrolments_waiting_code; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -690,6 +722,13 @@ CREATE INDEX messages_asked ON public.messages USING btree (conversation_id, seq
 --
 
 CREATE INDEX messages_said_by ON public.messages USING btree (said_by) WHERE (said_by IS NOT NULL);
+
+
+--
+-- Name: space_machines_by_machine; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX space_machines_by_machine ON public.space_machines USING btree (machine_id) WHERE (removed_at IS NULL);
 
 
 --
@@ -790,6 +829,14 @@ ALTER TABLE ONLY public.conversations
 
 
 --
+-- Name: conversations conversations_machine_is_in_space; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_machine_is_in_space FOREIGN KEY (space_id, machine_id) REFERENCES public.space_machines(space_id, machine_id);
+
+
+--
 -- Name: conversations conversations_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -811,6 +858,22 @@ ALTER TABLE ONLY public.credentials
 
 ALTER TABLE ONLY public.enrolments
     ADD CONSTRAINT enrolments_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.users(id);
+
+
+--
+-- Name: enrolments enrolments_approved_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_approved_space_id_fkey FOREIGN KEY (approved_space_id) REFERENCES public.spaces(id);
+
+
+--
+-- Name: enrolments enrolments_replaces_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.enrolments
+    ADD CONSTRAINT enrolments_replaces_machine_id_fkey FOREIGN KEY (replaces_machine_id) REFERENCES public.machines(id);
 
 
 --
@@ -883,6 +946,30 @@ ALTER TABLE ONLY public.messages
 
 ALTER TABLE ONLY public.outputs
     ADD CONSTRAINT outputs_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id) ON DELETE CASCADE;
+
+
+--
+-- Name: space_machines space_machines_added_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.space_machines
+    ADD CONSTRAINT space_machines_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.users(id);
+
+
+--
+-- Name: space_machines space_machines_machine_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.space_machines
+    ADD CONSTRAINT space_machines_machine_id_fkey FOREIGN KEY (machine_id) REFERENCES public.machines(id);
+
+
+--
+-- Name: space_machines space_machines_space_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.space_machines
+    ADD CONSTRAINT space_machines_space_id_fkey FOREIGN KEY (space_id) REFERENCES public.spaces(id);
 
 
 --

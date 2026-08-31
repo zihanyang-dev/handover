@@ -1,76 +1,157 @@
 /**
- * Every machine this Space can reach, and the three things somebody does about one of their own:
- * name its agents, say how much each takes on at a time, and disconnect it.
+ * The same physical machines in two honest projections.
  *
- * Handing one to somebody else is an owner's, and it is the thing to do *before* taking that
- * person out — see `member-removal.tsx`.
+ * Account shows only machines this person controls and owns their global decisions. A Space shows
+ * every machine explicitly available there and owns only adding or removing that relationship.
  */
 
 import { AT_ONCE_AT_MOST } from '@handover/universal'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useEffect, useId, useRef, useState } from 'react'
-import { ExclamationTriangle, Laptop, ThreeDots } from 'react-bootstrap-icons'
-import { reasonOf } from '../../api.ts'
-import { MenuSelect } from '../../components/ui/menu-select.tsx'
+import { useId, useState } from 'react'
+import { Laptop } from 'react-bootstrap-icons'
 import { SettingsHeading } from '../../components/ui/settings-heading.tsx'
-import type { components } from '../../generated/api.ts'
+import { whatItIsDoing } from '../conversations/work.ts'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { peopleIn } from '../spaces/people.ts'
 import { AgentMark, agentKindName } from './agent.tsx'
 import {
   machinesIn,
+  ownedMachines,
+  useShareMachineWithSpace,
   useAgentSettings,
   useDisconnectMachine,
-  useHandMachineTo,
+  useStopSharingMachineWithSpace,
   type Machine,
+  type OwnedMachine,
 } from './machine-list.ts'
 
-type Member = components['schemas']['Member']
+type ShownMachine = Machine | OwnedMachine
 
-export function SpaceMachines({ slug }: { readonly slug: string }) {
+const primaryAction =
+  'inline-flex h-8 shrink-0 items-center rounded-md border-0 bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
+const quietDanger =
+  'mt-3 ml-12 h-7 rounded-[5px] border-0 bg-transparent px-2 text-copy-xxs text-danger-quiet hover:bg-danger-wash max-sm:ml-0'
+const dangerAction =
+  'h-8 rounded-md border-0 bg-danger-strong px-3 text-[13px] font-medium text-white disabled:opacity-50'
+const secondaryAction =
+  'h-8 rounded-md border border-line-firm bg-white px-3 text-[13px] text-ink-body'
+
+export function YourMachines() {
+  const machines = useQuery(ownedMachines())
+
+  return (
+    <section className="mt-12 border-t border-line pt-8" aria-labelledby="your-machines-title">
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 id="your-machines-title" className="m-0 text-copy-s font-semibold text-ink">
+            Your machines
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-quiet">
+            Computers you have connected to Handover.
+          </p>
+        </div>
+        <Link className={primaryAction} to="/connect" search={{}}>
+          Connect machine
+        </Link>
+      </div>
+      <QueryState
+        pending={machines.isPending}
+        failed={machines.isError}
+        count={machines.data?.length}
+        empty="You have not connected a machine yet."
+      />
+      {machines.data !== undefined && machines.data.length > 0 && (
+        <ul className="m-0 list-none divide-y divide-line p-0">
+          {machines.data.map((machine) => (
+            <AccountMachineRow key={machine.id} machine={machine} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+export function SpaceMachines({ slug, name }: { readonly slug: string; readonly name: string }) {
   const machines = useQuery(machinesIn(slug))
+  const mine = useQuery(ownedMachines())
   const people = useQuery(peopleIn(slug))
-  const own = people.data?.find((person) => person.you)
-  const canTransfer = own?.role === 'owner'
 
-  if (machines.isPending || people.isPending)
-    return (
-      <p className="py-10 text-center text-[14px] text-ink-muted" role="status">
-        Looking for machines…
-      </p>
-    )
-  if (machines.isError || people.isError)
-    return (
-      <p className="py-10 text-center text-[14px] text-ink-muted" role="alert">
-        Could not read the machines here. Try again.
-      </p>
-    )
+  if (machines.isPending || mine.isPending || people.isPending) {
+    return <Status>Looking for machines…</Status>
+  }
+  if (machines.isError || mine.isError || people.isError) {
+    return <Status alert>Could not read the machines here. Try again.</Status>
+  }
+
+  return (
+    <AvailableSpaceMachines
+      slug={slug}
+      name={name}
+      machines={machines.data}
+      mine={mine.data}
+      canRemoveAny={people.data.find((person) => person.you)?.role === 'owner'}
+    />
+  )
+}
+
+function AvailableSpaceMachines({
+  slug,
+  name,
+  machines,
+  mine,
+  canRemoveAny,
+}: {
+  readonly slug: string
+  readonly name: string
+  readonly machines: readonly Machine[]
+  readonly mine: readonly OwnedMachine[]
+  readonly canRemoveAny: boolean
+}) {
+  const [sharing, setSharing] = useState(false)
+  const present = new Set(machines.map((machine) => machine.id))
+  const machinesToShare = mine.filter((machine) => !present.has(machine.id))
 
   return (
     <section aria-labelledby="space-machines-title">
       <SettingsHeading
         id="space-machines-title"
-        title="Machines"
+        title={`Machines in ${name}`}
         action={
-          <Link
-            className="inline-flex h-8 shrink-0 items-center rounded-[6px] bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            to="/connect"
+          <button
+            className={primaryAction}
+            type="button"
+            aria-expanded={sharing}
+            aria-controls="share-machine-with-space"
+            onClick={() => {
+              setSharing((open) => !open)
+            }}
           >
-            Connect machine
-          </Link>
+            Share a machine
+          </button>
         }
       />
-      {machines.data.length === 0 ? (
+      {sharing && (
+        <ShareMachine
+          slug={slug}
+          spaceName={name}
+          machines={machinesToShare}
+          close={() => {
+            setSharing(false)
+          }}
+        />
+      )}
+      {machines.length === 0 ? (
         <EmptyMachines />
       ) : (
-        <ul className="m-0 list-none space-y-8 p-0">
-          {machines.data.map((machine) => (
-            <MachineRow
+        <ul className="m-0 list-none divide-y divide-line p-0">
+          {machines.map((machine) => (
+            <SpaceMachineRow
               key={machine.id}
-              slug={slug}
               machine={machine}
-              people={people.data}
-              canTransfer={canTransfer}
+              canRemove={machine.yours || canRemoveAny}
+              slug={slug}
+              spaceName={name}
             />
           ))}
         </ul>
@@ -79,70 +160,163 @@ export function SpaceMachines({ slug }: { readonly slug: string }) {
   )
 }
 
-function MachineRow({
+function ShareMachine({
   slug,
-  machine,
-  people,
-  canTransfer,
+  spaceName,
+  machines,
+  close,
 }: {
   readonly slug: string
-  readonly machine: Machine
-  readonly people: readonly Member[]
-  readonly canTransfer: boolean
+  readonly spaceName: string
+  readonly machines: readonly OwnedMachine[]
+  readonly close: () => void
 }) {
-  // Anybody here but whoever already has it. By id: two people in one Space can share a display
-  // name, and handing a machine to the person who already holds it is a button that does nothing.
-  const recipients = people.filter((person) => person.userId !== machine.ownerUserId)
-
+  const share = useShareMachineWithSpace(slug)
   return (
-    <li className="relative py-3">
-      <div className="flex items-start gap-3 pr-10">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[7px] bg-fill text-ink-muted">
-          <Laptop aria-hidden />
-        </span>
-        <div className="min-w-0 grow">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h2 className="truncate text-[14px] font-semibold text-ink">{machine.name}</h2>
-            <Presence machine={machine} />
-          </div>
-          {/* Whose it is. A Space with two people in it has two people's laptops in it, and what
-              an agent does on one of them happens in that person's files — so a list of machines
-              that does not say which is which is a list nobody can choose from. The contract
-              carries `ownerName` for this and nothing else. */}
-          <p className="mt-0.5 truncate text-[12px] leading-[17px] text-ink-quiet">
-            {machine.yours ? 'Yours' : machine.ownerName}
-            {/* Which build it is running, and nothing when it has never said — a machine too old
-                to report one is shown as such rather than filled in with a guess. It is the first
-                string anybody quotes when a machine will not do what they expect. */}
-            {machine.version !== undefined && ` · handover ${machine.version}`}
-          </p>
-        </div>
-      </div>
-      <AgentSettings slug={slug} machine={machine} />
-      {machine.yours && <DisconnectMachine machine={machine} slug={slug} />}
-      {canTransfer && recipients.length > 0 && (
-        <div className="mt-4 ml-12 flex flex-wrap items-center gap-2 max-sm:ml-0">
-          <TransferMachine slug={slug} machine={machine} recipients={recipients} />
+    <div
+      id="share-machine-with-space"
+      className="mb-8 rounded-[8px] border border-line-firm bg-fill p-3"
+    >
+      <p className="m-0 text-[13px] font-medium text-ink">
+        Choose one of your machines to share with {spaceName}
+      </p>
+      {machines.length === 0 ? (
+        <p className="mt-1 text-copy-xxs text-ink-quiet">
+          There is no other connected machine to share.
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-1">
+          {machines.map((machine) => (
+            <button
+              key={machine.id}
+              className="flex min-h-9 items-center justify-between rounded-md border-0 bg-white px-3 text-left text-[13px] text-ink hover:bg-(--interaction-hover)"
+              type="button"
+              disabled={share.isPending}
+              onClick={() => {
+                share.mutate({ params: { path: { slug, id: machine.id } } }, { onSuccess: close })
+              }}
+            >
+              <span>{machine.name}</span>
+              <Presence machine={machine} />
+            </button>
+          ))}
         </div>
       )}
+      <Link
+        className="mt-3 inline-flex text-[13px] font-medium text-primary no-underline hover:underline"
+        to="/connect"
+        search={{ space: slug }}
+      >
+        Connect and share a new machine
+      </Link>
+      {share.isError && (
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
+          Could not share it with {spaceName}. Try again.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function QueryState({
+  pending,
+  failed,
+  count,
+  empty,
+}: {
+  readonly pending: boolean
+  readonly failed: boolean
+  readonly count: number | undefined
+  readonly empty: string
+}) {
+  if (pending) return <Status>Looking for your machines…</Status>
+  if (failed) return <Status alert>Could not read your machines. Try again.</Status>
+  if (count === 0) return <Status>{empty}</Status>
+  return null
+}
+
+function Status({
+  children,
+  alert = false,
+}: {
+  readonly children: string
+  readonly alert?: boolean
+}) {
+  return (
+    <p className="py-8 text-center text-[13px] text-ink-muted" role={alert ? 'alert' : 'status'}>
+      {children}
+    </p>
+  )
+}
+
+function MachineHeading({
+  machine,
+  note,
+}: {
+  readonly machine: ShownMachine
+  readonly note: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[7px] bg-fill text-ink-muted">
+        <Laptop aria-hidden />
+      </span>
+      <div className="min-w-0 grow">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <h3 className="m-0 truncate text-copy-xs font-semibold text-ink">{machine.name}</h3>
+          <Presence machine={machine} />
+        </div>
+        <p className="mt-0.5 text-copy-xxs text-ink-quiet">{note}</p>
+      </div>
+    </div>
+  )
+}
+
+function AccountMachineRow({ machine }: { readonly machine: OwnedMachine }) {
+  const note =
+    machine.spaces.length === 0
+      ? 'Not available in a Space'
+      : `Available in ${machine.spaces.map((space) => space.displayName).join(', ')}`
+  return (
+    <li className="py-5">
+      <MachineHeading machine={machine} note={note} />
+      <AgentList machine={machine} editable />
+      <DisconnectMachine machine={machine} />
     </li>
   )
 }
 
-function Presence({ machine }: { readonly machine: Machine }) {
+function SpaceMachineRow({
+  machine,
+  canRemove,
+  slug,
+  spaceName,
+}: {
+  readonly machine: Machine
+  readonly canRemove: boolean
+  readonly slug: string
+  readonly spaceName: string
+}) {
+  const controller = machine.yours
+    ? 'you'
+    : (nameUnlessAddress(machine.ownerName) ?? 'another member')
+  return (
+    <li className="py-5">
+      <MachineHeading machine={machine} note={`Controlled by ${controller}`} />
+      <AgentList machine={machine} editable={false} />
+      {canRemove && <StopSharing machine={machine} slug={slug} spaceName={spaceName} />}
+    </li>
+  )
+}
+
+function Presence({ machine }: { readonly machine: ShownMachine }) {
   const here = machine.presence.state === 'here'
   return (
     <span
-      className={
-        here
-          ? 'inline-flex items-center gap-1.5 text-[12px] text-good'
-          : 'inline-flex items-center gap-1.5 text-[12px] text-ink-quiet'
-      }
+      className={`inline-flex items-center gap-1.5 text-copy-xxs ${here ? 'text-good' : 'text-ink-quiet'}`}
     >
       <span
-        className={
-          here ? 'size-1.5 rounded-full bg-good-mark' : 'size-1.5 rounded-full bg-ink-faint'
-        }
+        className={`size-1.5 rounded-full ${here ? 'bg-good-mark' : 'bg-ink-faint'}`}
         aria-hidden
       />
       {here ? 'Online' : 'Offline'}
@@ -150,77 +324,123 @@ function Presence({ machine }: { readonly machine: Machine }) {
   )
 }
 
-function AgentSettings({ slug, machine }: { readonly slug: string; readonly machine: Machine }) {
-  if (machine.agents.length === 0)
-    return (
-      <p className="mt-4 rounded-[7px] bg-fill p-3 text-[13px] text-ink-muted">
-        No agents found on this machine.
-      </p>
-    )
-
+function AgentList({
+  machine,
+  editable,
+}: {
+  readonly machine: ShownMachine
+  readonly editable: boolean
+}) {
+  if (machine.agents.length === 0) {
+    return <p className="mt-3 ml-12 text-[13px] text-ink-muted max-sm:ml-0">No agents found.</p>
+  }
   return (
-    <ul className="mt-4 ml-12 max-w-[440px] list-none space-y-5 p-0 max-sm:ml-0">
+    <ul className="mt-3 ml-12 list-none space-y-4 p-0 max-sm:ml-0">
       {machine.agents.map((agent) => (
-        <AgentRow key={agent.kind} slug={slug} machine={machine} agent={agent} />
+        <li key={agent.kind}>
+          <div className="flex items-center gap-2">
+            <span className="flex size-5 items-center justify-center text-ink-muted [&_svg]:size-4">
+              <AgentMark kind={agent.kind} />
+            </span>
+            <span className="text-[13px] font-medium text-ink-body">
+              {agentKindName(agent.kind)}
+            </span>
+            <span className="text-copy-xxs text-ink-quiet">{agent.version}</span>
+          </div>
+          {editable && <AgentDecisions machineId={machine.id} agent={agent} />}
+        </li>
       ))}
     </ul>
   )
 }
 
-/**
- * What its owner has decided about one agent: what to call it, and how much it takes on at once.
- *
- * Held in state rather than read off the form when Save is pressed. Read off the form it had two
- * ways of doing nothing at all — a box left empty gave `NaN`, and the elements were fetched by
- * name and checked, and both paths simply returned. A button that neither works nor says why is
- * worse than one that is not there.
- */
-function AgentRow({
-  slug,
-  machine,
-  agent,
+function AgentNameField({
+  name,
+  placeholder,
+  onBlur,
+  onChange,
 }: {
-  readonly slug: string
-  readonly machine: Machine
-  readonly agent: Machine['agents'][number]
+  readonly name: string
+  readonly placeholder: string
+  readonly onBlur: () => void
+  readonly onChange: (name: string) => void
 }) {
   return (
-    <li>
-      <div className="flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center text-ink-muted [&_svg]:size-4">
-          <AgentMark kind={agent.kind} />
-        </span>
-        <span className="text-[13px] font-medium text-ink-body">{agentKindName(agent.kind)}</span>
-        <span className="text-[12px] text-ink-quiet">{agent.version}</span>
-      </div>
-      {machine.yours && <AgentDecisions slug={slug} machineId={machine.id} agent={agent} />}
-    </li>
+    <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-copy-xxs font-medium text-ink-muted">
+      <span>Name</span>
+      <input
+        className="h-8 w-full max-w-70 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
+        value={name}
+        maxLength={48}
+        placeholder={placeholder}
+        onBlur={onBlur}
+        onChange={(event) => {
+          onChange(event.target.value)
+        }}
+      />
+    </label>
+  )
+}
+
+function AgentCapacityField({
+  atOnce,
+  usable,
+  errorId,
+  onBlur,
+  onChange,
+}: {
+  readonly atOnce: string
+  readonly usable: boolean
+  readonly errorId: string
+  readonly onBlur: () => void
+  readonly onChange: (atOnce: string) => void
+}) {
+  return (
+    <>
+      <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-copy-xxs font-medium text-ink-muted">
+        <span>At once</span>
+        <input
+          className="h-8 w-18 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
+          type="number"
+          min={1}
+          max={AT_ONCE_AT_MOST}
+          value={atOnce}
+          aria-invalid={!usable}
+          aria-describedby={usable ? undefined : errorId}
+          onBlur={onBlur}
+          onChange={(event) => {
+            onChange(event.target.value)
+          }}
+        />
+      </label>
+      {!usable && (
+        <p id={errorId} className="mt-2 text-copy-xxs text-danger-ink" role="alert">
+          At once is a whole number between 1 and {AT_ONCE_AT_MOST}.
+        </p>
+      )}
+    </>
   )
 }
 
 function AgentDecisions({
-  slug,
   machineId,
   agent,
 }: {
-  readonly slug: string
   readonly machineId: string
   readonly agent: Machine['agents'][number]
 }) {
-  const decide = useAgentSettings(slug)
-  // Null means the person has not edited this field, so polling can keep the visible value current.
-  // Once they type, their draft wins until it is saved or the component is left.
+  const decide = useAgentSettings()
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [atOnceDraft, setAtOnceDraft] = useState<string | null>(null)
   const atOnceError = useId()
   const name = nameDraft ?? agent.name ?? ''
   const atOnce = atOnceDraft ?? String(agent.atOnce)
   const wanted = Number(atOnce)
-  const isUsable = usableAtOnce(wanted)
+  const usable = usableAtOnce(wanted)
   const nextName = name.trim() === '' ? null : name.trim()
   const changed = nextName !== agent.name || wanted !== agent.atOnce
   const save = (): void => {
-    if (!changed || !isUsable) return
+    if (!changed || !usable) return
     decide.mutate(
       {
         params: { path: { id: machineId, kind: agent.kind } },
@@ -244,43 +464,22 @@ function AgentDecisions({
           save()
         }}
       >
-        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
-          <span>Name</span>
-          <input
-            className="h-8 w-full max-w-[280px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
-            value={name}
-            maxLength={48}
-            placeholder={agentKindName(agent.kind)}
-            onBlur={save}
-            onChange={(event) => {
-              setNameDraft(event.target.value)
-            }}
-          />
-        </label>
-        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
-          <span>At once</span>
-          <input
-            className="h-8 w-[72px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
-            type="number"
-            min={1}
-            max={AT_ONCE_AT_MOST}
-            value={atOnce}
-            aria-invalid={!isUsable}
-            aria-describedby={isUsable ? undefined : atOnceError}
-            onBlur={save}
-            onChange={(event) => {
-              setAtOnceDraft(event.target.value)
-            }}
-          />
-        </label>
+        <AgentNameField
+          name={name}
+          placeholder={agentKindName(agent.kind)}
+          onBlur={save}
+          onChange={setNameDraft}
+        />
+        <AgentCapacityField
+          atOnce={atOnce}
+          usable={usable}
+          errorId={atOnceError}
+          onBlur={save}
+          onChange={setAtOnceDraft}
+        />
       </form>
-      {!isUsable && (
-        <p id={atOnceError} className="mt-2 text-[12px] text-danger-strong" role="alert">
-          At once is a whole number between 1 and {AT_ONCE_AT_MOST}.
-        </p>
-      )}
       {decide.isError && (
-        <p className="mt-2 text-[12px] text-danger-strong" role="alert">
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           That could not be sent. Try again.
         </p>
       )}
@@ -292,184 +491,168 @@ function usableAtOnce(wanted: number): boolean {
   return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_ONCE_AT_MOST
 }
 
-function TransferMachine({
-  slug,
-  machine,
-  recipients,
-}: {
-  readonly slug: string
-  readonly machine: Machine
-  readonly recipients: readonly Member[]
-}) {
-  const transfer = useHandMachineTo(slug)
-  const [ownerUserId, setOwnerUserId] = useState(recipients[0]?.userId ?? '')
-
-  return (
-    <>
-      <div className="w-full max-w-[220px]">
-        <MenuSelect
-          label={`New owner for ${machine.name}`}
-          value={ownerUserId}
-          choices={recipients.map((person) => ({
-            value: person.userId,
-            label: person.displayName,
-          }))}
-          onChange={setOwnerUserId}
-          stretch
-        />
-      </div>
-      <button
-        className="h-8 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-45"
-        type="button"
-        disabled={ownerUserId === '' || transfer.isPending}
-        onClick={() => {
-          transfer.mutate({
-            params: { path: { slug, id: machine.id } },
-            body: { ownerUserId },
-          })
-        }}
-      >
-        Transfer
-      </button>
-      {transfer.isError && (
-        <p className="w-full text-[12px] text-danger-strong" role="alert">
-          {whyItStayed(transfer.error)}
-        </p>
-      )}
-    </>
-  )
-}
-
-/** Named reasons come from `member-api.ts` and `machine-api.ts`; anything else never arrived. */
-function whyItStayed(thrown: unknown): string {
-  const reason = reasonOf(thrown)
-  if (reason === 'not-an-owner') return 'Only an owner can hand a machine to somebody else.'
-  if (reason === 'not-a-member') return 'That person is not in this Space any more.'
-
-  return 'That could not be sent. Try again.'
-}
-
-function DisconnectMachine({
-  machine,
-  slug,
-}: {
-  readonly machine: Machine
-  readonly slug: string
-}) {
-  const disconnect = useDisconnectMachine(slug)
+function DisconnectMachine({ machine }: { readonly machine: OwnedMachine }) {
+  const disconnect = useDisconnectMachine()
   const [confirming, setConfirming] = useState(false)
-  const [open, setOpen] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const dismiss = (event: PointerEvent): void => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', dismiss)
-    return () => {
-      document.removeEventListener('pointerdown', dismiss)
-    }
-  }, [open])
-
   if (!confirming)
     return (
-      <div ref={root} className="absolute top-3 right-0">
+      <button
+        className={quietDanger}
+        type="button"
+        onClick={() => {
+          disconnect.reset()
+          setConfirming(true)
+        }}
+      >
+        Disconnect machine
+      </button>
+    )
+  const spaces = machine.spaces.map((space) => space.displayName).join(', ')
+  return (
+    <div className="mt-4 ml-12 rounded-[7px] bg-danger-wash p-3 max-sm:ml-0">
+      <p className="m-0 text-[13px] text-danger-quiet">
+        Disconnect {machine.name}?
+        {spaces === '' ? '' : ` It will stop being available in ${spaces}.`}
+      </p>
+      <div className="mt-3 flex gap-2">
         <button
-          ref={trigger}
-          className="flex size-7 items-center justify-center rounded-[5px] border-0 bg-transparent text-ink-quiet hover:bg-[var(--interaction-hover)] hover:text-ink"
+          className={dangerAction}
           type="button"
-          aria-label={`${machine.name} actions`}
-          aria-haspopup="menu"
-          aria-expanded={open}
+          disabled={disconnect.isPending}
           onClick={() => {
-            setOpen((shown) => !shown)
+            disconnect.mutate({ params: { path: { id: machine.id } } })
           }}
         >
-          <ThreeDots aria-hidden />
+          Disconnect
         </button>
-        {open && (
-          <div
-            className="absolute top-full right-0 z-20 mt-1 w-44 rounded-[7px] bg-white p-1 shadow-[var(--surface-raised-shadow)]"
-            role="menu"
-            aria-label={`${machine.name} actions`}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') return
-              event.preventDefault()
-              event.stopPropagation()
-              setOpen(false)
-              trigger.current?.focus()
-            }}
-          >
-            <button
-              className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-danger-quiet hover:bg-danger-wash focus:bg-danger-wash focus:outline-none"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                setConfirming(true)
-              }}
-            >
-              Disconnect machine
-            </button>
-          </div>
-        )}
-      </div>
-    )
-
-  return (
-    <div className="mt-4 ml-12 max-sm:ml-0">
-      <DisconnectConfirmation
-        machine={machine}
-        pending={disconnect.isPending}
-        cancel={() => {
-          setConfirming(false)
-        }}
-        confirm={() => {
-          disconnect.mutate({ params: { path: { id: machine.id } } })
-        }}
-      />
-    </div>
-  )
-}
-
-function DisconnectConfirmation({
-  machine,
-  pending,
-  cancel,
-  confirm,
-}: {
-  readonly machine: Machine
-  readonly pending: boolean
-  readonly cancel: () => void
-  readonly confirm: () => void
-}) {
-  return (
-    <div className="w-full rounded-[7px] border border-danger-line bg-danger-notice p-3">
-      <p className="flex items-start gap-2 text-[13px] leading-[18px] text-danger-ink">
-        <ExclamationTriangle className="mt-0.5 shrink-0" aria-hidden />
-        Disconnecting {machine.name} revokes its credential. Agents on it become unreachable until
-        it is connected again.
-      </p>
-      <div className="mt-3 flex justify-end gap-2">
         <button
-          className="h-8 rounded-[5px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-white"
+          className={secondaryAction}
           type="button"
-          onClick={cancel}
+          onClick={() => {
+            disconnect.reset()
+            setConfirming(false)
+          }}
         >
           Cancel
         </button>
+      </div>
+      {disconnect.isError && (
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
+          Could not disconnect it. Try again.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function StopSharing({
+  machine,
+  slug,
+  spaceName,
+}: {
+  readonly machine: Machine
+  readonly slug: string
+  readonly spaceName: string
+}) {
+  const stopSharing = useStopSharingMachineWithSpace(slug)
+  const [confirming, setConfirming] = useState(false)
+  if (!confirming)
+    return (
+      <button
+        className={quietDanger}
+        type="button"
+        onClick={() => {
+          stopSharing.reset()
+          setConfirming(true)
+        }}
+      >
+        Stop sharing with {spaceName}
+      </button>
+    )
+  return (
+    <div className="mt-4 ml-12 rounded-[7px] bg-fill p-3 max-sm:ml-0">
+      <p className="m-0 text-[13px] text-ink-body">
+        Stop sharing {machine.name} with {spaceName}? The machine stays connected and other Spaces
+        are not affected.
+      </p>
+      <WorkStillUsingMachine machine={machine} slug={slug} spaceName={spaceName} />
+      <div className="mt-3 flex gap-2">
         <button
-          className="h-8 rounded-[5px] border-0 bg-danger-fill px-3 text-[13px] font-medium text-white disabled:opacity-45"
+          className={dangerAction}
           type="button"
-          disabled={pending}
-          onClick={confirm}
+          aria-describedby={
+            machine.working.length > 0 ? `machine-work-note-${machine.id}` : undefined
+          }
+          disabled={machine.working.length > 0 || stopSharing.isPending}
+          onClick={() => {
+            stopSharing.mutate({ params: { path: { slug, id: machine.id } } })
+          }}
         >
-          Disconnect machine
+          Stop sharing
+        </button>
+        <button
+          className={secondaryAction}
+          type="button"
+          autoFocus
+          onClick={() => {
+            stopSharing.reset()
+            setConfirming(false)
+          }}
+        >
+          Cancel
         </button>
       </div>
+      {stopSharing.isError && (
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
+          Could not stop sharing it with {spaceName}. Try again.
+        </p>
+      )}
     </div>
+  )
+}
+
+function WorkStillUsingMachine({
+  machine,
+  slug,
+  spaceName,
+}: {
+  readonly machine: Machine
+  readonly slug: string
+  readonly spaceName: string
+}) {
+  if (machine.working.length === 0)
+    return <p className="mt-2 text-copy-xxs text-ink-muted">No work is running on it here.</p>
+
+  return (
+    <section className="mt-3" aria-labelledby={`machine-work-${machine.id}`}>
+      <h4 id={`machine-work-${machine.id}`} className="m-0 text-copy-xxs font-semibold text-ink">
+        Work still using this machine
+      </h4>
+      <p
+        id={`machine-work-note-${machine.id}`}
+        className="mt-1 text-copy-xxs leading-4.25 text-ink-muted"
+      >
+        Resolve or stop this work in {spaceName} before you stop sharing. Open each Chat to decide
+        what to do.
+      </p>
+      <ul className="mt-2 list-none space-y-1 p-0">
+        {machine.working.map((work) => (
+          <li
+            key={work.conversationId}
+            className="flex items-center justify-between gap-3 text-copy-xxs"
+          >
+            <Link
+              className="min-w-0 truncate font-medium text-primary no-underline hover:underline"
+              to="/s/$slug/c/$id"
+              params={{ slug, id: work.conversationId }}
+            >
+              {work.goal}
+            </Link>
+            <span className="shrink-0 text-ink-quiet">{whatItIsDoing(work.state)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -477,9 +660,9 @@ function EmptyMachines() {
   return (
     <div className="rounded-[8px] border border-dashed border-line-firm px-6 py-12 text-center">
       <Laptop className="mx-auto mb-3 text-ink-quiet" aria-hidden />
-      <p className="text-[14px] font-medium text-ink-body">No machines here</p>
+      <p className="text-copy-xs font-medium text-ink-body">No machines here</p>
       <p className="mt-1 text-[13px] text-ink-quiet">
-        Run handover connect on the machine where an agent should work.
+        Share one of your machines to let its Agents work in this Space.
       </p>
     </div>
   )

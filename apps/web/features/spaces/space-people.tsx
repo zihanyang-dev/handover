@@ -42,13 +42,13 @@ export function SpacePeople({
 
   if (people.isPending)
     return (
-      <p className="py-10 text-center text-[14px] text-ink-muted" role="status">
+      <p className="py-10 text-center text-copy-xs text-ink-muted" role="status">
         Looking for people…
       </p>
     )
   if (people.isError)
     return (
-      <p className="py-10 text-center text-[14px] text-ink-muted" role="alert">
+      <p className="py-10 text-center text-copy-xs text-ink-muted" role="alert">
         Could not read the people here. Try again.
       </p>
     )
@@ -101,7 +101,7 @@ function MemberList({
 
   return (
     <section aria-labelledby="members-title">
-      <h2 id="members-title" className="m-0 mb-2 text-[14px] leading-5 font-medium text-ink">
+      <h2 id="members-title" className="m-0 mb-2 text-copy-xs leading-5 font-medium text-ink">
         Members <span className="font-normal text-ink-quiet">{people.length}</span>
       </h2>
       <ul className="m-0 list-none space-y-1 p-0">
@@ -147,9 +147,9 @@ function MemberRow({
     : undefined
 
   return (
-    <li className="flex min-h-[52px] items-center gap-3 py-2">
+    <li className="flex min-h-13 items-center gap-3 py-2">
       <img className="size-8 shrink-0 rounded-full" src={person.avatarUrl} alt="" />
-      <span className="min-w-0 grow truncate text-[14px] font-medium text-ink">
+      <span className="min-w-0 grow truncate text-copy-xs font-medium text-ink">
         {person.displayName}
         {person.you && <span className="ml-1 font-normal text-ink-quiet">You</span>}
       </span>

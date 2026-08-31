@@ -253,18 +253,6 @@ describe('handing something to another person', () => {
 
     expect(tried.status).toBe(404)
   })
-
-  it('is not a member’s to do', async () => {
-    const { secret } = await aLink()
-    await joined(MINA, secret)
-    const kai = await whoIs(KAI)
-
-    const tried = await as(MINA, `/spaces/${SLUG}/machines/${randomUUID()}`, 'PATCH', {
-      ownerUserId: kai,
-    })
-
-    expect(tried.status).toBe(403)
-  })
 })
 
 describe('taking somebody out', () => {

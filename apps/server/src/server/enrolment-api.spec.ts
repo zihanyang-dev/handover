@@ -29,6 +29,7 @@ afterAll(async () => {
 let RUN = ''
 let SLUG = ''
 let COOKIE = ''
+let PERSON = ''
 
 beforeEach(async () => {
   RUN = randomUUID()
@@ -38,6 +39,8 @@ beforeEach(async () => {
     .execute(async (tx) =>
       arrive(tx, { kind: 'email', subject: address }, { name: null, username: null, address }),
     )
+
+  PERSON = arrived.userId
 
   const token = newSessionToken()
   await openSession(db, { user: arrived.userId, tokenHash: token.hash })
@@ -136,6 +139,48 @@ describe('answering', () => {
     expect(Object.keys(waiting)).not.toContain('spaceName')
   })
 
+  it('shows same-named identities that this person may explicitly reconnect', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await collect(await makeKey(), machineName)
+    if (existing.machineId === undefined) throw new Error('the fixture did not connect a machine')
+    const asked = await ask(machineName)
+
+    const waiting = (await (await as(`/enrolments/${asked.userCode}`)).json()) as {
+      existingMachines: { id: string; presence: { state: string } }[]
+    }
+
+    expect(waiting.existingMachines).toEqual([
+      expect.objectContaining({ id: existing.machineId, presence: { state: 'here' } }),
+    ])
+  })
+
+  it('reconnects the identity somebody chose instead of adding a duplicate', async () => {
+    const machineName = `mina-mbp-${RUN.slice(0, 8)}`
+    const existing = await collect(await makeKey(), machineName)
+    if (existing.machineId === undefined) throw new Error('the fixture did not connect a machine')
+    const asked = await ask(machineName)
+
+    const approved = await as('/me/machines', 'POST', {
+      userCode: asked.userCode,
+      replaceMachineId: existing.machineId,
+    })
+    const token = `hm_${randomUUID()}`
+    const collected = await collect(asked.secret, machineName, token)
+    const repeated = await collect(asked.secret, machineName, token)
+    const rows = await db
+      .selectFrom('machines')
+      .select('id')
+      .where('owner_user_id', '=', PERSON)
+      .where('name', '=', machineName)
+      .where('removed_at', 'is', null)
+      .execute()
+
+    expect(approved.status).toBe(204)
+    expect(collected).toMatchObject({ kind: 'granted', machineId: existing.machineId })
+    expect(repeated).toEqual(collected)
+    expect(rows).toEqual([{ id: existing.machineId }])
+  })
+
   it('takes a code typed the way somebody read it', async () => {
     const asked = await ask()
 
@@ -176,15 +221,32 @@ describe('answering', () => {
     expect(await collect(asked.secret)).toEqual({ kind: 'spent' })
   })
 
-  it('needs nobody to pick a Space, because a machine is not in one', async () => {
-    // What somebody agrees to is that the machine is theirs. Where it can be reached from
-    // follows from where they are a member, and is not a decision anybody makes here.
+  it('keeps an Account approval private when no Space journey named one', async () => {
+    // The machine and CLI never choose a Space. An Account approval records only whose machine it
+    // is; a Space-scoped approval is tested separately below.
     const asked = await ask()
 
     const answered = await as('/me/machines', 'POST', { userCode: asked.userCode })
 
     expect(answered.status).toBe(204)
     expect(await collect(asked.secret)).toMatchObject({ kind: 'granted' })
+  })
+
+  it('adds the machine only to the Space named by this approval journey', async () => {
+    const asked = await ask()
+    await as('/me/machines', 'POST', { userCode: asked.userCode, spaceSlug: SLUG })
+    const collected = await collect(asked.secret)
+    if (collected.machineId === undefined) throw new Error('the fixture did not connect a machine')
+
+    const available = await db
+      .selectFrom('space_machines')
+      .innerJoin('spaces', 'spaces.id', 'space_machines.space_id')
+      .select('spaces.slug')
+      .where('space_machines.machine_id', '=', collected.machineId)
+      .where('space_machines.removed_at', 'is', null)
+      .execute()
+
+    expect(available).toEqual([{ slug: SLUG }])
   })
 
   it('stays refused once somebody says no', async () => {

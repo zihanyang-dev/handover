@@ -43,39 +43,39 @@ export function DisplayName() {
   }
 
   return (
-    <section className="mb-[79px]" aria-labelledby={`${field}-heading`}>
+    <section className="mb-19.75" aria-labelledby={`${field}-heading`}>
       <h2
         id={`${field}-heading`}
-        className="m-0 mb-4 border-b border-line pb-3 text-[16px] leading-6 font-medium text-ink"
+        className="m-0 mb-4 border-b border-line pb-3 text-copy-s leading-6 font-medium text-ink"
       >
         Profile
       </h2>
       <form
-        className="flex min-h-[60px] items-center gap-[22px]"
+        className="flex min-h-15 items-center gap-5.5"
         onSubmit={(event) => {
           event.preventDefault()
           save()
         }}
       >
         {me.data === undefined ? (
-          <span className="size-[60px] shrink-0 rounded-full bg-fill" aria-hidden />
+          <span className="size-15 shrink-0 rounded-full bg-fill" aria-hidden />
         ) : (
           <img
-            className="size-[60px] shrink-0 rounded-full object-cover"
+            className="size-15 shrink-0 rounded-full object-cover"
             src={me.data.avatarUrl}
             alt=""
           />
         )}
         <div className="w-full max-w-[320px]">
           <label
-            className="mb-1 block text-[12px] leading-4 font-normal text-ink-muted"
+            className="mb-1 block text-copy-xxs leading-4 font-normal text-ink-muted"
             htmlFor={field}
           >
             Preferred name
           </label>
           <input
             id={field}
-            className="h-8 w-full rounded-[5px] border border-line-firm bg-white px-3 text-[14px] leading-5 text-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
+            className="h-8 w-full rounded-[5px] border border-line-firm bg-white px-3 text-copy-xs leading-5 text-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
             value={name}
             aria-invalid={rename.isError}
             aria-describedby={rename.isError ? error : undefined}
@@ -85,14 +85,14 @@ export function DisplayName() {
             }}
           />
           {rename.isPending && (
-            <p className="m-0 mt-1 text-[12px] leading-4 text-ink-muted" role="status">
+            <p className="m-0 mt-1 text-copy-xxs leading-4 text-ink-muted" role="status">
               Saving…
             </p>
           )}
           {rename.isError && (
             <p
               id={error}
-              className="m-0 mt-1 text-[12px] leading-4 text-danger-strong"
+              className="m-0 mt-1 text-copy-xxs leading-4 text-danger-strong"
               role="alert"
             >
               That name could not be saved. Try again.

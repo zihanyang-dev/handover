@@ -138,11 +138,11 @@ if (command === 'connect') {
  * the answer to the report is the answer to the question.
  */
 async function checkIn(): Promise<void> {
-  // A key handed in on the command line is somebody saying which Space this machine belongs to
-  // now. Believing the file instead would leave the machine where it was and say "connected" —
-  // the exact command for moving a machine, doing nothing, quietly.
-  const moving = values.key !== undefined
-  const held = moving ? undefined : await readAttachment(where)
+  // A key explicitly handed in is a new connection attempt. Believing the file instead would
+  // ignore that key, keep using the old credential, and say "connected" without doing what was
+  // asked. Identity and any Space relationship are decided by the approval behind the key.
+  const usingKey = values.key !== undefined
+  const held = usingKey ? undefined : await readAttachment(where)
 
   if (held !== undefined && (await sayWhatIsHere(held)) !== 'not-ours') return
 
@@ -384,8 +384,6 @@ async function stayConnected(attachment: Attachment): Promise<void> {
         PATH: await reachableAs({ beside: where, howToRun: howToRunThis() }, machineEnvironment()),
       },
       workRoot,
-      // The directory this process is in, which the service file set to the one `connect` was run
-      // in. Nothing runs here now; it is reported so a screen can offer it as "my project".
       handover: 'handover',
     },
     stopping.signal,

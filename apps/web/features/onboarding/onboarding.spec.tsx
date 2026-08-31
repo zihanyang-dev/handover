@@ -75,6 +75,9 @@ describe('the first step — a Space', () => {
     expect(screen.getByRole('button', { name: /choose space emoji.*🏠/i })).toBeDefined()
     expect(screen.queryByRole('dialog', { name: /choose a space emoji/i })).toBeNull()
     expect(screen.queryByLabelText(/your name/i)).toBeNull()
+    expect(screen.getByRole('link', { name: 'Account settings' }).getAttribute('href')).toBe(
+      '/settings',
+    )
   })
 
   it('shows a non-interactive, readable URL for a name in somebody’s own language', async () => {

@@ -30,10 +30,10 @@ export function Credentials() {
 
   return (
     // Named, so it is a region somebody can jump to rather than a run of unlabelled rows.
-    <section className="mb-[58px]" aria-labelledby={heading}>
+    <section className="mb-14.5" aria-labelledby={heading}>
       <h2
         id={heading}
-        className="m-0 mb-0 border-b border-line pb-3 text-[16px] leading-6 font-medium text-ink"
+        className="m-0 mb-0 border-b border-line pb-3 text-copy-s leading-6 font-medium text-ink"
       >
         How you get in
       </h2>
@@ -79,8 +79,8 @@ function CredentialRow({
             <Envelope className="size-4" aria-hidden />
           </span>
           <span className="min-w-0">
-            <strong className="block text-[14px] leading-5 font-medium text-ink">Email</strong>
-            <span className="block truncate text-[12px] leading-4 text-ink-muted">
+            <strong className="block text-copy-xs leading-5 font-medium text-ink">Email</strong>
+            <span className="block truncate text-copy-xxs leading-4 text-ink-muted">
               {way.address}
             </span>
           </span>
@@ -95,7 +95,7 @@ function CredentialRow({
         <span className="flex size-6 shrink-0 items-center justify-center">
           {PROVIDERS[way.kind].icon}
         </span>
-        <strong className="min-w-0 truncate text-[14px] leading-5 font-medium text-ink">
+        <strong className="min-w-0 truncate text-copy-xs leading-5 font-medium text-ink">
           {PROVIDERS[way.kind].label}
         </strong>
       </span>
@@ -103,7 +103,7 @@ function CredentialRow({
         <span className="shrink-0 text-[13px] leading-5 text-ink-muted">Ready</span>
       ) : (
         <button
-          className="h-7 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-7 shrink-0 cursor-pointer rounded-md border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={pending}
           onClick={() => {
