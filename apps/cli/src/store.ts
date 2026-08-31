@@ -56,11 +56,22 @@ function isText(value: unknown): boolean {
 }
 
 export async function readAttachment(path: string): Promise<Attachment | undefined> {
-  const found: unknown = await readFile(path, 'utf8')
-    .then((text): unknown => JSON.parse(text))
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch {
     // Never connected, or connected as somebody else. Both mean the same thing to a caller: there
     // is nothing here to be, so ask to come in.
-    .catch(() => undefined)
+    return undefined
+  }
+
+  let found: unknown
+  try {
+    found = JSON.parse(text)
+  } catch {
+    // Present but not JSON: returning nothing makes reconnect replace the unusable attachment.
+    return undefined
+  }
 
   if (typeof found !== 'object' || found === null) return undefined
 

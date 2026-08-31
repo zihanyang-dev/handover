@@ -30,6 +30,12 @@ say "migrations"
 docker compose up -d db objects
 docker compose run --rm -T app pnpm --filter @handover/server release
 
+say "the bucket"
+# The other thing a release does once and must not half-do. `set -e` above is what makes this a
+# step rather than a hope: a bucket that could not be made stops the release here, instead of
+# surfacing days later as an upload that fails.
+docker compose run --rm -T objects-ready
+
 say "start"
 docker compose up -d --remove-orphans
 

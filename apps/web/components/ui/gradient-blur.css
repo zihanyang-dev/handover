@@ -1,0 +1,13 @@
+/* ── a soft Notion-coloured trail on Notion's white ──────────────────── */
+
+.gradient-blur-field {
+  @apply relative isolate min-h-dvh overflow-hidden bg-white;
+}
+
+.gradient-blur-canvas {
+  @apply pointer-events-none absolute inset-0 z-0 block h-full w-full;
+}
+
+.gradient-blur-content {
+  @apply relative z-1 min-h-dvh;
+}

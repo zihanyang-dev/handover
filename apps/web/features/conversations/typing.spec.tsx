@@ -14,7 +14,7 @@ import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { serverSends } from '../../pretend/event-source.ts'
-import { useSayingYouAreTyping, useWatching } from './talking.ts'
+import { useSayingYouAreTyping, useWatching } from './watching.ts'
 
 const server = setupServer()
 

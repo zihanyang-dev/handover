@@ -23,9 +23,17 @@ const SAID: Record<string, string> = {
   'malformed-request': 'Check that address.',
 }
 
-function Said({ thrown, fallback }: { readonly thrown: unknown; readonly fallback: string }) {
+function Said({
+  id,
+  thrown,
+  fallback,
+}: {
+  readonly id: string
+  readonly thrown: unknown
+  readonly fallback: string
+}) {
   return (
-    <p className="said said-bad" role="alert">
+    <p id={id} className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
       {SAID[reasonOf(thrown) ?? ''] ?? fallback}
     </p>
@@ -37,6 +45,7 @@ type Sent = { readonly address: string; readonly id: string; readonly digits: nu
 
 function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
   const field = useId()
+  const error = useId()
   const [address, setAddress] = useState('')
 
   const send = useMutation({
@@ -52,38 +61,46 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
 
   return (
     <form
-      className="stack-tight"
-      style={{ marginTop: '0.75rem' }}
+      className="mt-5"
       onSubmit={(event) => {
         event.preventDefault()
         send.mutate(address.trim())
       }}
     >
       {send.isError && (
-        <Said thrown={send.error} fallback="That could not be sent. Try again shortly." />
+        <Said
+          id={error}
+          thrown={send.error}
+          fallback="That could not be sent. Try again shortly."
+        />
       )}
 
-      <label className="label" htmlFor={field}>
-        Add another address
+      <label
+        className="mb-1 block text-[12px] leading-4 font-normal text-panel-ink-muted"
+        htmlFor={field}
+      >
+        Add another email
       </label>
-      <div className="beside">
+      <div className="flex max-w-[480px] items-center gap-2">
         <input
           id={field}
-          className="field"
+          className="h-8 min-w-0 flex-1 rounded-[5px] border border-panel-line-firm bg-white px-3 text-[14px] leading-5 text-panel-ink outline-none transition-colors placeholder:text-panel-ink-off focus:border-focus focus:ring-1 focus:ring-focus"
           type="email"
           autoComplete="email"
           placeholder="you@example.com"
           value={address}
+          aria-invalid={send.isError}
+          aria-describedby={send.isError ? error : undefined}
           onChange={(event) => {
             setAddress(event.target.value)
           }}
         />
         <button
-          className="button button-secondary"
+          className="h-8 shrink-0 cursor-pointer rounded-[6px] border-0 bg-primary px-3 text-[13px] leading-[16.8px] font-medium text-white hover:bg-primary-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={address.trim() === '' || send.isPending}
         >
-          <span className="button-label">{send.isPending ? 'Sending…' : 'Send a code'}</span>
+          {send.isPending ? 'Sending…' : 'Send a code'}
         </button>
       </div>
     </form>
@@ -93,6 +110,7 @@ function AskForAddress({ onSent }: { readonly onSent: (sent: Sent) => void }) {
 function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: () => void }) {
   const client = useQueryClient()
   const field = useId()
+  const error = useId()
   const [code, setCode] = useState('')
 
   const answer = useMutation({
@@ -113,8 +131,7 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
 
   return (
     <form
-      className="stack-tight"
-      style={{ marginTop: '0.75rem' }}
+      className="mt-5"
       onSubmit={(event) => {
         event.preventDefault()
         // Enter, with the code half typed. All of them go by themselves, so this can only ever be
@@ -123,21 +140,26 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
       }}
     >
       {answer.isError && (
-        <Said thrown={answer.error} fallback="That could not be checked. Try again." />
+        <Said id={error} thrown={answer.error} fallback="That could not be checked. Try again." />
       )}
 
-      <label className="label" htmlFor={field}>
+      <label
+        className="mb-1 block text-[12px] leading-4 font-normal text-panel-ink-muted"
+        htmlFor={field}
+      >
         Code sent to {sent.address}
       </label>
-      <div className="beside">
+      <div className="flex max-w-[360px] items-center gap-2">
         <input
           id={field}
-          className="field"
+          className="h-8 min-w-0 flex-1 rounded-[5px] border border-panel-line-firm bg-white px-3 text-[14px] leading-5 tracking-[0.16em] text-panel-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={sent.digits}
           autoFocus
           value={code}
+          aria-invalid={answer.isError}
+          aria-describedby={answer.isError ? error : undefined}
           onChange={(event) => {
             const digits = event.target.value.replaceAll(/\D/gu, '').slice(0, sent.digits)
             setCode(digits)
@@ -146,8 +168,12 @@ function AnswerCode({ sent, onDone }: { readonly sent: Sent; readonly onDone: ()
             if (digits.length === sent.digits) answer.mutate(digits)
           }}
         />
-        <button className="button button-quiet" type="button" onClick={onDone}>
-          <span className="button-label">Cancel</span>
+        <button
+          className="h-8 shrink-0 cursor-pointer rounded-md border-0 bg-transparent px-2 text-[14px] leading-[16.8px] font-medium text-panel-ink-muted hover:bg-panel-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          type="button"
+          onClick={onDone}
+        >
+          Cancel
         </button>
       </div>
     </form>

@@ -40,7 +40,7 @@ export function startSession(c: Context, token: string, origin: string): void {
  * `http:`, and a session cookie would go out without `Secure` on every production request.
  */
 export function overHttps(origin: string): boolean {
-  return new URL(origin).protocol === 'https:'
+  return URL.parse(origin)?.protocol === 'https:'
 }
 
 /**

@@ -18,11 +18,14 @@ apps/web/           浏览器应用
   features/         一块屏幕上的一件事
   routes/           地址到屏幕
   components/ui/    没有主人的视觉零件:一段手写体、一次礼花、一层渐变模糊
-                    进这里的标准是「它不知道 Handover 是什么」
+                    进这里的标准是「它不知道 Handover 是什么」;零件独有的复杂选择器
+                    住在同名或明确命名的相邻 CSS,不塞回全局入口
   lib/              同上,但不是零件:目前只有拼 class 名的 cn
   mark.tsx mark.css 那个标识,和它的几种状态;关键帧留在相邻的 CSS
-  style.css         Tailwind 入口、theme、全局 token 和最小的 base;不放 feature class
-  styles/           按屏幕拥有实测的状态选择器、响应式布局和动画;静态几何用 Tailwind `@apply`
+  style.css         Tailwind 入口、cascade 顺序、theme、全局 token、最小 base 和全局媒体规则;
+                    不放 feature class
+  styles/           按屏幕拥有实测的状态选择器、响应式布局和动画;一个文件名对应一块屏幕,
+                    不再用一个「arrival」桶装登录、连接和 onboarding
   pretend/          屏幕测试里冒充服务器的那几个:/me、一个 Space、登录方式、EventSource
 apps/cli/           装在机器上的那个命令
   src/              一个文件一条行为
@@ -38,9 +41,6 @@ e2e/                真浏览器走一遍整条旅程。跑的是构建产物 + 
 deploy/             那一台机器上跑着的那份:生产 compose · Caddy · 发一次布的脚本
                     这里没有秘密,值住在服务器的 deploy/.env,不进版本库
 docs/               稳定规则 + roadmap 下每条旅程的 prd/design
-.21st/              视觉简报,给设计工具读的。**是输入,不是产物** —— 界面照它做,
-                    它不照界面生成。和 prd 重叠的部分以 prd 为准:prd 说做什么,
-                    这里说长什么样
 compose.yml         一个 postgres 两个库,和一个放脸的对象存储
 ```
 
@@ -55,6 +55,12 @@ compose.yml         一个 postgres 两个库,和一个放脸的对象存储
 编译进页面的值只在没人改另一边之前是对的。
 
 **具体有哪些 owner 和 adapter 见对应旅程的 `design.md`。** 本文件只规定形态。
+
+浏览器 CSS 的顺序是 `theme → base → components → utilities → states`:全局 token 通过
+`@theme inline` 成为 Tailwind 词汇;无主视觉零件的稳定形状住 `components`;组件调用处的 utility
+可以覆盖它;实测的 feature 状态、响应式和动画最后落在 `states`,保留它们已经量过的优先级。
+**不导入 Preflight。** 重复的一段结构、键盘行为或可访问性才抽 React 组件;只重复一串 class 不抽。
+一块屏幕自己的排布不下沉到 `components/ui/`,第三方 markup 和多选择器状态留在拥有它的 CSS。
 
 上面这些是**现在真有的**。还没开始的那一片会带来的目录,写在它自己的 `design.md` 里,
 不预先列在这里 —— 一个找不到的目录和一个不该存在的目录一样费解。

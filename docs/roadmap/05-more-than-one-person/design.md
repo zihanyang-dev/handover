@@ -13,6 +13,7 @@ invitations
   expires_at · revoked_at            ← 会过期,能作废
   created_at
   一行 = 一条还能用或曾经能用的邀请链接
+  唯一(space_id) where revoked_at is null  ← 每个 Space 最多一条没作废的链接
 
 memberships
   space_id · user_id · request_key · created_at
@@ -24,6 +25,11 @@ memberships
 **邀请复用机器钥匙的形状,不是巧合。** 两者回答同一个问题:让一个还没有身份的东西证明它被允许进来。
 `02` 的 `enrolments` 已经是这个形状 —— 只存哈希、明文只出现一次、能作废、会过期、一次性 ——
 所以这里不发明第二套,连措辞都对齐。
+
+**一个 Space 最多一条没作废的邀请。** `POST` 不是再添一条,是换一条:先锁住 Space,把旧邀请的
+`revoked_at` 写上,再插入新邀请,全部在同一笔事务里。锁 Space 是为了两个同时到达的 `POST`
+不能各自看见「没有旧邀请」再各插一条;部分唯一索引是迟到写者的最后一道门。过期但没作废的行
+也会在换一条时一起作废,所以索引不需要把当前时间塞进谓词。
 
 **没有 `invitations.email`。** 一条链接谁拿到都能用,这一点要写在人看得见的地方(`prd.md` ①),
 而不是靠一个填了也不检查的字段假装它定向。
@@ -150,8 +156,8 @@ Space 的路,而那不是任何人想按的按钮。
 ## 接口
 
 ```
-POST   /spaces/{slug}/invitations          做一条链接;明文只回一次
-GET    /spaces/{slug}/invitations          还能用的那些(不含明文)
+POST   /spaces/{slug}/invitations          换一条链接;原子作废旧的,新明文只回一次
+GET    /spaces/{slug}/invitations          还在用的那一条(不含明文;数组至多一项)
 DELETE /spaces/{slug}/invitations/{id}     作废
 
 GET    /invitations/{secret}                这是哪个 Space、谁请的。要会话

@@ -8,7 +8,13 @@ import { normalizeEmail } from './email-address.ts'
 import { begin, exchange } from './handshake.ts'
 import type { Identified, ProviderClient } from './provider-client.ts'
 
-const ISSUER = new URL('https://accounts.google.com')
+const ISSUER = googleIssuer()
+
+function googleIssuer(): URL {
+  const issuer = URL.parse('https://accounts.google.com')
+  if (issuer === null) throw new Error('Google issuer is not a URL')
+  return issuer
+}
 const SCOPE = 'openid email profile'
 
 /**

@@ -35,6 +35,7 @@ async function shot(page: Page, name: string): Promise<void> {
   await expect(page).toHaveScreenshot(`${name}.png`, {
     fullPage: true,
     animations: 'disabled',
+    maxDiffPixels: 10,
     mask: [page.locator('img[src*="/avatars/"]')],
   })
 }

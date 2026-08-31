@@ -1,12 +1,19 @@
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import routing from './tsr.config.json' with { type: 'json' }
 import contract from '../server/generated/openapi.json' with { type: 'json' }
 
+const DEVELOPMENT_API = 'http://localhost:3000'
+
 /** The API is same-origin in production; in development it is a separate process on its own port. */
-const SERVER = process.env['HANDOVER_API_ORIGIN'] ?? 'http://localhost:3000'
+function apiOrigin(mode: string): string {
+  const configured = loadEnv(mode, import.meta.dirname, '')['HANDOVER_API_ORIGIN']
+  if (configured === undefined || configured === '') return DEVELOPMENT_API
+
+  return configured
+}
 
 /**
  * Paths the API owns, read out of the contract rather than listed by hand.
@@ -19,10 +26,15 @@ const SERVER = process.env['HANDOVER_API_ORIGIN'] ?? 'http://localhost:3000'
  * address — one path cannot be two things.
  */
 const OWNED_BY_SERVER = [
-  ...new Set(Object.keys(contract.paths).map((path) => `/${path.split('/')[1] ?? ''}`)),
+  ...new Set(
+    Object.keys(contract.paths).map((path) => {
+      const [, root = ''] = path.split('/')
+      return `/${root}`
+    }),
+  ),
 ]
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: import.meta.dirname,
   // The same file `tsr generate` reads, so a route tree built by the dev server and one built by
   // `pnpm generate` cannot disagree about where routes live.
@@ -30,5 +42,7 @@ export default defineConfig({
   // Vite 8 fixes this Baseline range at 2026-01-01. A 275 kB raw-chunk warning keeps the current
   // route-split baseline visible without pretending bundle bytes alone prove Core Web Vitals.
   build: { target: 'baseline-widely-available', chunkSizeWarningLimit: 275 },
-  server: { proxy: Object.fromEntries(OWNED_BY_SERVER.map((path) => [path, SERVER])) },
-})
+  server: {
+    proxy: Object.fromEntries(OWNED_BY_SERVER.map((path) => [path, apiOrigin(mode)])),
+  },
+}))

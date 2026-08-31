@@ -25,7 +25,9 @@ const HOME = '/'
 export function returnPath(asked: string | undefined, origin: string): string {
   if (asked === undefined) return HOME
 
-  const here = new URL(origin)
+  const here = URL.parse(origin)
+  if (here === null) return HOME
+
   const landing = URL.parse(asked, here.href)
   if (landing === null || landing.origin !== here.origin) return HOME
 

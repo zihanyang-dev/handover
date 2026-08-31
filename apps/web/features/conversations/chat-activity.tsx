@@ -4,7 +4,7 @@
 import { useLayoutEffect, useRef } from 'react'
 import { ArrowRepeat } from 'react-bootstrap-icons'
 import { AnimatedShinyText } from '../../components/ui/animated-shiny-text.tsx'
-import type { LiveOutput, LiveTurn } from './talking.ts'
+import type { LiveOutput, LiveTurn } from './watching.ts'
 
 function latestActivity(moment: LiveTurn['activity']) {
   if (moment === undefined) return 'Working…'

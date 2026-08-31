@@ -23,6 +23,7 @@
  */
 
 import { sql } from 'kysely'
+import { z } from 'zod'
 import { ACTIVITY } from '../conversation/transcript.ts'
 import { SILENT_FOR_SECONDS, type Whereabouts } from '../machine/presence.ts'
 import type { Database, Tx } from './connection.ts'
@@ -108,12 +109,52 @@ export type HandedOver =
   | { readonly kind: 'handed-over'; readonly taskId: string }
   /** Something is already running in this conversation. One at a time, and the index says so. */
   | { readonly kind: 'already-handed-over' }
+  /** That transcript line is not the proposal a person can confirm now. */
+  | { readonly kind: 'no-current-proposal' }
   | { readonly kind: 'no-conversation' }
 
 export type HandingOver = Saying & {
   readonly userId: string
-  /** The agent's own restatement, which a person read before any of this started. */
-  readonly goal: string
+  /** The transcript identity of the exact card the person confirmed. */
+  readonly proposalSeq: number
+}
+
+const Proposal = z.object({
+  activityType: z.literal(ACTIVITY.proposed),
+  text: z.string().min(1).max(2000),
+})
+
+/**
+ * The one card a person can confirm now, if this is its sequence number.
+ *
+ * A proposal is allowed to have tool output and the turn ending after it. What supersedes it is a
+ * person continuing the conversation, or the agent writing a newer proposal. The conversation is
+ * already held by the caller, so another writer cannot put either between this read and the task.
+ */
+async function currentProposalGoal(
+  tx: Tx,
+  conversationId: string,
+  proposalSeq: number,
+): Promise<string | undefined> {
+  const current = await tx
+    .selectFrom('messages')
+    .select(['seq', 'role', 'content'])
+    .where('conversation_id', '=', conversationId)
+    .where((eb) =>
+      eb.or([
+        eb('role', '=', 'user'),
+        eb.and([
+          eb('role', '=', 'activity'),
+          sql<boolean>`content ->> 'activityType' = ${ACTIVITY.proposed}`,
+        ]),
+      ]),
+    )
+    .orderBy('seq', 'desc')
+    .executeTakeFirst()
+
+  if (current?.seq !== proposalSeq || current.role !== 'activity') return undefined
+  const proposal = Proposal.safeParse(current.content)
+  return proposal.success ? proposal.data.text : undefined
 }
 
 /**
@@ -132,12 +173,15 @@ export async function handOver(db: Database, handing: HandingOver): Promise<Hand
       return { kind: 'already-handed-over' }
     }
 
+    const goal = await currentProposalGoal(tx, conversation.id, handing.proposalSeq)
+    if (goal === undefined) return { kind: 'no-current-proposal' }
+
     const opened = await tx
       .insertInto('tasks')
       .values({
         conversation_id: conversation.id,
         owner_user_id: handing.userId,
-        goal: handing.goal,
+        goal,
         state: STATE.working,
       })
       .returning('id')
@@ -145,7 +189,7 @@ export async function handOver(db: Database, handing: HandingOver): Promise<Hand
 
     await note(tx, handing.conversationId, handing.key, {
       activityType: ACTIVITY.handedOver,
-      text: handing.goal,
+      text: goal,
     })
     await wakeMachine(tx, conversation.machineId)
 

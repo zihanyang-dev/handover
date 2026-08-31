@@ -50,11 +50,10 @@ const NOT_HANDED_OVER: Failure<409> = {
 }
 
 /**
- * Whoever it was handed to is not here, or there is nothing there to hand over.
+ * Whoever it was handed to is not here, or the proposal being confirmed is no longer current.
  *
- * One answer for both, because a handover is written in the statement that checks — and by the
- * time it comes back, "no rows" cannot say which. What to do about either is the same: look at the
- * screen again, which is showing what is actually true.
+ * One answer because both mean the choice visible when the request began is no longer available.
+ * What to do is the same: read the screen again, which shows the current proposal or recipient.
  */
 const CANNOT_HAND_OVER: Failure<404> = {
   reason: 'cannot-hand-over',
@@ -111,7 +110,11 @@ const Waiting = named('Waiting', {
 
 const Inbox = named('Inbox', { waiting: z.array(Waiting).readonly() })
 
-const HandOver = named('HandOver', { ...CALLED, goal })
+const HandOver = named('HandOver', {
+  ...CALLED,
+  /** The exact transcript card a person confirms; the server reads its goal from there. */
+  proposalSeq: z.number().int().positive(),
+})
 
 const TakeBack = named('TakeBack', CALLED)
 
@@ -157,7 +160,10 @@ function handingOver({ db }: TaskApi) {
     body: HandOver,
     answers: {
       204: 'Handed over, or handed over already',
-      404: refuses(UNAVAILABLE, 'No such Space, or no such conversation in it'),
+      404: refuses(
+        [UNAVAILABLE, CANNOT_HAND_OVER],
+        'No such Space or conversation, or that proposal is no longer current',
+      ),
       409: refuses(ALREADY, 'Something is already running in this conversation'),
     },
 
@@ -168,10 +174,11 @@ function handingOver({ db }: TaskApi) {
         spaceId: c.get('space').id,
         key: asked.key,
         userId: c.get('userId'),
-        goal: asked.goal,
+        proposalSeq: asked.proposalSeq,
       })
 
       if (over.kind === 'no-conversation') return refused(c, UNAVAILABLE)
+      if (over.kind === 'no-current-proposal') return refused(c, CANNOT_HAND_OVER)
       if (over.kind === 'already-handed-over') return refused(c, ALREADY)
 
       return nothing(c, 204)

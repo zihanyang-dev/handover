@@ -42,7 +42,7 @@ export default defineConfig({
     // Its output goes to a file because the letters go there: with no mail provider the server
     // writes each code to its log, and that file is this suite's inbox.
     command:
-      'pnpm --filter @handover/web build && node --env-file=../../.env.e2e src/main.ts > ../../e2e/letters.log 2>&1',
+      'NODE_ENV=production pnpm --filter @handover/web build && node --env-file=../../.env.e2e src/main.ts > ../../e2e/letters.log 2>&1',
     cwd: '../apps/server',
     url: `${ORIGIN}/auth/credentials`,
     reuseExistingServer: false,

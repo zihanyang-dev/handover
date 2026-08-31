@@ -8,14 +8,14 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Composer, ComposerError, SendButton } from '../../components/ui/chat-composer.tsx'
 import { Mark } from '../../mark.tsx'
 import { AgentMark, agentName, agentTint } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
+import { useBeginConversation } from './conversation.ts'
 import { markMessageArrival } from './message-transition.ts'
 import { askedWithChoices, ModelChoices } from './model-choices.tsx'
-import { useBeginConversation } from './talking.ts'
 
 export function StartChat({
   slug,
@@ -27,25 +27,39 @@ export function StartChat({
   readonly agentKind: string
 }) {
   const machines = useQuery(machinesIn(slug))
-  if (machines.isPending) return <BeforeTheAgent>Looking…</BeforeTheAgent>
+  if (machines.isPending)
+    return (
+      <p
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        role="status"
+      >
+        Looking…
+      </p>
+    )
   if (machines.isError)
-    return <BeforeTheAgent>Could not read this agent. Try again.</BeforeTheAgent>
+    return (
+      <p
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        role="alert"
+      >
+        Could not read this agent. Try again.
+      </p>
+    )
 
   const agent = agentsOn(machines.data).find(
     (one) => one.machineId === machineId && one.kind === agentKind,
   )
-  if (agent === undefined) return <BeforeTheAgent>This agent is not available.</BeforeTheAgent>
+  if (agent === undefined)
+    return (
+      <p
+        className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300"
+        role="alert"
+      >
+        This agent is not available.
+      </p>
+    )
 
   return <ReadyStart slug={slug} agent={agent} />
-}
-
-/** The same column the composer stands in, so nothing jumps sideways when the agent arrives. */
-function BeforeTheAgent({ children }: { readonly children: ReactNode }) {
-  return (
-    <p className="mx-auto w-[min(44rem,calc(100%-3rem))] pt-24 text-center text-grey-300">
-      {children}
-    </p>
-  )
 }
 
 function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: InstalledAgent }) {
@@ -115,7 +129,15 @@ function ReadyStart({ slug, agent }: { readonly slug: string; readonly agent: In
           )
         }}
       >
-        {!online && <ComposerError>{name} is offline.</ComposerError>}
+        {!online && (
+          <span
+            className="inline-flex h-7 items-center gap-1.5 text-[12px] font-medium text-ink-muted"
+            role="status"
+          >
+            <span className="size-1.5 rounded-full bg-[var(--ink-tertiary)]" aria-hidden />
+            Offline
+          </span>
+        )}
         {begin.isError && <ComposerError>{whyNot(begin.error.reason, name)}</ComposerError>}
         <div className="ml-auto flex min-w-0 items-center gap-1.5">
           <ModelChoices

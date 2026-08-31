@@ -15,6 +15,7 @@ import { useSignOut } from '../identity/sign-out.tsx'
 import { SpaceEmojiPicker } from './emoji-picker.tsx'
 import { peopleIn } from './people.ts'
 import { CheckIcon, PlusIcon, SettingsIcon } from './sidebar-icons.tsx'
+import type { SettingsSection } from './space-settings.tsx'
 import { useChangeSpaceEmoji } from './space.ts'
 
 type Space = components['schemas']['Space']
@@ -60,7 +61,7 @@ export function SpaceMenu({
 }: {
   readonly space: Space
   readonly close: () => void
-  readonly openSettings: () => void
+  readonly openSettings: (section: SettingsSection) => void
 }) {
   const me = useQuery(meQuery)
   const people = useQuery(peopleIn(space.slug))
@@ -108,7 +109,12 @@ export function SpaceMenu({
 
       <div className="space-menu-divider" />
       <div className="space-menu-actions">
-        <button type="button" onClick={openSettings}>
+        <button
+          type="button"
+          onClick={() => {
+            openSettings('people')
+          }}
+        >
           <SettingsIcon />
           <span>Settings</span>
         </button>
@@ -118,13 +124,16 @@ export function SpaceMenu({
       <div className="space-menu-account">
         <p>{accountName(me.data)}</p>
         <ul>
-          {/* Account facts stay on their own address; putting them in Space Settings would
-              make a person's credentials look like they belong to this Space. */}
           <li>
-            <Link to="/settings" onClick={close}>
+            <button
+              type="button"
+              onClick={() => {
+                openSettings('account')
+              }}
+            >
               <SettingsIcon />
               <span>Account settings</span>
-            </Link>
+            </button>
           </li>
           {(me.data?.spaces ?? []).map((one) => (
             <li key={one.id}>

@@ -2,7 +2,7 @@
 // The original copyright and source terms are retained in styles/chat.css.
 
 import type { ComponentPropsWithoutRef, CSSProperties } from 'react'
-import { cn } from '../../lib/utils.ts'
+import { cn } from '../../lib/class-names.ts'
 
 type AnimatedShinyTextProps = ComponentPropsWithoutRef<'span'> & {
   readonly shimmerWidthPx?: number

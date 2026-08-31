@@ -68,9 +68,6 @@ export function serverSends(url: string, data: unknown, event?: string): void {
   else for (const listener of live.named.get(event) ?? []) listener(arrived)
 }
 
-/** Whether a browser is holding a stream open. */
-export function isWatching(url: string): boolean {
-  return TestEventSource.open.has(url)
-}
-
+// SAFETY: tests use only EventSource construction, listeners, ready state, and close; this double
+// implements those members and intentionally omits browser-only fields no test can observe.
 globalThis.EventSource = TestEventSource as unknown as typeof EventSource

@@ -13,7 +13,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import type { ReactNode } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { inbox } from './talking.ts'
+import { inbox } from './inbox-query.ts'
 import { useHandOver, useHandWorkTo, useTakeBack } from './work.ts'
 
 const server = setupServer()
@@ -30,7 +30,7 @@ afterAll(() => {
 })
 
 const ID = '11111111-1111-4111-8111-111111111111'
-const GOAL = 'make the 30s timeout configurable'
+const PROPOSAL_SEQ = 3
 
 function inABrowser() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -61,10 +61,10 @@ function watchingTheInbox<T>(use: () => T) {
 
 describe('handing a piece of work over', () => {
   it('is one intention however many times it is pressed', async () => {
-    const sent: { key: string; goal: string }[] = []
+    const sent: { key: string; proposalSeq: number }[] = []
     server.use(
       http.post(`*/spaces/acme/conversations/${ID}/task`, async ({ request }) => {
-        sent.push((await request.json()) as { key: string; goal: string })
+        sent.push((await request.json()) as { key: string; proposalSeq: number })
         return new HttpResponse(null, { status: 204 })
       }),
     )
@@ -74,15 +74,16 @@ describe('handing a piece of work over', () => {
     })
 
     // Twice, without waiting: the same card, pressed by somebody who did not see it land.
-    screen.result.current.it.mutate(GOAL)
-    screen.result.current.it.mutate(GOAL)
+    screen.result.current.it.mutate(PROPOSAL_SEQ)
+    screen.result.current.it.mutate(PROPOSAL_SEQ)
 
     await waitFor(() => {
       expect(sent).toHaveLength(2)
     })
     // The server keeps its promise by the name it is handed, so the two carry one name.
     expect(sent[0]?.key).toBe(sent[1]?.key)
-    expect(sent[0]?.goal).toBe(GOAL)
+    expect(sent[0]?.proposalSeq).toBe(PROPOSAL_SEQ)
+    expect(sent[0]).not.toHaveProperty('goal')
     // Once on arrival, and once after each of the two answers: one name on the wire does not mean
     // one answer coming back, and both answers say the Inbox may have changed.
     await waitFor(() => {
@@ -100,11 +101,11 @@ describe('handing a piece of work over', () => {
     )
     const { screen } = watchingTheInbox(() => useHandOver('acme', ID))
 
-    screen.result.current.it.mutate(GOAL)
+    screen.result.current.it.mutate(PROPOSAL_SEQ)
     await waitFor(() => {
       expect(sent).toHaveLength(1)
     })
-    screen.result.current.it.mutate(GOAL)
+    screen.result.current.it.mutate(PROPOSAL_SEQ)
     await waitFor(() => {
       expect(sent).toHaveLength(2)
     })
@@ -124,7 +125,7 @@ describe('handing a piece of work over', () => {
     )
     const { screen } = watchingTheInbox(() => useHandOver('acme', ID))
 
-    screen.result.current.it.mutate(GOAL)
+    screen.result.current.it.mutate(PROPOSAL_SEQ)
 
     await waitFor(() => {
       expect(screen.result.current.it.error?.reason).toBe('nothing-to-hand-over')

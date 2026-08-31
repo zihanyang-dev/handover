@@ -816,7 +816,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The links that still work */
+        /** The link that still works, if there is one */
         get: {
             parameters: {
                 query?: never;
@@ -867,7 +867,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Make a link somebody can join this Space with */
+        /** Replace the link somebody can join this Space with */
         post: {
             parameters: {
                 query?: never;
@@ -2831,7 +2831,7 @@ export interface paths {
                         "application/json": components["schemas"]["Failure"];
                     };
                 };
-                /** @description No such Space, or no such conversation in it */
+                /** @description No such Space or conversation, or that proposal is no longer current */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3745,6 +3745,8 @@ export interface components {
         };
         Underway: {
             goal: string;
+            /** Format: uuid */
+            ownerUserId: string;
             /** @enum {string} */
             state: "working" | "wait" | "sleep" | "done";
             /** Format: date-time */
@@ -3852,7 +3854,7 @@ export interface components {
         };
         HandOver: {
             key: string;
-            goal: string;
+            proposalSeq: number;
         };
         TakeBack: {
             key: string;

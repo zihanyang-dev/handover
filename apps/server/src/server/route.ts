@@ -148,6 +148,7 @@ export function refuses<S extends Status>(
  * here once rather than at each of the routes that answer this way.
  */
 export function nothing<S extends 204, E extends Env>(c: Context<E>, status: S) {
+  // SAFETY: Hono returns a real bodyless Response here; only its generic type models null as data.
   return c.body(null, status) as unknown as TypedResponse<Record<never, never>, S, string> &
     Response
 }
@@ -159,6 +160,7 @@ export function nothing<S extends 204, E extends Env>(c: Context<E>, status: S) 
  * difference between that and a body of `undefined`. Here once rather than at each route.
  */
 export function redirected<E extends Env>(c: Context<E>, to: string) {
+  // SAFETY: Hono returns a real redirect Response here; only its generic type models a body.
   return c.redirect(to, 303) as unknown as TypedResponse<Record<never, never>, 303, string> &
     Response
 }
@@ -354,6 +356,8 @@ function routesBehind<E extends Env, Own extends Decided, Always extends z.ZodRa
           path,
           summary: declared.summary,
           middleware: [...middleware],
+          // SAFETY: Declared fixes the same params/query/body generics; the conditional body is the
+          // runtime representation Hono expects, while its recursive generic cannot prove that.
           request: {
             params: z.object({ ...always, ...declared.params }),
             query: z.object({ ...declared.query }),

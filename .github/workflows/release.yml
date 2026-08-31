@@ -1,14 +1,17 @@
 # Turns a tag into the four files somebody can download.
 #
-# One job on one machine: Bun cross-compiles, so every platform's binary comes from the same source
-# at the same moment, and a release cannot be half of one version and half of another.
+# One job on one machine: Bun cross-compiles, so every platform's binary
+# comes from the same source at the same moment. A release cannot be half of
+# one version and half of another.
 
 name: release
 
 on:
-  push: { tags: ['v*'] }
+  push:
+    tags: ['v*']
 
-# The release is created by this job, which is the whole reason it needs more than the default read.
+# The release is created by this job, which is why it needs more than the
+# default read permission.
 permissions:
   contents: write
 
@@ -16,25 +19,30 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      # pi-lens-ignore: zizmor:cache-poisoning
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: package.json
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # The tag is the version, so a binary can always be traced back to the commit it came from.
+      # The tag is the version, so a binary can always be traced back to the
+      # commit it came from.
       - run: pnpm --filter @handover/cli build
         env:
           HANDOVER_VERSION: ${{ github.ref_name }}
 
-      # What the installer checks before it puts anything in your PATH. Names are relative so the
-      # file reads the same next to the downloads as it did here.
+      # What the installer checks before it puts anything in your PATH.
+      # Names are relative so the file reads the same beside the downloads.
       - run: sha256sum handover-* > SHA256SUMS
         working-directory: apps/cli/dist
 
-      - run: gh release create "$TAG" --title "$TAG" --generate-notes apps/cli/dist/*
+      - run: >-
+          gh release create "$TAG" --title "$TAG" --generate-notes
+          apps/cli/dist/*
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}

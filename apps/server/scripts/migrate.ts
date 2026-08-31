@@ -28,7 +28,8 @@ const RESTRICT_KEY = 'handover'
  * dump, so we fix it; and it records its own version, so compose.yml pins the image patch release.
  */
 function dumpSchema(url: string): void {
-  const target = new URL(url)
+  const target = URL.parse(url)
+  if (target === null) throw new Error('DATABASE_URL is not a URL')
   const sql = capture('docker', [
     'compose',
     'exec',
@@ -114,7 +115,8 @@ const ONLY_MIGRATIONS = 'handover_generated'
  */
 export function onlyTheMigrations(): { readonly url: string; readonly drop: () => void } {
   const { DATABASE_URL } = loadEnv()
-  const target = new URL(DATABASE_URL)
+  const target = URL.parse(DATABASE_URL)
+  if (target === null) throw new Error('DATABASE_URL is not a URL')
   target.pathname = `/${ONLY_MIGRATIONS}`
   mkdirSync(join(ROOT, 'generated'), { recursive: true })
 

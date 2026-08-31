@@ -192,6 +192,7 @@ CREATE TABLE public.enrolments (
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT enrolments_approved_together CHECK (((approved_at IS NULL) = (approved_by IS NULL))),
+    CONSTRAINT enrolments_asking_has_a_name_and_a_code CHECK (((machine_name IS NULL) = (user_code IS NULL))),
     CONSTRAINT enrolments_claimed_after_approval CHECK (((claimed_at IS NULL) OR (approved_at IS NOT NULL))),
     CONSTRAINT enrolments_not_both_answers CHECK (((refused_at IS NULL) OR (approved_at IS NULL)))
 );
@@ -227,7 +228,8 @@ CREATE TABLE public.machines (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     version text,
     owner_user_id uuid NOT NULL,
-    connected_in text
+    connected_in text,
+    CONSTRAINT machines_name_check CHECK (((btrim(name) = name) AND ((char_length(name) >= 1) AND (char_length(name) <= 200))))
 );
 
 
@@ -658,10 +660,10 @@ CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (us
 
 
 --
--- Name: invitations_open; Type: INDEX; Schema: public; Owner: -
+-- Name: invitations_one_unrevoked_per_space; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX invitations_open ON public.invitations USING btree (space_id) WHERE (revoked_at IS NULL);
+CREATE UNIQUE INDEX invitations_one_unrevoked_per_space ON public.invitations USING btree (space_id) WHERE (revoked_at IS NULL);
 
 
 --

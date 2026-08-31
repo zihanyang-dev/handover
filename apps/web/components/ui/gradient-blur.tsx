@@ -1,41 +1,28 @@
-'use client'
-
 import { useEffect, useRef, type ReactNode } from 'react'
-import { cn } from '../../lib/utils.ts'
 
 type Rgb = readonly [number, number, number]
 
-interface GradientBlurProps {
-  readonly radius?: number
-  readonly opacityDecay?: number
-  readonly backgroundColor?: string
-  readonly color?: Rgb
-  readonly colorGenerator?: () => Rgb
-  readonly children?: ReactNode
-  readonly className?: string
-}
+type GradientBlurProps = { readonly children: ReactNode }
 
-interface Circle {
+type Circle = {
   readonly color: Rgb
   readonly x: number
   readonly y: number
   alpha: number
 }
 
-interface Trail {
+type Trail = {
   x: number
   y: number
   sequence: number
   ready: boolean
 }
 
-interface EmitOptions {
+type EmitOptions = {
   readonly circles: Circle[]
   readonly trail: Trail
   readonly x: number
   readonly y: number
-  readonly color: Rgb | undefined
-  readonly colorGenerator: (() => Rgb) | undefined
 }
 
 const NOTION_COLORS: readonly Rgb[] = [
@@ -47,6 +34,9 @@ const NOTION_COLORS: readonly Rgb[] = [
 ]
 const TRAIL_SPACING = 10
 const MAX_CIRCLES = 220
+const TRAIL_RADIUS = 64
+const OPACITY_DECAY = 0.025
+const BACKGROUND = '#ffffff'
 
 function mix(first: Rgb, second: Rgb, amount: number): Rgb {
   return [
@@ -63,12 +53,8 @@ function notionColor(sequence: number) {
   return mix(NOTION_COLORS[index] as Rgb, NOTION_COLORS[nextIndex] as Rgb, phase % 1)
 }
 
-function colorFor(options: EmitOptions) {
-  return options.color ?? options.colorGenerator?.() ?? notionColor(options.trail.sequence)
-}
-
 function addCircle(options: EmitOptions, x: number, y: number) {
-  options.circles.push({ color: colorFor(options), x, y, alpha: 1 })
+  options.circles.push({ color: notionColor(options.trail.sequence), x, y, alpha: 1 })
   options.trail.sequence += 1
   if (options.circles.length > MAX_CIRCLES) options.circles.shift()
 }
@@ -140,15 +126,7 @@ function drawTrail(
   if (expired > 0) circles.splice(0, expired)
 }
 
-export function GradientBlur({
-  radius = 64,
-  opacityDecay = 0.025,
-  backgroundColor = '#ffffff',
-  color,
-  colorGenerator,
-  children,
-  className,
-}: GradientBlurProps) {
+export function GradientBlur({ children }: GradientBlurProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -178,10 +156,10 @@ export function GradientBlur({
       animation.frame = 0
       const elapsedFrames = Math.min((now - animation.previousAt) / (1000 / 60), 3)
       animation.previousAt = now
-      clearCanvas(context, size, backgroundColor)
-      drawTrail(context, circles, radius, opacityDecay * elapsedFrames)
+      clearCanvas(context, size, BACKGROUND)
+      drawTrail(context, circles, TRAIL_RADIUS, OPACITY_DECAY * elapsedFrames)
       if (circles.length === 0) {
-        clearCanvas(context, size, backgroundColor)
+        clearCanvas(context, size, BACKGROUND)
         return
       }
       animation.frame = requestAnimationFrame(draw)
@@ -200,15 +178,13 @@ export function GradientBlur({
         trail,
         x: clientX - bounds.left,
         y: clientY - bounds.top,
-        color,
-        colorGenerator,
       })
       startDrawing()
     }
-    const handleMouseMove = (event: globalThis.MouseEvent) => {
+    const noteMouseMove = (event: globalThis.MouseEvent) => {
       emitAt(event.clientX, event.clientY)
     }
-    const handleTouchMove = (event: globalThis.TouchEvent) => {
+    const noteTouchMove = (event: globalThis.TouchEvent) => {
       const touch = event.touches.item(0)
       if (touch !== null) emitAt(touch.clientX, touch.clientY)
     }
@@ -221,24 +197,24 @@ export function GradientBlur({
     observer.observe(root)
     const reducedMotion = globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (!reducedMotion) {
-      globalThis.addEventListener('mousemove', handleMouseMove)
+      globalThis.addEventListener('mousemove', noteMouseMove)
       globalThis.addEventListener('mouseleave', endTrail)
-      globalThis.addEventListener('touchmove', handleTouchMove, { passive: true })
+      globalThis.addEventListener('touchmove', noteTouchMove, { passive: true })
       globalThis.addEventListener('touchend', endTrail)
     }
 
     return () => {
       observer.disconnect()
       cancelAnimationFrame(animation.frame)
-      globalThis.removeEventListener('mousemove', handleMouseMove)
+      globalThis.removeEventListener('mousemove', noteMouseMove)
       globalThis.removeEventListener('mouseleave', endTrail)
-      globalThis.removeEventListener('touchmove', handleTouchMove)
+      globalThis.removeEventListener('touchmove', noteTouchMove)
       globalThis.removeEventListener('touchend', endTrail)
     }
-  }, [backgroundColor, color, colorGenerator, opacityDecay, radius])
+  }, [])
 
   return (
-    <div ref={rootRef} className={cn('gradient-blur-field', className)}>
+    <div ref={rootRef} className="gradient-blur-field">
       <canvas ref={canvasRef} className="gradient-blur-canvas" aria-hidden />
       <div className="gradient-blur-content">{children}</div>
     </div>

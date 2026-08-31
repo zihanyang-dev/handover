@@ -104,6 +104,7 @@ async function attach(to: Listener, trying: Trying, first: boolean): Promise<voi
     await fresh.connect()
     // The channel name cannot be a parameter — it is an identifier, not a value — so it is never
     // anything but one of the constants beside the code that sends on it.
+    // pi-lens-ignore: sql-injection
     await fresh.query(`listen ${to.channel}`)
   } catch (trouble) {
     to.log.error({ err: trouble, channel: to.channel }, 'could not listen')

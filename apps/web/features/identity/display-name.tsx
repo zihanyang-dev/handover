@@ -14,6 +14,7 @@ export function DisplayName() {
   const me = useQuery(meQuery)
   const client = useQueryClient()
   const field = useId()
+  const error = useId()
 
   /**
    * Null until somebody types, so the field follows the server without an effect pushing it
@@ -37,46 +38,64 @@ export function DisplayName() {
   })
 
   const changed = name.trim() !== saved && name.trim() !== ''
+  const save = () => {
+    if (changed && !rename.isPending) rename.mutate(name.trim())
+  }
 
   return (
-    <form
-      className="panel"
-      onSubmit={(event) => {
-        event.preventDefault()
-        rename.mutate(name.trim())
-      }}
-    >
-      <div className="panel-head">
-        <h2>Your name</h2>
-      </div>
-
-      <div className="stack-tight">
-        <label className="label" htmlFor={field}>
-          Shown wherever you appear
-        </label>
-        <div className="beside">
+    <section className="mb-[79px]" aria-labelledby={`${field}-heading`}>
+      <h2
+        id={`${field}-heading`}
+        className="m-0 mb-4 border-b border-panel-line pb-3 text-[16px] leading-6 font-medium text-panel-ink"
+      >
+        Profile
+      </h2>
+      <form
+        className="flex min-h-[60px] items-center gap-[22px]"
+        onSubmit={(event) => {
+          event.preventDefault()
+          save()
+        }}
+      >
+        {me.data === undefined ? (
+          <span className="size-[60px] shrink-0 rounded-full bg-panel-fill" aria-hidden />
+        ) : (
+          <img
+            className="size-[60px] shrink-0 rounded-full object-cover"
+            src={me.data.avatarUrl}
+            alt=""
+          />
+        )}
+        <div className="w-full max-w-[320px]">
+          <label
+            className="mb-1 block text-[12px] leading-4 font-normal text-panel-ink-muted"
+            htmlFor={field}
+          >
+            Preferred name
+          </label>
           <input
             id={field}
-            className="field"
+            className="h-8 w-full rounded-[5px] border border-panel-line-firm bg-white px-3 text-[14px] leading-5 text-panel-ink outline-none transition-colors focus:border-focus focus:ring-1 focus:ring-focus"
             value={name}
+            aria-invalid={rename.isError}
+            aria-describedby={rename.isError ? error : undefined}
+            onBlur={save}
             onChange={(event) => {
               setTyped(event.target.value)
             }}
           />
-          <button
-            className="button button-secondary"
-            type="submit"
-            disabled={!changed || rename.isPending}
-          >
-            <span className="button-label">{rename.isPending ? 'Saving…' : 'Save'}</span>
-          </button>
+          {rename.isPending && (
+            <p className="m-0 mt-1 text-[12px] leading-4 text-panel-ink-muted" role="status">
+              Saving…
+            </p>
+          )}
+          {rename.isError && (
+            <p id={error} className="m-0 mt-1 text-[12px] leading-4 text-panel-danger" role="alert">
+              That name could not be saved. Try again.
+            </p>
+          )}
         </div>
-        {rename.isError && (
-          <p className="said said-bad" role="alert">
-            That name could not be saved. Try again.
-          </p>
-        )}
-      </div>
-    </form>
+      </form>
+    </section>
   )
 }

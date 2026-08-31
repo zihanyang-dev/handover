@@ -1,0 +1,79 @@
+/* A machine opened this page from a terminal, so the task stays singular: one code, one action,
+   on the same quiet surface used by onboarding rather than the old grey utility sheet. */
+.connect-page {
+  display: grid;
+  min-height: 100dvh;
+  padding: clamp(4.5rem, 18vh, 9rem) 1.5rem 4rem;
+  place-items: start center;
+  background: var(--base);
+}
+
+.connect-card {
+  display: flex;
+  width: min(33rem, 100%);
+  padding: 1.5rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  border: 1px solid #0000000f;
+  border-radius: 1rem;
+  background: var(--base);
+  box-shadow:
+    0 1px 2px #0000000a,
+    0 10px 30px -18px #00000038;
+}
+
+.connect-head {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  text-align: center;
+}
+
+.connect-head .mark {
+  margin-bottom: 0.25rem;
+  justify-self: center;
+}
+
+.connect-head .lede {
+  max-width: 23rem;
+  margin-inline: auto;
+  line-height: 1.55;
+}
+
+.connect-code {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.connect-code-field {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.connect-submit {
+  width: 100%;
+}
+
+.connect-answer {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--grey-900);
+}
+
+.connect-answer .button-primary {
+  width: 100%;
+}
+
+.connect-answer .button-quiet {
+  justify-self: center;
+}
+
+.connect-result {
+  text-align: center;
+}
+
+.connect-result .said {
+  justify-content: center;
+}

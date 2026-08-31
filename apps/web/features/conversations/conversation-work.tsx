@@ -1,10 +1,11 @@
 import { ArrowRight, Check2Circle } from 'react-bootstrap-icons'
 import { reasonOf } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
-import { useSay } from './talking.ts'
+import { useSay } from './conversation.ts'
 import { useHandOver } from './work.ts'
 
 type Underway = components['schemas']['Underway']
+export type ProposalStatus = 'available' | 'handed-over' | 'superseded' | 'underway'
 
 const HANDOVER_REQUEST =
   'Restate the goal you would take over in one sentence, record it with `handover task new`, and wait for my confirmation. Do not start yet.'
@@ -49,46 +50,53 @@ export function HandoverControl({
 export function HandoverProposal({
   slug,
   id,
+  proposalSeq,
   goal,
-  active,
-  available,
+  location,
+  status,
 }: {
   readonly slug: string
   readonly id: string
+  readonly proposalSeq: number
   readonly goal: string
-  readonly active: boolean
-  readonly available: boolean
+  readonly location: { readonly machine: string; readonly directory?: string } | undefined
+  readonly status: ProposalStatus
 }) {
   const handOver = useHandOver(slug, id)
+  const available = status === 'available'
 
   return (
-    <article
-      className="my-3 rounded-[10px] border border-panel-line bg-panel-ground p-4"
-      aria-label="Proposed handover"
-    >
-      <p className="text-[12px] leading-4 font-medium tracking-[0.01em] text-panel-ink-quiet uppercase">
-        Proposed handover
-      </p>
-      <p className="mt-2 text-[14px] leading-5 font-medium text-panel-ink">{goal}</p>
-      <p className="mt-2 text-[12px] leading-[17px] text-panel-ink-muted">
+    <article className="my-4 border-l-2 border-primary/40 py-1 pl-4" aria-label="Proposed handover">
+      <p className="text-[13px] leading-5 font-medium text-panel-ink-muted">Proposed handover</p>
+      <p className="mt-1.5 text-[14px] leading-5 font-medium text-panel-ink">{goal}</p>
+      <p className="mt-1.5 text-[12px] leading-[17px] text-panel-ink-muted">
         Nothing carries on by itself until you confirm this goal.
       </p>
-      <div className="mt-4 flex items-center justify-end gap-2">
-        {active && (
+      {location !== undefined && (
+        <p className="mt-1 text-[12px] leading-[17px] text-panel-ink-quiet">
+          {location.machine}
+          {location.directory === undefined ? null : ` · ${location.directory}`}
+        </p>
+      )}
+      <div className="mt-3 flex items-center justify-end gap-2">
+        {status === 'handed-over' && (
           <span className="inline-flex h-8 items-center gap-1.5 text-[13px] font-medium text-panel-good">
             <Check2Circle aria-hidden /> Handed over
           </span>
         )}
-        {!active && !available && (
+        {status === 'superseded' && (
+          <span className="text-[13px] text-panel-ink-quiet">Superseded</span>
+        )}
+        {status === 'underway' && (
           <span className="text-[13px] text-panel-ink-quiet">Another goal is underway</span>
         )}
         {available && (
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus max-lg:h-10"
             type="button"
             disabled={handOver.isPending}
             onClick={() => {
-              handOver.mutate(goal)
+              handOver.mutate(proposalSeq)
             }}
           >
             Hand over <ArrowRight aria-hidden />

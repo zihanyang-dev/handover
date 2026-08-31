@@ -1615,6 +1615,10 @@
           "goal": {
             "type": "string"
           },
+          "ownerUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -1650,6 +1654,7 @@
         },
         "required": [
           "goal",
+          "ownerUserId",
           "state",
           "sleepUntil",
           "presence",
@@ -2060,15 +2065,15 @@
             "minLength": 1,
             "maxLength": 200
           },
-          "goal": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
+          "proposalSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
           }
         },
         "required": [
           "key",
-          "goal"
+          "proposalSeq"
         ]
       },
       "TakeBack": {
@@ -3004,7 +3009,7 @@
     },
     "/spaces/{slug}/invitations": {
       "post": {
-        "summary": "Make a link somebody can join this Space with",
+        "summary": "Replace the link somebody can join this Space with",
         "security": [
           {
             "browserSession": []
@@ -3064,7 +3069,7 @@
         }
       },
       "get": {
-        "summary": "The links that still work",
+        "summary": "The link that still works, if there is one",
         "security": [
           {
             "browserSession": []
@@ -5037,7 +5042,7 @@
             }
           },
           "404": {
-            "description": "No such Space, or no such conversation in it",
+            "description": "No such Space or conversation, or that proposal is no longer current",
             "content": {
               "application/json": {
                 "schema": {

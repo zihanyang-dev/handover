@@ -7,9 +7,12 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
-import { ExclamationTriangle, Laptop } from 'react-bootstrap-icons'
+import { Link } from '@tanstack/react-router'
+import { useEffect, useId, useRef, useState } from 'react'
+import { ExclamationTriangle, Laptop, ThreeDots } from 'react-bootstrap-icons'
 import { reasonOf } from '../../api.ts'
+import { MenuSelect } from '../../components/ui/menu-select.tsx'
+import { SettingsHeading } from '../../components/ui/settings-heading.tsx'
 import type { components } from '../../generated/api.ts'
 import { peopleIn } from '../spaces/people.ts'
 import { AgentMark, agentKindName } from './agent.tsx'
@@ -39,27 +42,37 @@ export function SpaceMachines({ slug }: { readonly slug: string }) {
   const own = people.data?.find((person) => person.you)
   const canTransfer = own?.role === 'owner'
 
-  if (machines.isPending || people.isPending) return <PanelState>Looking for machines…</PanelState>
+  if (machines.isPending || people.isPending)
+    return (
+      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
+        Looking for machines…
+      </p>
+    )
   if (machines.isError || people.isError)
-    return <PanelState>Could not read the machines here. Try again.</PanelState>
+    return (
+      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="alert">
+        Could not read the machines here. Try again.
+      </p>
+    )
 
   return (
     <section aria-labelledby="space-machines-title">
-      <header className="mb-8">
-        <h1
-          id="space-machines-title"
-          className="text-[24px] leading-8 font-semibold tracking-[-0.02em] text-panel-ink"
-        >
-          Machines
-        </h1>
-        <p className="mt-1 text-[14px] leading-5 text-panel-ink-soft">
-          See where agents run and manage the machines that belong to you.
-        </p>
-      </header>
+      <SettingsHeading
+        id="space-machines-title"
+        title="Machines"
+        action={
+          <Link
+            className="inline-flex h-8 shrink-0 items-center rounded-[6px] bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            to="/connect"
+          >
+            Connect machine
+          </Link>
+        }
+      />
       {machines.data.length === 0 ? (
         <EmptyMachines />
       ) : (
-        <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
+        <ul className="m-0 list-none space-y-8 p-0">
           {machines.data.map((machine) => (
             <MachineRow
               key={machine.id}
@@ -91,8 +104,8 @@ function MachineRow({
   const recipients = people.filter((person) => person.userId !== machine.ownerUserId)
 
   return (
-    <li className="py-5">
-      <div className="flex items-start gap-3">
+    <li className="relative py-3">
+      <div className="flex items-start gap-3 pr-10">
         <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[7px] bg-panel-fill text-panel-ink-muted">
           <Laptop aria-hidden />
         </span>
@@ -101,24 +114,15 @@ function MachineRow({
             <h2 className="truncate text-[14px] font-semibold text-panel-ink">{machine.name}</h2>
             <Presence machine={machine} />
           </div>
-          <p className="mt-0.5 text-[12px] leading-[17px] text-panel-ink-quiet">
-            {machine.yours ? 'Yours' : machine.ownerName}
-            {machine.version === undefined ? '' : ` · handover ${machine.version}`}
-          </p>
-          {machine.connectedIn !== undefined && (
-            <p className="mt-1 truncate font-mono text-[12px] leading-[17px] text-panel-ink-muted">
-              {machine.connectedIn}
-            </p>
-          )}
         </div>
       </div>
       <AgentSettings slug={slug} machine={machine} />
-      <div className="mt-4 ml-12 flex flex-wrap items-center gap-2 max-sm:ml-0">
-        {canTransfer && recipients.length > 0 && (
+      {machine.yours && <DisconnectMachine machine={machine} slug={slug} />}
+      {canTransfer && recipients.length > 0 && (
+        <div className="mt-4 ml-12 flex flex-wrap items-center gap-2 max-sm:ml-0">
           <TransferMachine slug={slug} machine={machine} recipients={recipients} />
-        )}
-        {machine.yours && <DisconnectMachine machine={machine} slug={slug} />}
-      </div>
+        </div>
+      )}
     </li>
   )
 }
@@ -129,8 +133,8 @@ function Presence({ machine }: { readonly machine: Machine }) {
     <span
       className={
         here
-          ? 'inline-flex items-center gap-1 text-[12px] text-panel-good'
-          : 'inline-flex items-center gap-1 text-[12px] text-panel-ink-quiet'
+          ? 'inline-flex items-center gap-1.5 text-[12px] text-panel-good'
+          : 'inline-flex items-center gap-1.5 text-[12px] text-panel-ink-quiet'
       }
     >
       <span
@@ -155,7 +159,7 @@ function AgentSettings({ slug, machine }: { readonly slug: string; readonly mach
     )
 
   return (
-    <ul className="mt-4 ml-12 list-none divide-y divide-panel-line rounded-[7px] border border-panel-line p-0 max-sm:ml-0">
+    <ul className="mt-4 ml-12 max-w-[440px] list-none space-y-5 p-0 max-sm:ml-0">
       {machine.agents.map((agent) => (
         <AgentRow key={agent.kind} slug={slug} machine={machine} agent={agent} />
       ))}
@@ -181,7 +185,7 @@ function AgentRow({
   readonly agent: Machine['agents'][number]
 }) {
   return (
-    <li className="p-3">
+    <li>
       <div className="flex items-center gap-2">
         <span className="flex size-5 items-center justify-center text-panel-ink-muted [&_svg]:size-4">
           <AgentMark kind={agent.kind} />
@@ -206,61 +210,74 @@ function AgentDecisions({
   readonly agent: Machine['agents'][number]
 }) {
   const decide = useAgentSettings(slug)
-  // Empty means nobody has named it, which is what null on the wire says and the only way to take
-  // a name off. The placeholder shows what it is called while nobody has.
-  const [name, setName] = useState(agent.name ?? '')
-  const [atOnce, setAtOnce] = useState(String(agent.atOnce))
+  // Null means the person has not edited this field, so polling can keep the visible value current.
+  // Once they type, their draft wins until it is saved or the component is left.
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const [atOnceDraft, setAtOnceDraft] = useState<string | null>(null)
+  const atOnceError = useId()
+  const name = nameDraft ?? agent.name ?? ''
+  const atOnce = atOnceDraft ?? String(agent.atOnce)
   const wanted = Number(atOnce)
-  const isUsable = Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_MOST_AT_ONCE
+  const isUsable = usableAtOnce(wanted)
+  const nextName = name.trim() === '' ? null : name.trim()
+  const changed = nextName !== agent.name || wanted !== agent.atOnce
+  const save = (): void => {
+    if (!changed || !isUsable) return
+    decide.mutate(
+      {
+        params: { path: { id: machineId, kind: agent.kind } },
+        body: { name: nextName, atOnce: wanted },
+      },
+      {
+        onSuccess: () => {
+          setNameDraft(null)
+          setAtOnceDraft(null)
+        },
+      },
+    )
+  }
 
   return (
     <>
       <form
-        className="mt-3 flex items-end gap-2 max-sm:flex-col max-sm:items-stretch"
+        className="mt-2 ml-7 grid gap-1 max-sm:ml-0"
         onSubmit={(event) => {
           event.preventDefault()
-          decide.mutate({
-            params: { path: { id: machineId, kind: agent.kind } },
-            body: { name: name.trim() === '' ? null : name.trim(), atOnce: wanted },
-          })
+          save()
         }}
       >
-        <label className="min-w-0 grow text-[12px] font-medium text-panel-ink-muted">
-          Name
+        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-panel-ink-muted">
+          <span>Name</span>
           <input
-            className="mt-1 block h-8 w-full rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="h-8 w-full max-w-[280px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
             value={name}
             maxLength={48}
             placeholder={agentKindName(agent.kind)}
+            onBlur={save}
             onChange={(event) => {
-              setName(event.target.value)
+              setNameDraft(event.target.value)
             }}
           />
         </label>
-        <label className="w-[92px] shrink-0 text-[12px] font-medium text-panel-ink-muted">
-          At once
+        <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-panel-ink-muted">
+          <span>At once</span>
           <input
-            className="mt-1 block h-8 w-full rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="h-8 w-[72px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] font-normal text-panel-ink outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
             type="number"
             min={1}
             max={AT_MOST_AT_ONCE}
             value={atOnce}
             aria-invalid={!isUsable}
+            aria-describedby={isUsable ? undefined : atOnceError}
+            onBlur={save}
             onChange={(event) => {
-              setAtOnce(event.target.value)
+              setAtOnceDraft(event.target.value)
             }}
           />
         </label>
-        <button
-          className="h-8 shrink-0 rounded-[5px] border border-panel-line-firm px-3 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill disabled:opacity-45"
-          type="submit"
-          disabled={!isUsable || decide.isPending}
-        >
-          Save
-        </button>
       </form>
       {!isUsable && (
-        <p className="mt-2 text-[12px] text-panel-danger" role="alert">
+        <p id={atOnceError} className="mt-2 text-[12px] text-panel-danger" role="alert">
           At once is a whole number between 1 and {AT_MOST_AT_ONCE}.
         </p>
       )}
@@ -271,6 +288,10 @@ function AgentDecisions({
       )}
     </>
   )
+}
+
+function usableAtOnce(wanted: number): boolean {
+  return Number.isInteger(wanted) && wanted >= 1 && wanted <= AT_MOST_AT_ONCE
 }
 
 function TransferMachine({
@@ -287,22 +308,20 @@ function TransferMachine({
 
   return (
     <>
-      <select
-        className="h-8 max-w-[220px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] text-panel-ink-soft"
-        aria-label={`New owner for ${machine.name}`}
-        value={ownerUserId}
-        onChange={(event) => {
-          setOwnerUserId(event.target.value)
-        }}
-      >
-        {recipients.map((person) => (
-          <option key={person.userId} value={person.userId}>
-            {person.displayName}
-          </option>
-        ))}
-      </select>
+      <div className="w-full max-w-[220px]">
+        <MenuSelect
+          label={`New owner for ${machine.name}`}
+          value={ownerUserId}
+          choices={recipients.map((person) => ({
+            value: person.userId,
+            label: person.displayName,
+          }))}
+          onChange={setOwnerUserId}
+          stretch
+        />
+      </div>
       <button
-        className="h-8 rounded-[5px] border border-panel-line-firm px-2 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill disabled:opacity-45"
+        className="h-8 rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white hover:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-45"
         type="button"
         disabled={ownerUserId === '' || transfer.isPending}
         onClick={() => {
@@ -341,31 +360,79 @@ function DisconnectMachine({
 }) {
   const disconnect = useDisconnectMachine(slug)
   const [confirming, setConfirming] = useState(false)
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const dismiss = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', dismiss)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+    }
+  }, [open])
 
   if (!confirming)
     return (
-      <button
-        className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash"
-        type="button"
-        onClick={() => {
-          setConfirming(true)
-        }}
-      >
-        Disconnect
-      </button>
+      <div ref={root} className="absolute top-3 right-0">
+        <button
+          ref={trigger}
+          className="flex size-7 items-center justify-center rounded-[5px] border-0 bg-transparent text-panel-ink-quiet hover:bg-[var(--interaction-hover)] hover:text-panel-ink"
+          type="button"
+          aria-label={`${machine.name} actions`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((shown) => !shown)
+          }}
+        >
+          <ThreeDots aria-hidden />
+        </button>
+        {open && (
+          <div
+            className="absolute top-full right-0 z-20 mt-1 w-44 rounded-[7px] bg-white p-1 shadow-[var(--surface-raised-shadow)]"
+            role="menu"
+            aria-label={`${machine.name} actions`}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return
+              event.preventDefault()
+              event.stopPropagation()
+              setOpen(false)
+              trigger.current?.focus()
+            }}
+          >
+            <button
+              className="flex h-8 w-full items-center rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-panel-danger-quiet hover:bg-panel-danger-wash focus:bg-panel-danger-wash focus:outline-none"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                setConfirming(true)
+              }}
+            >
+              Disconnect machine
+            </button>
+          </div>
+        )}
+      </div>
     )
 
   return (
-    <DisconnectConfirmation
-      machine={machine}
-      pending={disconnect.isPending}
-      cancel={() => {
-        setConfirming(false)
-      }}
-      confirm={() => {
-        disconnect.mutate({ params: { path: { id: machine.id } } })
-      }}
-    />
+    <div className="mt-4 ml-12 max-sm:ml-0">
+      <DisconnectConfirmation
+        machine={machine}
+        pending={disconnect.isPending}
+        cancel={() => {
+          setConfirming(false)
+        }}
+        confirm={() => {
+          disconnect.mutate({ params: { path: { id: machine.id } } })
+        }}
+      />
+    </div>
   )
 }
 
@@ -417,13 +484,5 @@ function EmptyMachines() {
         Run handover connect on the machine where an agent should work.
       </p>
     </div>
-  )
-}
-
-function PanelState({ children }: { readonly children: ReactNode }) {
-  return (
-    <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
-      {children}
-    </p>
   )
 }

@@ -9,7 +9,7 @@
 const COLORS = ['#0075de', '#f45b4f', '#f2b705', '#3fa76a', '#9867d9'] as const
 const CANVAS_ID = 'handover-confetti-burst'
 
-interface Particle {
+type Particle = {
   x: number
   y: number
   vx: number
@@ -108,7 +108,7 @@ function animationAllowed() {
 }
 
 function mountCanvas(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
-  document.getElementById(CANVAS_ID)?.remove()
+  document.querySelector(`#${CANVAS_ID}`)?.remove()
   canvas.id = CANVAS_ID
   canvas.setAttribute('aria-hidden', 'true')
   Object.assign(canvas.style, {

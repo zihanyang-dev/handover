@@ -9,9 +9,10 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { BoxArrowUpRight, Clock, PersonCheck } from 'react-bootstrap-icons'
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { BoxArrowUpRight, PersonCheck } from 'react-bootstrap-icons'
 import { reasonOf } from '../../api.ts'
+import { MenuSelect } from '../../components/ui/menu-select.tsx'
 import type { components } from '../../generated/api.ts'
 import { peopleIn } from '../spaces/people.ts'
 import { useHandWorkTo, useTakeBack, whatItIsDoing } from './work.ts'
@@ -24,34 +25,43 @@ export function WorkPanel({
   slug,
   id,
   underway,
+  location,
   close,
+  closeRef,
 }: {
   readonly slug: string
   readonly id: string
   readonly underway: Underway
+  readonly location: { readonly machine: string; readonly directory?: string } | undefined
   readonly close?: () => void
+  readonly closeRef?: RefObject<HTMLButtonElement | null>
 }) {
   const takeBack = useTakeBack(slug, id)
-  const [confirming, setConfirming] = useState(false)
 
   return (
     <section
-      className="h-full overflow-y-auto bg-panel-ground px-5 pt-5 pb-8"
+      className="h-full overflow-y-auto bg-white px-6 pt-6 pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       aria-labelledby="piece-of-work-title"
     >
-      <WorkHeading close={close} />
+      <WorkHeading close={close} closeRef={closeRef} />
       {underway.under !== null && <ParentWork slug={slug} under={underway.under} />}
-      <p className="mt-4 text-[12px] font-medium tracking-[0.01em] text-panel-ink-quiet uppercase">
-        Goal
-      </p>
-      <p className="mt-1 text-[14px] leading-5 font-medium text-panel-ink">{underway.goal}</p>
+      <div className="mt-6">
+        <p className="text-[13px] leading-5 font-medium text-panel-ink-muted">Goal</p>
+        <p className="mt-1.5 text-[15px] leading-[22px] font-medium text-panel-ink">
+          {underway.goal}
+        </p>
+      </div>
+      {location !== undefined && (
+        <p className="mt-2 text-[12px] leading-[17px] text-panel-ink-quiet">
+          {location.machine}
+          {location.directory === undefined ? null : ` · ${location.directory}`}
+        </p>
+      )}
       <WorkState underway={underway} />
-      <WorkOwnership slug={slug} id={id} />
+      <WorkOwnership slug={slug} id={id} ownerUserId={underway.ownerUserId} />
       <HandedOff slug={slug} rows={underway.handedOff} />
       <Outputs rows={underway.outputs} />
       <TakeBack
-        confirming={confirming}
-        setConfirming={setConfirming}
         pending={takeBack.isPending}
         act={() => {
           takeBack.mutate()
@@ -72,24 +82,49 @@ export function WorkPanel({
  * Nothing at all until the list is here and says this person is one: an owner is found *in* that
  * list, so there is no state where the answer is yes and the list is missing.
  */
-function WorkOwnership({ slug, id }: { readonly slug: string; readonly id: string }) {
+function WorkOwnership({
+  slug,
+  id,
+  ownerUserId,
+}: {
+  readonly slug: string
+  readonly id: string
+  readonly ownerUserId: string
+}) {
   const people = useQuery(peopleIn(slug))
+  if (people.isError)
+    return (
+      <p className="mt-6 text-[12px] text-panel-danger" role="alert">
+        Could not read who can take responsibility. Try again.
+      </p>
+    )
   if (people.data?.find((person) => person.you)?.role !== 'owner') return null
+  if (!people.data.some((person) => person.userId !== ownerUserId)) return null
 
-  return <WorkOwnerChoice slug={slug} id={id} recipients={people.data} />
+  return (
+    <WorkOwnerChoice
+      key={ownerUserId}
+      slug={slug}
+      id={id}
+      currentOwnerUserId={ownerUserId}
+      recipients={people.data}
+    />
+  )
 }
 
 function WorkOwnerChoice({
   slug,
   id,
+  currentOwnerUserId,
   recipients,
 }: {
   readonly slug: string
   readonly id: string
+  readonly currentOwnerUserId: string
   readonly recipients: readonly Member[]
 }) {
   const transfer = useHandWorkTo(slug, id)
-  const [ownerUserId, setOwnerUserId] = useState(recipients[0]?.userId ?? '')
+  const [ownerUserId, setOwnerUserId] = useState(currentOwnerUserId)
 
   return (
     <>
@@ -97,6 +132,7 @@ function WorkOwnerChoice({
         slug={slug}
         id={id}
         recipients={recipients}
+        currentOwnerUserId={currentOwnerUserId}
         ownerUserId={ownerUserId}
         setOwnerUserId={setOwnerUserId}
         transfer={transfer}
@@ -110,15 +146,22 @@ function WorkOwnerChoice({
   )
 }
 
-function WorkHeading({ close }: { readonly close: (() => void) | undefined }) {
+function WorkHeading({
+  close,
+  closeRef,
+}: {
+  readonly close: (() => void) | undefined
+  readonly closeRef: RefObject<HTMLButtonElement | null> | undefined
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 id="piece-of-work-title" className="text-[16px] leading-6 font-semibold text-panel-ink">
+      <h2 id="piece-of-work-title" className="text-[18px] leading-6 font-semibold text-panel-ink">
         Piece of work
       </h2>
       {close !== undefined && (
         <button
-          className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] text-panel-ink-muted hover:bg-panel-line"
+          ref={closeRef}
+          className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] text-panel-ink-muted hover:bg-panel-line lg:hidden"
           type="button"
           onClick={close}
         >
@@ -138,7 +181,7 @@ function ParentWork({
 }) {
   return (
     <Link
-      className="mt-3 flex items-center gap-1.5 rounded-[6px] bg-panel-fill-firm px-2.5 py-2 text-[12px] text-panel-ink-soft hover:bg-panel-fill-firm"
+      className="mt-4 flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-[12px] text-panel-ink-muted hover:bg-panel-fill"
       to="/s/$slug/c/$id"
       params={{ slug, id: under.conversationId }}
     >
@@ -149,12 +192,20 @@ function ParentWork({
 
 function WorkState({ underway }: { readonly underway: Underway }) {
   return (
-    <div className="mt-5 rounded-[7px] border border-panel-line bg-white p-3">
+    <div className="mt-4">
       <p className="flex items-center gap-2 text-[13px] font-medium text-panel-ink-body">
-        <Clock className="text-panel-ink-quiet" aria-hidden /> {stateText(underway)}
+        <span
+          className={
+            underway.presence.state === 'gone'
+              ? 'size-1.5 rounded-full bg-panel-ink-off'
+              : 'size-1.5 rounded-full bg-panel-good-mark'
+          }
+          aria-hidden
+        />
+        {stateText(underway)}
       </p>
       {underway.presence.state === 'gone' && (
-        <p className="mt-1 pl-6 text-[12px] leading-[17px] text-panel-ink-quiet">
+        <p className="mt-1 pl-3.5 text-[12px] leading-[17px] text-panel-ink-quiet">
           Its machine has been offline since {shortTime(underway.presence.since)}.
         </p>
       )}
@@ -166,6 +217,7 @@ function TransferWork({
   slug,
   id,
   recipients,
+  currentOwnerUserId,
   ownerUserId,
   setOwnerUserId,
   transfer,
@@ -173,32 +225,30 @@ function TransferWork({
   readonly slug: string
   readonly id: string
   readonly recipients: readonly Member[]
+  readonly currentOwnerUserId: string
   readonly ownerUserId: string
   readonly setOwnerUserId: (id: string) => void
   readonly transfer: ReturnType<typeof useHandWorkTo>
 }) {
   return (
-    <div className="mt-5 border-t border-panel-line pt-4">
-      <label className="text-[12px] font-medium text-panel-ink-muted">
-        Responsible person
-        <select
-          className="mt-1 block h-8 w-full rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] text-panel-ink-body"
+    <div className="mt-7">
+      <div className="text-[12px] font-medium text-panel-ink-muted">
+        <span className="mb-1 block">Responsible person</span>
+        <MenuSelect
+          label="Responsible person"
           value={ownerUserId}
-          onChange={(event) => {
-            setOwnerUserId(event.target.value)
-          }}
-        >
-          {recipients.map((person) => (
-            <option key={person.userId} value={person.userId}>
-              {person.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
+          choices={recipients.map((person) => ({
+            value: person.userId,
+            label: person.displayName,
+          }))}
+          onChange={setOwnerUserId}
+          stretch
+        />
+      </div>
       <button
-        className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-panel-line-firm bg-white px-2.5 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill disabled:opacity-45"
+        className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-[5px] border-0 bg-panel-fill px-2.5 text-[13px] font-medium text-panel-ink-body hover:bg-panel-fill-firm disabled:opacity-45 max-lg:h-10"
         type="button"
-        disabled={ownerUserId === '' || transfer.isPending}
+        disabled={ownerUserId === '' || ownerUserId === currentOwnerUserId || transfer.isPending}
         onClick={() => {
           transfer.mutate({ params: { path: { slug, id } }, body: { ownerUserId } })
         }}
@@ -218,18 +268,15 @@ function HandedOff({
 }) {
   if (rows.length === 0) return null
   return (
-    <section className="mt-5 border-t border-panel-line pt-4" aria-labelledby="handed-off-title">
-      <h3
-        id="handed-off-title"
-        className="text-[12px] font-medium tracking-[0.01em] text-panel-ink-quiet uppercase"
-      >
+    <section className="mt-7" aria-labelledby="handed-off-title">
+      <h3 id="handed-off-title" className="text-[13px] leading-5 font-medium text-panel-ink-muted">
         Work it opened
       </h3>
       <ul className="mt-2 list-none space-y-1.5 p-0">
         {rows.map((row) => (
           <li key={row.conversationId}>
             <Link
-              className="block rounded-[6px] border border-panel-line bg-white p-2.5 hover:bg-panel-fill"
+              className="block rounded-[6px] px-2 py-2 hover:bg-panel-fill"
               to="/s/$slug/c/$id"
               params={{ slug, id: row.conversationId }}
             >
@@ -237,7 +284,7 @@ function HandedOff({
                 {row.goal}
               </strong>
               <span className="mt-0.5 block text-[12px] text-panel-ink-quiet">
-                {whatItIsDoing(row.state)} · {row.machineName}
+                {handedOffState(row)} · {row.machineName}
               </span>
             </Link>
           </li>
@@ -247,22 +294,21 @@ function HandedOff({
   )
 }
 
+function handedOffState(row: Underway['handedOff'][number]): string {
+  if (row.state !== 'done' && row.presence.state === 'gone') return 'Machine offline'
+  return whatItIsDoing(row.state)
+}
+
 function Outputs({ rows }: { readonly rows: Underway['outputs'] }) {
   if (rows.length === 0) return null
   return (
-    <section className="mt-5 border-t border-panel-line pt-4" aria-labelledby="outputs-title">
-      <h3
-        id="outputs-title"
-        className="text-[12px] font-medium tracking-[0.01em] text-panel-ink-quiet uppercase"
-      >
+    <section className="mt-7" aria-labelledby="outputs-title">
+      <h3 id="outputs-title" className="text-[13px] leading-5 font-medium text-panel-ink-muted">
         Outputs
       </h3>
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => (
-          <details
-            className="rounded-[6px] border border-panel-line bg-white px-3 py-2 text-[13px]"
-            key={row.title}
-          >
+          <details className="rounded-[6px] bg-panel-fill px-3 py-2 text-[13px]" key={row.title}>
             <summary className="cursor-pointer font-medium text-panel-ink-body">
               {row.title}
             </summary>
@@ -274,19 +320,24 @@ function Outputs({ rows }: { readonly rows: Underway['outputs'] }) {
   )
 }
 
-function TakeBack({
-  confirming,
-  setConfirming,
-  pending,
-  act,
-}: {
-  readonly confirming: boolean
-  readonly setConfirming: (value: boolean) => void
-  readonly pending: boolean
-  readonly act: () => void
-}) {
+function TakeBack({ pending, act }: { readonly pending: boolean; readonly act: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const cancelButton = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (confirming) cancelButton.current?.focus()
+  }, [confirming])
+
+  const cancel = (): void => {
+    setConfirming(false)
+    requestAnimationFrame(() => {
+      trigger.current?.focus()
+    })
+  }
+
   return (
-    <div className="mt-6 border-t border-panel-line pt-4">
+    <div className="mt-8">
       {confirming ? (
         <div className="rounded-[7px] border border-panel-danger-line bg-panel-danger-notice p-3">
           <p className="text-[12px] leading-[17px] text-panel-danger-ink">
@@ -294,16 +345,15 @@ function TakeBack({
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <button
-              className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] hover:bg-white"
+              ref={cancelButton}
+              className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] hover:bg-white max-lg:h-10"
               type="button"
-              onClick={() => {
-                setConfirming(false)
-              }}
+              onClick={cancel}
             >
               Cancel
             </button>
             <button
-              className="h-8 rounded-[5px] border-0 bg-panel-danger-fill px-2.5 text-[13px] font-medium text-white disabled:opacity-45"
+              className="h-8 rounded-[5px] border-0 bg-panel-danger-fill px-2.5 text-[13px] font-medium text-white disabled:opacity-45 max-lg:h-10"
               type="button"
               disabled={pending}
               onClick={act}
@@ -314,7 +364,8 @@ function TakeBack({
         </div>
       ) : (
         <button
-          className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash"
+          ref={trigger}
+          className="h-8 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-medium text-panel-danger-quiet hover:bg-panel-danger-wash max-lg:h-10"
           type="button"
           onClick={() => {
             setConfirming(true)
@@ -357,7 +408,8 @@ function stateText(underway: Underway): string {
 function whyItDidNotMove(thrown: unknown): string {
   const reason = reasonOf(thrown)
   if (reason === 'not-an-owner') return 'Only an owner can change who answers for this.'
-  if (reason === 'not-a-member') return 'That person is not in this Space any more.'
+  if (reason === 'cannot-hand-over')
+    return 'That person can no longer take this work here. Choose somebody who is still in the Space.'
 
   return 'That could not be sent. Try again.'
 }

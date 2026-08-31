@@ -37,17 +37,31 @@ export function SignOut() {
   const signOut = useSignOut()
 
   return (
-    <div className="row">
-      <span className="row-where">{account}</span>
-      <button
-        className="button button-quiet"
-        type="button"
-        onClick={() => {
-          signOut.mutate()
-        }}
+    <section aria-labelledby="account-session-heading">
+      <h2
+        id="account-session-heading"
+        className="m-0 border-b border-panel-line pb-3 text-[16px] leading-6 font-medium text-ink"
       >
-        <span className="button-label">{signOut.isError ? 'Could not sign out' : 'Sign out'}</span>
-      </button>
-    </div>
+        Session
+      </h2>
+      <div className="flex min-h-[66px] items-center justify-between gap-6 py-3">
+        <span className="min-w-0">
+          <strong className="block text-[14px] leading-5 font-medium text-ink">
+            Sign out of this browser
+          </strong>
+          <span className="block truncate text-[14px] leading-5 text-ink-muted">{account}</span>
+        </span>
+        <button
+          className="h-7 shrink-0 cursor-pointer rounded-md border border-panel-line-firm bg-white px-2 text-[14px] leading-[16.8px] font-medium text-panel-ink hover:bg-panel-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-default disabled:text-panel-ink-off"
+          type="button"
+          disabled={signOut.isPending}
+          onClick={() => {
+            signOut.mutate()
+          }}
+        >
+          {signOut.isError ? 'Could not sign out' : 'Sign out'}
+        </button>
+      </div>
+    </section>
   )
 }

@@ -8,10 +8,9 @@
  * goes to the front door carrying where it was going, and lands back here afterwards.
  */
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api, cached } from '../../api.ts'
-import { cache } from '../../query-client.ts'
 import { ME } from '../identity/me.ts'
 
 function whatItOpens(secret: string) {
@@ -39,6 +38,7 @@ function whatItOpens(secret: string) {
 
 export function Joining({ secret }: { readonly secret: string }) {
   const opens = useQuery(whatItOpens(secret))
+  const client = useQueryClient()
   const navigate = useNavigate()
 
   const joining = useMutation({
@@ -50,7 +50,7 @@ export function Joining({ secret }: { readonly secret: string }) {
     },
     onSuccess: async (slug) => {
       // The list of Spaces in the frame is now one longer, and it is read from `/me`.
-      await cache.invalidateQueries({ queryKey: ME })
+      await client.invalidateQueries({ queryKey: ME })
       await navigate({ to: '/s/$slug', params: { slug } })
     },
   })
@@ -58,7 +58,9 @@ export function Joining({ secret }: { readonly secret: string }) {
   if (opens.isPending) {
     return (
       <main className="sheet">
-        <p className="empty">Looking…</p>
+        <p className="empty" role="status">
+          Looking…
+        </p>
       </main>
     )
   }
@@ -68,7 +70,9 @@ export function Joining({ secret }: { readonly secret: string }) {
       <main className="sheet">
         <div className="card stack">
           <h1>Could not read this link</h1>
-          <p className="empty">Try again in a moment.</p>
+          <p className="empty" role="alert">
+            Try again in a moment.
+          </p>
         </div>
       </main>
     )
@@ -106,7 +110,11 @@ export function Joining({ secret }: { readonly secret: string }) {
         >
           Join {opens.data.displayName}
         </button>
-        {joining.isError && <p className="empty">That did not work. Try again.</p>}
+        {joining.isError && (
+          <p className="empty" role="alert">
+            That did not work. Try again.
+          </p>
+        )}
       </div>
     </main>
   )

@@ -73,7 +73,7 @@ async function panel() {
 
 async function ask(address: string): Promise<void> {
   const ways = await panel()
-  await userEvent.type(await ways.findByLabelText(/add another address/i), address)
+  await userEvent.type(await ways.findByLabelText(/add another email/i), address)
   await userEvent.click(ways.getByRole('button', { name: /send a code/i }))
 }
 
@@ -155,6 +155,6 @@ describe('adding another address', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /cancel/i }))
 
-    expect(await (await panel()).findByLabelText(/add another address/i)).toBeDefined()
+    expect(await (await panel()).findByLabelText(/add another email/i)).toBeDefined()
   })
 })

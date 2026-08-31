@@ -120,7 +120,14 @@ async function takeHandoff(c: Context, secret: string): Promise<Handoff | undefi
   deleteCookie(c, HANDOFF_COOKIE, { path: '/' })
   if (typeof raw !== 'string') return undefined
 
-  const parsed = Handing.safeParse(JSON.parse(raw))
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+
+  const parsed = Handing.safeParse(decoded)
   return parsed.success ? parsed.data : undefined
 }
 
@@ -290,7 +297,10 @@ function comingBack(deps: OAuthApi) {
         return redirected(c, back(deps.webOrigin, '/', 'expired'))
       }
 
-      const outcome = await settle(deps, taken, new URL(c.req.url), {
+      const returned = URL.parse(c.req.url)
+      if (returned === null) return redirected(c, back(deps.webOrigin, '/', 'failed'))
+
+      const outcome = await settle(deps, taken, returned, {
         userId: await currentUser(deps.db, c),
         session: sessionHeld(c),
       })
