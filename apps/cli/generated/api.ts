@@ -3592,7 +3592,6 @@ export interface components {
             found: components["schemas"]["AgentFound"][];
             restarted?: boolean;
             version?: string;
-            connectedIn?: string;
         };
         AgentFound: {
             command: string;
@@ -3619,7 +3618,6 @@ export interface components {
             ownerName: string;
             yours: boolean;
             version?: string;
-            connectedIn?: string;
             presence: components["schemas"]["Presence"];
             agents: components["schemas"]["MachineAgent"][];
         };

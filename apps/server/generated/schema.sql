@@ -226,7 +226,6 @@ CREATE TABLE public.machines (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     version text,
     owner_user_id uuid NOT NULL,
-    connected_in text,
     CONSTRAINT machines_name_check CHECK (((btrim(name) = name) AND ((char_length(name) >= 1) AND (char_length(name) <= 200))))
 );
 

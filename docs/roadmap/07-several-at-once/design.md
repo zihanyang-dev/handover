@@ -36,9 +36,9 @@
 
 `conversations.works_in` 没有了。它记的是「人指到哪儿」,而那个问题不再问 —— 见 `prd.md` ②。
 
-`machines.connected_in`:机器报的、它自己被 connect 在哪个目录。它和 `version` 是同一种东西:每次报告覆盖一次,太老的机器就是 null。**它不是任何东西的工作区** —— 加它进来本是为了给那个已经砍掉的选择提供候选值,留下来是因为它另有用处:重连一台机器时,屏幕列出你已经连过的几台,而「它是从哪个目录连的」是人分辨它们的方式。
+`machines.connected_in` 也没有了。它是给那个已经砍掉的选择当候选值的,砍那个选择时留了下来,理由是「重连时列出已连过的机器,目录是人分辨它们的方式」—— **那个屏幕从来没做出来**。机器报它、契约带它、浏览器接住它,没有一个像素显示过它。
 
-沙箱不填它:没有人站在某个目录里 connect 它。工作区它自己算,和今天的机器一样。
+一条读者能拿去对代码、然后什么都找不到的理由,比没有这一列更糟:它是一句写在会被人相信的地方的、产品并没有兑现的承诺。重连的屏幕哪天真要,那天再要,而且是当真要。
 
 ### 不在就建,还是不在就报错
 
@@ -220,9 +220,8 @@ under      agent 把它当子任务开出来的,住在那件活的文件夹底�
 
 ```
 PATCH /me/machines/{id}/agents/{kind}    今天只收 name,变成 name 和 atOnce 都可选的 patch
-GET   /spaces/{slug}/machines             机器多 connectedIn;每个 agent 多当前 atOnce
-POST  /machines/current/poll              报告里多一个可选的 connectedIn
-                                          asking 多一个 where:一个值,不是两个可空路径
+GET   /spaces/{slug}/machines             每个 agent 多当前 atOnce
+POST  /machines/current/poll              asking 多一个 where:一个值,不是两个可空路径
                                           stopping 从一个变成一组,而且永远有(空数组)
 ```
 

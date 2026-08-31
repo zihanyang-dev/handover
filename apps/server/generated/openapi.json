@@ -1003,11 +1003,6 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 100
-          },
-          "connectedIn": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
           }
         },
         "required": [
@@ -1115,9 +1110,6 @@
             "type": "boolean"
           },
           "version": {
-            "type": "string"
-          },
-          "connectedIn": {
             "type": "string"
           },
           "presence": {

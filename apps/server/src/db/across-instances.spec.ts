@@ -300,7 +300,6 @@ async function aQuestion(): Promise<{
   if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
   await checkIn(one, collected.machineId, {
     version: undefined,
-    connectedIn: undefined,
     found: [{ kind: 'claude-code', version: '2.1.231' }],
   })
 

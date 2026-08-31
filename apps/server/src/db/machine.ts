@@ -78,13 +78,6 @@ export async function checkIn(
   reported: {
     /** Which build of the CLI is reporting, or nothing when it is too old to say. */
     readonly version: string | undefined
-    /**
-     * The directory that machine was connected in, or nothing when it is too old to say.
-     *
-     * Not where anything runs — where a person was standing when they connected it, which is the
-     * one directory a screen can offer as "my project" without anybody typing a path.
-     */
-    readonly connectedIn: string | undefined
     readonly found: readonly FoundAgent[]
   },
 ): Promise<boolean> {
@@ -98,11 +91,8 @@ export async function checkIn(
         last_seen_at: sql<Date>`clock_timestamp()`,
         left_at: null,
         // Written every time rather than only when it changes: a machine that stopped saying which
-        // build it is has stopped knowing, and the honest record of that is null. Its directory
-        // goes the same way, and for a second reason — a service can be moved, and the answer has
-        // to be about the process running now.
+        // build it is has stopped knowing, and the honest record of that is null.
         version: reported.version ?? null,
-        connected_in: reported.connectedIn ?? null,
       })
       .where('id', '=', machineId)
       .where('removed_at', 'is', null)
@@ -181,13 +171,6 @@ type Machine = {
   readonly name: string
   /** Which build of the CLI it is running, or nothing when it has never said. */
   readonly version: string | undefined
-  /**
-   * The directory it was connected in, or null when it has never said.
-   *
-   * Not where anything runs — where a person was standing when they connected it. It is the one
-   * directory a screen can offer as "my project" without anybody typing a path.
-   */
-  readonly connectedIn: string | null
   /**
    * Whose it is.
    *
@@ -337,7 +320,6 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       'machines.id',
       'machines.name',
       'machines.version',
-      'machines.connected_in as connectedIn',
       'machines.last_seen_at as lastSeenAt',
       'machines.left_at as leftAt',
       // Whose it is, because in a Space with two people in it a name is not enough: one of these
@@ -365,7 +347,6 @@ async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
       version: row.version ?? undefined,
       ownerName: row.ownerName,
       ownerUserId: row.ownerUserId,
-      connectedIn: row.connectedIn,
       whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
       agents: installationsOn(row.id, found),
     })),

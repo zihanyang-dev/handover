@@ -105,7 +105,6 @@ async function attached(machineName: string): Promise<string> {
 
   await checkIn(db, collected.machineId, {
     version: undefined,
-    connectedIn: undefined,
     found: [
       { kind: 'claude-code', version: '2.1.231' },
       { kind: 'codex', version: '0.148.0' },
@@ -643,7 +642,6 @@ describe('handing a piece of it to somebody else', () => {
     await nextTurn()
     await checkIn(db, MACHINE, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.231' }],
     })
 

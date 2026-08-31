@@ -238,7 +238,6 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [
         { kind: 'claude-code', version: '2.1.4' },
         { kind: 'codex', version: '0.9.0' },
@@ -247,7 +246,6 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
@@ -260,7 +258,7 @@ describe('what a machine reports', () => {
   it('records which build of the CLI is on that machine', async () => {
     const machineId = await attached()
 
-    await checkIn(db, machineId, { version: 'v0.4.0', connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.version).toBe('v0.4.0')
@@ -271,9 +269,9 @@ describe('what a machine reports', () => {
     // to what an older process said would name the wrong build in the one place somebody looks to
     // find out which build is misbehaving.
     const machineId = await attached()
-    await checkIn(db, machineId, { version: 'v0.4.0', connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: 'v0.4.0', found: [] })
 
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.version).toBeUndefined()
@@ -283,13 +281,11 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.2.0' }],
     })
 
@@ -304,7 +300,6 @@ describe('what a machine reports', () => {
 
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
@@ -318,13 +313,11 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
@@ -338,13 +331,11 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4', models: SONNET }],
     })
 
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.2.0' }],
     })
 
@@ -356,11 +347,10 @@ describe('what a machine reports', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'codex', version: '0.9.0' }],
     })
 
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(machine?.agents).toEqual([])
@@ -372,7 +362,6 @@ describe('what its owner has decided about an agent', () => {
     const machineId = await attached()
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
     return machineId
@@ -476,10 +465,9 @@ describe('what its owner has decided about an agent', () => {
       atOnce: 7,
     })
 
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
     await checkIn(db, machineId, {
       version: undefined,
-      connectedIn: undefined,
       found: [{ kind: 'claude-code', version: '2.1.4' }],
     })
 
@@ -503,7 +491,7 @@ describe('what its owner has decided about an agent', () => {
 describe('whether it is here', () => {
   it('is here right after checking in', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })
@@ -511,7 +499,7 @@ describe('whether it is here', () => {
 
   it('is gone the moment it says goodbye, without waiting out the silence', async () => {
     const machineId = await attached()
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     await sayGoodbye(db, machineId)
 
@@ -523,7 +511,7 @@ describe('whether it is here', () => {
     const machineId = await attached()
     await sayGoodbye(db, machineId)
 
-    await checkIn(db, machineId, { version: undefined, connectedIn: undefined, found: [] })
+    await checkIn(db, machineId, { version: undefined, found: [] })
 
     const [machine] = (await machinesIn(db, SPACE)).machines
     expect(presence(machine?.whereabouts ?? never(), new Date())).toEqual({ state: 'here' })

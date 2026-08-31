@@ -386,7 +386,6 @@ async function stayConnected(attachment: Attachment): Promise<void> {
       workRoot,
       // The directory this process is in, which the service file set to the one `connect` was run
       // in. Nothing runs here now; it is reported so a screen can offer it as "my project".
-      connectedIn: process.cwd(),
       handover: 'handover',
     },
     stopping.signal,

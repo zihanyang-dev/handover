@@ -110,14 +110,6 @@ const Report = named('MachineReport', {
    * absent: a machine that cannot say which build it is has answered the question.
    */
   version: z.string().min(1).max(100).optional(),
-  /**
-   * The directory this machine was connected in.
-   *
-   * Not where anything runs. It is the one directory a screen can offer as "my project" without
-   * anybody typing a path — `03` promised that an agent works in your files, and `07` only keeps
-   * that promise if somebody can still choose it. Optional for the same reason `version` is.
-   */
-  connectedIn: z.string().min(1).max(512).optional(),
 })
 
 /**
@@ -283,7 +275,6 @@ const Machine = named('Machine', {
    * where anything runs: where a conversation works is that conversation's, and this is only the
    * one path a person can pick without typing one.
    */
-  connectedIn: z.string().optional(),
   presence: Presence,
   agents: z.array(Agent).readonly(),
 })
@@ -441,7 +432,6 @@ function polling(deps: MachineApi) {
       // notice would be one more report, one more turn taken, from a machine somebody took out.
       const still = await checkIn(deps.db, machineId, {
         version: reported.version,
-        connectedIn: reported.connectedIn,
         found: agentsFound(reported.found),
       })
       if (!still) return refused(c, NOT_OURS)
@@ -481,7 +471,6 @@ function listing({ db }: MachineApi) {
         id: machine.id,
         name: machine.name,
         version: machine.version,
-        connectedIn: machine.connectedIn ?? undefined,
         ownerUserId: machine.ownerUserId,
         ownerName: machine.ownerName,
         yours: machine.ownerUserId === c.get('userId'),

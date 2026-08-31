@@ -84,7 +84,6 @@ export type CheckingIn = {
    * for a person to be able to pick this directory when they open a conversation. A screen
    * cannot offer it without having been told it.
    */
-  readonly connectedIn: string
   /**
    * How to run this program again.
    *
@@ -132,7 +131,6 @@ export async function reportOnce(
     /** Adds what each agent offers, the first time this process sees each version. */
     readonly offering?: Offering
     /** The directory this machine was connected in, so a screen can offer it as "my project". */
-    readonly connectedIn?: string
   } = {},
 ): Promise<Reported> {
   const looked = await findAgents(lookFor, env)
@@ -145,7 +143,6 @@ export async function reportOnce(
       found: [...found],
       restarted: also.restarted ?? false,
       version: VERSION,
-      ...(also.connectedIn === undefined ? {} : { connectedIn: also.connectedIn }),
     },
   })
 
@@ -195,7 +192,6 @@ export async function keepCheckingIn(
     const reported = await reportOnce(api, looking, running.env, {
       restarted,
       offering: asks,
-      connectedIn: running.connectedIn,
     })
 
     if (reported.said === 'not-ours') return taken(answering, running)

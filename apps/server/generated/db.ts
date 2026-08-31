@@ -110,7 +110,6 @@ export interface Invitations {
 }
 
 export interface Machines {
-  connected_in: string | null
   created_at: Generated<Timestamp>
   enrolled_from: string
   id: Generated<string>

@@ -56,7 +56,6 @@ function runningFor(rounds: number) {
     running: {
       env: { PATH: '/nonexistent' } as NodeJS.ProcessEnv,
       workRoot: WORK,
-      connectedIn: '/Users/mina/code/thing',
       handover: 'handover',
       say: (line: string) => said.push(line),
       sleep: async (seconds: number) => {
@@ -122,8 +121,6 @@ describe('staying connected', () => {
     const { running, signal } = runningFor(1)
 
     await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
-
-    expect(reports[0]).toMatchObject({ connectedIn: '/Users/mina/code/thing' })
   })
 
   it('says which build it is, in every report and not only the first', async () => {
@@ -404,7 +401,6 @@ describe('being asked to stop', () => {
     const running = {
       env: {},
       workRoot: WORK,
-      connectedIn: '/Users/mina/code/thing',
       handover: 'handover',
       say: () => undefined,
       sleep: async (seconds: number, until: AbortSignal) =>

@@ -107,7 +107,6 @@ beforeEach(async () => {
   MACHINE = await attached()
   await checkIn(db, MACHINE, {
     version: undefined,
-    connectedIn: undefined,
     found: [{ kind: 'claude-code', version: '2.1.231' }],
   })
 })
@@ -442,7 +441,6 @@ describe('taking a question', () => {
     // that neither of them was given.
     await checkIn(db, MACHINE, {
       version: undefined,
-      connectedIn: undefined,
       found: [
         { kind: 'claude-code', version: '2.1.231' },
         { kind: 'codex', version: '0.44.0' },

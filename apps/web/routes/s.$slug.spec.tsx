@@ -181,7 +181,7 @@ describe('entering a Space', () => {
   const WHERE = 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
 
   /** One agent on one machine, and a note of what opening a conversation was asked for. */
-  function anAgent(connectedIn: string | undefined) {
+  function anAgent() {
     const asked: { body?: unknown } = {}
     server.use(
       ...theSpace({
@@ -191,7 +191,6 @@ describe('entering a Space', () => {
             name: 'mina-mbp',
             ownerName: 'Mina',
             yours: true,
-            ...(connectedIn === undefined ? {} : { connectedIn }),
             presence: { state: 'here' },
             agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
           },
@@ -224,7 +223,7 @@ describe('entering a Space', () => {
   }
 
   it('starts in a folder of its own without showing a space choice', async () => {
-    const asked = anAgent('/Users/mina/code/thing')
+    const asked = anAgent()
     await typedToIt()
 
     expect(screen.queryByRole('button', { name: /where it works/iu })).toBeNull()
@@ -599,7 +598,6 @@ describe('entering a Space', () => {
             name: 'mina-mbp',
             ownerName: 'Mina',
             yours: true,
-            connectedIn: '/Users/mina/code/thing',
             presence: { state: 'here' },
             agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
           },
