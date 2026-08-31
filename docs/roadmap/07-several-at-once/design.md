@@ -240,7 +240,7 @@ POST  /machines/current/poll              asking 多一个 where:一个值,不�
 
 ## 要动的现有东西
 
-```
+```text
 turns_one_open_per_machine        删掉。它的理由是「同一个目录」,而目录已经分开了
 takeBack 的递归 SQL                两层封顶之后,`with recursive` 变成
                                    `where id = $root or parent_id = $root`
@@ -254,20 +254,13 @@ apps/cli 的 answering              一个变量变成一张表。`Answering` �
                                    ({conversationId, afterSeq, stop, done}),形状本来就对
 machine.where                      从「这个进程的目录」变成 workRoot,每一轮在它下面
                                    开自己那个。见 apps/cli/src/workspace.ts。
-                                   进程自己那个目录还在报,但只作为「我的项目」那个选项
-ChoiceMenu                         从 model-choices.tsx 抽出来:选模型、选思考、选在哪儿
-                                   是同一个控件。「第一行是默认」原来靠 choices[0] 这个
-                                   下标约定,改成 saysNothing / alternatives 两个字段 ——
-                                   下一个传列表进来的人没办法知道下标有讲究
-ModelChoices                       ml-auto 从它自己身上挪到外面那层,因为开对话那屏
-                                   现在有两个选择器要并排。两个各自抢空位会在中间裂开缝
 ```
 
 ---
 
 ## 明确不建
 
-```
+```text
 git worktree / 共享裸克隆     一个工作区可能有 n 个仓库,也可能一个都没有
 准备脚本 / base 镜像 / 缓存    我们不重新开机器,所以没有要预热的东西
 自己造沙箱                    两个 agent 都自带,而且默认就限制在当前目录
@@ -275,26 +268,8 @@ git worktree / 共享裸克隆     一个工作区可能有 n 个仓库,也可�
 垃圾回收                      不自动删就没有
 机器级的第二个上限             同一个问题的第二个答案
 能力协商 / fail-closed 闸      这里不是信任边界
-「别人不能用我这台」开关       挡的是人,而人用你的电脑是 `05` ③ 说好的。而且它、断开、
-                             转交、给 agent 改名、刷新,是同一块还不存在的屏幕。下一片
+机器级共享开关                哪个 Space 能用由 `space_machines` 一条一条明确记录;
+                             再加一个 boolean 是同一事实的第二份答案
 为沙箱新增「地方」这个概念       沙箱是一台按需出现的机器。等它真的来了再看 presence
                              的语义要不要分两种
-```
-
----
-
-## 那个开关的形状
-
-不在这一片,但已经想清楚了。记在这儿,省得下一片从头推一遍。
-
-```
-一列               machines.shared,默认 true
-拆成两个           reachableFrom 今天既管「看得见」又管「用得了」。列表用弱的那个,
-                  开对话用强的那个 —— 而强的要带上问的人是谁,因为主人自己永远用得了
-关掉之后           机器还在列表里,灰着,写「只有 <主人> 能用」。和「离线」是同一种呈现;
-                  凭空消失会被读成机器挂了,同事会来问你
-门                 PATCH /me/machines/{id}。不是 /spaces/{slug}/... —— 「我的机器」
-                  不属于任何 Space。以后真要按 Space 分开,boolean 变成列表,老数据全是开
-不停正在跑的        它只说「从现在起不进新的」。停是主人另一个动作,有它自己的历史
-自己的拒绝理由      复用 UNAVAILABLE(「没有这台机器」)是对着一台他看得见的机器说假话
 ```

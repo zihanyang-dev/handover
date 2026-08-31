@@ -568,6 +568,31 @@ describe('entering a Space', () => {
           ],
         }),
       ),
+      http.get('*/me/machines', () =>
+        HttpResponse.json({
+          machines: [
+            {
+              id: 'm-1',
+              name: 'mina-mbp',
+              ownerUserId: '11111111-1111-4111-8111-111111111111',
+              ownerName: 'Mina',
+              yours: true,
+              presence: { state: 'here' },
+              agents: [
+                {
+                  kind: 'claude-code',
+                  name: 'Scout',
+                  atOnce: 3,
+                  avatarUrl: '/avatars/agents/m-1/claude-code',
+                  version: '2.1.4',
+                  models: [],
+                },
+              ],
+              spaces: [{ slug: 'acme', displayName: 'Acme' }],
+            },
+          ],
+        }),
+      ),
       http.get('*/spaces/acme/invitations', () => HttpResponse.json({ invitations: [] })),
       http.patch(`*/spaces/acme/members/${rui}`, async ({ request }) => {
         changed.push(await request.json())
@@ -610,14 +635,34 @@ describe('entering a Space', () => {
     const trigger = within(sidebar).getByRole('button', { name: /Acme/i })
     await userEvent.click(trigger)
     const menu = await screen.findByRole('dialog', { name: /Acme menu/i })
-    expect(within(menu).getByRole('button', { name: 'Account settings' })).toBeDefined()
+    expect(within(menu).queryByText('mina@example.com')).toBeNull()
+    expect(within(menu).getByText('Account')).toBeDefined()
+    expect(within(menu).queryByRole('button', { name: 'Account settings' })).toBeNull()
+    expect(within(menu).getAllByRole('button', { name: 'Settings' })).toHaveLength(1)
     await userEvent.click(within(menu).getByRole('button', { name: 'Settings' }))
 
     const settings = await screen.findByRole('dialog', { name: 'Acme settings' })
     expect(screen.queryByRole('dialog', { name: /Acme menu/i })).toBeNull()
-    await userEvent.click(within(settings).getByRole('tab', { name: 'mina@example.com' }))
+    expect(
+      within(settings)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent.trim()),
+    ).toEqual(['Account', 'People', 'Machines'])
+    await userEvent.click(within(settings).getByRole('tab', { name: 'Account' }))
     expect(within(settings).getByRole('heading', { name: 'Account' })).toBeDefined()
     expect(within(settings).getByDisplayValue('mina@example.com')).toBeDefined()
+    expect(within(settings).getByRole('heading', { name: 'Your machines' })).toBeDefined()
+    await userEvent.clear(within(settings).getByRole('spinbutton', { name: 'At once' }))
+    await userEvent.type(within(settings).getByRole('spinbutton', { name: 'At once' }), '4')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(changed).toContainEqual({ name: 'Scout', atOnce: 4 })
+    })
+    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect machine' }))
+    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect' }))
+    await waitFor(() => {
+      expect(disconnected).toBe(true)
+    })
     await userEvent.click(within(settings).getByRole('tab', { name: 'People' }))
     expect(within(settings).getByRole('heading', { name: 'People' })).toBeDefined()
     expect(within(settings).getByText('Mina')).toBeDefined()
@@ -634,30 +679,23 @@ describe('entering a Space', () => {
     })
 
     await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
-    expect(within(settings).getByRole('heading', { name: 'Machines' })).toBeDefined()
-    expect(
-      within(settings).getByRole('link', { name: 'Connect machine' }).getAttribute('href'),
-    ).toBe('/connect')
+    expect(within(settings).getByRole('heading', { name: 'Machines in Acme' })).toBeDefined()
     expect(within(settings).getByText('mina-mbp')).toBeDefined()
+    expect(within(settings).getByText('Controlled by Mina')).toBeDefined()
+    expect(within(settings).queryByRole('spinbutton', { name: 'At once' })).toBeNull()
     expect(within(settings).queryByText('/Users/mina/code/thing')).toBeNull()
+    await userEvent.click(within(settings).getByRole('button', { name: 'Add machine' }))
+    expect(within(settings).getByText('There is no other connected machine to add.')).toBeDefined()
+    expect(
+      within(settings).getByRole('link', { name: 'Connect a new machine' }).getAttribute('href'),
+    ).toBe('/connect?space=acme')
     await userEvent.click(within(settings).getByRole('tab', { name: 'People' }))
     expect(
       within(settings).getByRole('group', { name: 'Active invite link' }).textContent,
     ).toContain('/join/hi_secret')
     expect(within(settings).getByRole('button', { name: 'Replace link' })).toBeDefined()
     await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
-    await userEvent.clear(within(settings).getByRole('spinbutton', { name: 'At once' }))
-    await userEvent.type(within(settings).getByRole('spinbutton', { name: 'At once' }), '4')
-    await userEvent.tab()
-    await waitFor(() => {
-      expect(changed).toContainEqual({ name: 'Scout', atOnce: 4 })
-    })
-    await userEvent.click(within(settings).getByRole('button', { name: 'mina-mbp actions' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect machine' }))
-    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect machine' }))
-    await waitFor(() => {
-      expect(disconnected).toBe(true)
-    })
+    expect(within(settings).getByRole('button', { name: 'Remove from Acme' })).toBeDefined()
     expect(router.state.location.pathname).toBe('/s/acme')
 
     await userEvent.keyboard('{Escape}')

@@ -53,8 +53,14 @@ export type Machine = {
  * A key *is* the approval, so there is no code and nobody to wait for: the key is the secret this
  * hands in, and what comes back is the machine's own credential.
  */
-export async function aMachine(sessionToken: string, name: string): Promise<Machine> {
-  const made = await ask('/me/machine-keys', { cookie: `handover_session=${sessionToken}` })
+export async function aMachine(
+  sessionToken: string,
+  name: string,
+  spaceSlug: string,
+): Promise<Machine> {
+  const made = await ask(`/me/machine-keys?space=${encodeURIComponent(spaceSlug)}`, {
+    cookie: `handover_session=${sessionToken}`,
+  })
   const token = `hm_${randomUUID()}`
 
   const collected = await ask(

@@ -19,6 +19,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { watchers } from '../conversation/watchers.ts'
 import { connect, type Database } from '../db/connection.ts'
 import { beginConversation } from '../db/conversation.ts'
+import { removeMachineFromSpace } from '../db/machine.ts'
 import { becomes, joins, removes, ROLE } from '../db/membership.ts'
 import { openSession } from '../db/session.ts'
 import { createSpace } from '../db/space.ts'
@@ -62,6 +63,7 @@ let TOKEN = ''
 let CONVERSATION = ''
 let SPACE = ''
 let USER = ''
+let MACHINE = ''
 
 beforeEach(async () => {
   await listening.listening
@@ -101,7 +103,7 @@ beforeEach(async () => {
   await enrolments.request('/me/machines', {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: COOKIE },
-    body: JSON.stringify({ userCode: asked.userCode }),
+    body: JSON.stringify({ userCode: asked.userCode, spaceSlug: SLUG }),
   })
   const collected = (await (
     await enrolments.request('/enrolments/collect', {
@@ -110,6 +112,8 @@ beforeEach(async () => {
       body: JSON.stringify({ secret: asked.secret, machineName: 'ilya-mbp', token: TOKEN }),
     })
   ).json()) as { machineId: string }
+
+  MACHINE = collected.machineId
 
   // The agent has to be on the machine before a conversation can be opened on it, and what says
   // so is the machine reporting what it found.
@@ -194,6 +198,18 @@ describe('watching a conversation', () => {
       await stream.close()
     }
   }, 20_000)
+
+  it('refuses a moment after the machine was removed from this Space', async () => {
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: USER })
+
+    const response = await app.request(`/machines/current/conversations/${CONVERSATION}/live`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ said: 'thinking', text: 'no longer available here' }),
+    })
+
+    expect(response.status).toBe(404)
+  })
 
   it('refuses moments and typing aimed at another conversation', async () => {
     const otherConversation = randomUUID()

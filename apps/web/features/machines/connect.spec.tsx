@@ -42,18 +42,31 @@ const SPACES = [
   { id: 's-2', slug: 'beta', displayName: 'Beta', emoji: '🪴' },
 ]
 
-function waiting(machineName = 'mina-mbp') {
+function waiting(
+  machineName = 'mina-mbp',
+  existingMachines: readonly {
+    readonly id: string
+    readonly presence:
+      { readonly state: 'here' } | { readonly state: 'gone'; readonly since: string }
+  }[] = [],
+) {
   return http.get('*/enrolments/:code', () =>
-    HttpResponse.json({ machineName, expiresAt: new Date(Date.now() + 900_000).toISOString() }),
+    HttpResponse.json({
+      machineName,
+      existingMachines,
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    }),
   )
 }
 
 describe('answering a machine', () => {
-  it('finds it by a code somebody typed', async () => {
+  it('starts with the one command that makes a code, then finds what somebody typed', async () => {
     server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect')
 
-    await userEvent.type(await screen.findByLabelText(/code/i), 'WDJB-MJHT')
+    expect(await screen.findByText('handover connect')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Copy command' })).toBeDefined()
+    await userEvent.type(screen.getByLabelText(/code/i), 'WDJB-MJHT')
     await userEvent.click(screen.getByRole('button', { name: /find it/i }))
 
     expect(await screen.findByText('mina-mbp')).toBeDefined()
@@ -68,9 +81,9 @@ describe('answering a machine', () => {
     expect(await screen.findByText('mina-mbp')).toBeDefined()
   })
 
-  it('asks one question, because a machine is not let into anything', async () => {
-    // It is a laptop, and a laptop belongs to whoever owns it. Asking "into which Space" would be
-    // asking somebody to decide something that follows from where they already are.
+  it('asks only whether it is yours when no Space journey named one', async () => {
+    // The machine and CLI never choose a Space. An Account approval leaves it private, while a
+    // Space-scoped URL already carries that explicit destination.
     server.use(signedIn({ spaces: SPACES }), waiting())
     open('/connect/WDJB-MJHT')
 
@@ -92,15 +105,13 @@ describe('answering a machine', () => {
     expect(screen.getByRole('button', { name: /that is mine/i })).toBeDefined()
   })
 
-  it('says so when there is nowhere for it to run yet', async () => {
-    // Connecting still works — the machine is theirs either way — but nothing can run on it
-    // until they are in a Space, and finding that out afterwards looks like a broken machine.
+  it('says an Account connection can be added to a Space afterwards', async () => {
     server.use(signedIn({ spaces: [] }), waiting())
     open('/connect/WDJB-MJHT')
 
     await screen.findByText('mina-mbp')
 
-    expect(screen.getByText(/make a Space and it will be there/i)).toBeDefined()
+    expect(screen.getByText(/add it to a Space afterwards/i)).toBeDefined()
   })
 
   it('says nothing of the sort when there is somewhere', async () => {
@@ -112,7 +123,7 @@ describe('answering a machine', () => {
     expect(screen.queryByText(/make a Space/i)).toBeNull()
   })
 
-  it('takes it, and it is reachable from wherever that person is', async () => {
+  it('takes it without silently adding it to a Space', async () => {
     const approved: string[] = []
     server.use(
       signedIn({ spaces: SPACES }),
@@ -129,6 +140,86 @@ describe('answering a machine', () => {
 
     expect(approved).toEqual(['WDJB-MJHT'])
     expect(await screen.findByText(/that machine is in/i)).toBeDefined()
+  })
+
+  it('adds it to the one Space this journey began in', async () => {
+    const approved: unknown[] = []
+    server.use(
+      signedIn({ spaces: SPACES }),
+      waiting(),
+      http.post('*/me/machines', async ({ request }) => {
+        approved.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/connect/WDJB-MJHT?space=acme')
+
+    expect(await screen.findByText(/available in Acme/u)).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: /that is mine/i }))
+
+    expect(approved).toEqual([{ userCode: 'WDJB-MJHT', spaceSlug: 'acme' }])
+  })
+
+  it('does not offer an approval for a Space this account cannot reach', async () => {
+    server.use(signedIn({ spaces: SPACES }), waiting())
+    open('/connect/WDJB-MJHT?space=somebody-elses')
+
+    expect(await screen.findByText('That Space is not available.')).toBeDefined()
+    expect(screen.queryByRole('button', { name: /that is mine/i })).toBeNull()
+  })
+
+  it('reconnects the existing identity somebody explicitly chose', async () => {
+    const approved: unknown[] = []
+    server.use(
+      signedIn({ spaces: SPACES }),
+      waiting('mina-mbp', [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          presence: { state: 'gone', since: '2026-08-30T08:52:52.639Z' },
+        },
+      ]),
+      http.post('*/me/machines', async ({ request }) => {
+        approved.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/connect/WDJB-MJHT')
+
+    expect(await screen.findByText(/have you connected this machine before/i)).toBeDefined()
+    expect(screen.queryByText(/credential|identity/i)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /yes, reconnect it/i }))
+
+    expect(approved).toEqual([
+      {
+        userCode: 'WDJB-MJHT',
+        replaceMachineId: '11111111-1111-4111-8111-111111111111',
+      },
+    ])
+    expect(await screen.findByText(/that machine is in/i)).toBeDefined()
+  })
+
+  it('can keep a same-named identity separate when it is really another machine', async () => {
+    const approved: unknown[] = []
+    server.use(
+      signedIn({ spaces: SPACES }),
+      waiting('mina-mbp', [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          presence: { state: 'here' },
+        },
+      ]),
+      http.post('*/me/machines', async ({ request }) => {
+        approved.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    open('/connect/WDJB-MJHT')
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /no, this is a different machine/i }),
+    )
+
+    expect(approved).toEqual([{ userCode: 'WDJB-MJHT' }])
   })
 
   it('turns it away without naming a Space', async () => {

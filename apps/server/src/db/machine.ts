@@ -4,9 +4,12 @@
  * How one comes into existence is `enrolment.ts` — the row that decides is the enrolment, and the
  * machine is what it turns into.
  *
- * Locks, in the order every path here takes them:
- *   1. the `machines` row
- *   2. the `agents` rows it reported
+ * Every path that combines a Space relationship with another lock takes `space_machines` last:
+ * availability changes take `memberships` first; enrolment takes its machine and membership first;
+ * conversation writes take their conversation and machine first. Removing a relationship takes
+ * only `space_machines`, so none of those paths can meet it in reverse order.
+ *
+ * Reporting locks a separate chain: `machines`, then the `agents` rows it reported.
  */
 
 import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kysely'
@@ -181,6 +184,8 @@ type Machine = {
   readonly ownerUserId: string
   readonly whereabouts: Whereabouts
   readonly agents: readonly Installed[]
+  /** Where its owner explicitly made it available. Present on the Account projection. */
+  readonly spaces: readonly { readonly slug: string; readonly displayName: string }[]
 }
 
 /**
@@ -197,13 +202,26 @@ export type Seen = {
   readonly machines: readonly Machine[]
 }
 
-/**
- * Whether a machine can be reached from this Space: its owner is a member here.
- *
- * A condition and not a join, so that a read taking `for update` locks the machine and nothing
- * else. Joined, `for update` would lock the membership row too — and then opening a conversation
- * would queue behind anything touching who is in what.
- */
+type MachineRow = {
+  readonly id: string
+  readonly name: string
+  readonly version: string | null
+  readonly lastSeenAt: Date
+  readonly leftAt: Date | null
+  readonly ownerName: string
+  readonly ownerUserId: string
+}
+
+const MACHINE_COLUMNS = [
+  'machines.id',
+  'machines.name',
+  'machines.version',
+  'machines.last_seen_at as lastSeenAt',
+  'machines.left_at as leftAt',
+  'users.display_name as ownerName',
+  'machines.owner_user_id as ownerUserId',
+] as const
+
 /**
  * The conversation a machine is allowed to write into, locked, or nothing.
  *
@@ -230,14 +248,33 @@ export async function stillItsToWriteOn(
   const conversation = await tx
     .selectFrom('conversations')
     .innerJoin('machines', 'machines.id', 'conversations.machine_id')
-    .select('conversations.id')
+    .select(['conversations.id', 'conversations.space_id as spaceId'])
     .where('conversations.id', '=', on.conversationId)
     .where('conversations.machine_id', '=', on.machineId)
     .where('machines.removed_at', 'is', null)
+    .where(availableInConversationSpace)
     .forUpdate()
     .executeTakeFirst()
+  if (conversation === undefined) return undefined
 
-  return conversation?.id
+  const relationship = await lockMachineInSpace(tx, {
+    spaceId: conversation.spaceId,
+    machineId: on.machineId,
+  })
+  return relationship === undefined ? undefined : conversation.id
+}
+
+function availableInConversationSpace(
+  eb: ExpressionBuilder<DB, 'conversations'>,
+): Expression<SqlBool> {
+  return eb.exists(
+    eb
+      .selectFrom('space_machines')
+      .select('space_machines.machine_id')
+      .whereRef('space_machines.space_id', '=', 'conversations.space_id')
+      .whereRef('space_machines.machine_id', '=', 'conversations.machine_id')
+      .where('space_machines.removed_at', 'is', null),
+  )
 }
 
 /**
@@ -267,6 +304,7 @@ export async function stillItsToSpeakOf(
     .select('conversations.id')
     .where('conversations.id', '=', on.conversationId)
     .where('conversations.machine_id', '=', on.machineId)
+    .where(availableInConversationSpace)
     // `exists` rather than a join, so there is no second table here at all. Joined, this would be
     // the shape `review.md` 7 warns about even without `for update` on it today.
     .where((eb) =>
@@ -283,73 +321,235 @@ export async function stillItsToSpeakOf(
   return conversation !== undefined
 }
 
-export function reachableFrom(spaceId: string) {
+export async function lockMachineInSpace(
+  tx: Tx,
+  where: { readonly spaceId: string; readonly machineId: string },
+): Promise<string | undefined> {
+  const relationship = await tx
+    .selectFrom('space_machines')
+    .select('machine_id')
+    .where('space_id', '=', where.spaceId)
+    .where('machine_id', '=', where.machineId)
+    .where('removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+
+  return relationship?.machine_id
+}
+
+function reachableFrom(spaceId: string) {
   return (eb: ExpressionBuilder<DB, 'machines'>): Expression<SqlBool> =>
     eb.exists(
       eb
-        .selectFrom('memberships')
-        .select('memberships.user_id')
-        .whereRef('memberships.user_id', '=', 'machines.owner_user_id')
-        .where('memberships.space_id', '=', spaceId)
-        // Somebody who was removed takes their machines with them, at the moment they are
-        // removed. Left out here and nowhere else, a Space would go on reaching a laptop that
-        // belongs to somebody who is no longer in it.
-        .where('memberships.revoked_at', 'is', null),
+        .selectFrom('space_machines')
+        .select('space_machines.machine_id')
+        .whereRef('space_machines.machine_id', '=', 'machines.id')
+        .where('space_machines.space_id', '=', spaceId)
+        .where('space_machines.removed_at', 'is', null),
     )
 }
 
-/**
- * Every machine a Space can reach.
- *
- * Not "the machines in this Space" — a machine is not in a Space. It is somebody's, and it can be
- * reached from wherever they are a member. Joined rather than stored: a stored list would be a
- * second copy of who is in what, and the day it disagreed nobody would find out.
- */
+/** Every live machine explicitly available in this Space. */
 export async function machinesIn(db: Database, spaceId: string): Promise<Seen> {
   // One transaction, so `now()` and every row it is compared against are the same instant.
   return db.transaction().execute(async (tx) => attachedIn(tx, spaceId))
 }
 
+/** Every live machine this person controls, whichever Space is currently open. */
+export async function machinesOwnedBy(db: Database, ownerUserId: string): Promise<Seen> {
+  return db.transaction().execute(async (tx) => await ownedMachinesAsOf(tx, ownerUserId))
+}
+
+async function ownedMachinesAsOf(tx: Tx, ownerUserId: string): Promise<Seen> {
+  const { asOf } = await tx.selectNoFrom(sql<Date>`now()`.as('asOf')).executeTakeFirstOrThrow()
+  const machineRows = await tx
+    .selectFrom('machines')
+    .innerJoin('users', 'users.id', 'machines.owner_user_id')
+    .select(MACHINE_COLUMNS)
+    .where('machines.owner_user_id', '=', ownerUserId)
+    .where('machines.removed_at', 'is', null)
+    .orderBy('machines.created_at')
+    .execute()
+
+  if (machineRows.length === 0) return { asOf, machines: [] }
+
+  const machineIds = machineRows.map((machine) => machine.id)
+  const [installations, spaceRows] = await Promise.all([
+    installedOn(tx, machineIds),
+    spacesUsingMachines(tx, machineIds),
+  ])
+  const spaces = spacesByMachine(spaceRows)
+
+  return {
+    asOf,
+    machines: machineRows.map((machine) =>
+      asMachine(machine, installations, spaces.get(machine.id) ?? []),
+    ),
+  }
+}
+
+type MachineSpaceRow = {
+  readonly machineId: string
+  readonly slug: string
+  readonly displayName: string
+}
+
+async function spacesUsingMachines(
+  tx: Tx,
+  machineIds: readonly string[],
+): Promise<readonly MachineSpaceRow[]> {
+  return tx
+    .selectFrom('space_machines')
+    .innerJoin('spaces', 'spaces.id', 'space_machines.space_id')
+    .select([
+      'space_machines.machine_id as machineId',
+      'spaces.slug',
+      'spaces.display_name as displayName',
+    ])
+    .where('space_machines.machine_id', 'in', machineIds)
+    .where('space_machines.removed_at', 'is', null)
+    .orderBy('spaces.display_name')
+    .execute()
+}
+
+function spacesByMachine(spaceRows: readonly MachineSpaceRow[]) {
+  const spaces = new Map<string, Machine['spaces'][number][]>()
+  for (const { machineId, slug, displayName } of spaceRows) {
+    const forMachine = spaces.get(machineId) ?? []
+    forMachine.push({ slug, displayName })
+    spaces.set(machineId, forMachine)
+  }
+  return spaces
+}
+
+type SpaceMachineChange = {
+  readonly spaceId: string
+  readonly machineId: string
+  readonly userId: string
+}
+
+/** Makes one of a member's own machines available in this Space. Safe to repeat and re-add. */
+export async function addMachineToSpace(
+  db: Database,
+  adding: SpaceMachineChange,
+): Promise<boolean> {
+  const availableMachine = machineOwnedByMember(db, adding)
+  const added = await db
+    .insertInto('space_machines')
+    .columns(['space_id', 'machine_id', 'added_by'])
+    .expression(availableMachine)
+    .onConflict((conflict) =>
+      conflict.columns(['space_id', 'machine_id']).doUpdateSet({
+        added_by: adding.userId,
+        created_at: sql<Date>`clock_timestamp()`,
+        removed_at: null,
+      }),
+    )
+    .returning('machine_id')
+    .executeTakeFirst()
+
+  return added !== undefined
+}
+
+function machineOwnedByMember(db: Database, adding: SpaceMachineChange) {
+  return (
+    db
+      .selectFrom('machines')
+      .innerJoin('memberships', 'memberships.user_id', 'machines.owner_user_id')
+      .select([
+        sql<string>`${adding.spaceId}`.as('space_id'),
+        'machines.id as machine_id',
+        'memberships.user_id as added_by',
+      ])
+      .where('machines.id', '=', adding.machineId)
+      .where('machines.owner_user_id', '=', adding.userId)
+      .where('machines.removed_at', 'is', null)
+      .where('memberships.space_id', '=', adding.spaceId)
+      .where('memberships.revoked_at', 'is', null)
+      // Leaving locks this row before revoking the relationship. Taking the same lock here means an
+      // add either lands first and is then revoked, or waits and sees that membership ended.
+      .forUpdate('memberships')
+  )
+}
+
+/** Removes only this Space's use. The machine and every other Space remain untouched. */
+export async function removeMachineFromSpace(
+  db: Database,
+  removing: SpaceMachineChange,
+): Promise<boolean> {
+  const machinesTheyOwn = liveMachineIdsOwnedBy(db, removing.userId)
+  const spacesTheyOwn = liveSpaceIdsOwnedBy(db, removing.userId)
+  const removed = await db
+    .updateTable('space_machines')
+    .set({ removed_at: sql<Date>`clock_timestamp()` })
+    .where('space_id', '=', removing.spaceId)
+    .where('machine_id', '=', removing.machineId)
+    .where('removed_at', 'is', null)
+    .where((eb) =>
+      eb.or([eb('machine_id', 'in', machinesTheyOwn), eb('space_id', 'in', spacesTheyOwn)]),
+    )
+    .returning('machine_id')
+    .executeTakeFirst()
+
+  return removed !== undefined
+}
+
+function liveMachineIdsOwnedBy(db: Database, userId: string) {
+  return db
+    .selectFrom('machines')
+    .select('id')
+    .where('owner_user_id', '=', userId)
+    .where('removed_at', 'is', null)
+}
+
+function liveSpaceIdsOwnedBy(db: Database, userId: string) {
+  return db
+    .selectFrom('memberships')
+    .select('space_id')
+    .where('user_id', '=', userId)
+    .where('role', '=', 'owner')
+    .where('revoked_at', 'is', null)
+}
+
 async function attachedIn(tx: Tx, spaceId: string): Promise<Seen> {
   const { asOf } = await tx.selectNoFrom(sql<Date>`now()`.as('asOf')).executeTakeFirstOrThrow()
 
-  const rows = await tx
+  const machineRows = await tx
     .selectFrom('machines')
     .innerJoin('users', 'users.id', 'machines.owner_user_id')
-    .select([
-      'machines.id',
-      'machines.name',
-      'machines.version',
-      'machines.last_seen_at as lastSeenAt',
-      'machines.left_at as leftAt',
-      // Whose it is, because in a Space with two people in it a name is not enough: one of these
-      // is somebody else's laptop, and what runs on it runs in their files.
-      'users.display_name as ownerName',
-      'machines.owner_user_id as ownerUserId',
-    ])
+    .select(MACHINE_COLUMNS)
     .where('machines.removed_at', 'is', null)
     .where(reachableFrom(spaceId))
     .orderBy('machines.created_at')
     .execute()
 
-  if (rows.length === 0) return { asOf, machines: [] }
+  if (machineRows.length === 0) return { asOf, machines: [] }
 
-  const found = await installedOn(
+  const installations = await installedOn(
     tx,
-    rows.map((row) => row.id),
+    machineRows.map((machine) => machine.id),
   )
 
   return {
     asOf,
-    machines: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      version: row.version ?? undefined,
-      ownerName: row.ownerName,
-      ownerUserId: row.ownerUserId,
-      whereabouts: { lastSeenAt: row.lastSeenAt, leftAt: row.leftAt },
-      agents: installationsOn(row.id, found),
-    })),
+    machines: machineRows.map((machine) => asMachine(machine, installations, [])),
+  }
+}
+
+function asMachine(
+  machine: MachineRow,
+  installations: readonly NamedInstallation[],
+  spaces: Machine['spaces'],
+): Machine {
+  return {
+    id: machine.id,
+    name: machine.name,
+    version: machine.version ?? undefined,
+    ownerName: machine.ownerName,
+    ownerUserId: machine.ownerUserId,
+    whereabouts: { lastSeenAt: machine.lastSeenAt, leftAt: machine.leftAt },
+    agents: installationsOn(machine.id, installations),
+    spaces,
   }
 }
 
@@ -402,6 +602,15 @@ async function installedOn(
   )
 }
 
+type AgentSettingsDecision = {
+  readonly machine: string
+  readonly owner: string
+  readonly kind: AgentKind
+  /** Null takes the name off, which is what putting it back to its kind's name means. */
+  readonly name?: string | null | undefined
+  readonly atOnce?: number | undefined
+}
+
 /**
  * What an owner has decided about one agent on one of their machines.
  *
@@ -414,60 +623,53 @@ async function installedOn(
  */
 export async function setAgentSettings(
   db: Database,
-  deciding: {
-    readonly machine: string
-    readonly owner: string
-    readonly kind: AgentKind
-    /** Null takes the name off, which is what putting it back to its kind's name means. */
-    readonly name?: string | null | undefined
-    readonly atOnce?: number | undefined
-  },
+  deciding: AgentSettingsDecision,
 ): Promise<boolean> {
-  return db.transaction().execute(async (tx) => {
-    const machine = await tx
-      .selectFrom('machines')
-      .select('id')
-      .where('id', '=', deciding.machine)
-      .where('owner_user_id', '=', deciding.owner)
-      .where('removed_at', 'is', null)
-      .forUpdate()
-      .executeTakeFirst()
+  return db.transaction().execute(async (tx) => await saveAgentSettings(tx, deciding))
+}
 
-    if (machine === undefined) return false
+async function saveAgentSettings(tx: Tx, deciding: AgentSettingsDecision): Promise<boolean> {
+  const machine = await tx
+    .selectFrom('machines')
+    .select('id')
+    .where('id', '=', deciding.machine)
+    .where('owner_user_id', '=', deciding.owner)
+    .where('removed_at', 'is', null)
+    .forUpdate()
+    .executeTakeFirst()
+  if (machine === undefined) return false
 
-    const installed = await tx
-      .selectFrom('agents')
-      .select('kind')
-      .where('machine_id', '=', machine.id)
-      .where('kind', '=', deciding.kind)
-      .forUpdate()
-      .executeTakeFirst()
+  const installed = await tx
+    .selectFrom('agents')
+    .select('kind')
+    .where('machine_id', '=', machine.id)
+    .where('kind', '=', deciding.kind)
+    .forUpdate()
+    .executeTakeFirst()
+  if (installed === undefined) return false
 
-    if (installed === undefined) return false
+  // Written rather than deleted when a name comes off: the row may be carrying how many at a time
+  // as well, and taking a name off is not a decision to forget that one too.
+  const settings: { name?: string | null; at_once?: number } = {}
+  if (deciding.name !== undefined) settings.name = deciding.name
+  if (deciding.atOnce !== undefined) settings.at_once = deciding.atOnce
 
-    // Written rather than deleted when a name comes off: the row may be carrying how many at a
-    // time as well, and taking a name off is not a decision to forget that one too.
-    const decided: { name?: string | null; at_once?: number } = {}
-    if (deciding.name !== undefined) decided.name = deciding.name
-    if (deciding.atOnce !== undefined) decided.at_once = deciding.atOnce
+  await tx
+    .insertInto('agent_settings')
+    .values({ machine_id: deciding.machine, kind: deciding.kind, ...settings })
+    .onConflict((clash) =>
+      clash.columns(['machine_id', 'kind']).doUpdateSet({
+        ...settings,
+        decided_at: sql<Date>`clock_timestamp()`,
+      }),
+    )
+    .execute()
 
-    await tx
-      .insertInto('agent_settings')
-      .values({ machine_id: deciding.machine, kind: deciding.kind, ...decided })
-      .onConflict((clash) =>
-        clash.columns(['machine_id', 'kind']).doUpdateSet({
-          ...decided,
-          decided_at: sql<Date>`clock_timestamp()`,
-        }),
-      )
-      .execute()
-
-    return true
-  })
+  return true
 }
 
 /**
- * Takes a machine out of its Space. Its credential stops working on the next call it makes.
+ * Disconnects a machine globally. Its credential stops working on the next call it makes.
  *
  * The two ids are named rather than ordered: both are opaque, so a caller that swapped them would
  * compile, remove nothing, and be told the machine does not exist.

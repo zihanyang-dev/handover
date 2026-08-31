@@ -30,7 +30,13 @@ import {
   sayTo,
 } from './conversation.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, removeMachine, sayGoodbye, setAgentSettings } from './machine.ts'
+import {
+  checkIn,
+  removeMachine,
+  removeMachineFromSpace,
+  sayGoodbye,
+  setAgentSettings,
+} from './machine.ts'
 import { createSpace } from './space.ts'
 import { forgetStranded, openTurn, stopsWantedOn, takeOne } from './turn.ts'
 import { arrive } from './user.ts'
@@ -120,7 +126,7 @@ async function attached(): Promise<string> {
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(db, userCode, { userId: PERSON })
+  await approveEnrolment(db, userCode, { userId: PERSON, approvedSpaceId: SPACE })
 
   const collected = await collectEnrolment(db, {
     secretHash: secret.hash,
@@ -215,6 +221,21 @@ describe('opening a conversation', () => {
     const conversation = await beginConversation(db, {
       conversationId: randomUUID(),
       spaceId: randomUUID(),
+      machineId: MACHINE,
+      agentKind: 'claude-code',
+      saidBy: PERSON,
+      asked: { text: 'anybody there' },
+    })
+
+    expect(conversation).toEqual({ kind: 'no-machine' })
+  })
+
+  it('cannot open another conversation after the machine was removed from this Space', async () => {
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    const conversation = await beginConversation(db, {
+      conversationId: randomUUID(),
+      spaceId: SPACE,
       machineId: MACHINE,
       agentKind: 'claude-code',
       saidBy: PERSON,
@@ -345,6 +366,15 @@ describe('saying something to an agent', () => {
     await sayGoodbye(db, MACHINE)
 
     expect(await asks(conversation, 'turn-1', 'hello')).toEqual({ kind: 'said' })
+  })
+
+  it('refuses another question after the machine was removed from this Space', async () => {
+    const conversation = await opened()
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    expect(await asks(conversation, 'turn-after-removal', 'hello')).toEqual({
+      kind: 'no-conversation',
+    })
   })
 
   it('refuses a conversation in another Space, giving nothing away about it', async () => {
@@ -483,6 +513,24 @@ describe('what a machine may write', () => {
 })
 
 describe('what the agent calls a conversation', () => {
+  it('does not record a session after the machine was removed from this Space', async () => {
+    const conversation = await opened()
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    await noteAgentSession(db, {
+      conversationId: conversation,
+      machineId: MACHINE,
+      session: 'too-late',
+    })
+    const stored = await db
+      .selectFrom('conversations')
+      .select('agent_session_id')
+      .where('id', '=', conversation)
+      .executeTakeFirstOrThrow()
+
+    expect(stored.agent_session_id).toBeNull()
+  })
+
   it('keeps the first name it was given', async () => {
     // Picking a conversation up again reports the same id; a turn that started over says so by
     // its own means. Overwriting would lose the pointer to everything said before.

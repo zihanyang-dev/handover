@@ -4,8 +4,9 @@
  * Both ends in one file because they are one conversation with a gap in the middle. The machine's
  * two calls need no session — one because a machine nobody has approved has no identity to prove,
  * the other because the secret handed back at the asking *is* the proof. The person's four need
- * one and nothing more: none of them names a Space, because a machine is not in one. It is
- * somebody's, and where it can be reached from follows from where they are a member.
+ * a session. The machine calls never name a Space. A person's approval may carry the Space whose
+ * Add machine journey opened the page, but that is browser intent, not a choice delegated to the
+ * unapproved machine.
  */
 
 import { z } from '@hono/zod-openapi'
@@ -14,13 +15,16 @@ import {
   approveEnrolment,
   collectEnrolment,
   enrolmentWaiting,
+  existingMachinesFor,
   openEnrolment,
   refuseEnrolment,
 } from '../db/enrolment.ts'
+import { spacesOf } from '../db/space.ts'
 import { AGENT_COMMANDS } from '../machine/agent-kind.ts'
 import { POLL_SECONDS } from '../machine/presence.ts'
 import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode, readUserCode } from '../machine/user-code.ts'
+import { onTheWire, Presence } from '../machine/whereabouts.ts'
 import { hashSecret } from '../secret.ts'
 import { type Failure, refused } from './failure.ts'
 import { aPerson, anyone, named, nothing, refuses, sends } from './route.ts'
@@ -84,7 +88,13 @@ const Collected = z
   ])
   .openapi('Collected')
 
-const LetItIn = named('LetItIn', { userCode: z.string().max(64) })
+const LetItIn = named('LetItIn', {
+  userCode: z.string().max(64),
+  /** Present only when the person explicitly chose an existing same-named identity. */
+  replaceMachineId: z.uuid().optional(),
+  /** Present when this approval began from one Space's Add machine journey. */
+  spaceSlug: z.string().optional(),
+})
 
 /** No enrolment is waiting under that code: never was, already answered, or ran out. */
 const NOT_WAITING: Failure<404> = { reason: 'no-enrolment', recovery: 'start-over', status: 404 }
@@ -92,7 +102,23 @@ const NOT_WAITING: Failure<404> = { reason: 'no-enrolment', recovery: 'start-ove
 /** Said the same way by all four routes, because all four mean it the same way. */
 const NOTHING_IS_WAITING = refuses(NOT_WAITING, 'Nothing is waiting under that code')
 
-const Waiting = named('MachineWaiting', { machineName: z.string(), expiresAt: z.iso.datetime() })
+const CANNOT_REPLACE: Failure<404> = {
+  reason: 'machine-unavailable',
+  recovery: 'start-over',
+  status: 404,
+}
+
+const ExistingMachine = named('ExistingMachine', {
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+  presence: Presence,
+})
+
+const Waiting = named('MachineWaiting', {
+  machineName: z.string(),
+  expiresAt: z.iso.datetime(),
+  existingMachines: z.array(ExistingMachine).readonly(),
+})
 
 /** Shown once. Only its hash is kept, so this is the only moment it can be read. */
 const Key = named('MachineKey', { key: z.string(), expiresAt: z.iso.datetime() })
@@ -194,9 +220,21 @@ function whatIsWaiting({ db }: EnrolmentApi) {
 
       const waiting = await enrolmentWaiting(db, userCode)
       if (waiting === undefined) return refused(c, NOT_WAITING)
+      const existing = await existingMachinesFor(db, {
+        ownerUserId: c.get('userId'),
+        machineName: waiting.machineName,
+      })
 
       return c.json(
-        { machineName: waiting.machineName, expiresAt: waiting.expiresAt.toISOString() },
+        {
+          machineName: waiting.machineName,
+          expiresAt: waiting.expiresAt.toISOString(),
+          existingMachines: existing.machines.map((machine) => ({
+            id: machine.id,
+            createdAt: machine.createdAt.toISOString(),
+            presence: onTheWire(machine.whereabouts, existing.asOf),
+          })),
+        },
         200,
       )
     },
@@ -228,21 +266,40 @@ function refusing({ db }: EnrolmentApi) {
 /**
  * Saying yes, which makes that machine yours.
  *
- * Answering adds a machine to the ones you have, so this creates one there — and its opposite,
+ * Answering normally adds a machine. When the person explicitly names an existing same-named
+ * identity, it reconnects that one instead; a name alone never makes that decision. Its opposite,
  * `DELETE /me/machines/{id}`, is the standard method for taking one away.
  */
 function approving({ db }: EnrolmentApi) {
   return aPerson(db).post('/me/machines', {
     summary: 'Say that machine is yours',
     body: LetItIn,
-    answers: { 204: 'It is yours', 404: NOTHING_IS_WAITING },
+    answers: {
+      204: 'It is yours',
+      404: refuses(NOT_WAITING, 'Nothing is waiting, or that machine cannot be reconnected'),
+    },
 
     run: async (c) => {
-      const userCode = readUserCode(c.req.valid('json').userCode)
+      const approval = c.req.valid('json')
+      const userCode = readUserCode(approval.userCode)
       if (userCode === undefined) return refused(c, NOT_WAITING)
 
-      const answered = await approveEnrolment(db, userCode, { userId: c.get('userId') })
+      const userId = c.get('userId')
+      const space =
+        approval.spaceSlug === undefined
+          ? undefined
+          : (await spacesOf(db, userId)).find((one) => one.slug === approval.spaceSlug)
+      if (approval.spaceSlug !== undefined && space === undefined) return refused(c, NOT_WAITING)
+
+      const answered = await approveEnrolment(db, userCode, {
+        userId,
+        ...(approval.replaceMachineId === undefined
+          ? {}
+          : { replaceMachineId: approval.replaceMachineId }),
+        ...(space === undefined ? {} : { approvedSpaceId: space.id }),
+      })
       if (answered.kind === 'not-waiting') return refused(c, NOT_WAITING)
+      if (answered.kind === 'cannot-replace') return refused(c, CANNOT_REPLACE)
 
       return nothing(c, 204)
     },
@@ -256,26 +313,38 @@ function approving({ db }: EnrolmentApi) {
  * asks a person to make — that the machine will be theirs — so the row is written with that
  * decision on it, and the machine that presents it skips only the waiting.
  *
- * Yours, like everything else about a machine. It was under a Space while a machine belonged to
- * one; now it names nothing but who made it, and a route behind a Space membership would be a
- * gate in front of a decision the Space has no part in.
+ * Yours, like everything else about a machine. From Account it names only who made it; from a
+ * Space's Add machine journey it also records that explicit destination. The key stays opaque to
+ * the CLI either way, so a machine never chooses or enumerates Spaces.
  *
  * For a machine with no browser to open, which is most machines that are not somebody's laptop.
  */
 function makingAKey({ db }: EnrolmentApi) {
   return aPerson(db).post('/me/machine-keys', {
     summary: 'Make a key a machine can come in with, without anybody approving it later',
-    answers: { 201: sends(Key, 'The key, shown this once and never again') },
+    query: { space: z.string().optional() },
+    answers: {
+      201: sends(Key, 'The key, shown this once and never again'),
+      404: NOTHING_IS_WAITING,
+    },
 
     run: async (c) => {
       const secret = newEnrolmentSecret()
+      const userId = c.get('userId')
+      const askedSpace = c.req.valid('query').space
+      const space =
+        askedSpace === undefined
+          ? undefined
+          : (await spacesOf(db, userId)).find((one) => one.slug === askedSpace)
+      if (askedSpace !== undefined && space === undefined) return refused(c, NOT_WAITING)
 
       // A key: no code and no machine name, because nobody will read one and nobody knows the
       // other yet. Which of those an enrolment has is the shape, not four fields left blank.
       const opened = await openEnrolment(db, {
         kind: 'key',
         secretHash: secret.hash,
-        approvedBy: c.get('userId'),
+        approvedBy: userId,
+        ...(space === undefined ? {} : { approvedSpaceId: space.id }),
       })
 
       return c.json({ key: secret.secret, expiresAt: opened.expiresAt.toISOString() }, 201)

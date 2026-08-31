@@ -26,11 +26,16 @@ type Me = components['schemas']['Me']
 
 export type SettingsSection = 'account' | 'people' | 'machines'
 
+function accountTabName(me: Me | undefined): string {
+  if (me === undefined || me.displayName.includes('@')) return 'Account'
+  return me.displayName
+}
+
 function settingsTabs(me: Me | undefined): readonly Tab[] {
   return [
     {
       id: 'account',
-      label: me?.displayName ?? 'Account',
+      label: accountTabName(me),
       group: 'Account',
       icon:
         me === undefined ? (
@@ -128,6 +133,7 @@ export function SpaceSettings({
             <SettingsContent
               section={section}
               slug={space.slug}
+              spaceName={space.displayName}
               afterLeaving={afterLeaving}
               revealedInvitation={revealedInvitation}
               revealInvitation={setRevealedInvitation}
@@ -142,12 +148,14 @@ export function SpaceSettings({
 function SettingsContent({
   section,
   slug,
+  spaceName,
   afterLeaving,
   revealedInvitation,
   revealInvitation,
 }: {
   readonly section: SettingsSection
   readonly slug: string
+  readonly spaceName: string
   readonly afterLeaving: () => void
   readonly revealedInvitation: RevealedInvitation | undefined
   readonly revealInvitation: (invitation: RevealedInvitation | undefined) => void
@@ -162,7 +170,7 @@ function SettingsContent({
         revealInvitation={revealInvitation}
       />
     )
-  return <SpaceMachines slug={slug} />
+  return <SpaceMachines slug={slug} name={spaceName} />
 }
 
 function SettingsSections({

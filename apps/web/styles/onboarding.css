@@ -840,6 +840,24 @@
   animation: none;
 }
 
+.host-enter-code {
+  margin-left: auto;
+  color: var(--primary);
+  font-size: var(--text-xxs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.host-enter-code:hover {
+  text-decoration: underline;
+}
+
+.host-enter-code:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .host-key-refresh {
   display: flex;
   width: 100%;
@@ -879,7 +897,7 @@
 .host-skip {
   display: inline-flex;
   width: max-content;
-  margin: 0 -0.5rem 0 auto;
+  margin: 0 -0.5rem 0 0;
   padding: 0.375rem 0.5rem;
   align-items: center;
   gap: 0.125rem;

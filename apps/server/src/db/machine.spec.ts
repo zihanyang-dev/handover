@@ -11,14 +11,17 @@ import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment, refuseEnrolment } from './enrolment.ts'
 import {
+  addMachineToSpace,
   checkIn,
   machineHolding,
   machinesIn,
+  machinesOwnedBy,
   removeMachine,
+  removeMachineFromSpace,
   sayGoodbye,
   setAgentSettings,
 } from './machine.ts'
-import { handMachineTo, joins, removes } from './membership.ts'
+import { becomes, joins, removes, ROLE } from './membership.ts'
 import { createSpace } from './space.ts'
 import { arrive } from './user.ts'
 
@@ -65,7 +68,7 @@ async function approved(name = 'mina-mbp'): Promise<string> {
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(db, userCode, { userId: PERSON })
+  await approveEnrolment(db, userCode, { userId: PERSON, approvedSpaceId: SPACE })
   return secret.hash
 }
 
@@ -574,52 +577,80 @@ describe('taking one away', () => {
   })
 })
 
+describe('which Spaces may use one of your machines', () => {
+  it('keeps an Account connection private until somebody adds it to a Space', async () => {
+    const secret = newEnrolmentSecret()
+    const userCode = newUserCode()
+    await openEnrolment(db, {
+      kind: 'asking',
+      machineName: 'private-mbp',
+      secretHash: secret.hash,
+      userCode,
+    })
+    await approveEnrolment(db, userCode, { userId: PERSON })
+    const collected = await collectEnrolment(db, {
+      secretHash: secret.hash,
+      tokenHash: hashSecret(`hm_${randomUUID()}`),
+      machineName: 'private-mbp',
+    })
+    if (collected.kind !== 'granted') throw new Error('the fixture could not attach a machine')
+
+    expect((await machinesOwnedBy(db, PERSON)).machines.map((one) => one.id)).toContain(
+      collected.machineId,
+    )
+    expect((await machinesIn(db, SPACE)).machines.map((one) => one.id)).not.toContain(
+      collected.machineId,
+    )
+
+    expect(
+      await addMachineToSpace(db, {
+        spaceId: SPACE,
+        machineId: collected.machineId,
+        userId: PERSON,
+      }),
+    ).toBe(true)
+    expect((await machinesIn(db, SPACE)).machines.map((one) => one.id)).toContain(
+      collected.machineId,
+    )
+  })
+
+  it('removes one Space without disconnecting the machine or another Space', async () => {
+    const machineId = await attached()
+    const other = await createSpace(db, {
+      requestKey: `other-${RUN}`,
+      userId: PERSON,
+      displayName: `Beta ${RUN.slice(0, 8)}`,
+      emoji: '🪴',
+      slug: normalizeSlug(`beta-${RUN}`) as Slug,
+    })
+    if (other.kind !== 'created') throw new Error('the fixture could not make another Space')
+    await addMachineToSpace(db, { spaceId: other.space.id, machineId, userId: PERSON })
+
+    expect(await removeMachineFromSpace(db, { spaceId: SPACE, machineId, userId: PERSON })).toBe(
+      true,
+    )
+    expect((await machinesIn(db, SPACE)).machines).toHaveLength(0)
+    expect((await machinesIn(db, other.space.id)).machines.map((one) => one.id)).toEqual([
+      machineId,
+    ])
+    expect((await machinesOwnedBy(db, PERSON)).machines.map((one) => one.id)).toContain(machineId)
+  })
+
+  it('takes this relationship away when its owner leaves, and does not restore it by joining', async () => {
+    const machineId = await attached()
+    const rui = await someoneElse()
+    await joins(db, { userId: rui, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
+    await becomes(db, { spaceId: SPACE, userId: rui }, ROLE.owner)
+
+    await removes(db, { spaceId: SPACE, userId: PERSON })
+    expect((await machinesIn(db, SPACE)).machines).toHaveLength(0)
+    expect((await machinesOwnedBy(db, PERSON)).machines.map((one) => one.id)).toContain(machineId)
+
+    await joins(db, { userId: PERSON, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
+    expect((await machinesIn(db, SPACE)).machines).toHaveLength(0)
+  })
+})
+
 function never(): never {
   throw new Error('the fixture expected a machine')
 }
-
-describe('handing a machine to another person', () => {
-  it('moves whose it is, and leaves who approved it alone', async () => {
-    // Two questions, not one fact written twice. Since `20260909` the row may move — and the
-    // enrolment still says who let it in, which is history and `prd.md` 05 ⑦ promises to keep.
-    const machineId = await attached()
-    const rui = await someoneElse()
-    await joins(db, { userId: rui, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
-
-    expect(await handMachineTo(db, { spaceId: SPACE, machineId, userId: rui })).toEqual({
-      kind: 'moved',
-    })
-
-    const row = await db
-      .selectFrom('machines')
-      .innerJoin('enrolments', 'enrolments.id', 'machines.enrolled_from')
-      .select(['machines.owner_user_id as owner', 'enrolments.approved_by as approvedBy'])
-      .where('machines.id', '=', machineId)
-      .executeTakeFirstOrThrow()
-
-    expect([row.owner, row.approvedBy]).toEqual([rui, PERSON])
-  })
-
-  it('keeps it reachable from the Space, which is the whole point of moving it', async () => {
-    // Tailscale's lesson, avoided rather than repeated: deleting a user there deletes their
-    // devices and the connections stop. Handing the team's build server to somebody who is
-    // staying is how that never happens here.
-    const machineId = await attached('build-server-1')
-    const rui = await someoneElse()
-    await joins(db, { userId: rui, spaceId: SPACE, slug: `s-${RUN.slice(0, 8)}` })
-    await handMachineTo(db, { spaceId: SPACE, machineId, userId: rui })
-
-    await removes(db, { spaceId: SPACE, userId: PERSON })
-
-    expect((await machinesIn(db, SPACE)).machines.map((one) => one.id)).toEqual([machineId])
-  })
-
-  it('refuses somebody who is not in this Space', async () => {
-    const machineId = await attached()
-    const stranger = await someoneElse()
-
-    expect(await handMachineTo(db, { spaceId: SPACE, machineId, userId: stranger })).toEqual({
-      kind: 'not-a-member',
-    })
-  })
-})

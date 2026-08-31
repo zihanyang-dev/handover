@@ -25,7 +25,7 @@ import {
   sayTo,
 } from './conversation.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
-import { checkIn, removeMachine } from './machine.ts'
+import { addMachineToSpace, checkIn, removeMachine, removeMachineFromSpace } from './machine.ts'
 import { handWorkTo, joins, removes } from './membership.ts'
 import { createSpace } from './space.ts'
 import {
@@ -94,7 +94,7 @@ async function attached(machineName: string): Promise<string> {
   const secret = newEnrolmentSecret()
   const userCode = newUserCode()
   await openEnrolment(db, { kind: 'asking', machineName, secretHash: secret.hash, userCode })
-  await approveEnrolment(db, userCode, { userId: PERSON })
+  await approveEnrolment(db, userCode, { userId: PERSON, approvedSpaceId: SPACE })
 
   const collected = await collectEnrolment(db, {
     secretHash: secret.hash,
@@ -203,8 +203,11 @@ async function inAnotherSpace(): Promise<string> {
   })
   if (made.kind !== 'created') throw new Error('the fixture could not make a second Space')
 
-  // Their machine is reachable from there without being connected again — which is the whole
-  // reason a person can have work waiting in two Spaces at once.
+  await addMachineToSpace(db, {
+    spaceId: made.space.id,
+    machineId: MACHINE,
+    userId: PERSON,
+  })
   const opened = await beginConversation(db, {
     conversationId: randomUUID(),
     spaceId: made.space.id,
@@ -637,6 +640,22 @@ describe('handing a piece of it to somebody else', () => {
     expect(await waitingOn(db, PERSON)).toEqual([])
   })
 
+  it('cannot hand off after its machine was removed from this Space', async () => {
+    const conversation = await handedOver()
+    await nextTurn()
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    const nowhere = await handOffTo(db, {
+      conversationId: conversation,
+      machineId: MACHINE,
+      key: 'off-after-removal',
+      agentKind: 'codex',
+      goal: 'anything',
+    })
+
+    expect(nowhere).toEqual({ kind: 'nothing-to-hand-off' })
+  })
+
   it('refuses an agent this machine does not have', async () => {
     const conversation = await handedOver()
     await nextTurn()
@@ -744,6 +763,21 @@ describe('a report that arrives twice', () => {
 })
 
 describe('a machine that was taken away mid-flight', () => {
+  it('cannot move the work after it was removed from this Space', async () => {
+    const conversation = await handedOver()
+    await nextTurn()
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    const said = await stopsWorking(
+      db,
+      { conversationId: conversation, machineId: MACHINE, key: 'unavailable/done' },
+      { state: 'done', ending: 'done', text: 'all finished' },
+    )
+
+    expect(said).toEqual({ kind: 'nothing-to-report' })
+    expect((await underwayIn(db, conversation))?.task.state).toBe('working')
+  })
+
   it('cannot move the work, however far into the request it had got', async () => {
     // Its credential is refused at the door from the next call on. This is the call already
     // inside: the middleware let it through before the removal committed, and what it does next
@@ -1083,6 +1117,14 @@ describe('the Inbox', () => {
 })
 
 describe('a machine taken out between the door and the claim', () => {
+  it('is handed no turn after it was removed from this Space', async () => {
+    const conversation = await opened()
+    await asks(conversation, 'turn-1', 'where does the timeout live?')
+    await removeMachineFromSpace(db, { spaceId: SPACE, machineId: MACHINE, userId: PERSON })
+
+    expect(await takeOne(db, MACHINE)).toBeUndefined()
+  })
+
   it('is handed no turn, which is what the poll route says happens', async () => {
     // The credential was read in an earlier transaction; removing the machine commits between
     // that and this one. Asked only at the door, this hands one more turn to a laptop nobody can

@@ -11,6 +11,7 @@ import { cached } from '../../api.ts'
 import type { components } from '../../generated/api.ts'
 
 export type Machine = components['schemas']['Machine']
+export type OwnedMachine = components['schemas']['OwnedMachine']
 
 /**
  * One installed agent, with the machine it is on carried along.
@@ -59,12 +60,27 @@ const WHILE_LOOKING_MS = 10_000
 /** On the one screen where somebody is sitting in front of a terminal, waiting for it to appear. */
 export const WHILE_WAITING_FOR_ONE_MS = 3000
 
+export function ownedMachines(everyMs = WHILE_LOOKING_MS) {
+  return cached.queryOptions(
+    'get',
+    '/me/machines',
+    {},
+    {
+      refetchInterval: everyMs,
+      select: (answer: components['schemas']['OwnedMachines']) => answer.machines,
+    },
+  )
+}
+
 export function machinesIn(slug: string, everyMs = WHILE_LOOKING_MS) {
   return cached.queryOptions(
     'get',
     '/spaces/{slug}/machines',
     { params: { path: { slug } } },
-    { refetchInterval: everyMs, select: (answer) => answer.machines },
+    {
+      refetchInterval: everyMs,
+      select: (answer: components['schemas']['Machines']) => answer.machines,
+    },
   )
 }
 
@@ -72,14 +88,19 @@ export function machinesIn(slug: string, everyMs = WHILE_LOOKING_MS) {
  * Disconnecting one of your own, which is also what stops its credential working.
  *
  * Yours, not a Space's: a machine belongs to whoever connected it. The path says `/me` for that
- * reason, and no Space appears in it — but every Space it was reachable from has to read its
- * machines again, and the one on screen is the one somebody is looking at.
+ * reason, and no Space appears in it — but every Space where it was explicitly available has to
+ * read its machines again, including whichever one is on screen.
  */
-export function useDisconnectMachine(slug: string) {
+export function useDisconnectMachine() {
   const client = useQueryClient()
 
   return cached.useMutation('delete', '/me/machines/{id}', {
-    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ownedMachines().queryKey }),
+        client.invalidateQueries({ queryKey: ['get', '/spaces/{slug}/machines'] }),
+      ])
+    },
   })
 }
 
@@ -87,30 +108,41 @@ export function useDisconnectMachine(slug: string) {
  * What an owner has decided about one agent on one of their machines: its name, and how much it
  * takes on at the same time.
  *
- * Both follow the owner rather than the Space it is being looked at from: the same laptop appears
- * in every Space that person is in, and one called something different in each — or allowed a
- * different number in each — would be a different agent to each room. `null` is the only way to
- * take a name off.
+ * Both follow the owner rather than the Space it is being looked at from: every Space where the
+ * laptop is explicitly available sees one decision. A different name or limit in each would make
+ * one installation read as several agents. `null` is the only way to take a name off.
  */
-export function useAgentSettings(slug: string) {
+export function useAgentSettings() {
   const client = useQueryClient()
 
   return cached.useMutation('patch', '/me/machines/{id}/agents/{kind}', {
-    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ownedMachines().queryKey }),
+        client.invalidateQueries({ queryKey: ['get', '/spaces/{slug}/machines'] }),
+      ])
+    },
   })
 }
 
-/**
- * Handing a machine to somebody else here.
- *
- * An owner's, and the thing to do *before* taking its owner out: removing the person first would
- * take the machine with them, which is Tailscale's lesson — deleting a user deletes their devices
- * and everything running on them stops.
- */
-export function useHandMachineTo(slug: string) {
+export function useAddMachineToSpace(slug: string) {
   const client = useQueryClient()
+  return cached.useMutation('put', '/spaces/{slug}/machines/{id}', {
+    onSuccess: async () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+        client.invalidateQueries({ queryKey: ownedMachines().queryKey }),
+      ]),
+  })
+}
 
-  return cached.useMutation('patch', '/spaces/{slug}/machines/{id}', {
-    onSuccess: async () => client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+export function useRemoveMachineFromSpace(slug: string) {
+  const client = useQueryClient()
+  return cached.useMutation('delete', '/spaces/{slug}/machines/{id}', {
+    onSuccess: async () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: machinesIn(slug).queryKey }),
+        client.invalidateQueries({ queryKey: ownedMachines().queryKey }),
+      ]),
   })
 }

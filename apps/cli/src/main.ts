@@ -384,8 +384,6 @@ async function stayConnected(attachment: Attachment): Promise<void> {
         PATH: await reachableAs({ beside: where, howToRun: howToRunThis() }, machineEnvironment()),
       },
       workRoot,
-      // The directory this process is in, which the service file set to the one `connect` was run
-      // in. Nothing runs here now; it is reported so a screen can offer it as "my project".
       handover: 'handover',
     },
     stopping.signal,

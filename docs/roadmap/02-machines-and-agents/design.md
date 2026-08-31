@@ -18,14 +18,17 @@ enrolments
   secret_hash 唯一          ← 命令行轮询时出示的东西,只存哈希
   user_code   唯一(可空)     ← 给人看的短码;网页生成的那条路没有
   approved_by → users(可空) · approved_at(可空)
+  replaces_machine_id → machines(可空)
+                              ← 人明确选择重新连接哪个身份;绝不从名字猜
+  approved_space_id → spaces(可空)
+                              ← 从一个 Space 的 Add machine 发起时,收取凭据后原子加到那里
   refused_at(可空)          ← 被拒绝和从没批过是两件事
   claimed_at(可空)          ← 已经换成机器了,不能再换第二次
   expires_at
   一行 = 一次接入请求。批没批,看 approved_at
 
 machines
-  id · owner_user_id · name      ← 它属于连它的那个人,不属于 Space
-                                 这一列早晚要能装下「不属于任何人」,见 prd「机器的身份」
+  id · owner_user_id · name      ← Account 里的机器身份;属于连它的那个人
   token_hash 唯一           ← 长期凭据,同样只存哈希
   enrolled_from → enrolments
   last_seen_at              ← 在线与否读的时候算,不存状态
@@ -38,9 +41,18 @@ agents
   machine_id · kind · version · models(可空) · found_at · 唯一(machine_id, kind)
   一台机器上扫到的东西。没有状态列:机器离线,它上面的 agent 就都不可用
 
-agent_names
-  machine_id · kind · name · named_at · 唯一(machine_id, kind)
-  主人给一个安装起的名字。独立于发现事实,所以一次没扫到不会把人的名字删掉
+agent_settings
+  machine_id · kind · name · at_once · decided_at · 唯一(machine_id, kind)
+  主人给一个安装的全局设置。独立于发现事实,所以一次没扫到不会把人的决定删掉
+
+space_machines
+  space_id · machine_id · added_by · created_at · removed_at(可空)
+  唯一(space_id, machine_id)
+  一行 = 这个 Space 是否可以使用这台机器;移除保留历史,重新添加清掉 removed_at
+
+Conversation 的 `(space_id, machine_id)` 复合外键指向这张表。新 Conversation、派发和机器写回都锁住
+当前 active 关系再继续;移除拿同一行锁,所以两边只能有一个先提交。历史 Conversation 仍可读,但关系移除后
+不会再开始或写入一轮。
 ```
 
 **不建**:`machines.status`(派生)· agent 的 `last_seen_at`(跟机器走)· 机器分组 · 能力表。
@@ -48,6 +60,25 @@ agent_names
 ### 为什么接入请求和机器凭据是两条命
 
 一把钥匙可能被贴到十台服务器上。泄露一把钥匙不该等于泄露十台机器的长期凭据,而且撤销一台机器不该连累另外九台。GitHub(1 小时注册 token → 长期 runner 凭据)和 Tailscale(auth key → node key)都这么分。
+
+### 为什么重新连接必须由人选旧身份
+
+正常重启只读回原来的机器凭据,所以一直是同一个 `machines.id`。真正麻烦的是凭据文件丢失:新进程无法证明
+自己就是库里的哪一行。主机名不能代替证明 —— 两台机器可以同名,而且 PRD 明确允许。
+
+因此批准页只把**当前这个人名下、同名、尚未移除**的机器列为候选,由人二选一:
+
+- 不选候选:照旧插入一行新机器
+- 选中一行:把新 token 和本次 `enrolled_from` 写回那行,保留 machine id、Conversation、agent 名称与设置;
+  同一个事务把它先记为离线,等新进程第一次报到再回来
+
+选择落在 `enrolments.replaces_machine_id`,而不是只停在浏览器请求里。批准和机器收取凭据隔着一次轮询;不把
+决定存进接入请求,收取时就只能再猜一次。批准时验证候选属于批准者、未移除且名字相同;收取仍按统一锁序
+`enrolments → machines`,轮换 token 后旧进程下一次报到立即失去身份。同一台 machine 同时只保留一条尚未
+收取的 replacement;新的批准在 machine 锁下清掉已经过期的占位,仍有效的冲突明确返回不能替换。
+
+不能静默“同名就替换”,也不能只在 Chat 隐藏离线副本。前者会断开一台真的同名机器,后者让旧 Conversation
+继续绑在没人能接回来的 machine id 上,都只是把错误藏起来。
 
 ### 为什么只有 `last_seen_at`
 
@@ -61,29 +92,23 @@ agent_names
 要进哪个 Space:那会让一个没登录的人拿 slug 挨个试,从 201 还是 404 里读出哪个 Space 存在,而
 `prd.md` 01 的承诺 ⑥ 说的是**不存在和不是成员,同一个回答**。
 
-**批准的时候也不问 Space,只问「这是不是你的」。** 一台笔记本属于它的主人;它在哪些 Space 里能用,
-是从那个人的成员资格跟着走的,`machines` 上没有那一列。
+**批准首先只回答「这是不是你的」;是否加到当前 Space 是浏览器的明确意图。** 从 Account 连接时,
+`approved_space_id` 为空,机器只出现在 Your machines。从 Acme 的 Add machine 发起时,浏览器在批准动作上
+带 Acme;CLI 仍然不知道 Space、也不能枚举 Space。收取凭据的事务创建或重连机器后,同时 upsert Acme 的
+`space_machines`。
+
+已经连接的机器不必重跑 CLI。`PUT /spaces/{slug}/machines/{id}` 只在调用者仍是成员、机器仍归他时恢复
+或创建关系。成员资格和机器可用性是两个事实:加入 Space 不再偷偷扩大为远程执行授权。
+
+Space 列表只读显式关系:
 
 ```sql
--- 「这个 Space 能用哪些机器」 —— 一个 join,不是一列
-from machines join memberships on memberships.user_id = machines.owner_user_id
-where memberships.space_id = $1
+from space_machines sm join machines m on m.id = sm.machine_id
+where sm.space_id = $1 and sm.removed_at is null and m.removed_at is null
 ```
 
-**存下来那份名单就是「谁在哪个 Space」的第二份拷贝**,而它和真的那份不一致的那天,没有任何东西
-会说一声。派生的那份不会。
-
-`approved_by` 因此就是主人,而 `enrolments` 上那条「批过的行一定有 Space」的约束没了 —— 换成
-本来就有的那条:**批过的行一定有人**(`enrolments_approved_together`)。
-
-[Multica](https://github.com/multica-ai/multica/blob/main/CLI_AND_DAEMON.md) 是同一个结论:
-`multica login` **自己去发现你所属的每一个 workspace**,一个 daemon 全服务。它给 daemon 的是
-**个人访问令牌**,我们给的还是**机器凭据** —— 同样的方便,小一个数量级的爆炸半径:那台笔记本丢了,
-拿到的东西建不了 Space、读不了 Inbox、登不了录。
-
-(CI 的 runner 是另一回事:[GitHub](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
-和 [GitLab](https://docs.gitlab.com/ci/runners/runners_scope/) 都是一次注册一个作用域 —— 因为那是
-**组织买的机器**,不是谁的笔记本。照那个抄,就是把归属关系搞反。)
+移除成员的事务把这个人在该 Space 的 `space_machines.removed_at` 一起写下;重新加入不清它。全局 Disconnect
+写 `machines.removed_at`,所有 Space 当场都读不到它。Reconnect 更新同一 machine row,所以关系原样保留。
 
 名字走的是相反的方向。**代码那条路**上它在发起时就有,批准的人看着它点的同意 —— 来的机器叫别的,就
 不是他同意的那台。**钥匙那条路**上没有人可看也没什么可看:钥匙生成的时候还不存在哪台机器,所以名字
@@ -357,9 +382,10 @@ POST   /enrolments/collect               机器轮询,出示 secret 和自己的
                                          → granted(带凭据和该找什么)/ waiting
                                            / refused / expired / spent / no-enrolment
 
-GET    /enrolments/{userCode}            网页给人看:哪台机器在等
-POST   /me/machines                      认领:带上 userCode,这台机器归你
-POST   /me/machine-keys                  生成一条已经批过的接入请求,明文只回一次
+GET    /enrolments/{userCode}            网页给人看:哪台机器在等,以及本人同名的既有机器
+POST   /me/machines                      认领:带 userCode;可带 replaceMachineId 和当前 spaceSlug
+GET    /me/machines                      Account 的 Your machines,带每台当前可用的 Space 摘要
+POST   /me/machine-keys                  生成已批准的接入请求;可由 query 明确当前 Space
 POST   /enrolments/{userCode}/refuse     回绝
 
 POST   /machines/current/poll            机器报到,带上扫到的东西、自己的版本,以及
@@ -367,14 +393,17 @@ POST   /machines/current/poll            机器报到,带上扫到的东西、�
                                          没活就挂住,最多 25 秒
                                          → { pollSeconds: 0, lookFor, asking?, stopping? }
 DELETE /machines/current/session         说再见,立刻转离线
-GET    /spaces/{slug}/machines           Space 页面读这个:成员的机器,连出来的,不是存的
+GET    /spaces/{slug}/machines           当前 Space 明确添加的机器
+PUT    /spaces/{slug}/machines/{id}      把自己一台既有机器添加到当前 Space
+DELETE /spaces/{slug}/machines/{id}      只从当前 Space 移除;主人或 Space owner
 PATCH  /me/machines/{id}/agents/{kind}   给自己机器上已发现的 agent 起名,或恢复默认名
-DELETE /me/machines/{id}                 移除自己的机器
+DELETE /me/machines/{id}                 全局 Disconnect,凭据和所有 Space 同时失效
 ```
 
 `/machines/current/…` 用机器自己的凭据,**路径里不带 id** —— 带了就得校验「这个 id 是不是你」,而凭据本来就说明了你是谁。
 
-**认领和回绝都不带 Space。** 机器不在某个 Space 里,它是某个人的;它能从哪些 Space 看到,是这个人的成员身份连出来的。所以这一整套只要一个活着的会话。
+CLI 的发起和回绝不带 Space。浏览器若从某个 Space 的 Add machine 发起,在批准或生成 key 时明确记录该
+Space;CLI 仍不枚举也不选择 Space。Account 发起则只连接到 Your machines。
 
 **契约从路由本身导出**,和上一片一样:zod 是真相,OpenAPI 是产物。
 
@@ -437,6 +466,8 @@ docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... 
 过期之后再批 → 拒绝
 两台机器同时用一把单次钥匙 → 一台成功,一台明确失败
 机器凭据被撤销后报到 → 拒绝,并且说清是被移除了
+明确重新连接旧机器 → machine id、Conversation、agent 设置不变,旧 token 失效,机器行不增加
+同名但选择“另一台” → 新建 machine id,不擅自替换
 主人给 agent 起名 → 下一次完整报告不覆盖;别人用同一个 id 改名 → 和不存在一样
 ```
 
@@ -446,6 +477,7 @@ docker run --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw ... 
 空 Space 说清 agent 跑在你的机器上,并给出命令
 输错码 / 过期码 / 已用过的码 → 三种各自说自己那句
 批准之后机器出现,带着它的 agent 和版本
+批准同名机器 → 明确选择重新连接既有身份或作为另一台接入
 关掉命令 → 转离线,不是消失
 一个 agent 都没有的机器 → 说清缺什么,不说"没接上"
 ```

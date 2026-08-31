@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { type Slug, normalizeSlug } from '@handover/universal'
+import { sql } from 'kysely'
 import { beforeEach, afterAll, describe, expect, it } from 'vitest'
 import { loadEnv } from '../env.ts'
 import { hashCode } from '../identity/email-code.ts'
@@ -15,7 +16,7 @@ import { newEnrolmentSecret } from '../machine/secret.ts'
 import { newUserCode } from '../machine/user-code.ts'
 import { hashSecret } from '../secret.ts'
 import { connect, type Database } from './connection.ts'
-import { beginConversation } from './conversation.ts'
+import { beginConversation, machineSays } from './conversation.ts'
 import { connectProvider } from './credential.ts'
 import { issueCode } from './email-code.ts'
 import { approveEnrolment, collectEnrolment, openEnrolment } from './enrolment.ts'
@@ -206,6 +207,48 @@ describe('two instances at once', () => {
     expect(outcomes).toEqual(['connected', 'rejected'])
   })
 
+  it('does not open a conversation after relationship removal has begun', async () => {
+    const { machineId, spaceId, userId } = await aQuestion()
+
+    const opened = await afterRelationshipRemoval({ machineId, spaceId }, async () =>
+      beginConversation(one, {
+        conversationId: randomUUID(),
+        spaceId,
+        machineId,
+        agentKind: 'claude-code',
+        saidBy: userId,
+        asked: { text: 'too late' },
+      }),
+    )
+
+    expect(opened).toEqual({ kind: 'no-machine' })
+  })
+
+  it('does not claim a turn after relationship removal has begun', async () => {
+    const { machineId, spaceId } = await aQuestion()
+
+    const taken = await afterRelationshipRemoval({ machineId, spaceId }, async () =>
+      takeOne(one, machineId),
+    )
+
+    expect(taken).toBeUndefined()
+  })
+
+  it('does not write after relationship removal has begun', async () => {
+    const { machineId, conversationId, spaceId } = await aQuestion()
+
+    const written = await afterRelationshipRemoval({ machineId, spaceId }, async () =>
+      machineSays(one, {
+        conversationId,
+        machineId,
+        key: 'too-late',
+        message: { role: 'assistant', content: { text: 'too late' } },
+      }),
+    )
+
+    expect(written).toEqual({ kind: 'no-conversation' })
+  })
+
   it('let exactly one of two instances take the same turn', async () => {
     // The whole reason the ledger exists. Two processes holding the same machine credential both
     // poll, both see the same unanswered question, and without the database deciding, both run it
@@ -266,6 +309,50 @@ describe('two instances at once', () => {
   })
 })
 
+async function afterRelationshipRemoval<Answer>(
+  relation: { readonly machineId: string; readonly spaceId: string },
+  act: () => Promise<Answer>,
+): Promise<Answer> {
+  const changed = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const removing = two.transaction().execute(async (tx) => {
+    await tx
+      .updateTable('space_machines')
+      .set({ removed_at: sql<Date>`clock_timestamp()` })
+      .where('space_id', '=', relation.spaceId)
+      .where('machine_id', '=', relation.machineId)
+      .where('removed_at', 'is', null)
+      .execute()
+    changed.resolve()
+    await release.promise
+  })
+
+  await changed.promise
+  const completed = Promise.withResolvers<void>()
+  const answer = act().finally(completed.resolve)
+  const waiting = waitForRelationshipLock()
+  await Promise.race([completed.promise, waiting])
+  release.resolve()
+  await removing
+  await waiting
+  return answer
+}
+
+async function waitForRelationshipLock(): Promise<boolean> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const waiting = await sql<{ blocked: boolean }>`
+      select exists (
+        select 1 from pg_stat_activity
+         where cardinality(pg_blocking_pids(pid)) > 0
+           and query like '%space_machines%'
+      ) as blocked
+    `.execute(one)
+    if (waiting.rows[0]?.blocked === true) return true
+    await new Promise<void>((resume) => setImmediate(resume))
+  }
+  return false
+}
+
 /** A machine in a Space, a conversation on it, and one question nobody has answered. */
 async function aQuestion(): Promise<{
   machineId: string
@@ -291,7 +378,7 @@ async function aQuestion(): Promise<{
     secretHash: secret.hash,
     userCode,
   })
-  await approveEnrolment(one, userCode, { userId })
+  await approveEnrolment(one, userCode, { userId, approvedSpaceId: made.space.id })
   const collected = await collectEnrolment(one, {
     secretHash: secret.hash,
     tokenHash: hashSecret(`hm_${randomUUID()}`),
