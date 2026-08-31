@@ -5,11 +5,14 @@
 # that inherited those failures would be a suite people learn to re-run rather than read.
 #
 # The pictures live in `e2e/looks/`, taken on Linux, which is what this runs on. Changing how
-# something looks on purpose means running this workflow by hand with `update` and committing what
-# it hands back; there is no way to take them from a Mac, and that is the point.
+# something looks on purpose means running this workflow by hand with `update` ticked and
+# committing what it hands back; there is no way to take them from a Mac, and that is the point.
 name: looks
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs:
       update:
