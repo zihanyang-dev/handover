@@ -20,6 +20,19 @@ import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
 
+/** One pinned conversation, so the Space's home view has a row to render. */
+const THEIRS = {
+  id: '11111111-1111-4111-8111-111111111111',
+  agentKind: 'claude-code',
+  machineId: '33333333-3333-4333-8333-333333333333',
+  machineName: 'mbp',
+  startedAt: new Date('2026-08-31T09:00:00Z').toISOString(),
+  opening: 'Make the timeout configurable',
+  startedBy: null,
+  pinned: true,
+  working: { state: 'idle' },
+} as const
+
 beforeAll(() => {
   server.listen({ onUnhandledRequest: 'bypass' })
 })
@@ -71,5 +84,30 @@ describe('the sidebar', () => {
     // happens to be empty, so a Space that answers must not be carrying it.
     expect(await screen.findByRole('button', { name: 'Pin' })).toBeDefined()
     expect(screen.queryByText(/Could not read your conversations/u)).toBeNull()
+  })
+
+  it('names whoever started a conversation that is not yours, and stays quiet on your own', async () => {
+    // `06-who-said-what/prd.md` asks for the starter before the title. Not on your own rows: a
+    // history is scanned, and your own name down every line of it is what makes the one line that
+    // is somebody else's hard to find.
+    server.use(
+      ...theSpace({
+        conversations: [
+          { ...THEIRS, startedBy: 'Kai', startedByYou: false },
+          {
+            ...THEIRS,
+            id: '22222222-2222-4222-8222-222222222222',
+            opening: 'Mine',
+            startedBy: 'Zane',
+            startedByYou: true,
+          },
+        ],
+      }),
+    )
+
+    await open()
+
+    expect(await screen.findByText('Kai')).toBeDefined()
+    expect(screen.queryByText('Zane')).toBeNull()
   })
 })

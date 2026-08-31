@@ -807,6 +807,13 @@
   white-space: nowrap;
 }
 
+/* Quiet enough that the title is still what the eye lands on: this answers "is this one mine",
+   which is a question somebody asks of the whole list at once rather than of one row. */
+.chat-history-starter {
+  margin-right: 0.375rem;
+  color: var(--ink-quiet);
+}
+
 .chat-history-summary time {
   flex: none;
   color: var(--ink-faint);

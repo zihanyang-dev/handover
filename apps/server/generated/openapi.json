@@ -1308,6 +1308,9 @@
             "type": "string",
             "nullable": true
           },
+          "startedByYou": {
+            "type": "boolean"
+          },
           "pinned": {
             "type": "boolean"
           },
@@ -1323,6 +1326,7 @@
           "startedAt",
           "opening",
           "startedBy",
+          "startedByYou",
           "pinned",
           "working"
         ]

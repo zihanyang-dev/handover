@@ -91,6 +91,11 @@ const Conversation = named('Conversation', {
   opening: z.string().nullable(),
   /** Who asked it. Null before anybody has, and on conversations older than names. */
   startedBy: z.string().nullable(),
+  /**
+   * Whether that was this person. Answered here because {@link startedBy} is a display name and
+   * two people in one Space may share one, so the browser cannot decide it by comparing.
+   */
+  startedByYou: z.boolean(),
   /** This person's own mark on it. Nobody else's list changes when it is set. */
   pinned: z.boolean(),
   working: Working,

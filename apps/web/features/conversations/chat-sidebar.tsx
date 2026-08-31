@@ -143,7 +143,20 @@ function ConversationRow({
         params={{ slug, id: conversation.id }}
       >
         <ChatIcon />
-        <span className="chat-history-title">{titleOf(conversation)}</span>
+        <span className="chat-history-title">
+          {/* Whose conversation this is, before what it is about — `06-who-said-what/prd.md` asks
+              for it in that order, and a Space with two people in it is two people's agents doing
+              two people's work in two people's files.
+
+              Not shown when it is yours. The machine list says `Yours` in the same situation
+              because it is a short list somebody chooses a machine from; this is a history
+              somebody scans, and their own name down every row of it is a column of noise that
+              makes the one row that is not theirs harder to see. */}
+          {!conversation.startedByYou && conversation.startedBy !== null && (
+            <span className="chat-history-starter">{conversation.startedBy}</span>
+          )}
+          {titleOf(conversation)}
+        </span>
         {showAge && <time dateTime={conversation.startedAt}>{ageOf(conversation.startedAt)}</time>}
       </Link>
       <button

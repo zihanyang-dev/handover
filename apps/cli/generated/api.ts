@@ -3667,6 +3667,7 @@ export interface components {
             startedAt: string;
             opening: string | null;
             startedBy: string | null;
+            startedByYou: boolean;
             pinned: boolean;
             working: components["schemas"]["Working"];
         };
