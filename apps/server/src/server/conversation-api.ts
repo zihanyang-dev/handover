@@ -27,6 +27,7 @@ import {
 } from '../db/conversation.ts'
 import { AGENT_KIND_NAMES } from '../machine/agent-kind.ts'
 import { onTheWire, Presence } from '../machine/whereabouts.ts'
+import { STATE } from '../task/state.ts'
 import { type Failure, UNAVAILABLE, refused } from './failure.ts'
 import { aMachine, aMember, list, named, nothing, refuses, rowId, sends } from './route.ts'
 
@@ -115,7 +116,13 @@ const Conversation = named('Conversation', {
  */
 const Message = Spoken.openapi('Message')
 
-const TaskState = z.enum(['working', 'wait', 'sleep', 'done'])
+/**
+ * The four, from the module that owns them rather than written out again.
+ *
+ * Listed here, a fifth state would exist everywhere except on the wire — and the screen reading
+ * this would refuse the answer as malformed rather than show it.
+ */
+const TaskState = z.enum(STATE)
 
 /** A piece of work this one opened for another agent, and has not had back yet. */
 const HandedOff = named('HandedOff', {

@@ -35,7 +35,7 @@ const THE_LAST_OWNER: Failure<409> = {
   status: 409,
 }
 
-const Role = z.enum([ROLE.owner, ROLE.member]).openapi('Role')
+const Role = z.enum(ROLE).openapi('Role')
 
 const Member = named('Member', {
   userId: rowId,
