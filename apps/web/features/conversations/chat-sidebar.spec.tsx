@@ -16,6 +16,9 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { theSpace } from '../../pretend/a-space.ts'
+// Installs an `EventSource` this environment does not have. The chat view opens a live stream on
+// arrival and would throw before rendering a sidebar at all.
+import '../../pretend/event-source.ts'
 import { routeTree } from '../../routeTree.gen.ts'
 
 const server = setupServer()
@@ -44,12 +47,40 @@ afterAll(() => {
   server.close()
 })
 
+/**
+ * The transcript the chat view loads, emptied down to what the contract requires.
+ *
+ * Nothing here is about a transcript — these tests are about the sidebar beside it — so it says
+ * the least a conversation can say and still be one.
+ */
+function aTranscript() {
+  return http.get(`*/spaces/acme/conversations/${THEIRS.id}`, () =>
+    HttpResponse.json({
+      id: THEIRS.id,
+      agentKind: THEIRS.agentKind,
+      machineId: THEIRS.machineId,
+      working: { state: 'idle' },
+      offers: [],
+      messages: [],
+    }),
+  )
+}
+
+/** The sidebar as it is met beside a conversation, which is a different one from the home view's. */
+async function openChat() {
+  return openAt(`/s/acme/c/${THEIRS.id}`)
+}
+
 async function open() {
+  return openAt('/s/acme')
+}
+
+async function openAt(at: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
     routeTree,
     context: { queryClient: client },
-    history: createMemoryHistory({ initialEntries: ['/s/acme'] }),
+    history: createMemoryHistory({ initialEntries: [at] }),
   })
 
   return render(
@@ -109,5 +140,33 @@ describe('the sidebar', () => {
 
     expect(await screen.findByText('Kai')).toBeDefined()
     expect(screen.queryByText('Zane')).toBeNull()
+  })
+
+  it('says an agent list could not be read, instead of showing a Space with no agents', async () => {
+    server.use(
+      http.get('*/spaces/acme/machines', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'retry-later' }, { status: 500 }),
+      ),
+      aTranscript(),
+      ...theSpace({ conversations: [THEIRS] }),
+    )
+
+    await openChat()
+
+    expect(await screen.findByText(/Could not read your machines/u)).toBeDefined()
+  })
+
+  it('says a history could not be read, beside a conversation as well as on the way in', async () => {
+    server.use(
+      http.get('*/spaces/acme/conversations', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'retry-later' }, { status: 500 }),
+      ),
+      aTranscript(),
+      ...theSpace(),
+    )
+
+    await openChat()
+
+    expect(await screen.findByText(/Could not read your conversations/u)).toBeDefined()
   })
 })
