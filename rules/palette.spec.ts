@@ -32,6 +32,9 @@ const REQUIRED = /var\(\s*(--[a-z][a-z0-9-]*)\s*\)/gu
  */
 const HANDED_IN = /['"](--[a-z][a-z0-9-]*)['"]\s*:|\[(--[a-z][a-z0-9-]*):/gu
 
+/** Where `@theme` begins, after which a name becomes a utility rather than a name to read back. */
+const THEME_BEGINS = '@theme'
+
 /**
  * Tailwind writes these itself, and `@theme` turns `--color-x` into utilities rather than into a
  * name anything reads back. Neither is ours to define.
@@ -70,6 +73,117 @@ function danglingIn(path: string, defined: ReadonlySet<string>): readonly string
     .map((name) => `${path}: var(${name})`)
 }
 
+/** One definition: the name, whether `@theme` owns it, and the names its own value reads. */
+type Definition = {
+  readonly name: string
+  readonly themed: boolean
+  readonly reads: readonly string[]
+}
+
+/** Every definition in one stylesheet, and every name read from somewhere that is not one. */
+function readingIn(path: string): { definitions: Definition[]; uses: string[] } {
+  const definitions: Definition[] = []
+  const uses: string[] = []
+  let themed = false
+
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (line.includes(THEME_BEGINS)) themed = true
+    const reads = [...line.matchAll(REQUIRED)].map((one) => one[1] as string)
+    const defines = /^\s*(--[a-z][a-z0-9-]*)\s*:(.*)$/u.exec(line)
+
+    // A name read inside another name's value keeps that one alive only if it is alive itself.
+    // Read from an ordinary declaration, it is alive because a screen renders it.
+    if (defines === null) uses.push(...reads)
+    else definitions.push({ name: defines[1] as string, themed, reads })
+  }
+
+  return { definitions, uses }
+}
+
+/**
+ * Which class names Tailwind builds out of each `@theme` namespace.
+ *
+ * `--color-ink-faint` is spent as `text-ink-faint` or `bg-ink-faint`, never as the name itself, so
+ * a name is only alive here if one of its own utilities is written somewhere. Matching the tail
+ * alone would find `var(--ink-faint)` and the definition line above it, and every name would prove
+ * itself.
+ */
+const SPENT_AS: Readonly<Record<string, readonly string[]>> = {
+  color: [
+    'accent',
+    'bg',
+    'border',
+    'caret',
+    'decoration',
+    'divide',
+    'fill',
+    'from',
+    'outline',
+    'placeholder',
+    'ring',
+    'shadow',
+    'stroke',
+    'text',
+    'to',
+    'via',
+  ],
+  ease: ['ease'],
+  font: ['font'],
+  radius: ['rounded'],
+  shadow: ['shadow'],
+  spacing: ['gap', 'h', 'm', 'p', 'size', 'space', 'w'],
+  text: ['text'],
+}
+
+/** Whether one `@theme` name is written as a class anywhere a class can be written. */
+function spentAsUtility(name: string, classes: string): boolean {
+  const named = /^--([a-z]+)-(.+)$/u.exec(name)
+  if (named === null) return false
+
+  const prefixes = SPENT_AS[named[1] as string]
+  const tail = named[2] as string
+
+  return (prefixes ?? []).some((prefix) => new RegExp(`\\b${prefix}-${tail}\\b`, 'u').test(classes))
+}
+
+/** Everywhere a class name can be written: a screen, or a stylesheet line that is not a definition. */
+function classesIn(screens: readonly string[], stylesheets: readonly string[]): string {
+  const notDefinitions = (path: string): string =>
+    readFileSync(path, 'utf8')
+      .split('\n')
+      .filter((line) => !/^\s*--[a-z][a-z0-9-]*\s*:/u.test(line))
+      .join('\n')
+
+  const written = screens.map((path) => readFileSync(path, 'utf8'))
+
+  return [...written, ...stylesheets.map(notDefinitions)].join('\n')
+}
+
+/**
+ * Everything alive, spreading outward from the names something spends.
+ *
+ * A name is alive when something alive reads it, which is not the same as being read: a row whose
+ * only reader is itself dead is dead along with it.
+ */
+function liveAmong(
+  definitions: readonly Definition[],
+  spent: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const live = new Set(spent)
+  let growing = true
+
+  while (growing) {
+    growing = false
+    for (const one of definitions) {
+      const fresh = live.has(one.name) ? one.reads.filter((name) => !live.has(name)) : []
+      fresh.forEach((name) => live.add(name))
+      growing ||= fresh.length > 0
+    }
+  }
+
+  return live
+}
+
 describe('a colour name', () => {
   it('is read only where it is defined', () => {
     // Screens read them too — `bg-[var(--interaction-hover)]` is the same promise as a stylesheet
@@ -81,5 +195,31 @@ describe('a colour name', () => {
     const dangling = [...stylesheets, ...screens].flatMap((path) => danglingIn(path, defined))
 
     expect([...new Set(dangling)]).toEqual([])
+  })
+
+  it('is defined only where it is read', () => {
+    // The other direction, and the one nothing was watching: folding five palettes into one left
+    // names behind that no screen ever asks for. They cost nothing to render and everything to
+    // read — somebody choosing a colour has to decide, every time, whether the row they are
+    // looking at is a colour this product uses or one it used to.
+    const stylesheets = under(WEB, '.css')
+    const screens = under(WEB, '.tsx')
+    const classes = classesIn(screens, stylesheets)
+    const read = stylesheets.map(readingIn)
+    const definitions = read.flatMap((one) => one.definitions)
+    const spent = new Set([
+      ...read.flatMap((one) => one.uses),
+      ...namesIn(REQUIRED, screens),
+      ...definitions
+        .filter((one) => one.themed && spentAsUtility(one.name, classes))
+        .map((one) => one.name),
+    ])
+    const live = liveAmong(definitions, spent)
+
+    const unread = definitions
+      .map((one) => one.name)
+      .filter((name) => !live.has(name) && !isTailwinds(name))
+
+    expect([...new Set(unread)].sort()).toEqual([])
   })
 })
