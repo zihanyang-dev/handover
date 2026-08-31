@@ -237,6 +237,27 @@ Safari/iOS 16.4 起。不按印象写「现代浏览器」,也不默默给更老
 `chunkSizeWarningLimit` 是 275 kB raw。它不是性能指标,只是让当前的路由切分在变差时出声 ——
 体积本身不证明 Core Web Vitals,那要等真的部署在某处、有 field 数据可看。
 
+## 7.2 已知会偶尔杀掉一次测试跑
+
+`--project web` 大约每八次会有一次整个 worker 进程被 abort:
+
+```
+Assertion failed: (!uv__io_active(&stream->io_watcher, POLLIN | POLLOUT)),
+                  function uv__stream_destroy, file stream.c, line 455
+Error: Channel closed → ERR_IPC_CHANNEL_CLOSED
+```
+
+`@mswjs/interceptors` 0.41.9 在 worker 拆解时往一个正在销毁的 socket 写响应,Node 26 的 libuv
+断言拦下它并直接结束进程。单跑任何一条 spec 都不复现 —— 要多个 spec 并行,且有请求(观测到的都是
+被 stub 成 500 的那些)还在飞。
+
+**已知能修好但现在不能用**:顶到 `@mswjs/interceptors` 0.42.3 之后 24 次跑 0 次崩溃(0.41.9 是
+8 次崩 1 次),但 msw 2.15.0 是照 0.41.9 的 API 写的,换上去 `mail.spec.ts` 的三条拦截会失效。
+**修一个偶发崩溃换三个稳定失败不是修好**,所以这条 override 试过之后撤掉了。
+
+该做的是等 msw 自己把依赖升上去。在那之前,这个红是重跑就好的 —— 这句话写在这里,是为了让它不必
+每次都被重新发现一遍,不是为了让它变得可以接受。
+
 ## 8. 合并前
 
 1. 新文件是否放在事实 owner 旁边,并以一个 owner 行为命名?
