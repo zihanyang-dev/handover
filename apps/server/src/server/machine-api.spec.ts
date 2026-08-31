@@ -425,6 +425,39 @@ describe('holding a machine question instead of answering "nothing"', () => {
   const NEVER = 30
 
   /** An app of its own, because what is being tested is how long this one holds. */
+  /**
+   * The same room, and a promise that keeps until it is holding somebody.
+   *
+   * What these tests need is an order — the question already held when the thing to say arrives —
+   * and the room is handed in by the test, so the order can be waited for rather than guessed at.
+   * A sleep long enough on this machine is a sleep too short on a busy one, and what fails then is
+   * a five-second timeout that says nothing about what went wrong.
+   *
+   * Signalled where `somethingFor` is called rather than where it settles: the hold has begun by
+   * then — the room's own contract is that it listens before it looks — and waiting for it to
+   * settle would be waiting for the very thing the test is about to cause.
+   */
+  function onceHolding(room: Waiting): { readonly room: Waiting; readonly holding: Promise<void> } {
+    let begun = (): void => undefined
+    const holding = new Promise<void>((keep) => {
+      begun = keep
+    })
+
+    return {
+      holding,
+      room: {
+        ...room,
+        // Async only because a function that returns a promise must be. The body still runs to
+        // its first await synchronously, so the signal is where the call is — which is the point.
+        somethingFor: async (machineId, look) => {
+          const answer = room.somethingFor(machineId, look)
+          begun()
+          return answer
+        },
+      },
+    }
+  }
+
   const holding = (room: Waiting) => mounted(machineApi({ db, waiting: room }))
 
   it('answers at once when there is already something to take', async () => {
@@ -466,7 +499,8 @@ describe('holding a machine question instead of answering "nothing"', () => {
       const machine = await attached('waiting-mbp')
       const conversation = await conversationOn(machine)
 
-      const asking = holding(room).request('/machines/current/poll', {
+      const watched = onceHolding(room)
+      const asking = holding(watched.room).request('/machines/current/poll', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
         // Still reporting what it has: a poll says what is installed as well as taking a turn,
@@ -474,7 +508,7 @@ describe('holding a machine question instead of answering "nothing"', () => {
         body: JSON.stringify({ found: [{ command: 'claude', version: '2.1.4' }] }),
       })
       // Said once the question is already being held, which is the only order that tests anything.
-      await new Promise((soon) => setTimeout(soon, 50))
+      await watched.holding
       await said(conversation, 'read notes.txt')
 
       expect(await (await asking).json()).toMatchObject({
@@ -504,12 +538,15 @@ describe('holding a machine question instead of answering "nothing"', () => {
     const room = waitingRoom(NEVER)
     const machine = await attached('leaving-mbp')
 
-    const asking = holding(room).request('/machines/current/poll', {
+    const watched = onceHolding(room)
+    const asking = holding(watched.room).request('/machines/current/poll', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${machine.token}` },
       body: JSON.stringify({ found: [] }),
     })
-    await new Promise((soon) => setTimeout(soon, 50))
+    // Let go of it once it is actually being held. Woken before that, nothing hears, and the
+    // request holds for ever — which arrives as a five-second timeout naming neither.
+    await watched.holding
     room.wakeEveryone()
 
     expect((await asking).status).toBe(200)
