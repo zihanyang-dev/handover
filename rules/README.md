@@ -20,6 +20,7 @@ where it is long the file says what was found and how.
 | `contract`       | no screen writes down a shape the contract already publishes                             |
 | `endpoints`      | every endpoint a design document names is one this deployment really has                 |
 | `generated`      | what is committed under `generated/` came from this branch's migrations and nothing else |
+| `images`         | the two compose files pin the same version of everything they both run                   |
 | `imports`        | every file lists what it needs in the same order, and each module once                   |
 | `pointers`       | a file a comment points at in backticks is a file that is here                           |
 | `reachable`      | every endpoint this deployment has is one something can actually reach                   |
