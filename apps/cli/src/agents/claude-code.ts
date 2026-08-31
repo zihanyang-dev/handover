@@ -268,8 +268,8 @@ function settings(
     // there until the turn was given up on.
     //
     // What bounds it is the account it runs as, and nothing else. `cwd` is where it starts, not a
-    // wall: this leaves the writing unconfined, unlike the Codex adapter beside it, which runs
-    // under that agent's own `workspace-write` sandbox. It matters most for a sub-task, whose
+    // wall: this leaves the writing unconfined, as the Codex adapter beside it does too — see
+    // the reason written there. It matters most for a sub-task, whose
     // folder sits inside the folder of the work it belongs to — see `workspace.ts`. Said plainly
     // here because the alternative is somebody reading one folder per turn as a wall between them.
     permissionMode: 'bypassPermissions' as const,

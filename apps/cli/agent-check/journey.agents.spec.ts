@@ -89,6 +89,28 @@ describe.each(EVERY_KIND)('%s, as every adapter has to behave', (kind) => {
   )
 
   it(
+    'can reach the network, which a sandbox took away',
+    async () => {
+      const where = await somewhere()
+      const answered = join(where, 'code.txt')
+      await turn(
+        kind,
+        where,
+        `Run this exact shell command and then stop, saying nothing else: ` +
+          `curl -sS -o /dev/null -w "%{http_code}" https://example.com > ${answered}`,
+      )
+
+      // The reason both adapters run unconfined. Codex's `workspace-write` reads as a rule about
+      // where a thing may write, and it also turns the network off — so `npm install` died on one
+      // agent and worked on the other, which is not a difference anybody chose. Writing outside
+      // the folder is not the test: that sandbox counts the temporary directory as writable, so
+      // it passes either way and proves nothing.
+      await expect(readFile(answered, 'utf8')).resolves.toContain('200')
+    },
+    ANSWER_WITHIN_MS,
+  )
+
+  it(
     'says what it did in words a person can read',
     async () => {
       const told = await turn(

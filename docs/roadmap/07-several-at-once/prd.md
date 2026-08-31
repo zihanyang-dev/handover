@@ -103,7 +103,9 @@ where: process.cwd() // 你跑 handover connect 时所在的那个目录
 
 子任务**看得见**父任务的东西 —— 就在上面一层,不用谁传给谁。子任务干活的地方是它自己那个角落。
 
-**关不关得住,取决于是哪个 agent。** Codex 我们是开着它自己的沙箱跑的(`sandboxMode: 'workspace-write'`),写不出去;Claude Code 我们是 `bypassPermissions` 跑的 —— 没人在机器旁边回答授权提示 —— 所以它写得出去。这不是一道信任边界:是你自己的 agent 在你自己的机器上把你自己的文件弄乱。给 Claude Code 也套上沙箱是另一件事,不在这一片。
+**两个都关不住,而且是刻意的。** Codex 我们是 `sandbox: 'danger-full-access'` 跑的,Claude Code 是 `bypassPermissions` 跑的 —— 没人在机器旁边回答授权提示,而一道拦得住 agent 的墙,在没人能放行的时候不是安全,是一个卡死的回合。这不是一道信任边界:是你自己的 agent 在你自己的机器上把你自己的文件弄乱。
+
+真要隔离,隔离的是**一整个环境**(gVisor 那类) —— agent 在里面本来就该握有全部权限,墙立在环境外面。在你自己的机器上、绕着你自己的文件画一条线,不是那件事。
 
 ### ⑤ 只有父任务能开子任务
 
@@ -196,9 +198,9 @@ git worktree / 共享裸克隆    写死了 git。一个工作区可能有 n 个
 准备脚本 / base 镜像 / 缓存   Cursor 有,因为它每次重新开一台机器。我们不重新开。
                             真的慢到有人抱怨时,缓存该放哪是明摆着的(机器上一份)
 
-自己造沙箱                   Codex 自己带,我们已经开着(`sandboxMode: 'workspace-write'`)。
-                            Claude Code 我们是 bypassPermissions 跑的,所以它不受限 ——
-                            要不要给它也套一个,是一件单独的事,不是这一片顺手能做的
+自己造沙箱                   不做。本机上两个 agent 都不关(Codex danger-full-access,
+                            Claude Code bypassPermissions)。要隔离,隔离的是给 agent 一整个
+                            环境,不是在人自己的机器上绕着人自己的文件画线
 
 快照 diff                    「它到底改了什么」看文件夹就行,因为我们不删。
                             要快照就要处理嵌套仓库、二进制、忽略规则,一整套

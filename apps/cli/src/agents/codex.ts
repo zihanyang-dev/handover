@@ -350,7 +350,16 @@ function threadParams(where: string, asked: Asked) {
   return {
     cwd: where,
     approvalPolicy: 'never',
-    sandbox: 'workspace-write',
+    // Unconfined, the same as the Claude Code adapter beside it. Nobody is standing at this
+    // machine to widen a sandbox that stopped something, and a wall nobody can open is a turn
+    // that hangs rather than a turn that is safe.
+    //
+    // `workspace-write` also stops more than its name says: it takes the network away, so an
+    // agent asked to install a dependency failed here and succeeded next door — a difference
+    // nobody chose and no screen showed. What isolation is for is an environment of its own,
+    // where an agent holds every right inside it. A line drawn through somebody's own machine,
+    // around their own files, is not that.
+    sandbox: 'danger-full-access',
     ...(asked.model === undefined ? {} : { model: asked.model }),
   }
 }

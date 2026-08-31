@@ -68,19 +68,18 @@
 
 ### 「只写自己那个」:一个真关得住,一个关不住
 
-把子任务的 cwd 设成它自己那个文件夹。往上读是允许的 —— 那正是我们要的共享上下文。往外**写**呢:
+把子任务的 cwd 设成它自己那个文件夹。往上读是允许的 —— 那正是我们要的共享上下文。往外**写**呢:**两个都写得出去**,`cwd` 是落点,不是边界。
 
 ```
-Codex          apps/cli/src/agents/codex.ts 里我们已经开着 sandboxMode: 'workspace-write'
-               对应它的 codex-rs/sandboxing/ —— seatbelt(macOS)、landlock/bwrap(Linux)
-               进程被操作系统限制在可写根目录里,真关得住
-Claude Code    apps/cli/src/agents/claude-code.ts 用的是 permissionMode: 'bypassPermissions'
-               机器旁边没人回答授权提示,这是 03 就定下的。cwd 不是边界,它写得出去
+Codex          apps/cli/src/agents/codex.ts        sandbox: 'danger-full-access'
+Claude Code    apps/cli/src/agents/claude-code.ts  permissionMode: 'bypassPermissions'
 ```
 
-**所以「只写自己那个角落」对 Codex 是保证,对 Claude Code 只是默认落点。** 写清楚,因为把两个说成一样会让人以为有一道并不存在的墙。
+一样,是刻意的。机器旁边没人回答授权提示(03 定下的),而一道拦得住 agent 的墙,在没人能放行的时候不是安全,是一个卡死的回合。Codex 原本那个 `workspace-write` 还不只是挡写 —— 它默认把网络也一起关了,于是「装个依赖」这种事在 Codex 上失败、在 Claude Code 上成功,一个没人选过、界面上也看不见的差异。
 
-给 Claude Code 也套沙箱是可做的,但那要重新想 03 那句「没人在旁边」—— agent 装依赖、跑构建、写缓存都会碰到 cwd 以外的地方,而 Codex 的 workspace-write 是有一套自己的例外规则的。这一片不做,记在这儿。
+**「只写自己那个角落」是默认落点,对谁都不是保证。** 写清楚,因为把它说成一道墙,会让人以为有一道并不存在的边界。
+
+真要隔离,隔离的是一整个环境 —— gVisor 那类,agent 在里面握有全部权限,墙立在环境外面。那和在你自己的机器上、绕着你自己的文件画一条线,是两件事。这一片不做,记在这儿。
 
 **不做能力上报,不做版本闸,不拒绝任何 agent。** Multica 需要那道闸,是因为老 daemon 会改掉**用户明确要求隔离的那份工作副本** —— 违背的是用户的预期。这里不是:子任务写到父任务的目录,是你自己的 agent 在你自己的机器上把你自己的文件弄乱了。那是一团糟,不是一道信任边界。
 
