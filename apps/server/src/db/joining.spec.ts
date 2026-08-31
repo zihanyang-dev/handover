@@ -175,6 +175,36 @@ describe('roles', () => {
   })
 })
 
+describe('somebody who has already gone', () => {
+  /**
+   * Removing writes down when rather than deleting, so the row is still there afterwards. Every
+   * change to a membership only touches one that has not been revoked — without that, taking
+   * somebody out twice reads as two removals, and the second one answers `moved` about a person
+   * who is not here.
+   */
+  it('is not removed a second time', async () => {
+    await joins(db, { userId: MINA, spaceId: SPACE, slug: SLUG })
+    await removes(db, { spaceId: SPACE, userId: MINA })
+
+    expect(await removes(db, { spaceId: SPACE, userId: MINA })).toEqual({ kind: 'not-a-member' })
+  })
+
+  /**
+   * The same rule, and the half that would be a hole rather than a wrong word: a Space somebody
+   * was taken out of is one they cannot be made an owner of, and the row that says they left is
+   * the only thing standing between those two sentences.
+   */
+  it('cannot be made an owner of the Space they were taken out of', async () => {
+    await joins(db, { userId: MINA, spaceId: SPACE, slug: SLUG })
+    await removes(db, { spaceId: SPACE, userId: MINA })
+
+    expect(await becomes(db, { spaceId: SPACE, userId: MINA }, ROLE.owner)).toEqual({
+      kind: 'not-a-member',
+    })
+    expect(await isOwner(db, SPACE, MINA)).toBe(false)
+  })
+})
+
 describe('the last owner', () => {
   it('cannot step down, because nobody would be able to let anybody in', async () => {
     // GitHub refuses this in as many words. A Space whose only owner became a member is a Space

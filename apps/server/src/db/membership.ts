@@ -11,7 +11,7 @@
  * means inviting the same person back puts them where they were, with no window that expires.
  */
 
-import { expressionBuilder, sql, type Expression, type SqlBool } from 'kysely'
+import { expressionBuilder, sql, type Expression, type SqlBool, type UpdateObject } from 'kysely'
 import type { DB } from '../../generated/db.ts'
 import type { Database, Tx } from './connection.ts'
 import { reachableFrom } from './machine.ts'
@@ -144,27 +144,48 @@ async function itsTurnToChangeOwners(tx: Tx, spaceId: string): Promise<void> {
   await sql`select pg_advisory_xact_lock(hashtext(${`owners:${spaceId}`}))`.execute(tx)
 }
 
-export async function becomes(
+/**
+ * One change to the row that says somebody is here, made the way all of them have to be made.
+ *
+ * Three things, and none of them belong to any one caller. It waits its turn among the writes that
+ * can take an owner away, so two of them cannot both look and both leave. It touches only a row
+ * that has not been revoked, so removing somebody twice is not a second removal. And it reads
+ * "nothing changed" as "they are not a member", because a `where` that matched nothing and a
+ * person who was never here are the same answer to whoever asked.
+ *
+ * Written once because it was written twice: {@link becomes} and {@link removes} were the same
+ * fourteen lines apart from what they `set`, and a third caller would have been a third copy of a
+ * rule nobody had stated. `enrolment.ts` names a change to a row the same way.
+ */
+async function changes(
   db: Database,
   who: { readonly spaceId: string; readonly userId: string },
-  role: Role,
+  what: UpdateObject<DB, 'memberships'>,
 ): Promise<Moved> {
   return orTheLastOwner(async () =>
     db.transaction().execute(async (tx) => {
       await itsTurnToChangeOwners(tx, who.spaceId)
 
-      const moved = await tx
+      const changed = await tx
         .updateTable('memberships')
-        .set({ role })
+        .set(what)
         .where('space_id', '=', who.spaceId)
         .where('user_id', '=', who.userId)
         .where('revoked_at', 'is', null)
         .returning('user_id')
         .executeTakeFirst()
 
-      return moved === undefined ? { kind: 'not-a-member' } : { kind: 'moved' }
+      return changed === undefined ? { kind: 'not-a-member' } : { kind: 'moved' }
     }),
   )
+}
+
+export async function becomes(
+  db: Database,
+  who: { readonly spaceId: string; readonly userId: string },
+  role: Role,
+): Promise<Moved> {
+  return changes(db, who, { role })
 }
 
 /**
@@ -178,22 +199,7 @@ export async function removes(
   db: Database,
   who: { readonly spaceId: string; readonly userId: string },
 ): Promise<Moved> {
-  return orTheLastOwner(async () =>
-    db.transaction().execute(async (tx) => {
-      await itsTurnToChangeOwners(tx, who.spaceId)
-
-      const out = await tx
-        .updateTable('memberships')
-        .set({ revoked_at: sql<Date>`clock_timestamp()` })
-        .where('space_id', '=', who.spaceId)
-        .where('user_id', '=', who.userId)
-        .where('revoked_at', 'is', null)
-        .returning('user_id')
-        .executeTakeFirst()
-
-      return out === undefined ? { kind: 'not-a-member' } : { kind: 'moved' }
-    }),
-  )
+  return changes(db, who, { revoked_at: sql<Date>`clock_timestamp()` })
 }
 
 /** The name the migration raises under, which is how a refusal gets back here as an answer. */
