@@ -69,7 +69,11 @@ function asDoing(name: string, input: Input): { verb: string; arg: string } {
   const known = VERBS[name]
   if (known === undefined) return { verb: '', arg: '' }
 
-  return { verb: known.verb, arg: known.arg(input) }
+  // Cut here rather than in each entry above, so a tool added to that table cannot be the one
+  // that forgets. What a `Bash` call was given is whatever somebody's agent typed, and a heredoc
+  // writing a file carries the whole file in it — kept whole, this line stops being a record of
+  // what happened and becomes where a copy of that file lives, in Postgres, for ever.
+  return { verb: known.verb, arg: shorten(known.arg(input)) }
 }
 
 function blocksOf(message: unknown): readonly Record<string, unknown>[] {

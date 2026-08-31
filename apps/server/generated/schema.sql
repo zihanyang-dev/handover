@@ -258,6 +258,7 @@ CREATE TABLE public.messages (
     content jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     said_by uuid,
+    CONSTRAINT messages_content_size CHECK ((octet_length((content)::text) <= 131072)),
     CONSTRAINT messages_role_check CHECK ((role = ANY (ARRAY['user'::text, 'assistant'::text, 'tool'::text, 'activity'::text])))
 );
 

@@ -28,6 +28,25 @@ describe('turning what Claude says into what a page shows', () => {
     ).toEqual([{ said: 'doing', callId: 't1', name: 'Bash', verb: 'ran', arg: 'ls -a' }])
   })
 
+  it('keeps what a tool was given down to an excerpt, however long it was', () => {
+    // A `Bash` argument is whatever somebody's agent typed, and a heredoc writing a file carries
+    // that whole file in it. Kept whole, the transcript stops being a record of what happened and
+    // becomes the place a copy of the file lives — in Postgres, for ever, one row per turn.
+    const file = 'x'.repeat(5000)
+    const translate = fold()
+    const [told] = translate(
+      message({
+        type: 'tool_use',
+        id: 'one',
+        name: 'Bash',
+        input: { command: `cat > big.txt <<'EOF'\n${file}\nEOF` },
+      }),
+    )
+
+    expect(told).toBeDefined()
+    expect(String(JSON.stringify(told)).length).toBeLessThan(1000)
+  })
+
   it('waits for the result before writing the line down', async () => {
     // A call and its result arrive as two blocks in two messages. The row for a tool is written
     // once, when there is something to say about how it went — a line written at the call would

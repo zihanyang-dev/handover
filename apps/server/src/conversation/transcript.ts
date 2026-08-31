@@ -22,16 +22,34 @@ import { z } from '@hono/zod-openapi'
  * cheap question and the hard one arrive in the same conversation. Absent means the agent's own
  * default; we never guess a value on its behalf.
  */
+/**
+ * How long one thing said may be: a document's worth, the same ceiling an output has.
+ *
+ * Not a size anybody should reach. It is here because nothing else stopped one — the pieces a
+ * machine sends are bounded on the machine, and a bound that only one end keeps is a bound that
+ * holds until somebody runs an older build, or writes a second client, or means harm.
+ */
+const SAID_AT_MOST = 65_536
+
+/**
+ * How long a glimpse of a tool call may be.
+ *
+ * These are excerpts by design and the machine already cuts them to four hundred characters. This
+ * is the ceiling that says so out loud, rather than trusting whatever is at the other end to keep
+ * doing it: what a tool was given can be an entire file, and the transcript is not where files go.
+ */
+const GLIMPSED_AT_MOST = 2_000
+
 export const Asked = z
   .object({
-    text: z.string().min(1),
+    text: z.string().min(1).max(SAID_AT_MOST),
     model: z.string().optional(),
     effort: z.string().optional(),
   })
   .openapi('Asked')
 
 /** Something the agent said. Its reasoning is not here — see `THINKING_IS_NOT_KEPT`. */
-const Answered = z.object({ text: z.string() }).openapi('Answered')
+const Answered = z.object({ text: z.string().max(SAID_AT_MOST) }).openapi('Answered')
 
 /**
  * Something the agent did, already in our words.
@@ -45,9 +63,9 @@ const Did = z
   .object({
     /** Provider-local identity used only to reconcile a live tool row with this final record. */
     callId: z.string().max(200).optional(),
-    name: z.string(),
-    verb: z.string(),
-    arg: z.string(),
+    name: z.string().max(GLIMPSED_AT_MOST),
+    verb: z.string().max(GLIMPSED_AT_MOST),
+    arg: z.string().max(GLIMPSED_AT_MOST),
     /**
      * How it went, when the tool says.
      *
@@ -55,7 +73,7 @@ const Did = z
      * never said anything would be this side inventing it.
      */
     ok: z.boolean().optional(),
-    excerpt: z.string(),
+    excerpt: z.string().max(GLIMPSED_AT_MOST),
     /** The provider could not expose the beginning of this output. */
     truncated: z.boolean().optional(),
   })

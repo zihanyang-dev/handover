@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY, Asked, ends, sameQuestion, wentWrong } from './transcript.ts'
+import { ACTIVITY, Asked, ends, Reported, sameQuestion, wentWrong } from './transcript.ts'
 
 const ASKED = { text: 'ship it', model: 'a-model', effort: 'high' }
 
@@ -54,5 +54,28 @@ describe('how a turn went', () => {
     // Somebody asked for this one, so the conversation carries on from it like anything else.
     expect(wentWrong(activity(ACTIVITY.cancelled))).toBe(false)
     expect(wentWrong(activity(ACTIVITY.done))).toBe(false)
+  })
+})
+
+describe('how long a line may be', () => {
+  it('refuses a tool call carrying a file rather than a glimpse of one', () => {
+    const glimpse = (arg: string) =>
+      Reported.safeParse({
+        role: 'tool',
+        content: { callId: 'one', name: 'Bash', verb: 'ran', arg, excerpt: 'ok' },
+      }).success
+
+    expect(glimpse('cat big.txt')).toBe(true)
+    // What a `Bash` call was given is whatever an agent typed, and a heredoc writing a file
+    // carries that file in it. Kept, this row is where a copy of the file lives — for ever.
+    expect(glimpse('x'.repeat(5000))).toBe(false)
+  })
+
+  it('refuses something said that is larger than a document', () => {
+    const said = (text: string) =>
+      Reported.safeParse({ role: 'assistant', content: { text } }).success
+
+    expect(said('x'.repeat(60_000))).toBe(true)
+    expect(said('x'.repeat(70_000))).toBe(false)
   })
 })

@@ -1516,7 +1516,8 @@
         "properties": {
           "text": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 65536
           },
           "model": {
             "type": "string"
@@ -1533,7 +1534,8 @@
         "type": "object",
         "properties": {
           "text": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 65536
           }
         },
         "required": [
@@ -1548,19 +1550,23 @@
             "maxLength": 200
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "verb": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "arg": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "ok": {
             "type": "boolean"
           },
           "excerpt": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "truncated": {
             "type": "boolean"
