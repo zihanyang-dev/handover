@@ -870,12 +870,9 @@
   color: var(--ink-muted);
   font-family: inherit;
   font-size: 0.8125rem;
+  flex: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.chat-tool-chip {
-  flex: 1;
 }
 
 .chat-tool-row[data-ok='false'] .chat-tool-row-icon {
