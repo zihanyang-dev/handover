@@ -164,4 +164,20 @@ describe('the second onboarding step — a machine', () => {
     expect(screen.getByRole('button', { name: /open acme/i })).toBeDefined()
     expect(screen.queryByRole('button', { name: /skip for now/i })).toBeNull()
   })
+
+  it('says it could not look, rather than looking like a machine has not arrived', async () => {
+    // The step is somebody watching for their laptop to appear, and both pictures are the same
+    // one: nothing found, and nothing asked. Silent, a look that keeps failing reads as "not yet"
+    // for as long as they are willing to sit there.
+    server.use(
+      http.get('*/spaces/:slug/machines', () =>
+        HttpResponse.json({ reason: 'unavailable', recovery: 'retry-later' }, { status: 500 }),
+      ),
+      signedIn({ spaces: [ACME] }),
+    )
+
+    open('/onboarding/host?s=acme')
+
+    expect(await screen.findByText(/Could not check for your machine/u)).toBeDefined()
+  })
 })

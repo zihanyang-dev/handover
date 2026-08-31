@@ -180,18 +180,26 @@ export function PinnedChats({ slug }: { readonly slug: string }) {
       >
         Pin
       </button>
-      {expanded && (
-        <ul id="pinned-conversations" className="chat-history">
-          {pinned.map((conversation) => (
-            <ConversationRow
-              key={conversation.id}
-              slug={slug}
-              conversation={conversation}
-              showAge={false}
-            />
-          ))}
-        </ul>
-      )}
+      {/* A read that failed and a Space with nothing pinned in it are not the same thing, and
+          rendered the same way the quieter one wins: somebody sees the list they pinned things
+          to, empty, and believes it. */}
+      {expanded &&
+        (conversations.isError ? (
+          <p className="empty" role="alert">
+            Could not read your conversations. Try again.
+          </p>
+        ) : (
+          <ul id="pinned-conversations" className="chat-history">
+            {pinned.map((conversation) => (
+              <ConversationRow
+                key={conversation.id}
+                slug={slug}
+                conversation={conversation}
+                showAge={false}
+              />
+            ))}
+          </ul>
+        ))}
     </section>
   )
 }
@@ -206,14 +214,27 @@ export function ChatSidebar({ slug }: { readonly slug: string }) {
       <div className="chat-sidebar-scroll">
         <section className="chat-agents" aria-labelledby="agents-heading">
           <h2 id="agents-heading">Agents</h2>
-          <ul>
-            {agents.map((agent) => (
-              <AgentChoice key={`${agent.machineId}/${agent.kind}`} slug={slug} agent={agent} />
-            ))}
-          </ul>
+          {/* Empty, this heading says the machines in this Space have no agents on them — which
+              is the sentence somebody acts on by going to connect one they already connected. */}
+          {machines.isError ? (
+            <p className="empty" role="alert">
+              Could not read your machines. Try again.
+            </p>
+          ) : (
+            <ul>
+              {agents.map((agent) => (
+                <AgentChoice key={`${agent.machineId}/${agent.kind}`} slug={slug} agent={agent} />
+              ))}
+            </ul>
+          )}
         </section>
 
         <div className="chat-groups">
+          {conversations.isError && (
+            <p className="empty" role="alert">
+              Could not read your conversations. Try again.
+            </p>
+          )}
           {grouped(conversations.data ?? []).map((group) => (
             <section key={group.label} aria-labelledby={groupId(group.label)}>
               <h2 id={groupId(group.label)}>{group.label}</h2>

@@ -324,6 +324,17 @@ function Arrived({ slug }: { readonly slug: string }) {
   const machines = useQuery(machinesIn(slug, WHILE_WAITING_FOR_ONE_MS))
   const found = (machines.data ?? []).filter((machine) => machine.presence.state === 'here')
 
+  // Nothing found and nothing asked are the same picture, and this step is somebody watching for
+  // their machine to appear: silent, a look that keeps failing reads as "not yet" for as long as
+  // they are willing to wait. `Still looking` rather than `Try again` because this one does keep
+  // asking on its own — the query holds an interval for exactly this wait.
+  if (machines.isError)
+    return (
+      <p className="empty" role="alert">
+        Could not check for your machine. Still looking.
+      </p>
+    )
+
   if (found.length === 0) return null
 
   return (
