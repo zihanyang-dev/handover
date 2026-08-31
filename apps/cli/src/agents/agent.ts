@@ -110,9 +110,27 @@ type Unkept = components['schemas']['Unkept']
  * vocabulary written out on its own here would be one that could drift from both, and nothing
  * would say which of the two was right.
  */
+/**
+ * One step of what an agent means to do, in this side's words.
+ *
+ * Both agents report the same three states under different spellings — Claude Code's `TodoWrite`
+ * says `pending | in_progress | completed`, Codex's `turn/planUpdated` says
+ * `pending | inProgress | completed`. Each adapter translates into these, so nothing above has to
+ * know there were ever two.
+ */
+export type PlanStep = { readonly text: string; readonly state: 'waiting' | 'doing' | 'done' }
+
 export type Said =
   | Unkept
   | { readonly said: 'text'; readonly text: string }
+  /**
+   * The plan as it now stands — all of it, never a change to it.
+   *
+   * Whole every time because that is how both agents send it, which makes saying it twice the
+   * same as saying it once. Every version is written down: what it meant to do and then stopped
+   * meaning to do is the part of a piece of work worth reading afterwards.
+   */
+  | { readonly said: 'planned'; readonly steps: readonly PlanStep[] }
   | { readonly said: 'trouble'; readonly text: string }
   /**
    * A tool that finished, with what it printed.

@@ -164,3 +164,51 @@ describe('turning what Claude says into what a page shows', () => {
     expect(translate(message({ type: 'something-new-in-a-later-cli' }))).toEqual([])
   })
 })
+
+describe('a plan rather than a tool call', () => {
+  const writing = (...todos: readonly (readonly [string, string])[]) =>
+    message({
+      type: 'tool_use',
+      id: 'plan-1',
+      name: 'TodoWrite',
+      input: {
+        todos: todos.map(([content, status]) => ({ content, status, activeForm: content })),
+      },
+    })
+
+  it('says what the steps are, not how many there were', () => {
+    // The line this replaces said "planned 7 steps" and nothing else. What somebody watching
+    // needs is the seven.
+    const translate = fold()
+
+    expect(
+      translate(writing(['read the code', 'completed'], ['write the test', 'in_progress'])),
+    ).toEqual([
+      {
+        said: 'planned',
+        steps: [
+          { text: 'read the code', state: 'done' },
+          { text: 'write the test', state: 'doing' },
+        ],
+      },
+    ])
+  })
+
+  it('says nothing at all when the list is misshapen', () => {
+    // Half a plan is worse than none: nothing on the page would say the rest was dropped.
+    const translate = fold()
+
+    expect(translate(writing(['read the code', 'whenever'] as never))).toEqual([])
+  })
+
+  it('does not write the plan down twice when its result comes back', () => {
+    // A plan's result is the plan read back. Left alone it would be a tool row saying a list was
+    // written, next to the list.
+    const translate = fold()
+    translate(writing(['read the code', 'pending']))
+
+    expect(
+      translate(message({ type: 'tool_result', tool_use_id: 'plan-1', content: 'ok' }), 'user'),
+    ).toEqual([])
+  })
+})

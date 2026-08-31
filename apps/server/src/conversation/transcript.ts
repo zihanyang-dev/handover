@@ -142,6 +142,15 @@ export const ACTIVITY = {
   finished: 'finished',
   /** A person took it back. Whatever it had handed off was taken back with it. */
   takenBack: 'taken-back',
+  /**
+   * What it intends to do, as it stands right now.
+   *
+   * Written again in full every time it changes, because that is how both agents report it — a
+   * plan is never a patch. Every version stays: "I meant to do this, then I changed my mind" is
+   * the most worth keeping sentence in a piece of work, and a transcript holding only the last
+   * one says it was always going to go that way.
+   */
+  planned: 'planned',
 } as const
 
 /** The activities that close a turn. A conversation is busy until one of these is its last word. */
@@ -163,6 +172,27 @@ const ENDINGS: readonly string[] = [
  * somewhere that reads rows.
  */
 const TROUBLE: readonly string[] = [ACTIVITY.failed, ACTIVITY.unknown]
+
+/**
+ * One step of a plan, and how far it has got.
+ *
+ * Three states and no fourth, because that is what both agents have: Claude Code's `TodoWrite`
+ * says `pending | in_progress | completed`, and Codex's `turn/planUpdated` says
+ * `pending | inProgress | completed`. The same three, spelled differently — so the spelling is
+ * settled here once and the adapters translate into it, rather than a page learning both.
+ */
+export const STEP = { waiting: 'waiting', doing: 'doing', done: 'done' } as const
+
+/** How much of a plan is kept: enough to read, not enough to be a document. */
+const A_STEP_AT_MOST = 500
+const STEPS_AT_MOST = 100
+
+const PlanStep = z
+  .object({
+    text: z.string().min(1).max(A_STEP_AT_MOST),
+    state: z.enum(STEP),
+  })
+  .openapi('PlanStep')
 
 /** Who each line is from, and what a line from them holds. The four, written once. */
 const FROM = {
@@ -284,4 +314,39 @@ export function sameQuestion(stored: unknown, asked: Asked): boolean {
   const again = Asked.safeParse(asked)
 
   return read.success && again.success && written(read.data) === written(again.data)
+}
+
+/** One version of a plan, as it was written down. */
+export const Plan = z.array(PlanStep).max(STEPS_AT_MOST).readonly()
+
+export type Plan = z.infer<typeof Plan>
+
+/** Whether this line is a plan being written down. */
+function isPlan(message: Message): boolean {
+  return message.role === 'activity' && message.content.activityType === ACTIVITY.planned
+}
+
+/**
+ * The plan as it stands, out of everything said.
+ *
+ * Derived and never stored, for the reason `machine/presence.ts` gives about being here: a second
+ * place to say something is a second place to be wrong. Every version is in the transcript
+ * already, in order, and the one that counts is the last — so that is what this is.
+ *
+ * Read from a line rather than trusted: a plan comes from an agent through an adapter, and a
+ * misshapen one is a page that shows nothing rather than a page that breaks.
+ */
+export function planIn(messages: readonly Message[]): Plan | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message === undefined || !isPlan(message)) continue
+
+    // Narrowed by `isPlan` above, and read defensively anyway: the content of an activity is a
+    // loose object by design, so what is in it is whatever an adapter put there.
+    const written = message.content as Record<string, unknown>
+    const read = Plan.safeParse(written['steps'])
+    return read.success ? read.data : undefined
+  }
+
+  return undefined
 }

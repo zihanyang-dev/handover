@@ -16,6 +16,7 @@ import {
 } from '../../components/ui/message-scroller.tsx'
 import { ChatActivity } from './chat-activity.tsx'
 import { ChatMessage, ChatMessageText } from './chat-message.tsx'
+import { ChatPlan } from './chat-plan.tsx'
 import { ToolRun, type ToolMessage } from './chat-tools.tsx'
 import { ConversationComposer, type PendingUserMessage } from './conversation-composer.tsx'
 import { HandoverControl, HandoverProposal, type ProposalStatus } from './conversation-work.tsx'
@@ -292,7 +293,7 @@ function ConversationMain({
   readonly pendingMessage: PendingUserMessage | undefined
   readonly setPendingMessage: (message: PendingUserMessage | undefined) => void
 }) {
-  const { agentKind, messages, offers, working, underway } = conversation
+  const { agentKind, messages, offers, working, underway, plan } = conversation
   const { scrollToEnd } = useMessageScroller()
   const { viewport, hasScrolledAway, noteScrollPosition } = useDistanceFromLatest()
   const { read: readEarlier } = useEarlier(slug, id)
@@ -309,6 +310,9 @@ function ConversationMain({
             void askForEarlier()
           }}
         >
+          {/* Above the transcript and outside the scroller, so it stays put while the work it
+              describes scrolls past underneath. */}
+          {plan !== undefined && plan.length > 0 && <ChatPlan plan={plan} />}
           <MessageScrollerContent className="chat-scroll-content">
             <Transcript
               slug={slug}
@@ -699,6 +703,9 @@ const ACTIVITY_TEXT = new Map<string, string>([
   ['started-over', 'The folder this was working in had been deleted, so it started over'],
   ['stop', 'You asked it to stop'],
   ['unreadable', 'One event could not be read'],
+  // The line, not the list. What it plans to do is pinned above; what belongs here is that the
+  // plan changed at this point, which is the thing the pinned copy can never show.
+  ['planned', 'It set out what it means to do'],
 ])
 
 function activityText(what: Extract<Message, { readonly role: 'activity' }>): string | null {

@@ -3778,6 +3778,7 @@ export interface components {
             offers: components["schemas"]["Model"][];
             messages: components["schemas"]["Message"][];
             earlier: boolean;
+            plan?: components["schemas"]["PlanStep"][];
             underway?: components["schemas"]["Underway"];
         };
         Message: {
@@ -3831,6 +3832,11 @@ export interface components {
             activityType: string;
         } & {
             [key: string]: unknown;
+        };
+        PlanStep: {
+            text: string;
+            /** @enum {string} */
+            state: "waiting" | "doing" | "done";
         };
         Underway: {
             goal: string;

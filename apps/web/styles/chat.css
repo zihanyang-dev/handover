@@ -1142,3 +1142,66 @@
   margin: 0;
   padding: 0.25rem;
 }
+
+/* What the agent means to do, pinned above the transcript. Quiet by default: it is read at a
+   glance and only opened when somebody wants the whole of it. */
+.chat-plan {
+  width: min(60rem, 100%);
+  margin-inline: auto;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--keyline);
+  background: var(--fill);
+}
+
+.chat-plan-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.chat-plan-count {
+  flex: none;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-plan-current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-plan-steps {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-plan-step {
+  display: flex;
+  align-items: start;
+  gap: 0.5rem;
+  padding-block: 0.1875rem;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.chat-plan-step[data-state='doing'] {
+  color: var(--ink-body);
+}
+
+.chat-plan-step[data-state='done'] {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
