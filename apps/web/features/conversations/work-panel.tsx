@@ -40,17 +40,17 @@ export function WorkPanel({
 
   return (
     <section
-      className="h-full overflow-y-auto bg-white px-6 pt-6 pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="h-full overflow-y-auto bg-white px-6 pt-6 pb-8 scrollbar-none [&::-webkit-scrollbar]:hidden"
       aria-labelledby="piece-of-work-title"
     >
       <WorkHeading close={close} closeRef={closeRef} />
       {underway.under !== null && <ParentWork slug={slug} under={underway.under} />}
       <div className="mt-6">
         <p className="text-[13px] leading-5 font-medium text-ink-muted">Goal</p>
-        <p className="mt-1.5 text-[15px] leading-[22px] font-medium text-ink">{underway.goal}</p>
+        <p className="mt-1.5 text-[15px] leading-5.5 font-medium text-ink">{underway.goal}</p>
       </div>
       {location !== undefined && (
-        <p className="mt-2 text-[12px] leading-[17px] text-ink-quiet">{location.machine}</p>
+        <p className="mt-2 text-copy-xxs leading-4.25 text-ink-quiet">{location.machine}</p>
       )}
       <WorkState underway={underway} />
       <WorkOwnership slug={slug} id={id} ownerUserId={underway.ownerUserId} />
@@ -63,7 +63,7 @@ export function WorkPanel({
         }}
       />
       {takeBack.isError && (
-        <p className="mt-3 text-[12px] text-danger-strong" role="alert">
+        <p className="mt-3 text-copy-xxs text-danger-strong" role="alert">
           That could not be sent. Try again.
         </p>
       )}
@@ -89,7 +89,7 @@ function WorkOwnership({
   const people = useQuery(peopleIn(slug))
   if (people.isError)
     return (
-      <p className="mt-6 text-[12px] text-danger-strong" role="alert">
+      <p className="mt-6 text-copy-xxs text-danger-strong" role="alert">
         Could not read who can take responsibility. Try again.
       </p>
     )
@@ -133,7 +133,7 @@ function WorkOwnerChoice({
         transfer={transfer}
       />
       {transfer.isError && (
-        <p className="mt-3 text-[12px] text-danger-strong" role="alert">
+        <p className="mt-3 text-copy-xxs text-danger-strong" role="alert">
           {whyItDidNotMove(transfer.error)}
         </p>
       )}
@@ -150,7 +150,7 @@ function WorkHeading({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 id="piece-of-work-title" className="text-[18px] leading-6 font-semibold text-ink">
+      <h2 id="piece-of-work-title" className="text-copy-m leading-6 font-semibold text-ink">
         Piece of work
       </h2>
       {close !== undefined && (
@@ -176,7 +176,7 @@ function ParentWork({
 }) {
   return (
     <Link
-      className="mt-4 flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-[12px] text-ink-muted hover:bg-fill"
+      className="mt-4 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-copy-xxs text-ink-muted hover:bg-fill"
       to="/s/$slug/c/$id"
       params={{ slug, id: under.conversationId }}
     >
@@ -200,7 +200,7 @@ function WorkState({ underway }: { readonly underway: Underway }) {
         {stateText(underway)}
       </p>
       {underway.presence.state === 'gone' && (
-        <p className="mt-1 pl-3.5 text-[12px] leading-[17px] text-ink-quiet">
+        <p className="mt-1 pl-3.5 text-copy-xxs leading-4.25 text-ink-quiet">
           Its machine has been offline since {shortTime(underway.presence.since)}.
         </p>
       )}
@@ -227,7 +227,7 @@ function TransferWork({
 }) {
   return (
     <div className="mt-7">
-      <div className="text-[12px] font-medium text-ink-muted">
+      <div className="text-copy-xxs font-medium text-ink-muted">
         <span className="mb-1 block">Responsible person</span>
         <MenuSelect
           label="Responsible person"
@@ -271,12 +271,12 @@ function HandedOff({
         {rows.map((row) => (
           <li key={row.conversationId}>
             <Link
-              className="block rounded-[6px] px-2 py-2 hover:bg-fill"
+              className="block rounded-md px-2 py-2 hover:bg-fill"
               to="/s/$slug/c/$id"
               params={{ slug, id: row.conversationId }}
             >
               <strong className="block text-[13px] font-medium text-ink-body">{row.goal}</strong>
-              <span className="mt-0.5 block text-[12px] text-ink-quiet">
+              <span className="mt-0.5 block text-copy-xxs text-ink-quiet">
                 {handedOffState(row)} · {row.machineName}
               </span>
             </Link>
@@ -301,7 +301,7 @@ function Outputs({ rows }: { readonly rows: Underway['outputs'] }) {
       </h3>
       <div className="mt-2 space-y-1.5">
         {rows.map((row) => (
-          <details className="rounded-[6px] bg-fill px-3 py-2 text-[13px]" key={row.title}>
+          <details className="rounded-md bg-fill px-3 py-2 text-[13px]" key={row.title}>
             <summary className="cursor-pointer font-medium text-ink-body">{row.title}</summary>
             <p className="mt-2 whitespace-pre-wrap text-ink-secondary">{row.body}</p>
           </details>
@@ -331,7 +331,7 @@ function TakeBack({ pending, act }: { readonly pending: boolean; readonly act: (
     <div className="mt-8">
       {confirming ? (
         <div className="rounded-[7px] border border-danger-line bg-danger-notice p-3">
-          <p className="text-[12px] leading-[17px] text-danger-ink">
+          <p className="text-copy-xxs leading-4.25 text-danger-ink">
             This stops the work it is doing and every unfinished piece it handed off.
           </p>
           <div className="mt-3 flex justify-end gap-2">

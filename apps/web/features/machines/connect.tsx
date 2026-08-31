@@ -168,7 +168,7 @@ function Answer({ machineName, existingMachines, who, spaceName, pending, onAnsw
           : ` It will also be available in ${spaceName}.`}
       </p>
       <button
-        className="button h-7 min-h-7 rounded-[var(--interaction-radius)] border-0 bg-transparent px-2 py-0 text-copy-xs font-normal text-ink shadow-none transition-colors duration-100 ease-in-out enabled:hover:bg-[var(--interaction-hover)] enabled:active:bg-[var(--interaction-pressed)] focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)]"
+        className="button h-7 min-h-7 rounded-(--interaction-radius) border-0 bg-transparent px-2 py-0 text-copy-xs font-normal text-ink shadow-none transition-colors duration-100 ease-in-out enabled:hover:bg-(--interaction-hover) enabled:active:bg-(--interaction-pressed) focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)]"
         type="button"
         disabled={pending}
         onClick={() => {

@@ -35,11 +35,11 @@
 }
 
 .home-sidebar-container {
-  @apply relative h-dvh w-full min-w-0 overflow-visible bg-[var(--surface)] shadow-[inset_-1px_0_0_var(--line)];
+  @apply relative h-dvh w-full min-w-0 overflow-visible bg-surface shadow-[inset_-1px_0_0_var(--line)];
 }
 
 .home-sidebar {
-  @apply absolute top-0 left-0 flex h-dvh min-w-0 flex-col overflow-visible bg-[var(--surface)] text-ink opacity-100;
+  @apply absolute top-0 left-0 flex h-dvh min-w-0 flex-col overflow-visible bg-surface text-ink opacity-100;
   width: var(--home-sidebar-width, 16.875rem);
   transform: translate(0, 0);
   transition:

@@ -29,13 +29,13 @@ import {
 type ShownMachine = Machine | OwnedMachine
 
 const primaryAction =
-  'inline-flex h-8 shrink-0 items-center rounded-[6px] border-0 bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
+  'inline-flex h-8 shrink-0 items-center rounded-md border-0 bg-primary px-3 text-[13px] font-medium text-white no-underline hover:bg-primary-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus'
 const quietDanger =
-  'mt-3 ml-12 h-7 rounded-[5px] border-0 bg-transparent px-2 text-[12px] text-danger-quiet hover:bg-danger-wash max-sm:ml-0'
+  'mt-3 ml-12 h-7 rounded-[5px] border-0 bg-transparent px-2 text-copy-xxs text-danger-quiet hover:bg-danger-wash max-sm:ml-0'
 const dangerAction =
-  'h-8 rounded-[6px] border-0 bg-danger-strong px-3 text-[13px] font-medium text-white disabled:opacity-50'
+  'h-8 rounded-md border-0 bg-danger-strong px-3 text-[13px] font-medium text-white disabled:opacity-50'
 const secondaryAction =
-  'h-8 rounded-[6px] border border-line-firm bg-white px-3 text-[13px] text-ink-body'
+  'h-8 rounded-md border border-line-firm bg-white px-3 text-[13px] text-ink-body'
 
 export function YourMachines() {
   const machines = useQuery(ownedMachines())
@@ -44,7 +44,7 @@ export function YourMachines() {
     <section className="mt-12 border-t border-line pt-8" aria-labelledby="your-machines-title">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 id="your-machines-title" className="m-0 text-[16px] font-semibold text-ink">
+          <h2 id="your-machines-title" className="m-0 text-copy-s font-semibold text-ink">
             Your machines
           </h2>
           <p className="mt-1 text-[13px] text-ink-quiet">
@@ -181,7 +181,7 @@ function ShareMachine({
         Choose one of your machines to share with {spaceName}
       </p>
       {machines.length === 0 ? (
-        <p className="mt-1 text-[12px] text-ink-quiet">
+        <p className="mt-1 text-copy-xxs text-ink-quiet">
           There is no other connected machine to share.
         </p>
       ) : (
@@ -189,7 +189,7 @@ function ShareMachine({
           {machines.map((machine) => (
             <button
               key={machine.id}
-              className="flex min-h-9 items-center justify-between rounded-[6px] border-0 bg-white px-3 text-left text-[13px] text-ink hover:bg-[var(--interaction-hover)]"
+              className="flex min-h-9 items-center justify-between rounded-md border-0 bg-white px-3 text-left text-[13px] text-ink hover:bg-(--interaction-hover)"
               type="button"
               disabled={share.isPending}
               onClick={() => {
@@ -210,7 +210,7 @@ function ShareMachine({
         Connect and share a new machine
       </Link>
       {share.isError && (
-        <p className="mt-2 text-[12px] text-danger-ink" role="alert">
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           Could not share it with {spaceName}. Try again.
         </p>
       )}
@@ -263,10 +263,10 @@ function MachineHeading({
       </span>
       <div className="min-w-0 grow">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h3 className="m-0 truncate text-[14px] font-semibold text-ink">{machine.name}</h3>
+          <h3 className="m-0 truncate text-copy-xs font-semibold text-ink">{machine.name}</h3>
           <Presence machine={machine} />
         </div>
-        <p className="mt-0.5 text-[12px] text-ink-quiet">{note}</p>
+        <p className="mt-0.5 text-copy-xxs text-ink-quiet">{note}</p>
       </div>
     </div>
   )
@@ -313,7 +313,7 @@ function Presence({ machine }: { readonly machine: ShownMachine }) {
   const here = machine.presence.state === 'here'
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[12px] ${here ? 'text-good' : 'text-ink-quiet'}`}
+      className={`inline-flex items-center gap-1.5 text-copy-xxs ${here ? 'text-good' : 'text-ink-quiet'}`}
     >
       <span
         className={`size-1.5 rounded-full ${here ? 'bg-good-mark' : 'bg-ink-faint'}`}
@@ -345,7 +345,7 @@ function AgentList({
             <span className="text-[13px] font-medium text-ink-body">
               {agentKindName(agent.kind)}
             </span>
-            <span className="text-[12px] text-ink-quiet">{agent.version}</span>
+            <span className="text-copy-xxs text-ink-quiet">{agent.version}</span>
           </div>
           {editable && <AgentDecisions machineId={machine.id} agent={agent} />}
         </li>
@@ -366,10 +366,10 @@ function AgentNameField({
   readonly onChange: (name: string) => void
 }) {
   return (
-    <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
+    <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-copy-xxs font-medium text-ink-muted">
       <span>Name</span>
       <input
-        className="h-8 w-full max-w-[280px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
+        className="h-8 w-full max-w-70 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
         value={name}
         maxLength={48}
         placeholder={placeholder}
@@ -397,10 +397,10 @@ function AgentCapacityField({
 }) {
   return (
     <>
-      <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-[12px] font-medium text-ink-muted">
+      <label className="grid min-h-9 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 text-copy-xxs font-medium text-ink-muted">
         <span>At once</span>
         <input
-          className="h-8 w-[72px] rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
+          className="h-8 w-18 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink outline-none focus-visible:border-primary"
           type="number"
           min={1}
           max={AT_ONCE_AT_MOST}
@@ -414,7 +414,7 @@ function AgentCapacityField({
         />
       </label>
       {!usable && (
-        <p id={errorId} className="mt-2 text-[12px] text-danger-ink" role="alert">
+        <p id={errorId} className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           At once is a whole number between 1 and {AT_ONCE_AT_MOST}.
         </p>
       )}
@@ -479,7 +479,7 @@ function AgentDecisions({
         />
       </form>
       {decide.isError && (
-        <p className="mt-2 text-[12px] text-danger-ink" role="alert">
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           That could not be sent. Try again.
         </p>
       )}
@@ -537,7 +537,7 @@ function DisconnectMachine({ machine }: { readonly machine: OwnedMachine }) {
         </button>
       </div>
       {disconnect.isError && (
-        <p className="mt-2 text-[12px] text-danger-ink" role="alert">
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           Could not disconnect it. Try again.
         </p>
       )}
@@ -603,7 +603,7 @@ function StopSharing({
         </button>
       </div>
       {stopSharing.isError && (
-        <p className="mt-2 text-[12px] text-danger-ink" role="alert">
+        <p className="mt-2 text-copy-xxs text-danger-ink" role="alert">
           Could not stop sharing it with {spaceName}. Try again.
         </p>
       )}
@@ -621,16 +621,16 @@ function WorkStillUsingMachine({
   readonly spaceName: string
 }) {
   if (machine.working.length === 0)
-    return <p className="mt-2 text-[12px] text-ink-muted">No work is running on it here.</p>
+    return <p className="mt-2 text-copy-xxs text-ink-muted">No work is running on it here.</p>
 
   return (
     <section className="mt-3" aria-labelledby={`machine-work-${machine.id}`}>
-      <h4 id={`machine-work-${machine.id}`} className="m-0 text-[12px] font-semibold text-ink">
+      <h4 id={`machine-work-${machine.id}`} className="m-0 text-copy-xxs font-semibold text-ink">
         Work still using this machine
       </h4>
       <p
         id={`machine-work-note-${machine.id}`}
-        className="mt-1 text-[12px] leading-[17px] text-ink-muted"
+        className="mt-1 text-copy-xxs leading-4.25 text-ink-muted"
       >
         Resolve or stop this work in {spaceName} before you stop sharing. Open each Chat to decide
         what to do.
@@ -639,7 +639,7 @@ function WorkStillUsingMachine({
         {machine.working.map((work) => (
           <li
             key={work.conversationId}
-            className="flex items-center justify-between gap-3 text-[12px]"
+            className="flex items-center justify-between gap-3 text-copy-xxs"
           >
             <Link
               className="min-w-0 truncate font-medium text-primary no-underline hover:underline"
@@ -660,7 +660,7 @@ function EmptyMachines() {
   return (
     <div className="rounded-[8px] border border-dashed border-line-firm px-6 py-12 text-center">
       <Laptop className="mx-auto mb-3 text-ink-quiet" aria-hidden />
-      <p className="text-[14px] font-medium text-ink-body">No machines here</p>
+      <p className="text-copy-xs font-medium text-ink-body">No machines here</p>
       <p className="mt-1 text-[13px] text-ink-quiet">
         Share one of your machines to let its Agents work in this Space.
       </p>

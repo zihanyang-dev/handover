@@ -73,8 +73,8 @@ function ChoicesMenu<Value extends string>({
     <div
       className={
         stretch
-          ? 'absolute top-full left-0 z-20 mt-1 w-full min-w-44 rounded-[7px] bg-white p-1 shadow-[var(--surface-raised-shadow)]'
-          : 'absolute top-full right-0 z-20 mt-1 w-44 rounded-[7px] bg-white p-1 shadow-[var(--surface-raised-shadow)]'
+          ? 'absolute top-full left-0 z-20 mt-1 w-full min-w-44 rounded-[7px] bg-white p-1 shadow-(--surface-raised-shadow)'
+          : 'absolute top-full right-0 z-20 mt-1 w-44 rounded-[7px] bg-white p-1 shadow-(--surface-raised-shadow)'
       }
       role="menu"
       aria-label={label}
@@ -87,7 +87,7 @@ function ChoicesMenu<Value extends string>({
             ref={(element) => {
               options.current[index] = element
             }}
-            className="flex h-8 w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-ink hover:bg-[var(--interaction-hover)] focus:bg-[var(--interaction-hover)] focus:outline-none"
+            className="flex h-8 w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[13px] text-ink hover:bg-(--interaction-hover) focus:bg-(--interaction-hover) focus:outline-none"
             type="button"
             role="menuitemradio"
             aria-checked={choice.value === value}
@@ -170,8 +170,8 @@ export function MenuSelect<Value extends string>({
         ref={trigger}
         className={
           stretch
-            ? 'flex h-8 w-full min-w-[96px] items-center justify-between gap-2 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink-secondary hover:bg-fill aria-expanded:bg-fill focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
-            : 'flex h-7 min-w-[96px] items-center justify-between gap-2 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-normal text-ink-secondary hover:bg-[var(--interaction-hover)] aria-expanded:bg-[var(--interaction-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
+            ? 'flex h-8 w-full min-w-24 items-center justify-between gap-2 rounded-[5px] border border-line-firm bg-white px-2 text-[13px] font-normal text-ink-secondary hover:bg-fill aria-expanded:bg-fill focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
+            : 'flex h-7 min-w-24 items-center justify-between gap-2 rounded-[5px] border-0 bg-transparent px-2 text-[13px] font-normal text-ink-secondary hover:bg-(--interaction-hover) aria-expanded:bg-(--interaction-hover) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint'
         }
         type="button"
         aria-label={label}

@@ -40,7 +40,7 @@
 }
 
 .home-state {
-  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-[var(--ink)];
+  @apply grid min-h-dvh place-items-center bg-white p-8 text-center text-ink;
 }
 
 .home-state p,
@@ -165,5 +165,5 @@
 
 /* A state, said in a shape rather than only in a word — read at a glance, in a list. */
 .chip {
-  @apply inline-flex items-center whitespace-nowrap rounded-md bg-fill-firm px-1.75 py-0.25 text-copy-xxs font-medium text-ink-secondary;
+  @apply inline-flex items-center whitespace-nowrap rounded-md bg-fill-firm px-1.75 py-px text-copy-xxs font-medium text-ink-secondary;
 }

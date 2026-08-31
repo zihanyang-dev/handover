@@ -37,17 +37,17 @@
   }
 
   .field {
-    @apply h-[var(--control)] w-full rounded-ui bg-base px-3.5 py-0 text-copy-xs text-ink shadow-[inset_0_0_0_1px_var(--keyline)] transition-[background-color,box-shadow] duration-200 placeholder:text-ink-muted focus:bg-base focus:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus:outline-none focus-within:bg-base focus-within:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus-within:outline-none disabled:opacity-40;
+    @apply h-(--control) w-full rounded-ui bg-base px-3.5 py-0 text-copy-xs text-ink shadow-[inset_0_0_0_1px_var(--keyline)] transition-[background-color,box-shadow] duration-200 placeholder:text-ink-muted focus:bg-base focus:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus:outline-none focus-within:bg-base focus-within:shadow-[inset_0_0_0_1px_var(--keyline-firm)] focus-within:outline-none disabled:opacity-40;
     border: 0;
     font-family: inherit;
   }
 
   textarea.field {
-    @apply h-auto resize-y px-3.5 py-2 leading-[1.5];
+    @apply h-auto resize-y px-3.5 py-2 leading-normal;
   }
 
   .button {
-    @apply inline-flex h-[var(--control)] cursor-pointer items-center justify-center gap-2 px-3 py-0 text-copy-xs font-medium transition-[background-color,box-shadow] duration-100 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)] disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex h-(--control) cursor-pointer items-center justify-center gap-2 px-3 py-0 text-copy-xs font-medium transition-[background-color,box-shadow] duration-100 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)] disabled:cursor-not-allowed disabled:opacity-40;
     border: 0;
     border-radius: var(--interaction-radius);
     font-family: inherit;

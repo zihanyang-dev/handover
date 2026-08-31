@@ -94,7 +94,7 @@
 /* Notion's current public Card surface: white, a 10% black keyline, 12px radius, and
    elevation that appears only on interaction. The deck supplies the composition. */
 .space-choice-position .space-choice {
-  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-[var(--keyline)] bg-white px-3.5 py-3;
+  @apply relative min-h-16 items-center overflow-hidden rounded-xl border-(--keyline) bg-white px-3.5 py-3;
   transform-origin: center top;
 }
 
@@ -164,7 +164,7 @@
 }
 
 .space-choice-position .space-choice-arrow {
-  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-[var(--ink-muted)] opacity-55;
+  @apply absolute top-1/2 right-2.5 size-6 rounded-sm bg-transparent p-1.25 text-ink-muted opacity-55;
   transform: translateY(-50%);
   transition:
     opacity 160ms ease-out,
@@ -178,7 +178,7 @@
 }
 
 .space-choice {
-  @apply flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--line)] bg-white px-3.5 py-2 text-left text-ink;
+  @apply flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl border border-line bg-white px-3.5 py-2 text-left text-ink;
   font: inherit;
   transition:
     transform 180ms var(--panel-ease, ease-out),
@@ -216,7 +216,7 @@
 }
 
 .space-choice-new {
-  @apply w-full border-[var(--primary-cast)] bg-[var(--primary-cast-faint)] px-3 shadow-none;
+  @apply w-full border-(--primary-cast) bg-(--primary-cast-faint) px-3 shadow-none;
   transform: none;
 }
 
@@ -249,7 +249,7 @@
 }
 
 .space-create-drawer-handle {
-  @apply mx-auto mb-1 block h-1 w-9 rounded-full bg-[var(--line-firm)];
+  @apply mx-auto mb-1 block h-1 w-9 rounded-full bg-line-firm;
 }
 
 .space-create-drawer-head {
@@ -430,7 +430,7 @@
 
 .space-choice-copy strong {
   color: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-copy-xs);
   font-weight: 500;
 }
 

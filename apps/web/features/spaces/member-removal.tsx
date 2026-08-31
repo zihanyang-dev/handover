@@ -46,10 +46,10 @@ export function RemovalChecklist({
       >
         ← Back to people
       </button>
-      <h2 id="remove-person-title" className="text-[18px] leading-6 font-semibold text-ink">
+      <h2 id="remove-person-title" className="text-copy-m leading-6 font-semibold text-ink">
         {person.you ? 'Leave this Space' : `Remove ${person.displayName}`}
       </h2>
-      <p className="mt-1 text-[13px] leading-[18px] text-ink-muted">
+      <p className="mt-1 text-[13px] leading-4.5 text-ink-muted">
         Resolve everything still held here before access is removed. Nothing is moved or stopped
         automatically.
       </p>
@@ -75,14 +75,14 @@ export function RemovalChecklist({
       )}
       <div className="mt-6 flex items-center justify-end gap-2 pt-4">
         <button
-          className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-fill"
+          className="h-8 rounded-md border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-fill"
           type="button"
           onClick={back}
         >
           Cancel
         </button>
         <button
-          className="h-8 rounded-[6px] border-0 bg-danger-fill px-3 text-[13px] font-medium text-white hover:bg-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
+          className="h-8 rounded-md border-0 bg-danger-fill px-3 text-[13px] font-medium text-white hover:bg-danger-fill-hover disabled:cursor-not-allowed disabled:opacity-45"
           type="button"
           disabled={!workIsSettled || remove.isPending}
           onClick={() => {
@@ -151,7 +151,7 @@ function HeldRows({
             {held.machines.map((machine) => (
               <li key={machine.id} className="py-2">
                 <p className="text-[13px] font-medium text-ink">{machine.name}</p>
-                <p className="mt-0.5 text-[12px] text-ink-quiet">
+                <p className="mt-0.5 text-copy-xxs text-ink-quiet">
                   It will be removed from this Space. The machine and other Spaces are unaffected.
                 </p>
               </li>
@@ -180,7 +180,7 @@ function WorkResolution({
   return (
     <li className="py-3">
       <p className="text-[13px] font-medium text-ink">{work.goal}</p>
-      <p className="mt-0.5 text-[12px] text-ink-quiet">
+      <p className="mt-0.5 text-copy-xxs text-ink-quiet">
         {whatItIsDoing(work.state)} · {work.machineName}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -221,7 +221,7 @@ function TransferChoice({
 
   return (
     <>
-      <div className="w-full max-w-[220px]">
+      <div className="w-full max-w-55">
         <MenuSelect
           label="New owner"
           value={ownerUserId}
