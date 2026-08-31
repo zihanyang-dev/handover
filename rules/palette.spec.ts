@@ -142,8 +142,12 @@ function spentAsUtility(name: string, classes: string): boolean {
 
   const prefixes = SPENT_AS[named[1] as string]
   const tail = named[2] as string
+  // A namespace this does not model is one it has nothing to say about. Answering "never spent"
+  // there would be the rule telling somebody to delete a name it never looked for — which is the
+  // harm the leniency above exists to avoid, arriving through the one door left open to it.
+  if (prefixes === undefined) return true
 
-  return (prefixes ?? []).some((prefix) => new RegExp(`\\b${prefix}-${tail}\\b`, 'u').test(classes))
+  return prefixes.some((prefix) => new RegExp(`\\b${prefix}-${tail}\\b`, 'u').test(classes))
 }
 
 /** Everywhere a class name can be written: a screen, or a stylesheet line that is not a definition. */

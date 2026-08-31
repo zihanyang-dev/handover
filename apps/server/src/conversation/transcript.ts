@@ -260,6 +260,10 @@ function written(asked: Asked): string {
  */
 export function sameQuestion(stored: unknown, asked: Asked): boolean {
   const read = Asked.safeParse(stored)
+  // Both sides through the schema, not one. Comparing a parsed value against a raw one makes
+  // anything the schema would have dropped count as a difference, and the same question asked
+  // twice would read as two.
+  const again = Asked.safeParse(asked)
 
-  return read.success && written(read.data) === written(asked)
+  return read.success && again.success && written(read.data) === written(again.data)
 }
