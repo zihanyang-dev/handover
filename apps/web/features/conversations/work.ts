@@ -66,7 +66,7 @@ export function useHandOver(slug: string, id: string) {
   return useMutation<void, { reason: string }, number>({
     mutationFn: async (proposalSeq: number) => {
       const intention = `hand-over:${id}:${String(proposalSeq)}`
-      const body: components['schemas']['HandOver'] = {
+      const body: components['schemas']['LetItCarryOn'] = {
         key: retryKey(intention),
         proposalSeq,
       }

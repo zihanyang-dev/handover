@@ -217,7 +217,7 @@ function isKind(value: string): value is Kind {
   return EVERY_KIND.includes(value)
 }
 
-type Kind = components['schemas']['HandOff']['agentKind']
+type Kind = components['schemas']['OpenWorkFor']['agentKind']
 
 function flag(rest: readonly string[], name: string): string | undefined {
   const at = rest.indexOf(name)

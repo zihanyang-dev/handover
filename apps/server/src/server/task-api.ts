@@ -110,7 +110,7 @@ const Waiting = named('Waiting', {
 
 const Inbox = named('Inbox', { waiting: z.array(Waiting).readonly() })
 
-const HandOver = named('HandOver', {
+const LetItCarryOn = named('LetItCarryOn', {
   ...CALLED,
   /** The exact transcript card a person confirms; the server reads its goal from there. */
   proposalSeq: z.number().int().positive(),
@@ -129,7 +129,7 @@ const StopWorking = named('StopWorking', { ...CALLED, how: HowItStopped })
  * `prd.md` 07 ⑥: an agent that could name a machine could put work on somebody's laptop with
  * nobody in the room. A person handing you something leaves a name and a time; this would not.
  */
-const HandOff = named('HandOff', {
+const OpenWorkFor = named('OpenWorkFor', {
   ...CALLED,
   goal,
   agentKind: z.enum(AGENT_KIND_NAMES),
@@ -157,7 +157,7 @@ function handingOver({ db }: TaskApi) {
   return aMember(db).post('/spaces/{slug}/conversations/{id}/task', {
     summary: 'Let it carry on without being spoken to',
     params: { id: rowId },
-    body: HandOver,
+    body: LetItCarryOn,
     answers: {
       204: 'Handed over, or handed over already',
       404: refuses(
@@ -300,7 +300,7 @@ function handingOff({ db }: TaskApi) {
   return aMachine(db).post('/machines/current/conversations/{id}/task/handed-off', {
     summary: 'Open a piece of work for another agent',
     params: { id: rowId },
-    body: HandOff,
+    body: OpenWorkFor,
     answers: {
       201: sends(WorkOpened, 'Opened, and its machine already knows'),
       404: refuses(UNAVAILABLE, 'Nothing was handed over in that conversation'),

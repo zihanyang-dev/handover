@@ -8,7 +8,7 @@
 
 import type { ProviderIdentity } from './provider.ts'
 
-export type Handoff = {
+export type SettingOut = {
   readonly url: URL
   readonly state: string
   readonly pkceVerifier: string
@@ -30,6 +30,6 @@ export type Identified =
   | { readonly kind: 'no-verified-email' }
 
 export type ProviderClient = {
-  readonly begin: (redirectUri: string) => Promise<Handoff>
+  readonly begin: (redirectUri: string) => Promise<SettingOut>
   readonly identify: (returned: Returned) => Promise<Identified>
 }

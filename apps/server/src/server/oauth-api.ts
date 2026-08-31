@@ -52,7 +52,7 @@ const Handing = z.object({
   startedBy: z.string().optional(),
 })
 
-type Handoff = z.infer<typeof Handing>
+type Handing = z.infer<typeof Handing>
 
 const WhereBack = named('WhereBack', { next: z.string().optional() })
 
@@ -68,7 +68,7 @@ const BY_NAME = { provider: z.string() }
  * points — the browser hides the target of an opaque redirect — and following it would send the
  * request itself to the provider instead of the person. Navigating is the browser's job.
  */
-const Handoff = named('Handoff', { url: z.url() })
+const WhereToSignIn = named('WhereToSignIn', { url: z.url() })
 
 /**
  * What both legs of leaving can be told.
@@ -78,7 +78,7 @@ const Handoff = named('Handoff', { url: z.url() })
  * learn something the other did not.
  */
 const LEAVING = {
-  200: sends(Handoff, 'Send the browser here'),
+  200: sends(WhereToSignIn, 'Send the browser here'),
   404: refuses(NO_SUCH_PROVIDER, 'No way in by that name'),
 }
 
@@ -115,7 +115,7 @@ function back(webOrigin: string, path: string, result?: string): string {
 }
 
 /** Reads the handoff and spends it: a round trip is good once, whatever it ends in. */
-async function takeHandoff(c: Context, secret: string): Promise<Handoff | undefined> {
+async function takeHandoff(c: Context, secret: string): Promise<Handing | undefined> {
   const raw = await getSignedCookie(c, secret, HANDOFF_COOKIE)
   deleteCookie(c, HANDOFF_COOKIE, { path: '/' })
   if (typeof raw !== 'string') return undefined
@@ -139,7 +139,7 @@ async function takeHandoff(c: Context, secret: string): Promise<Handoff | undefi
  */
 async function settle(
   deps: OAuthApi,
-  taken: Handoff,
+  taken: Handing,
   returned: URL,
   /** Who is signed in on the browser that came back, and which session that is. */
   browser: { readonly userId: string | undefined; readonly session: string | undefined },
@@ -177,7 +177,7 @@ async function settle(
 async function identityFrom(
   client: ProviderClient,
   returned: URL,
-  taken: Handoff,
+  taken: Handing,
 ): Promise<Identified | { readonly kind: 'expired' }> {
   return client
     .identify({ url: returned, state: taken.state, pkceVerifier: taken.pkceVerifier })
@@ -202,7 +202,7 @@ async function leave(
   deps: OAuthApi,
   leaving: {
     name: string
-    purpose: Handoff['purpose']
+    purpose: Handing['purpose']
     next: string | undefined
     startedBy: string | undefined
   },
@@ -214,7 +214,7 @@ async function leave(
   const { purpose } = leaving
   const begun = await client.begin(`${deps.origin}/auth/${provider}/callback`)
 
-  const remembered: Handoff = {
+  const remembered: Handing = {
     provider,
     purpose,
     state: begun.state,

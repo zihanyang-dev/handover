@@ -355,7 +355,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Handoff"];
+                        "application/json": components["schemas"]["WhereToSignIn"];
                     };
                 };
                 /** @description The body was not the shape it claims */
@@ -415,7 +415,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Handoff"];
+                        "application/json": components["schemas"]["WhereToSignIn"];
                     };
                 };
                 /** @description The body was not the shape it claims */
@@ -2802,7 +2802,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["HandOver"];
+                    "application/json": components["schemas"]["LetItCarryOn"];
                 };
             };
             responses: {
@@ -3103,7 +3103,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["HandOff"];
+                    "application/json": components["schemas"]["OpenWorkFor"];
                 };
             };
             responses: {
@@ -3374,7 +3374,7 @@ export interface components {
             /** @example 493018 */
             code: string;
         };
-        Handoff: {
+        WhereToSignIn: {
             /** Format: uri */
             url: string;
         };
@@ -3851,7 +3851,7 @@ export interface components {
             text: string;
             truncated?: boolean;
         };
-        HandOver: {
+        LetItCarryOn: {
             key: string;
             proposalSeq: number;
         };
@@ -3899,7 +3899,7 @@ export interface components {
             /** Format: uuid */
             conversationId: string;
         };
-        HandOff: {
+        OpenWorkFor: {
             key: string;
             goal: string;
             /** @enum {string} */

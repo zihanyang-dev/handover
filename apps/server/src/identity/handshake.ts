@@ -7,13 +7,13 @@
  */
 
 import * as oauth from 'openid-client'
-import type { Handoff, Returned } from './provider-client.ts'
+import type { SettingOut, Returned } from './provider-client.ts'
 
 export async function begin(
   config: oauth.Configuration,
   scope: string,
   redirectUri: string,
-): Promise<Handoff> {
+): Promise<SettingOut> {
   const pkceVerifier = oauth.randomPKCECodeVerifier()
   const state = oauth.randomState()
 
