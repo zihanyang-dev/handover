@@ -41,15 +41,6 @@ export type Taken = {
    */
   readonly goal: string | null
   /**
-   * A directory a person pointed this conversation at, when they pointed it at one.
-   *
-   * Null nearly always, and then the machine works somewhere of its own — a folder named after
-   * the conversation. It is the only path this deployment stores, and it is stored because
-   * somebody typed it; where work happens otherwise is the machine's own business, which is what
-   * leaves room for a sandbox to answer it differently.
-   */
-  readonly worksIn: string | null
-  /**
    * The conversation this one was opened for, when an agent opened it as a sub-task.
    *
    * Null on everything else. The machine turns it into a place: a sub-task works inside a folder
@@ -94,7 +85,7 @@ function beingAsked(machineId: string) {
   return sql`
     asked as (
       -- Somebody is sitting in front of it: their last question, if nobody took it.
-      select c.id as conversation_id, c.agent_kind, c.agent_session_id, c.works_in,
+      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
              last.seq, last.content, last.created_at, 'user'::text as role, null::text as goal,
              ${whatItWasOpenedFor()} as subtask_of, ${hasRunBefore()} as ran_before
         from conversations c
@@ -120,7 +111,7 @@ function carryingOn(machineId: string) {
   return sql`    carrying_on as (
       -- Somebody handed it over: the last line of it, whatever that line is. It is not answering
       -- anything — it is carrying on — so the turn begins after whatever came last.
-      select c.id as conversation_id, c.agent_kind, c.agent_session_id, c.works_in,
+      select c.id as conversation_id, c.agent_kind, c.agent_session_id,
              last.seq, last.content, last.created_at, last.role, k.goal,
              ${whatItWasOpenedFor()} as subtask_of, ${hasRunBefore()} as ran_before
         from conversations c
@@ -331,7 +322,6 @@ async function takingOne(tx: Tx, machineId: string): Promise<Taken | undefined> 
            w.agent_session_id as "agentSession",
            w.seq              as "afterSeq",
            w.goal             as goal,
-           w.works_in         as "worksIn",
            w.subtask_of       as "subtaskOf",
            w.ran_before       as "hasRunBefore",
            coalesce(said.lines, '[]'::json) as asked,

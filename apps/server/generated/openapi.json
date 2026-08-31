@@ -939,24 +939,6 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "somewhere-named"
-                ]
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "path"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
                   "under"
                 ]
               },
@@ -1769,11 +1751,6 @@
           },
           "asked": {
             "$ref": "#/components/schemas/Asked"
-          },
-          "worksIn": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
           }
         },
         "required": [

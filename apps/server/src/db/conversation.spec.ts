@@ -417,33 +417,6 @@ describe('taking a question', () => {
 
     expect(await takeOne(db, MACHINE)).toBeUndefined()
   })
-
-  it('carries the directory a person pointed it at, and nothing when they did not', async () => {
-    // The one path this deployment stores, and it is stored because somebody typed it. Unchecked
-    // on the way in on purpose: nothing here has seen that machine's disk, so a path that is
-    // wrong is something the machine says on the turn it tries to use it.
-    const pointed = await beginConversation(db, {
-      conversationId: randomUUID(),
-      spaceId: SPACE,
-      machineId: MACHINE,
-      agentKind: 'claude-code',
-      saidBy: PERSON,
-      asked: { text: 'in my own checkout, please' },
-      worksIn: '/Users/mina/code/thing',
-    })
-    if (pointed.kind !== 'begun') throw new Error(`could not open one: ${pointed.kind}`)
-
-    expect(await takeOne(db, MACHINE)).toMatchObject({
-      conversationId: pointed.conversationId,
-      worksIn: '/Users/mina/code/thing',
-      subtaskOf: null,
-    })
-    expect(await takeOne(db, MACHINE)).toBeUndefined()
-
-    await opened('anywhere you like')
-    expect(await takeOne(db, MACHINE)).toMatchObject({ worksIn: null })
-  })
-
   it('is the longest-waiting one when two conversations are both asking', async () => {
     const first = await opened('the older question')
     await opened('the newer question')

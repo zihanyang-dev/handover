@@ -133,9 +133,7 @@ CREATE TABLE public.conversations (
     machine_id uuid NOT NULL,
     agent_kind text NOT NULL,
     agent_session_id text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    works_in text,
-    CONSTRAINT conversations_works_in_check CHECK (((works_in = btrim(works_in)) AND ((char_length(works_in) >= 1) AND (char_length(works_in) <= 512))))
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 

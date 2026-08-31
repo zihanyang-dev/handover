@@ -136,28 +136,21 @@ const Said = named('Said', { text: z.string(), who: z.string().nullable() })
 const EVERYTHING_SAID = z.array(Said).readonly()
 
 /**
- * Where a turn works, as one of three things rather than two nullable paths beside each other.
+ * Where a turn works. A folder of its own, or inside the work it was opened for.
  *
- * Written as two — a directory somebody named, and the conversation this one was opened for —
- * it was possible to say both, and the machine held the rule that one of them wins. Two facts
- * with a precedence between them is one fact said badly: the rule lived on the machine, where
- * neither of them is decided, and saying both was a silent answer rather than a refused one.
+ * There was a third: a directory a person named when they opened the conversation. It was for
+ * somebody who wanted an agent in their own checkout, reading changes they had not committed —
+ * and it asked everybody else, every time they started a chat, a question only that person could
+ * answer. Most people here are not holding a checkout at all.
  *
  * Every case is still the machine's to turn into a path. This says which question it is
  * answering, not where anything is.
  */
 const WhereToWork = z
   .discriminatedUnion('kind', [
-    /** Nobody said. A folder of its own, named after this conversation. */
+    /** The ordinary one: a folder of its own, named after this conversation. */
     z.object({ kind: z.literal('its-own') }),
-    /** A person pointed this conversation at a directory when they opened it. */
-    z.object({ kind: z.literal('somewhere-named'), path: z.string() }),
-    /**
-     * An agent opened this as a sub-task, and it belongs inside the work it was opened for.
-     *
-     * Beats a directory somebody named, which is why these cannot both be said: `subtask/` in
-     * somebody's own checkout is an untracked directory in every `git status` they run.
-     */
+    /** An agent opened this as a sub-task, and it belongs inside the work it was opened for. */
     z.object({ kind: z.literal('under'), conversationId: rowId }),
   ])
   .openapi('WhereToWork')
@@ -345,20 +338,11 @@ function asAsking(taken: Taken) {
   }
 }
 
-/**
- * Which of the three places a turn works in, decided here because this is where both facts are.
- *
- * A sub-task first: it belongs inside the work it was opened for, and that beats a directory
- * somebody named for the same conversation. Nothing can set both today — a hand-off opens the
- * conversation itself and never points it anywhere — but the order is written down rather than
- * left to be true by accident, because the day something does set both, the answer is already
- * decided and it is decided once.
- */
+/** A sub-task belongs inside the work it was opened for; everything else gets its own folder. */
 function whereItWorks(taken: Taken): z.infer<typeof WhereToWork> {
-  if (taken.subtaskOf !== null) return { kind: 'under', conversationId: taken.subtaskOf }
-  if (taken.worksIn !== null) return { kind: 'somewhere-named', path: taken.worksIn }
-
-  return { kind: 'its-own' }
+  return taken.subtaskOf === null
+    ? { kind: 'its-own' }
+    : { kind: 'under', conversationId: taken.subtaskOf }
 }
 
 /**

@@ -24,12 +24,6 @@ describe('where a turn works', () => {
       join(root, 'c-1', 'subtask', 'c-2'),
     )
   })
-
-  it('is the directory a person named, when they named one', () => {
-    expect(
-      whereToWork({ kind: 'somewhere-named', path: '/Users/mina/code/thing' }, 'c-4', root),
-    ).toBe('/Users/mina/code/thing')
-  })
 })
 
 describe('getting it ready', () => {
@@ -70,42 +64,5 @@ describe('getting it ready', () => {
     await prepareWorkspace(deep, root)
 
     expect(await readdir(join(root, 'c-9', 'subtask'))).toEqual(['c-2'])
-  })
-
-  it('refuses a path that does not say where it starts from', async () => {
-    // Resolved instead, it would mean this process's directory — where `connect` was typed when a
-    // person runs it, and `/` when a service manager does. The same conversation would then work
-    // in two different places depending on how the machine was started.
-    expect(
-      await prepareWorkspace(
-        {
-          conversationId: 'c-6',
-          where: { kind: 'somewhere-named', path: 'code/thing' },
-          hasRunBefore: false,
-        },
-        root,
-      ),
-    ).toEqual({ kind: 'not-an-absolute-path', path: 'code/thing' })
-  })
-
-  it('does not make a directory a person named, so a typo reads as a typo', async () => {
-    // Made, the agent would work in an empty folder and find nothing — which reads as the agent
-    // having lost the files rather than as the one thing that really happened.
-    const typo = join(root, 'not-here-at-all')
-
-    expect(
-      await prepareWorkspace(
-        {
-          conversationId: 'c-5',
-          where: { kind: 'somewhere-named', path: typo },
-          hasRunBefore: false,
-        },
-        root,
-      ),
-    ).toEqual({
-      kind: 'no-such-directory',
-      path: typo,
-    })
-    expect(await readdir(root)).not.toContain('not-here-at-all')
   })
 })

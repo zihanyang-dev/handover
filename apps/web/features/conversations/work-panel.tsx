@@ -32,7 +32,7 @@ export function WorkPanel({
   readonly slug: string
   readonly id: string
   readonly underway: Underway
-  readonly location: { readonly machine: string; readonly directory?: string } | undefined
+  readonly location: { readonly machine: string } | undefined
   readonly close?: () => void
   readonly closeRef?: RefObject<HTMLButtonElement | null>
 }) {
@@ -50,10 +50,7 @@ export function WorkPanel({
         <p className="mt-1.5 text-[15px] leading-[22px] font-medium text-ink">{underway.goal}</p>
       </div>
       {location !== undefined && (
-        <p className="mt-2 text-[12px] leading-[17px] text-ink-quiet">
-          {location.machine}
-          {location.directory === undefined ? null : ` · ${location.directory}`}
-        </p>
+        <p className="mt-2 text-[12px] leading-[17px] text-ink-quiet">{location.machine}</p>
       )}
       <WorkState underway={underway} />
       <WorkOwnership slug={slug} id={id} ownerUserId={underway.ownerUserId} />

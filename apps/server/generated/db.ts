@@ -62,7 +62,6 @@ export interface Conversations {
   id: Generated<string>
   machine_id: string
   space_id: string
-  works_in: string | null
 }
 
 export interface Credentials {

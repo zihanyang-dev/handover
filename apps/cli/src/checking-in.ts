@@ -21,7 +21,7 @@ import type { Api } from './api.ts'
 import { findAgents, type Found } from './discovery.ts'
 import { VERSION } from './env.ts'
 import { offering, type Offering } from './offering.ts'
-import { prepareWorkspace, type Workspace } from './workspace.ts'
+import { prepareWorkspace } from './workspace.ts'
 
 /** Short enough that a blip is invisible, long enough not to hammer a server that is down. */
 const RETRY_SECONDS = 5
@@ -375,12 +375,6 @@ async function starting(
   }
 
   const workspace = await prepareWorkspace(asking, machine.workRoot)
-  if (workspace.kind !== 'ready') {
-    const why = whyItCannotWorkThere(workspace)
-    machine.say(why.said)
-
-    return cannot(api, asking, machine, why.written)
-  }
 
   if (workspace.startedOver) {
     machine.say(`nothing left in ${workspace.path}; starting over`)
@@ -390,32 +384,6 @@ async function starting(
   machine.say(`answering in ${asking.conversationId}, in ${workspace.path}`)
 
   return startAnswering(api, asking, agent, { machine, where: workspace.path })
-}
-
-/**
- * Why a turn cannot begin where it was going to, in the two voices it has to be said in.
- *
- * A terminal line and a sentence in the transcript are different audiences: one is somebody
- * watching a machine, the other is somebody reading a conversation days later. Said once each,
- * here, so a fourth way for a workspace to be unusable cannot quietly become a fourth copy of
- * this — or worse, fall through as though the folder were fine.
- */
-function whyItCannotWorkThere(workspace: Exclude<Workspace, { kind: 'ready' }>): {
-  readonly said: string
-  readonly written: string
-} {
-  switch (workspace.kind) {
-    case 'not-an-absolute-path':
-      return {
-        said: `${workspace.path} does not say where it starts from`,
-        written: `${workspace.path} is not a full path, so this machine cannot tell where it means.`,
-      }
-    case 'no-such-directory':
-      return {
-        said: `no directory at ${workspace.path}`,
-        written: `There is no directory at ${workspace.path} on this machine.`,
-      }
-  }
 }
 
 function cannot(api: Api, asking: Asking, machine: Machine, text: string): Answering {

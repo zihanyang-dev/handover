@@ -3575,10 +3575,6 @@ export interface components {
             kind: "its-own";
         } | {
             /** @enum {string} */
-            kind: "somewhere-named";
-            path: string;
-        } | {
-            /** @enum {string} */
             kind: "under";
             /** Format: uuid */
             conversationId: string;
@@ -3788,7 +3784,6 @@ export interface components {
             /** @enum {string} */
             agentKind: "claude-code" | "codex";
             asked: components["schemas"]["Asked"];
-            worksIn?: string;
         };
         SayThis: {
             key: string;

@@ -90,9 +90,6 @@ function agentPresentation(agent: InstalledAgent | undefined, kind: string): Cha
   return {
     avatarSrc: agent.avatarUrl,
     name: agentName(agent.kind, agent.name),
-    location: {
-      machine: agent.machineName,
-      ...(agent.connectedIn === undefined ? {} : { directory: agent.connectedIn }),
-    },
+    location: { machine: agent.machineName },
   }
 }

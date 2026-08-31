@@ -59,7 +59,7 @@ export function HandoverProposal({
   readonly id: string
   readonly proposalSeq: number
   readonly goal: string
-  readonly location: { readonly machine: string; readonly directory?: string } | undefined
+  readonly location: { readonly machine: string } | undefined
   readonly status: ProposalStatus
 }) {
   const handOver = useHandOver(slug, id)
@@ -73,10 +73,7 @@ export function HandoverProposal({
         Nothing carries on by itself until you confirm this goal.
       </p>
       {location !== undefined && (
-        <p className="mt-1 text-[12px] leading-[17px] text-ink-quiet">
-          {location.machine}
-          {location.directory === undefined ? null : ` · ${location.directory}`}
-        </p>
+        <p className="mt-1 text-[12px] leading-[17px] text-ink-quiet">{location.machine}</p>
       )}
       <div className="mt-3 flex items-center justify-end gap-2">
         {status === 'handed-over' && (

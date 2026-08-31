@@ -233,7 +233,6 @@ describe('entering a Space', () => {
     await waitFor(() => {
       expect(asked.body).toMatchObject({ machineId: 'm-1' })
     })
-    expect(asked.body).not.toHaveProperty('worksIn')
   })
 
   it('creates the conversation with the first message only when it is sent', async () => {

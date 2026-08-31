@@ -71,14 +71,6 @@ export type Beginning = {
   readonly conversationId: string
   readonly saidBy: string
   readonly asked: Asked
-  /**
-   * A directory on that machine to work in, when a person has one in mind.
-   *
-   * Absent nearly always, and then the machine works somewhere of its own. Not checked here and
-   * not checkable: this deployment has never seen that machine's disk, and a path that is wrong
-   * is something the machine says on the turn it tries to use it.
-   */
-  readonly worksIn?: string | undefined
 }
 
 export type Begun =
@@ -149,7 +141,6 @@ export async function beginConversation(db: Database, beginning: Beginning): Pro
         space_id: beginning.spaceId,
         machine_id: machine.id,
         agent_kind: beginning.agentKind,
-        works_in: beginning.worksIn ?? null,
       })
       .execute()
 
