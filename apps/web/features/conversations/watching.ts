@@ -171,6 +171,50 @@ type Listening = {
 }
 
 /**
+ * A wait that doubles up to a cap, and starts over whenever something works.
+ *
+ * Asking again the instant a server says no is asking as fast as that server can refuse.
+ */
+function slowerEachTime(from: number, upTo: number) {
+  let waiting = from
+
+  return {
+    next: (): number => {
+      const now = waiting
+      waiting = Math.min(waiting * 2, upTo)
+      return now
+    },
+    fromTheTop: (): void => {
+      waiting = from
+    },
+  }
+}
+
+/**
+ * What one stream means while it lasts, and the two moments outside it have to know about.
+ *
+ * `gaveUp` is the browser having stopped for good, and nothing else. It retries by itself, and
+ * while it is doing that this has nothing to add — a second stream opened then would mean hearing
+ * everything twice. The one case it will not retry is a server that answered and said no: a 401
+ * whose session ran out, a 404, the wrong content type.
+ */
+function listenTo(
+  stream: EventSource,
+  listening: Listening,
+  answered: () => void,
+  gaveUp: () => void,
+): void {
+  stream.onopen = () => {
+    answered()
+    listening.opened()
+  }
+  stream.onmessage = listening.arrived
+  stream.onerror = () => {
+    if (stream.readyState === EventSource.CLOSED) gaveUp()
+  }
+}
+
+/**
  * Keeps a stream open for exactly as long as somebody is looking at this page, and returns the way
  * to stop.
  *
@@ -190,7 +234,7 @@ type Listening = {
 export function streamWhileLookedAt(open: () => EventSource, listening: Listening): () => void {
   let live: EventSource | undefined
   let asking: ReturnType<typeof setTimeout> | undefined
-  let askAgainIn = ASK_AGAIN_FROM_MS
+  const wait = slowerEachTime(ASK_AGAIN_FROM_MS, ASK_AGAIN_UP_TO_MS)
 
   function stop(): void {
     if (asking !== undefined) clearTimeout(asking)
@@ -199,36 +243,20 @@ export function streamWhileLookedAt(open: () => EventSource, listening: Listenin
     live = undefined
   }
 
+  function askAgain(): void {
+    stop()
+    asking = setTimeout(() => {
+      asking = undefined
+      start()
+    }, wait.next())
+  }
+
   function start(): void {
     if (live !== undefined || asking !== undefined) return
     if (document.visibilityState === 'hidden') return
 
-    const stream = open()
-    live = stream
-
-    stream.onopen = () => {
-      // It answered, so whatever it took to get here is not what the next failure is worth.
-      askAgainIn = ASK_AGAIN_FROM_MS
-      listening.opened()
-    }
-    stream.onmessage = listening.arrived
-
-    // The browser retries by itself, and while it is doing that this has nothing to add — a second
-    // stream opened here would mean hearing everything twice. The one case it will not retry is a
-    // server that answered and said no: a 401 whose session ran out, a 404, the wrong content
-    // type. Then it is closed for good and only the page can ask again, which it does slower each
-    // time, because asking the instant a server says no is asking as fast as that server can
-    // refuse.
-    stream.onerror = () => {
-      if (stream.readyState !== EventSource.CLOSED) return
-
-      stop()
-      asking = setTimeout(() => {
-        asking = undefined
-        start()
-      }, askAgainIn)
-      askAgainIn = Math.min(askAgainIn * 2, ASK_AGAIN_UP_TO_MS)
-    }
+    live = open()
+    listenTo(live, listening, wait.fromTheTop, askAgain)
   }
 
   function lookedAt(): void {
@@ -241,7 +269,7 @@ export function streamWhileLookedAt(open: () => EventSource, listening: Listenin
     // being slow at the one moment it is being looked at.
     if (asking !== undefined) clearTimeout(asking)
     asking = undefined
-    askAgainIn = ASK_AGAIN_FROM_MS
+    wait.fromTheTop()
     start()
   }
 
