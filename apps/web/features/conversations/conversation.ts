@@ -155,7 +155,15 @@ export function mergeTranscript(
   const bySeq = new Map(current.messages.map((message) => [message.seq, message]))
   for (const message of tail.messages) bySeq.set(message.seq, message)
   const messages = [...bySeq.values()].sort((left, right) => left.seq - right.seq)
-  return { ...current, ...tail, messages }
+
+  // The answer as it stands, and only the lines are added to. Everything else here is a fact
+  // about the conversation right now, and spreading one object over another can only ever add a
+  // key — so a piece of work that ended, a plan that was never written, an agent that stopped
+  // offering anything all arrive as a key that is simply absent, and survived. Taking work back
+  // left its panel on screen with nothing behind it for exactly this reason.
+  const { messages: _lines, ...now } = tail
+
+  return { ...now, messages }
 }
 
 /**

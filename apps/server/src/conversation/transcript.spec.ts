@@ -8,7 +8,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY, Asked, ends, Reported, sameQuestion, wentWrong } from './transcript.ts'
+import {
+  ACTIVITY,
+  Asked,
+  ends,
+  planIn,
+  Reported,
+  sameQuestion,
+  STEP,
+  wentWrong,
+} from './transcript.ts'
 
 const ASKED = { text: 'ship it', model: 'a-model', effort: 'high' }
 
@@ -77,5 +86,46 @@ describe('how long a line may be', () => {
 
     expect(said('x'.repeat(60_000))).toBe(true)
     expect(said('x'.repeat(70_000))).toBe(false)
+  })
+})
+
+describe('the plan as it stands', () => {
+  const planned = (...steps: readonly (readonly [string, string])[]) =>
+    ({
+      role: 'activity' as const,
+      content: {
+        activityType: ACTIVITY.planned,
+        steps: steps.map(([text, state]) => ({ text, state })),
+      },
+    }) as never
+
+  const spoke = { role: 'assistant' as const, content: { text: 'working on it' } } as never
+
+  it('is the last one written, not the first', () => {
+    // Changing its mind is the thing worth watching, and a page showing the opening plan while
+    // the agent works to a different one is a page that is quietly lying.
+    const plan = planIn([
+      planned(['read the code', STEP.done]),
+      spoke,
+      planned(['read the code', STEP.done], ['write the test', STEP.doing]),
+    ])
+
+    expect(plan?.map((step) => step.text)).toEqual(['read the code', 'write the test'])
+    expect(plan?.[1]?.state).toBe(STEP.doing)
+  })
+
+  it('is nothing at all when no plan was ever written', () => {
+    // An agent that does not plan is not a broken agent, and this is what the page shows nothing
+    // for. Never an empty plan, which reads as "it planned to do nothing".
+    expect(planIn([spoke])).toBeUndefined()
+  })
+
+  it('is nothing rather than half of something when a line is misshapen', () => {
+    const wrong = {
+      role: 'activity' as const,
+      content: { activityType: ACTIVITY.planned, steps: [{ text: 'x', state: 'whenever' }] },
+    } as never
+
+    expect(planIn([wrong])).toBeUndefined()
   })
 })

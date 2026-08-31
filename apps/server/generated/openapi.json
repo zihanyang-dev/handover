@@ -1498,6 +1498,13 @@
           "earlier": {
             "type": "boolean"
           },
+          "plan": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "maxItems": 100
+          },
           "underway": {
             "$ref": "#/components/schemas/Underway"
           }
@@ -1710,6 +1717,28 @@
         "additionalProperties": {
           "nullable": true
         }
+      },
+      "PlanStep": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "doing",
+              "done"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "state"
+        ]
       },
       "Underway": {
         "type": "object",

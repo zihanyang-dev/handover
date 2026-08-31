@@ -254,3 +254,36 @@ describe('Codex app-server events', () => {
     expect(told).toEqual([{ told: 'ended', why }])
   })
 })
+
+describe('a plan Codex sends', () => {
+  const planning = (...plan: readonly (readonly [string, string])[]) =>
+    toldFromNotification(
+      notification('turn/planUpdated', {
+        plan: plan.map(([step, status]) => ({ step, status })),
+        explanation: 'changed my mind about the order',
+      }),
+      TURN,
+      new Map<string, OutputProgress>(),
+    )
+
+  it("says the steps in this side's words, whichever way Codex spells them", () => {
+    // `inProgress` here, `in_progress` on the other adapter, `doing` on the page. The spelling is
+    // settled in one place so nothing above ever meets two of them.
+    expect(planning(['read the code', 'completed'], ['write the test', 'inProgress'])).toEqual([
+      {
+        told: 'said',
+        said: {
+          said: 'planned',
+          steps: [
+            { text: 'read the code', state: 'done' },
+            { text: 'write the test', state: 'doing' },
+          ],
+        },
+      },
+    ])
+  })
+
+  it('says nothing rather than part of a plan', () => {
+    expect(planning(['read the code', 'whenever'])).toEqual([])
+  })
+})

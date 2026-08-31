@@ -12,6 +12,7 @@ import {
   type Agent,
   type Asked,
   type Model,
+  type PlanStep,
   type Said,
   type Talk,
   type Told,
@@ -317,6 +318,38 @@ function troubleFrom(params: Record<string, unknown>): Told[] {
   return said === '' ? [] : [{ told: 'said', said: { said: 'trouble', text: said } }]
 }
 
+/** What Codex calls the three states, in this side's words. */
+const STEP_STATE: Record<string, PlanStep['state']> = {
+  pending: 'waiting',
+  inProgress: 'doing',
+  completed: 'done',
+}
+
+/**
+ * A plan, out of the notification that carries one.
+ *
+ * Whole every time — `turn/planUpdated` sends the plan and not a change to it — so this never has
+ * to merge anything, and saying it twice is saying it once. Anything misshapen is no plan rather
+ * than part of one: a page showing three of seven steps has nothing on it to say four are gone.
+ *
+ * The explanation Codex may send alongside is dropped. It is a sentence about why the plan
+ * changed, and the plan changing is already a line in the transcript with both versions either
+ * side of it — which says the same thing and cannot go out of date.
+ */
+function planFrom(params: Record<string, unknown>): Told[] {
+  const plan = params['plan']
+  if (!Array.isArray(plan) || plan.length === 0) return []
+
+  const steps = plan.flatMap((one) => {
+    const item = asRecord(one)
+    const state = STEP_STATE[text(item?.['status'])]
+    const step = text(item?.['step'])
+    return state === undefined || step === '' ? [] : [{ text: step, state }]
+  })
+
+  return steps.length === plan.length ? [{ told: 'said', said: { said: 'planned', steps } }] : []
+}
+
 /** One app-server notification in Handover's words. Token deltas are deliberately not replayed. */
 export function toldFromNotification(
   notification: AppNotification,
@@ -330,6 +363,7 @@ export function toldFromNotification(
   if (notification.method === 'item/commandExecution/outputDelta')
     return outputFrom(params, outputs)
   if (notification.method === 'item/completed') return completedFrom(params, outputs)
+  if (notification.method === 'turn/planUpdated') return planFrom(params)
   if (notification.method === 'turn/completed') return [turnEnding(params)]
   if (notification.method === 'error') return troubleFrom(params)
   return []

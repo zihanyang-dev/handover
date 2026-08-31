@@ -15,6 +15,7 @@ import {
 import {
   type Agent,
   type Asked,
+  type PlanStep,
   type Model,
   type Said,
   type Talk,
@@ -39,15 +40,44 @@ const VERBS: Record<string, { readonly verb: string; readonly arg: (input: Input
   WebFetch: { verb: 'fetched', arg: (i) => plain(i['url']) },
   WebSearch: { verb: 'searched the web', arg: (i) => plain(i['query']) },
   Task: { verb: 'delegated', arg: (i) => plain(i['description']) },
-  // A count, not a list: a plan belongs on the page as a plan, and this line is only meant to
-  // say that one was made. A missing or misshapen field counts as nothing rather than throwing.
-  TodoWrite: {
-    verb: 'planned',
-    arg: (i) => `${Array.isArray(i['todos']) ? i['todos'].length : 0} steps`,
-  },
 }
 
 type Input = Record<string, unknown>
+
+/** The tool that is a plan rather than a thing done. */
+const PLANS_WITH = 'TodoWrite'
+
+/** Held for a plan's call id, so its result can be recognised and dropped. */
+const PLANNING: Call = { name: PLANS_WITH, verb: '', arg: '' }
+
+/** What Claude Code calls the three states, in this side's words. */
+const STEP_STATE: Record<string, PlanStep['state']> = {
+  pending: 'waiting',
+  in_progress: 'doing',
+  completed: 'done',
+}
+
+/**
+ * A plan, out of the tool call that writes one.
+ *
+ * `TodoWrite` is a tool to Claude Code and a plan to a person, and it is the second that belongs
+ * on the page — which is what the line this replaces said it was waiting for. Anything misshapen
+ * is no plan rather than half of one: a page showing three of seven steps is worse than a page
+ * showing none, because nothing on it says the other four are missing.
+ */
+function planFrom(input: Input): readonly PlanStep[] | undefined {
+  const todos = input['todos']
+  if (!Array.isArray(todos) || todos.length === 0) return undefined
+
+  const steps = todos.flatMap((one) => {
+    const todo = one as Record<string, unknown>
+    const state = STEP_STATE[plain(todo['status'])]
+    const text = plain(todo['content'])
+    return state === undefined || text === '' ? [] : [{ text, state }]
+  })
+
+  return steps.length === todos.length ? steps : undefined
+}
 
 /** A tool call that has begun, held until its result comes back to be paired with it. */
 type Call = { readonly name: string; readonly verb: string; readonly arg: string }
@@ -97,17 +127,31 @@ export function fold(): (message: unknown, source?: 'assistant' | 'user') => rea
         return [{ said: 'text', text: plain(block['text']) }]
       if (source === 'assistant' && block['type'] === 'thinking')
         return [{ said: 'thinking', text: plain(block['thinking']) }]
-      if (source === 'assistant' && block['type'] === 'tool_use') return [beginning(started, block)]
+      if (source === 'assistant' && block['type'] === 'tool_use') {
+        const begun = beginning(started, block)
+        return begun === undefined ? [] : [begun]
+      }
       if (source === 'user' && block['type'] === 'tool_result') return finishing(started, block)
 
       return []
     })
 }
 
-function beginning(started: Map<string, Call>, block: Record<string, unknown>): Said {
+function beginning(started: Map<string, Call>, block: Record<string, unknown>): Said | undefined {
   const callId = plain(block['id'])
   const name = plain(block['name'])
-  const { verb, arg } = asDoing(name, (block['input'] ?? {}) as Input)
+  const input = (block['input'] ?? {}) as Input
+
+  // The one tool call that is not one. Left as a tool row it would be a line saying a list was
+  // written, followed by nothing that says what is on it — and its result, which is only ever
+  // the same list read back, would be a second row saying so again.
+  if (name === PLANS_WITH) {
+    const steps = planFrom(input)
+    started.set(callId, PLANNING)
+    return steps === undefined ? undefined : { said: 'planned', steps }
+  }
+
+  const { verb, arg } = asDoing(name, input)
   started.set(callId, { name, verb, arg })
 
   return { said: 'doing', callId, name, verb, arg }
@@ -119,6 +163,8 @@ function finishing(started: Map<string, Call>, block: Record<string, unknown>): 
   if (call === undefined) return []
 
   started.delete(id)
+  // A plan's result is the plan read back. It was already said when it was written.
+  if (call === PLANNING) return []
   return [
     {
       said: 'did',

@@ -91,3 +91,31 @@ describe('a page of older lines and a catch-up at the same time', () => {
     expect(mergeTranscript(held, overlapping).messages.map((one) => one.seq)).toEqual([3, 4, 5])
   })
 })
+
+describe('something that stops being underway', () => {
+  type Transcript = Exclude<Parameters<typeof mergeTranscript>[0], null | undefined>
+
+  const base = {
+    id: 'conversation',
+    agentKind: 'codex',
+    machineId: 'm-1',
+    working: { state: 'idle' },
+    offers: [],
+    earlier: false,
+    messages: [],
+  }
+
+  it('is gone from the page, not kept because the answer stopped mentioning it', () => {
+    // Taking work back ends the task, so the read that follows carries no `underway` key at all —
+    // not the key set to nothing, the key absent. Spreading one object over another only ever
+    // adds keys, so the finished piece of work survived every merge and its panel stayed on
+    // screen with nothing behind it.
+    const withWork = {
+      ...base,
+      underway: { taskId: 't-1', goal: 'add retries', state: 'wait' },
+    } as unknown as Transcript
+    const afterwards = { ...base } as unknown as Transcript
+
+    expect(mergeTranscript(withWork, afterwards).underway).toBeUndefined()
+  })
+})

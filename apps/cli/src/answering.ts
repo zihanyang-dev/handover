@@ -342,6 +342,14 @@ function where(said: Said): { written?: Written; now?: readonly Unkept[] } {
     return { now: [said] }
   }
   if (said.said === 'text') return { written: { role: 'assistant', content: { text: said.text } } }
+  // Written and not shown-and-dropped. A plan is the one thing here somebody arriving late needs
+  // most, and the version it replaced is what says the agent changed its mind rather than always
+  // having meant this.
+  if (said.said === 'planned') {
+    return {
+      written: { role: 'activity', content: { activityType: 'planned', steps: said.steps } },
+    }
+  }
   if (said.said === 'trouble') {
     return { written: { role: 'activity', content: { activityType: 'trouble', text: said.text } } }
   }

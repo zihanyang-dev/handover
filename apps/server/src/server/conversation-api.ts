@@ -10,7 +10,15 @@
 
 import { z } from '@hono/zod-openapi'
 import { Models } from '../conversation/offers.ts'
-import { Asked, Reported, Spoken, unreadable } from '../conversation/transcript.ts'
+import {
+  Asked,
+  Message as Written,
+  Plan,
+  planIn,
+  Reported,
+  Spoken,
+  unreadable,
+} from '../conversation/transcript.ts'
 import type { Database } from '../db/connection.ts'
 import {
   askToStop,
@@ -187,6 +195,17 @@ const Transcript = named('Transcript', {
    * it is the only thing that stops a page asking for what came before for ever.
    */
   earlier: z.boolean(),
+  /**
+   * What the agent means to do, as it stands.
+   *
+   * Read out of the lines rather than stored beside them, so there is one place a plan lives and
+   * it is the same place everything else that happened lives. Absent when no plan was ever
+   * written, which is an agent that does not plan and not an agent in trouble.
+   *
+   * Sent even when the page holding it has scrolled past the line it came from — which is the
+   * whole reason it is here and not left for the browser to find.
+   */
+  plan: Plan.optional(),
   underway: Underway.optional(),
 })
 
@@ -521,11 +540,15 @@ function naming({ db }: ConversationApi) {
  */
 function asTranscript(reading: Reading) {
   const offers = Models.safeParse(reading.offers)
+  // Out of the rows as they are, not the wire shapes below: a plan is read from what was
+  // actually written down, and a line this route could not parse is not a line that changes it.
+  const plan = planIn(reading.messages.flatMap((one) => Written.safeParse(one).data ?? []))
 
   return {
     ...reading,
     underway: asUnderway(reading.underway),
     offers: offers.success ? offers.data : [],
+    ...(plan === undefined ? {} : { plan }),
     messages: reading.messages.map((one) => {
       const read = Spoken.safeParse({ ...one, at: one.at.toISOString() })
       return read.success ? read.data : unreadable(one.seq, one.at)

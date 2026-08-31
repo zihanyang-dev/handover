@@ -257,3 +257,59 @@ async function sessionOf(context: import('@playwright/test').BrowserContext): Pr
 
   return session.value
 }
+
+test('a plan you can watch, and watch change', async ({ page, context }) => {
+  await signsIn(page, 'mina')
+  const slug = await makesASpace(page)
+  const machine = await aMachine(await sessionOf(context), 'planning-mbp', slug)
+  await machine.poll()
+  await picks(page, 'planning-mbp')
+
+  await page.getByLabel(/^Message /u).fill('add retries to the client')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page).toHaveURL(/\/c\//u)
+
+  const turn = await waitsForATurn(machine)
+
+  // ① It sets out what it means to do, and the page says how far along without being opened.
+  await machine.says(turn, {
+    role: 'activity',
+    content: {
+      activityType: 'planned',
+      steps: [
+        { text: 'read the client', state: 'done' },
+        { text: 'add the retry loop', state: 'doing' },
+        { text: 'write a test', state: 'waiting' },
+      ],
+    },
+  })
+  await expect(page.getByRole('region', { name: 'Plan' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('1 of 3')).toBeVisible()
+  // The step itself, not the word "working": what it is doing is the thing worth a glance.
+  await expect(page.getByText('add the retry loop')).toBeVisible()
+
+  // ② It changes its mind. The page shows the plan it is working to now, not the one it opened
+  //    with — which is the whole reason this is pinned rather than left in the transcript.
+  await machine.says(turn, {
+    role: 'activity',
+    content: {
+      activityType: 'planned',
+      steps: [
+        { text: 'read the client', state: 'done' },
+        { text: 'add the retry loop', state: 'done' },
+        { text: 'back off between tries', state: 'doing' },
+        { text: 'write a test', state: 'waiting' },
+      ],
+    },
+  })
+  await expect(page.getByText('2 of 4')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('back off between tries')).toBeVisible()
+
+  // ③ Closed by default, and the whole of it is one click away.
+  await page.getByRole('button', { name: /of 4/u }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'write a test' })).toBeVisible()
+
+  // ④ Both versions are still in the transcript, in the order they happened — which is what says
+  //    it changed its mind rather than always having meant this.
+  await expect(page.getByText('It set out what it means to do')).toHaveCount(2)
+})
