@@ -15,12 +15,14 @@
  * names, which is the same thing a `useId` would have done and says so out loud.
  */
 
-import type { KeyboardEvent, ReactNode } from 'react'
+import { Fragment, type KeyboardEvent, type ReactNode } from 'react'
 
 export type Tab = {
   readonly id: string
   readonly label: string
   readonly icon?: ReactNode
+  /** Optional visual group label. It is presentation; every tab remains in one keyboard set. */
+  readonly group?: string
 }
 
 function tabId(name: string, tab: string): string {
@@ -68,6 +70,7 @@ export function TabList({
   className,
   tabClassName,
   renderTab,
+  renderGroup,
 }: {
   readonly name: string
   readonly label: string
@@ -80,6 +83,8 @@ export function TabList({
   readonly tabClassName?: string
   /** What is inside one tab. Its attributes are this file's; what it looks like is the screen's. */
   readonly renderTab: (tab: Tab) => ReactNode
+  /** A presentation-only heading before the first tab in a visual group. */
+  readonly renderGroup?: (group: string) => ReactNode
 }) {
   // Selection follows focus, which is right exactly while a panel costs nothing to show: every
   // one of these is already loaded, so arrowing through them shows them rather than making
@@ -102,22 +107,24 @@ export function TabList({
       onKeyDown={move}
     >
       {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          id={tabId(name, tab.id)}
-          className={tabClassName}
-          type="button"
-          role="tab"
-          aria-selected={tab.id === active}
-          aria-controls={panelId(name, tab.id)}
-          // One stop for the whole strip: inside it the arrows move, and Tab leaves it.
-          tabIndex={tab.id === active ? 0 : -1}
-          onClick={() => {
-            choose(tab.id)
-          }}
-        >
-          {renderTab(tab)}
-        </button>
+        <Fragment key={tab.id}>
+          {tab.group === undefined ? null : renderGroup?.(tab.group)}
+          <button
+            id={tabId(name, tab.id)}
+            className={tabClassName}
+            type="button"
+            role="tab"
+            aria-selected={tab.id === active}
+            aria-controls={panelId(name, tab.id)}
+            // One stop for the whole strip: inside it the arrows move, and Tab leaves it.
+            tabIndex={tab.id === active ? 0 : -1}
+            onClick={() => {
+              choose(tab.id)
+            }}
+          >
+            {renderTab(tab)}
+          </button>
+        </Fragment>
       ))}
     </div>
   )

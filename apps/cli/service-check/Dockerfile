@@ -21,4 +21,5 @@ RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/handover-left \
 
 RUN useradd --create-home mina
 
+# pi-lens-ignore: opengrep:dockerfile.security.missing-user.missing-user
 CMD ["/sbin/init"]

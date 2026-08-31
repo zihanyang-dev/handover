@@ -17,7 +17,9 @@ import { Pool } from 'pg'
 import { loadEnv } from '../src/env.ts'
 
 const env = loadEnv()
-const name = new URL(env.DATABASE_URL).pathname.slice(1)
+const target = URL.parse(env.DATABASE_URL)
+if (target === null) throw new Error('DATABASE_URL is not a URL')
+const name = target.pathname.slice(1)
 
 if (!name.endsWith('_test')) {
   throw new Error(`refusing to empty ${name}: this script is only ever pointed at a test database`)
@@ -31,6 +33,7 @@ const { rows } = await pool.query<{ tables: string }>(`
 `)
 
 const tables = rows[0]?.tables
+// pi-lens-ignore: sql-injection
 if (tables !== undefined) await pool.query(`truncate ${tables} restart identity cascade`)
 
 await pool.end()

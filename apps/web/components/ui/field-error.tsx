@@ -13,7 +13,7 @@ export function FieldError({
   return (
     <p
       id={id}
-      className="auth-error"
+      className="field-error"
       role={shown ? 'alert' : undefined}
       data-shown={shown ? '' : undefined}
     >

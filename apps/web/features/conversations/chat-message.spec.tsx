@@ -28,8 +28,8 @@ describe('chat message', () => {
     )
   })
 
-  it('copies without adding a native tooltip', () => {
-    const writeText = vi.fn()
+  it('copies without adding a native tooltip', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
@@ -45,6 +45,22 @@ describe('chat message', () => {
     expect(copy.hasAttribute('title')).toBe(false)
     fireEvent.click(copy)
     expect(writeText).toHaveBeenCalledWith('Hello')
-    expect(screen.getByRole('button', { name: 'Copied' }).tagName).toBe('BUTTON')
+    expect((await screen.findByRole('button', { name: 'Copied' })).tagName).toBe('BUTTON')
+  })
+
+  it('does not report success when the clipboard refuses the message', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('not allowed')) },
+    })
+    render(
+      <ChatMessage placement="right" at="2026-08-28T12:00:00.000Z" copyText="Hello">
+        <p>Hello</p>
+      </ChatMessage>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy message' }))
+
+    expect((await screen.findByRole('button', { name: 'Could not copy' })).tagName).toBe('BUTTON')
   })
 })

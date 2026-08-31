@@ -32,7 +32,9 @@ function Screen() {
       <main className="home-state">
         <div>
           <h1>Could not read this Space</h1>
-          <p className="empty">Try again in a moment.</p>
+          <p className="empty" role="alert">
+            Try again in a moment.
+          </p>
         </div>
       </main>
     )

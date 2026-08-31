@@ -15,6 +15,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -26,7 +27,7 @@ import { Inbox } from '../conversations/inbox.tsx'
 import type { Me } from '../identity/me.ts'
 import { ChatIcon, CollapseIcon, HomeIcon, InboxIcon, MenuIcon } from './sidebar-icons.tsx'
 import { SpaceMenu } from './space-menu.tsx'
-import { SpaceSettings } from './space-settings.tsx'
+import { SpaceSettings, type SettingsSection } from './space-settings.tsx'
 
 type Space = Me['spaces'][number]
 
@@ -123,9 +124,9 @@ function SpaceHeader({
 }) {
   const { isOpen, setIsOpen, root, trigger } = useSpaceMenu()
   const navigate = useNavigate()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>()
   const closeSettings = useCallback(() => {
-    setSettingsOpen(false)
+    setSettingsSection(undefined)
     setTimeout(() => {
       trigger.current?.focus()
     })
@@ -171,18 +172,19 @@ function SpaceHeader({
           close={() => {
             setIsOpen(false)
           }}
-          openSettings={() => {
+          openSettings={(section) => {
             setIsOpen(false)
-            setSettingsOpen(true)
+            setSettingsSection(section)
           }}
         />
       )}
-      {settingsOpen && (
+      {settingsSection !== undefined && (
         <SpaceSettings
           space={space}
           close={closeSettings}
+          initialSection={settingsSection}
           afterLeaving={() => {
-            setSettingsOpen(false)
+            setSettingsSection(undefined)
             void navigate({ to: '/' })
           }}
         />
@@ -226,6 +228,7 @@ function ResizeRail({
   return (
     <div className="home-sidebar-resize">
       <hr
+        role="separator"
         tabIndex={0}
         aria-label="Resize with left and right arrow keys"
         aria-orientation="vertical"
@@ -282,6 +285,7 @@ function MainPane({
   space,
   where,
   sidebarOpen,
+  blocked,
   openSidebar,
   openButton,
   children,
@@ -289,6 +293,7 @@ function MainPane({
   readonly space: Space
   readonly where: string
   readonly sidebarOpen: boolean
+  readonly blocked: boolean
   readonly openSidebar: () => void
   readonly openButton: RefObject<HTMLButtonElement | null>
   readonly children: ReactNode
@@ -296,7 +301,7 @@ function MainPane({
   const canvas = where === 'Home' || where === 'Chat'
 
   return (
-    <main className="home-main">
+    <main className="home-main" inert={blocked ? true : undefined}>
       {(!canvas || !sidebarOpen) && (
         <header className="home-topbar">
           {!sidebarOpen && (
@@ -334,6 +339,20 @@ function MainPane({
   )
 }
 
+const NARROW_SIDEBAR = '(max-width: 48rem)'
+
+function sidebarOverlays(): boolean {
+  return window.matchMedia(NARROW_SIDEBAR).matches
+}
+
+function watchSidebarWidth(changed: () => void): () => void {
+  const media = window.matchMedia(NARROW_SIDEBAR)
+  media.addEventListener('change', changed)
+  return () => {
+    media.removeEventListener('change', changed)
+  }
+}
+
 /** Which view the address implies. Opening a conversation is the sidebar's cue to list them. */
 function viewFor(where: string): string {
   return where === 'Chat' ? 'chat' : 'home'
@@ -345,6 +364,7 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [resizing, setResizing] = useState(false)
   const [chosenView, setChosenView] = useState<string>()
+  const overlaysMain = useSyncExternalStore(watchSidebarWidth, sidebarOverlays, () => false)
   // Both halves answer the same question — which view is showing. Until somebody picks one the
   // address goes on deciding, so walking into a conversation brings the chat list with it; after
   // a pick it is theirs, and moving around does not take it back.
@@ -384,6 +404,7 @@ export function Home({ space, children }: { readonly space: Space; readonly chil
         space={space}
         where={where}
         sidebarOpen={isOpen}
+        blocked={isOpen && overlaysMain}
         openSidebar={open}
         openButton={openButton}
       >

@@ -185,8 +185,8 @@ tasks
   id
   conversation_id   哪段对话
   parent_id         开它的那件事。null = 你交办的
-  owner_user_id     谁负责
-  goal              它复述、你点头的那句话。有界,进来就校验
+  owner_user_id     谁负责。页面投影也带这个 id,否则转交菜单不知道当前是谁
+  goal              它复述、你点头的那句话。有界,从被确认的 transcript 行读出来再校验
   state             working | wait | sleep | done
   sleep_until       只有 sleep 时有值
   created_at · ended_at
@@ -253,16 +253,23 @@ taken-back    你收回了
 
 ```
 handover task new "…"     它写一张卡片进 transcript(不带 --to)
-POST .../hand-over        你点「交给它」,这时才建 tasks 那一行
+POST .../hand-over        你点「交给它」,只交那张卡片的 seq,这时才建 tasks 那一行
 ```
 
-第一步只是一条活动,没有 task。第二步做三件事,一个事务:
+第一步只是一条活动,没有 task。第二步在 conversation 的锁里做完,一个事务:
 
 ```
-写一条 activity  handed-over
-建一行 tasks     goal 来自那张卡片,state = working
+读 proposalSeq     必须指向 proposed,而且是最后一次人说话之后最新的 proposed
+读 goal            从那一行的 text 读,不接受浏览器再交一份
+写一条 activity    handed-over
+建一行 tasks       state = working
 wakeMachine
 ```
+
+「当前卡片」不是 transcript 最后一行 —— `proposed` 后面还可能有同一轮的 tool result 和 done。
+它是**最后一次人说话之后最新的 `proposed`**。后来的人话说明还在纠正;后来的 `proposed` 说明 agent
+已经换了一张。两种都会让旧 seq 失效。conversation 的锁让「检查当前」和「建 task」之间插不进
+另一句话。
 
 **卡片上的那句话就是 `goal`,一个字不改。** 你点头的是它的复述 —— 那是这句话有资格当身份的
 唯一理由。你按「不对」,什么都没建出来,接着聊。
@@ -454,7 +461,7 @@ cannot        它判断这件事做不成,再试没有意义
 
 ```
 人这一侧
-POST   /spaces/{slug}/conversations/{id}/task      交办 = 建一件事。body: { key, goal }
+POST   /spaces/{slug}/conversations/{id}/task      交办 = 建一件事。body: { key, proposalSeq }
 DELETE /spaces/{slug}/conversations/{id}/task      收回 = 结束它,连它底下的一起
 GET    /me/inbox                                   跨 Space,所有在等你的事
 
@@ -519,7 +526,10 @@ PUT    /machines/current/conversations/{id}/task/outputs/{title}   写下一份�
 ```
 交办
   说「你自己做吧」→ 只写了一条卡片活动,没有 tasks 行
-  点「交给它」    → 建了一行 working,goal 和卡片上一字不差
+  点「交给它」    → 建了一行 working,goal 由 proposalSeq 指向的卡片读出,一字不差
+  proposal 之后人又说过话       → 旧 seq 被拒绝
+  后面又有一张 proposal          → 旧 seq 被拒绝,新 seq 能交
+  把别的消息 seq 冒充 proposal   → 被拒绝
   点「不对」      → 什么都没建
   同一段对话交办两次(第一件没完)→ 数据库拒绝
 

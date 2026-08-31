@@ -1,0 +1,19 @@
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-xxs);
+  /* No reserved line: an empty slot is dead space between field and button. Instead the
+     message arrives with a short height+fade, so the button glides down rather than jumps. */
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  interpolate-size: allow-keywords;
+  transition:
+    height 180ms ease-out,
+    opacity 140ms ease-out;
+}
+
+.field-error[data-shown] {
+  height: auto;
+  opacity: 1;
+}

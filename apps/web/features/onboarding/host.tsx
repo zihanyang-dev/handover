@@ -213,8 +213,9 @@ function AgentName({
   readonly agent: Machine['agents'][number]
 }) {
   const kindName = agentKindName(agent.kind)
-  const [name, setName] = useState(agent.name ?? '')
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const name = nameDraft ?? agent.name ?? ''
   const naming = useAgentSettings(slug)
 
   const control = editing ? (
@@ -222,9 +223,9 @@ function AgentName({
       type={kindName}
       name={name}
       pending={naming.isPending}
-      onName={setName}
+      onName={setNameDraft}
       onCancel={() => {
-        setName(agent.name ?? '')
+        setNameDraft(null)
         setEditing(false)
       }}
       onSave={() => {
@@ -239,6 +240,7 @@ function AgentName({
           },
           {
             onSuccess: () => {
+              setNameDraft(null)
               setEditing(false)
             },
           },
@@ -265,7 +267,11 @@ function AgentName({
   return (
     <>
       {control}
-      {naming.isError && <span className="host-agent-name-error">Could not save.</span>}
+      {naming.isError && (
+        <span className="host-agent-name-error" role="alert">
+          Could not save.
+        </span>
+      )}
     </>
   )
 }

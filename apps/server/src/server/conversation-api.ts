@@ -142,6 +142,8 @@ const Under = named('Under', { conversationId: z.uuid(), goal: z.string() })
  */
 const Underway = named('Underway', {
   goal: z.string(),
+  /** The current responsible person, so a transfer control can distinguish change from no-op. */
+  ownerUserId: rowId,
   state: TaskState,
   /** When it will wake by itself. Only ever set while it is asleep. */
   sleepUntil: z.iso.datetime().nullable(),
@@ -520,6 +522,7 @@ function asUnderway(underway: Reading['underway']) {
 
   return {
     goal: underway.task.goal,
+    ownerUserId: underway.task.ownerUserId,
     state: underway.task.state,
     sleepUntil: underway.task.sleepUntil?.toISOString() ?? null,
     presence: onTheWire(underway.whereabouts, underway.asOf),

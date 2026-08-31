@@ -104,6 +104,17 @@ describe('a link somebody follows', () => {
     expect(await isOwner(db, SPACE, MINA)).toBe(false)
   })
 
+  it('replaces the one open invitation without a moment when both work', async () => {
+    const first = await inviteInto(db, { spaceId: SPACE, by: KAI })
+    const replacement = await inviteInto(db, { spaceId: SPACE, by: KAI })
+
+    expect(await whatItOpens(db, first.secret)).toEqual({ kind: 'no-invitation' })
+    expect(await whatItOpens(db, replacement.secret)).toMatchObject({ kind: 'open', slug: SLUG })
+    expect(await invitationsInto(db, SPACE)).toEqual([
+      expect.objectContaining({ id: replacement.id }),
+    ])
+  })
+
   it('says the same about revoked, expired and never — one thing to do about all three', async () => {
     // Three sentences would be three ways of saying "ask them for another one". It also means a
     // link cannot be used to find out whether a Space exists.

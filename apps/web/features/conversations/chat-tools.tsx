@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import { Check2, ChevronRight, FileDiff, X } from 'react-bootstrap-icons'
-import { type LiveOutput, type Message } from './talking.ts'
+import type { Message } from './conversation.ts'
+import type { LiveOutput } from './watching.ts'
 
 export type ToolMessage = Extract<Message, { readonly role: 'tool' }>
 

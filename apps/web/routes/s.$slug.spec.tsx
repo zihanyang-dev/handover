@@ -74,7 +74,7 @@ describe('entering a Space', () => {
 
     await userEvent.click(inbox)
 
-    expect(await screen.findByRole('heading', { name: 'Waiting on you' })).toBeDefined()
+    expect(await screen.findByText('You’re all caught up')).toBeDefined()
     expect(screen.queryByRole('heading', { name: 'Inbox' })).toBeNull()
     expect(inbox.getAttribute('aria-selected')).toBe('true')
     expect(switches.querySelectorAll('[aria-selected="true"]')).toHaveLength(1)
@@ -370,6 +370,7 @@ describe('entering a Space', () => {
     const goal = 'Make the timeout configurable and keep the default at 30 seconds'
     let underway = false
     let takenBack = false
+    let handedOver: unknown
     server.use(
       ...theSpace({
         machines: [
@@ -407,6 +408,14 @@ describe('entering a Space', () => {
               since: new Date().toISOString(),
               you: true,
             },
+            {
+              userId: 'u-2',
+              displayName: 'Rui',
+              avatarUrl: '/avatars/users/u-2',
+              role: 'member',
+              since: new Date().toISOString(),
+              you: false,
+            },
           ],
         }),
       ),
@@ -437,17 +446,46 @@ describe('entering a Space', () => {
                   seq: 3,
                   at: new Date().toISOString(),
                   role: 'activity',
+                  content: { activityType: 'proposed', text: 'Delete the database' },
+                },
+                {
+                  seq: 4,
+                  at: new Date().toISOString(),
+                  role: 'user',
+                  said: 'mina@example.com',
+                  content: { text: 'Only change the timeout' },
+                },
+                {
+                  seq: 5,
+                  at: new Date().toISOString(),
+                  role: 'activity',
                   content: { activityType: 'proposed', text: goal },
+                },
+                {
+                  seq: 6,
+                  at: new Date().toISOString(),
+                  role: 'activity',
+                  content: { activityType: 'done' },
                 },
               ],
           ...(underway
             ? {
                 underway: {
                   goal,
+                  ownerUserId: 'u-1',
                   state: 'working',
                   sleepUntil: null,
                   presence: { state: 'here' },
-                  handedOff: [],
+                  handedOff: [
+                    {
+                      conversationId: '88888888-8888-4888-8888-888888888888',
+                      goal: 'Check the retry path',
+                      state: 'working',
+                      machineName: 'offline-mbp',
+                      agentKind: 'codex',
+                      presence: { state: 'gone', since: new Date().toISOString() },
+                    },
+                  ],
                   outputs: [],
                   under: null,
                 },
@@ -455,7 +493,8 @@ describe('entering a Space', () => {
             : {}),
         }),
       ),
-      http.post(`*/spaces/acme/conversations/${id}/task`, () => {
+      http.post(`*/spaces/acme/conversations/${id}/task`, async ({ request }) => {
+        handedOver = await request.json()
         underway = true
         return new HttpResponse(null, { status: 204 })
       }),
@@ -467,21 +506,44 @@ describe('entering a Space', () => {
     )
     open(`/s/acme/c/${id}`)
 
-    const proposal = await screen.findByRole('article', { name: 'Proposed handover' })
-    expect(within(proposal).getByText(goal)).toBeDefined()
+    const proposals = await screen.findAllByRole('article', { name: 'Proposed handover' })
+    const oldProposal = proposals[0]
+    const currentProposal = proposals[1]
+    if (oldProposal === undefined || currentProposal === undefined)
+      throw new Error('the two proposal cards did not appear')
+    expect(within(oldProposal).getByText('Superseded')).toBeDefined()
+    expect(within(oldProposal).queryByRole('button', { name: 'Hand over' })).toBeNull()
+    expect(within(currentProposal).getByText(goal)).toBeDefined()
+    expect(within(currentProposal).getByText('mina-mbp')).toBeDefined()
     expect(screen.queryByText('mina@example.com')).toBeNull()
-    await userEvent.click(within(proposal).getByRole('button', { name: 'Hand over' }))
+    await userEvent.click(within(currentProposal).getByRole('button', { name: 'Hand over' }))
 
+    expect(handedOver).toMatchObject({ proposalSeq: 5 })
+    expect(handedOver).not.toHaveProperty('goal')
     expect(await screen.findByRole('heading', { name: 'Piece of work' })).toBeDefined()
     expect(screen.getAllByText(goal).length).toBeGreaterThan(1)
+    expect(screen.getByText('Machine offline · offline-mbp')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Responsible person' }).textContent).toContain('Mina')
+    expect(
+      screen.getByRole('button', { name: 'Transfer responsibility' }).hasAttribute('disabled'),
+    ).toBe(true)
+
+    const workDetails = screen.getByRole('button', { name: 'Work details' })
+    await userEvent.click(workDetails)
+    expect(screen.getByRole('dialog', { name: 'Work details' })).toBeDefined()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }))
+    await userEvent.keyboard('{Escape}')
+    expect(document.activeElement).toBe(workDetails)
+
     await userEvent.click(screen.getByRole('button', { name: 'Take back' }))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }))
     await userEvent.click(screen.getByRole('button', { name: 'Take back work' }))
     await waitFor(() => {
       expect(takenBack).toBe(true)
     })
   })
 
-  it('opens Space Settings with People and Machines', async () => {
+  it('opens Settings with Account, People, and Machines', async () => {
     const rui = '22222222-2222-4222-8222-222222222222'
     const changed: unknown[] = []
     let disconnected = false
@@ -551,34 +613,50 @@ describe('entering a Space', () => {
     const trigger = within(sidebar).getByRole('button', { name: /Acme/i })
     await userEvent.click(trigger)
     const menu = await screen.findByRole('dialog', { name: /Acme menu/i })
-    expect(within(menu).getByRole('link', { name: 'Account settings' })).toBeDefined()
+    expect(within(menu).getByRole('button', { name: 'Account settings' })).toBeDefined()
     await userEvent.click(within(menu).getByRole('button', { name: 'Settings' }))
 
     const settings = await screen.findByRole('dialog', { name: 'Acme settings' })
     expect(screen.queryByRole('dialog', { name: /Acme menu/i })).toBeNull()
+    await userEvent.click(within(settings).getByRole('tab', { name: 'mina@example.com' }))
+    expect(within(settings).getByRole('heading', { name: 'Account' })).toBeDefined()
+    expect(within(settings).getByDisplayValue('mina@example.com')).toBeDefined()
+    await userEvent.click(within(settings).getByRole('tab', { name: 'People' }))
     expect(within(settings).getByRole('heading', { name: 'People' })).toBeDefined()
     expect(within(settings).getByText('Mina')).toBeDefined()
-    await userEvent.selectOptions(
-      within(settings).getByRole('combobox', { name: 'Rui role' }),
-      'owner',
-    )
+    await userEvent.click(within(settings).getByRole('button', { name: 'Rui role' }))
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Owner' }))
     await waitFor(() => {
       expect(changed).toContainEqual({ role: 'owner' })
     })
     await userEvent.click(within(settings).getByRole('button', { name: 'Create invite link' }))
-    expect(await within(settings).findByDisplayValue(/\/join\/hi_secret/u)).toBeDefined()
+    await waitFor(() => {
+      expect(
+        within(settings).getByRole('group', { name: 'Active invite link' }).textContent,
+      ).toContain('/join/hi_secret')
+    })
 
     await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
     expect(within(settings).getByRole('heading', { name: 'Machines' })).toBeDefined()
+    expect(
+      within(settings).getByRole('link', { name: 'Connect machine' }).getAttribute('href'),
+    ).toBe('/connect')
     expect(within(settings).getByText('mina-mbp')).toBeDefined()
-    expect(within(settings).getByText('/Users/mina/code/thing')).toBeDefined()
+    expect(within(settings).queryByText('/Users/mina/code/thing')).toBeNull()
+    await userEvent.click(within(settings).getByRole('tab', { name: 'People' }))
+    expect(
+      within(settings).getByRole('group', { name: 'Active invite link' }).textContent,
+    ).toContain('/join/hi_secret')
+    expect(within(settings).getByRole('button', { name: 'Replace link' })).toBeDefined()
+    await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
     await userEvent.clear(within(settings).getByRole('spinbutton', { name: 'At once' }))
     await userEvent.type(within(settings).getByRole('spinbutton', { name: 'At once' }), '4')
-    await userEvent.click(within(settings).getByRole('button', { name: 'Save' }))
+    await userEvent.tab()
     await waitFor(() => {
       expect(changed).toContainEqual({ name: 'Scout', atOnce: 4 })
     })
-    await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect' }))
+    await userEvent.click(within(settings).getByRole('button', { name: 'mina-mbp actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect machine' }))
     await userEvent.click(within(settings).getByRole('button', { name: 'Disconnect machine' }))
     await waitFor(() => {
       expect(disconnected).toBe(true)
@@ -674,7 +752,7 @@ describe('entering a Space', () => {
     const movedWidth = resize.getAttribute('aria-valuenow')
 
     await userEvent.click(within(sidebar).getByRole('tab', { name: 'Inbox' }))
-    await screen.findByRole('heading', { name: 'Waiting on you' })
+    await screen.findByText('You’re all caught up')
 
     expect(resize.getAttribute('aria-valuenow')).toBe(movedWidth)
   })

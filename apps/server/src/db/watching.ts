@@ -117,7 +117,15 @@ export function listenForLive(
     log,
     channel: CHANNEL,
     heard: (payload) => {
-      const read = Happening.safeParse(JSON.parse(payload === '' ? 'null' : payload))
+      let decoded: unknown
+      try {
+        decoded = JSON.parse(payload === '' ? 'null' : payload)
+      } catch {
+        log.warn('something live arrived as malformed JSON')
+        return
+      }
+
+      const read = Happening.safeParse(decoded)
       if (read.success) heard(read.data)
       else log.warn('something live arrived in a shape this build does not know')
     },

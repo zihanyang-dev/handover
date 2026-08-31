@@ -1,7 +1,7 @@
 /**
  * The piece of work a conversation carries once somebody walks away from it.
  *
- * Its own file rather than part of `talking.ts`, because it is a different fact about the same
+ * Its own file rather than part of `conversation.ts`, because it is a different fact about the same
  * conversation: talking is what was said, this is whether anybody still has to be there. A
  * conversation with nothing underway is the ordinary kind — you are sitting in it — and one with
  * something underway moves on its own between turns.
@@ -13,7 +13,9 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, cached, retryKey, retryKeyDone } from '../../api.ts'
-import { conversationsIn, inbox, transcriptOf } from './talking.ts'
+import type { components } from '../../generated/api.ts'
+import { conversationsIn, transcriptOf } from './conversation.ts'
+import { inbox } from './inbox-query.ts'
 
 /**
  * What a piece of work is doing, in words.
@@ -50,24 +52,27 @@ function useAfterwards(slug: string, id: string) {
 /**
  * Handing it over, which is where a piece of work begins.
  *
- * The goal is the agent's own restatement, taken from the card it wrote — never from anything the
- * person typed. A sentence has the standing to be the name of a piece of work only because the
- * one that has to make it true wrote it, and the one who has to live with it read it.
+ * The sequence number names the exact card a person confirmed. The server reads the goal from that
+ * transcript line, so a stale browser cannot repeat an old sentence as though it were still the
+ * agent's current restatement.
  *
- * Its own mutation rather than the generated one, because the name it is made under is a decision
- * and not a parameter: named after that sentence, a lost answer can be handed over again without
- * starting a second piece of work, and pressing the card twice is one intention. A screen that
- * had to pass the name in is a screen that could pass a different one.
+ * Its own mutation rather than the generated one, because the request's retry name is a decision
+ * and not a parameter: pressing one card twice is one intention, while two cards in the same
+ * conversation are two intentions.
  */
 export function useHandOver(slug: string, id: string) {
   const afterwards = useAfterwards(slug, id)
 
-  return useMutation<void, { reason: string }, string>({
-    mutationFn: async (goal: string) => {
-      const intention = `hand-over:${id}:${goal}`
+  return useMutation<void, { reason: string }, number>({
+    mutationFn: async (proposalSeq: number) => {
+      const intention = `hand-over:${id}:${String(proposalSeq)}`
+      const body: components['schemas']['HandOver'] = {
+        key: retryKey(intention),
+        proposalSeq,
+      }
       const { error } = await api.POST('/spaces/{slug}/conversations/{id}/task', {
         params: { path: { slug, id } },
-        body: { key: retryKey(intention), goal },
+        body,
       })
       if (error !== undefined) throw error
       retryKeyDone(intention)

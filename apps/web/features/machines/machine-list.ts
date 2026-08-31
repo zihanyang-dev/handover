@@ -22,6 +22,7 @@ export type Machine = components['schemas']['Machine']
 export type InstalledAgent = {
   readonly machineId: string
   readonly machineName: string
+  readonly connectedIn: string | undefined
   readonly kind: Machine['agents'][number]['kind']
   readonly name: string | null
   readonly avatarUrl: string
@@ -37,6 +38,7 @@ export function agentsOn(machines: readonly Machine[]): readonly InstalledAgent[
     machine.agents.map((agent) => ({
       machineId: machine.id,
       machineName: machine.name,
+      connectedIn: machine.connectedIn,
       kind: agent.kind,
       name: agent.name,
       avatarUrl: agent.avatarUrl,

@@ -89,17 +89,20 @@ describe('what is waiting on you', () => {
     expect(screen.getByText(/lab/u)).toBeDefined()
   })
 
-  it('says something when nothing needs you, rather than showing an empty list', async () => {
+  it('shows the quiet caught-up state rather than an empty list', async () => {
     server.use(...waiting([]))
 
     await open()
 
-    expect(await screen.findByText(/Nothing needs you/u)).toBeDefined()
+    expect(await screen.findByText('You’re all caught up')).toBeDefined()
+    expect(document.querySelector('.inbox-empty-check[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Waiting on you' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /filter/iu })).toBeNull()
   })
 
-  it('never says nothing needs you when it could not read', async () => {
-    // The one thing this page must not do. "Nothing needs you" is somebody being told they can go
-    // to bed, and a failed read is not that.
+  it('never says all caught up when it could not read', async () => {
+    // The one thing this page must not do. "All caught up" is somebody being told they can go to
+    // bed, and a failed read is not that.
     server.use(
       ...theSpace(),
       http.get('*/me/inbox', () =>
@@ -110,7 +113,7 @@ describe('what is waiting on you', () => {
     await open()
 
     expect(await screen.findByText(/Could not read your Inbox/u)).toBeDefined()
-    expect(screen.queryByText(/Nothing needs you/u)).toBeNull()
+    expect(screen.queryByText(/all caught up/iu)).toBeNull()
   })
 
   it('says so when a piece of work stopped without saying why', async () => {

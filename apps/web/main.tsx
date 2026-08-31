@@ -13,7 +13,7 @@ declare module '@tanstack/react-router' {
   }
 }
 
-const root = document.getElementById('root')
+const root = document.querySelector('#root')
 if (root === null) throw new Error('the page has no root to render into')
 
 createRoot(root).render(

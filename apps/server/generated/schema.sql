@@ -658,10 +658,10 @@ CREATE UNIQUE INDEX enrolments_waiting_code ON public.enrolments USING btree (us
 
 
 --
--- Name: invitations_open; Type: INDEX; Schema: public; Owner: -
+-- Name: invitations_one_unrevoked_per_space; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX invitations_open ON public.invitations USING btree (space_id) WHERE (revoked_at IS NULL);
+CREATE UNIQUE INDEX invitations_one_unrevoked_per_space ON public.invitations USING btree (space_id) WHERE (revoked_at IS NULL);
 
 
 --

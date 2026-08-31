@@ -12,10 +12,10 @@
  */
 
 /** The one refusal with something to add: the address is held, and here is one that is not. */
-function held(refused: object): string | undefined {
-  if (!('suggestion' in refused) || typeof refused.suggestion !== 'string') return undefined
+function held(refused: Readonly<Record<PropertyKey, unknown>>): string | undefined {
+  if (typeof refused['suggestion'] !== 'string') return undefined
 
-  return `Somebody holds that address. ${refused.suggestion} is free — for now.`
+  return `Somebody holds that address. ${refused['suggestion']} is free — for now.`
 }
 
 export function spaceRefusal(refused: unknown): string | undefined {

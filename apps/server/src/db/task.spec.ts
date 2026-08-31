@@ -168,6 +168,30 @@ async function asks(conversationId: string, key: string, text: string): Promise<
   if (said.kind !== 'said') throw new Error(`the fixture could not ask: ${said.kind}`)
 }
 
+/** The card an agent puts in front of a person, and the transcript identity of that exact card. */
+async function proposes(
+  conversationId: string,
+  key: string,
+  text: string,
+  machineId = MACHINE,
+): Promise<number> {
+  const said = await machineSays(db, {
+    conversationId,
+    machineId,
+    key,
+    message: { role: 'activity', content: { activityType: ACTIVITY.proposed, text } },
+  })
+  if (said.kind !== 'said') throw new Error(`the fixture could not propose: ${said.kind}`)
+
+  const written = await db
+    .selectFrom('messages')
+    .select('seq')
+    .where('conversation_id', '=', conversationId)
+    .where('key', '=', key)
+    .executeTakeFirstOrThrow()
+  return written.seq
+}
+
 /** The same person, a second Space, a machine of theirs in it, and work handed over there. */
 async function inAnotherSpace(): Promise<string> {
   const name = `Beta ${RUN.slice(0, 8)}`
@@ -193,12 +217,17 @@ async function inAnotherSpace(): Promise<string> {
   if (opened.kind !== 'begun')
     throw new Error(`the fixture could not open one there: ${opened.kind}`)
 
+  const proposalSeq = await proposes(
+    opened.conversationId,
+    `beta-proposal-${RUN}`,
+    'watch the numbers',
+  )
   const over = await handOver(db, {
     conversationId: opened.conversationId,
     spaceId: made.space.id,
     key: `beta-over-${RUN}`,
     userId: PERSON,
-    goal: 'watch the numbers',
+    proposalSeq,
   })
   if (over.kind !== 'handed-over') throw new Error('the fixture could not hand over there')
   await takeOne(db, MACHINE)
@@ -211,12 +240,13 @@ async function handedOver(goal = 'make the timeout configurable'): Promise<strin
   const conversation = await opened()
   await asks(conversation, 'turn-1', 'take it from here')
 
+  const proposalSeq = await proposes(conversation, `proposal-${RUN}`, goal)
   const over = await handOver(db, {
     conversationId: conversation,
     spaceId: SPACE,
     key: `over-${RUN}`,
     userId: PERSON,
-    goal,
+    proposalSeq,
   })
   if (over.kind !== 'handed-over') throw new Error(`the fixture could not hand over: ${over.kind}`)
 
@@ -265,7 +295,7 @@ describe('handing a conversation over', () => {
       spaceId: SPACE,
       key: 'over-again',
       userId: PERSON,
-      goal: 'something else',
+      proposalSeq: 1,
     })
 
     expect(again).toEqual({ kind: 'already-handed-over' })
@@ -829,12 +859,17 @@ describe('taking it back', () => {
       { state: 'done', ending: 'done', said: 'changed and tested' },
     )
 
+    const proposalSeq = await proposes(
+      conversation,
+      `proposal-again-${RUN}`,
+      'watch the numbers for three days',
+    )
     const again = await handOver(db, {
       conversationId: conversation,
       spaceId: SPACE,
       key: `over-again-${RUN}`,
       userId: PERSON,
-      goal: 'watch the numbers for three days',
+      proposalSeq,
     })
 
     expect(again.kind).toBe('handed-over')
@@ -872,7 +907,89 @@ describe('what it writes down on purpose', () => {
 })
 
 describe('putting a goal in front of somebody', () => {
-  it('is a message and nothing more — nothing here has to know about it', async () => {
+  it('starts from the exact current card rather than a goal repeated by the caller', async () => {
+    const conversation = await opened()
+    const proposalSeq = await proposes(
+      conversation,
+      `current-proposal-${RUN}`,
+      'make the timeout settable',
+    )
+    await ends(conversation, `proposal-turn-done-${RUN}`)
+
+    const over = await handOver(db, {
+      conversationId: conversation,
+      spaceId: SPACE,
+      key: `accept-current-${RUN}`,
+      userId: PERSON,
+      proposalSeq,
+    })
+
+    expect(over.kind).toBe('handed-over')
+    expect((await underwayIn(db, conversation))?.task.goal).toBe('make the timeout settable')
+  })
+
+  it('refuses a card after the person continued talking', async () => {
+    const conversation = await opened()
+    const proposalSeq = await proposes(conversation, `stale-proposal-${RUN}`, 'delete the database')
+    await asks(conversation, `correction-${RUN}`, 'Only clean the test database')
+
+    const over = await handOver(db, {
+      conversationId: conversation,
+      spaceId: SPACE,
+      key: `accept-stale-${RUN}`,
+      userId: PERSON,
+      proposalSeq,
+    })
+
+    expect(over).toEqual({ kind: 'no-current-proposal' })
+    expect(await underwayIn(db, conversation)).toBeUndefined()
+  })
+
+  it('accepts the replacement card and refuses the one it replaced', async () => {
+    const conversation = await opened()
+    const oldSeq = await proposes(conversation, `old-proposal-${RUN}`, 'delete the database')
+    const currentSeq = await proposes(
+      conversation,
+      `replacement-proposal-${RUN}`,
+      'only clean the test database',
+    )
+
+    expect(
+      await handOver(db, {
+        conversationId: conversation,
+        spaceId: SPACE,
+        key: `accept-old-${RUN}`,
+        userId: PERSON,
+        proposalSeq: oldSeq,
+      }),
+    ).toEqual({ kind: 'no-current-proposal' })
+
+    expect(
+      await handOver(db, {
+        conversationId: conversation,
+        spaceId: SPACE,
+        key: `accept-replacement-${RUN}`,
+        userId: PERSON,
+        proposalSeq: currentSeq,
+      }),
+    ).toMatchObject({ kind: 'handed-over' })
+  })
+
+  it('refuses a transcript line that is not a proposal', async () => {
+    const conversation = await opened()
+
+    expect(
+      await handOver(db, {
+        conversationId: conversation,
+        spaceId: SPACE,
+        key: `accept-question-${RUN}`,
+        userId: PERSON,
+        proposalSeq: 1,
+      }),
+    ).toEqual({ kind: 'no-current-proposal' })
+  })
+
+  it('is a message and nothing more until its card is confirmed', async () => {
     // A proposal changes no state and creates nothing: it is a line for a person to read and
     // agree to. So it goes down the path a machine already writes lines by, and this side of the
     // system has no opinion about it at all.

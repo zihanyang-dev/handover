@@ -62,10 +62,13 @@ async function ask<T>(
   path: string,
   shape: z.ZodType<T>,
 ): Promise<T | undefined> {
+  const endpoint = URL.parse(`${API}${path}`)
+  if (endpoint === null) return undefined
+
   const response = await oauth.fetchProtectedResource(
     config,
     accessToken,
-    new URL(`${API}${path}`),
+    endpoint,
     'GET',
     null,
     new Headers({ accept: 'application/vnd.github+json' }),

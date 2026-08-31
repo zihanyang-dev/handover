@@ -12,7 +12,6 @@
  * The motion lives in mark.css, one state per class; this file only says which one is on.
  */
 
-import './mark.css'
 import type { CSSProperties } from 'react'
 
 /** What it is doing right now. */

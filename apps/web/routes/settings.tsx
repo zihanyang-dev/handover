@@ -1,27 +1,20 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'react-bootstrap-icons'
-import { Credentials } from '../features/identity/credentials.tsx'
-import { DisplayName } from '../features/identity/display-name.tsx'
-import { SignOut } from '../features/identity/sign-out.tsx'
+import { AccountSettings } from '../features/identity/account.tsx'
 import { onlySignedIn } from '../features/identity/only-signed-in.ts'
 
-/**
- * The account, which belongs to a person rather than to a Space.
- *
- * On its own address for that reason: everything under `/s/…` is shown in a Space's frame, and
- * putting what is true of somebody everywhere inside one of them would say it is a Space's.
- */
+/** The same account surface when no particular Space is open. */
 function Screen() {
   return (
-    <main className="sheet">
-      <section className="card stack">
-        <Link className="settings-back" to="/onboarding">
+    <main className="min-h-dvh bg-panel-ground p-6 max-sm:p-0">
+      <section className="mx-auto min-h-[calc(100dvh-48px)] w-full max-w-[920px] rounded-[12px] bg-white px-[60px] pt-8 pb-16 shadow-[var(--surface-raised-shadow)] max-sm:min-h-dvh max-sm:rounded-none max-sm:px-5">
+        <Link
+          className="mb-6 inline-flex h-7 items-center gap-1 rounded-md px-1 text-[14px] leading-5 text-panel-ink-muted no-underline hover:bg-panel-fill hover:text-panel-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          to="/onboarding"
+        >
           <ArrowLeft aria-hidden /> Your Spaces
         </Link>
-        <h1>Account</h1>
-        <DisplayName />
-        <Credentials />
-        <SignOut />
+        <AccountSettings />
       </section>
     </main>
   )

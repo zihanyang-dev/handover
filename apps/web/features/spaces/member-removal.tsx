@@ -9,8 +9,9 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { reasonOf } from '../../api.ts'
+import { MenuSelect } from '../../components/ui/menu-select.tsx'
 import type { components } from '../../generated/api.ts'
 import { useHandWorkTo, useTakeBack, whatItIsDoing } from '../conversations/work.ts'
 import { useHandMachineTo } from '../machines/machine-list.ts'
@@ -55,8 +56,16 @@ export function RemovalChecklist({
         Resolve everything still held here before access is removed. Nothing is moved or stopped
         automatically.
       </p>
-      {held.isPending && <PanelState>Checking what they still hold…</PanelState>}
-      {held.isError && <PanelState>Could not read what they still hold. Try again.</PanelState>}
+      {held.isPending && (
+        <p className="py-6 text-[13px] text-panel-ink-muted" role="status">
+          Checking what they still hold…
+        </p>
+      )}
+      {held.isError && (
+        <p className="py-6 text-[13px] text-panel-ink-muted" role="alert">
+          Could not read what they still hold. Try again.
+        </p>
+      )}
       {held.data !== undefined && (
         <HeldRows
           slug={slug}
@@ -67,7 +76,7 @@ export function RemovalChecklist({
           }}
         />
       )}
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-panel-line pt-4">
+      <div className="mt-6 flex items-center justify-end gap-2 pt-4">
         <button
           className="h-8 rounded-[6px] border-0 bg-transparent px-3 text-[13px] font-medium hover:bg-panel-fill"
           type="button"
@@ -122,7 +131,7 @@ function HeldRows({
       {held.working.length > 0 && (
         <div>
           <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Pieces of work</h3>
-          <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
+          <ul className="m-0 list-none space-y-1 p-0">
             {held.working.map((work) => (
               <WorkResolution
                 key={work.conversationId}
@@ -138,7 +147,7 @@ function HeldRows({
       {held.machines.length > 0 && (
         <div>
           <h3 className="mb-2 text-[13px] font-medium text-panel-ink-soft">Machines</h3>
-          <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
+          <ul className="m-0 list-none space-y-1 p-0">
             {held.machines.map((machine) => (
               <MachineResolution
                 key={machine.id}
@@ -244,24 +253,20 @@ function TransferChoice({
   readonly act: (userId: string) => void
 }) {
   const [ownerUserId, setOwnerUserId] = useState(people[0]?.userId ?? '')
+  const choices = people.map((person) => ({ value: person.userId, label: person.displayName }))
 
   return (
     <>
-      <select
-        className="h-8 max-w-[220px] rounded-[5px] border border-panel-line-firm bg-white px-2 text-[13px] text-panel-ink-soft"
-        aria-label="New owner"
-        value={ownerUserId}
-        onChange={(event) => {
-          setOwnerUserId(event.target.value)
-        }}
-      >
-        {people.length === 0 && <option value="">No other member</option>}
-        {people.map((person) => (
-          <option key={person.userId} value={person.userId}>
-            {person.displayName}
-          </option>
-        ))}
-      </select>
+      <div className="w-full max-w-[220px]">
+        <MenuSelect
+          label="New owner"
+          value={ownerUserId}
+          choices={choices.length === 0 ? [{ value: '', label: 'No other member' }] : choices}
+          onChange={setOwnerUserId}
+          disabled={choices.length === 0}
+          stretch
+        />
+      </div>
       <SmallButton
         label="Transfer"
         disabled={ownerUserId === '' || pending}
@@ -318,14 +323,6 @@ function RemovalError({ thrown }: { readonly thrown: unknown }) {
   return (
     <p className="mt-3 text-[13px] text-panel-danger" role="alert">
       {whyTheyAreStillHere(thrown)}
-    </p>
-  )
-}
-
-function PanelState({ children }: { readonly children: ReactNode }) {
-  return (
-    <p className="py-6 text-[13px] text-panel-ink-muted" role="status">
-      {children}
     </p>
   )
 }

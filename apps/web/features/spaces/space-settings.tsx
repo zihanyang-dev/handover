@@ -1,5 +1,5 @@
 /**
- * Everything about a Space that is not the Space itself: who is in it, and what it can reach.
+ * Account and Space settings in one modal, with their ownership kept visible in the navigation.
  *
  * A real `<dialog>`, opened modally. Written by hand it was a `div` claiming `aria-modal`, a Tab
  * key cycled by a query selector, and a page behind it that a screen reader could still walk
@@ -9,20 +9,40 @@
  * sidebar's.
  */
 
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Laptop, People } from 'react-bootstrap-icons'
 import { TabList, TabPanel, type Tab } from '../../components/ui/tabs.tsx'
 import type { components } from '../../generated/api.ts'
+import { AccountSettings } from '../identity/account.tsx'
+import { meQuery } from '../identity/me.ts'
 import { SpaceMachines } from '../machines/space-machines.tsx'
+import type { RevealedInvitation } from './invitation-links.tsx'
 import { SpacePeople } from './space-people.tsx'
 
 /** The two things this dialog says about the Space it is for. Taken from the contract, not retyped. */
 type Named = Pick<components['schemas']['Space'], 'slug' | 'displayName'>
+type Me = components['schemas']['Me']
 
-const SECTIONS: readonly Tab[] = [
-  { id: 'people', label: 'People', icon: <People aria-hidden /> },
-  { id: 'machines', label: 'Machines', icon: <Laptop aria-hidden /> },
-]
+export type SettingsSection = 'account' | 'people' | 'machines'
+
+function settingsTabs(me: Me | undefined): readonly Tab[] {
+  return [
+    {
+      id: 'account',
+      label: me?.displayName ?? 'Account',
+      group: 'Account',
+      icon:
+        me === undefined ? (
+          <span className="size-6 rounded-full bg-panel-fill" aria-hidden />
+        ) : (
+          <img className="size-6 rounded-full object-cover" src={me.avatarUrl} alt="" />
+        ),
+    },
+    { id: 'people', label: 'People', group: 'Space', icon: <People aria-hidden /> },
+    { id: 'machines', label: 'Machines', icon: <Laptop aria-hidden /> },
+  ]
+}
 
 /**
  * Open for as long as it is mounted.
@@ -52,13 +72,18 @@ export function SpaceSettings({
   space,
   close,
   afterLeaving,
+  initialSection = 'people',
 }: {
   readonly space: Named
   readonly close: () => void
   readonly afterLeaving: () => void
+  readonly initialSection?: SettingsSection
 }) {
   const dialog = useModal()
-  const [section, setSection] = useState('people')
+  const [section, setSection] = useState(initialSection)
+  // The server never stores the full secret. Keep a newly made link only while this dialog is
+  // open, including while somebody checks another tab and comes back to copy it.
+  const [revealedInvitation, setRevealedInvitation] = useState<RevealedInvitation>()
 
   /**
    * Escape, both ways it can arrive.
@@ -96,15 +121,17 @@ export function SpaceSettings({
         <TabPanel
           name="space-settings"
           active={section}
-          className="relative z-[1] min-h-0 min-w-0 grow overflow-y-auto bg-white focus:outline-none"
+          className="space-settings-panel relative z-[1] min-h-0 min-w-0 grow overflow-y-auto bg-white focus:outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <CloseButton close={close} />
           <div className="mx-auto w-full max-w-[920px] px-[60px] pt-9 pb-16 max-sm:px-5 max-sm:pt-12">
-            {section === 'people' ? (
-              <SpacePeople slug={space.slug} afterLeaving={afterLeaving} />
-            ) : (
-              <SpaceMachines slug={space.slug} />
-            )}
+            <SettingsContent
+              section={section}
+              slug={space.slug}
+              afterLeaving={afterLeaving}
+              revealedInvitation={revealedInvitation}
+              revealInvitation={setRevealedInvitation}
+            />
           </div>
         </TabPanel>
       </section>
@@ -112,54 +139,97 @@ export function SpaceSettings({
   )
 }
 
+function SettingsContent({
+  section,
+  slug,
+  afterLeaving,
+  revealedInvitation,
+  revealInvitation,
+}: {
+  readonly section: SettingsSection
+  readonly slug: string
+  readonly afterLeaving: () => void
+  readonly revealedInvitation: RevealedInvitation | undefined
+  readonly revealInvitation: (invitation: RevealedInvitation | undefined) => void
+}) {
+  if (section === 'account') return <AccountSettings />
+  if (section === 'people')
+    return (
+      <SpacePeople
+        slug={slug}
+        afterLeaving={afterLeaving}
+        revealedInvitation={revealedInvitation}
+        revealInvitation={revealInvitation}
+      />
+    )
+  return <SpaceMachines slug={slug} />
+}
+
 function SettingsSections({
   section,
   choose,
 }: {
-  readonly section: string
-  readonly choose: (section: string) => void
+  readonly section: SettingsSection
+  readonly choose: (section: SettingsSection) => void
 }) {
+  const me = useQuery(meQuery)
+
   return (
-    <aside className="h-full w-[240px] shrink-0 overflow-y-auto bg-panel-ground px-2 pt-4 max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:border-b max-sm:border-panel-line max-sm:px-3 max-sm:py-2">
-      <p className="px-2 pb-2 text-[12px] leading-5 font-medium text-panel-ink-quiet max-sm:hidden">
-        Space
-      </p>
+    <aside className="h-full w-[240px] shrink-0 overflow-y-auto bg-panel-ground px-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:h-auto max-sm:w-full max-sm:overflow-visible max-sm:px-3 max-sm:py-2">
       <TabList
         name="space-settings"
         label="Settings"
-        tabs={SECTIONS}
+        tabs={settingsTabs(me.data)}
         active={section}
-        choose={choose}
+        choose={(next) => {
+          choose(next as SettingsSection)
+        }}
         orientation="vertical"
-        className="flex flex-col gap-0.5 max-sm:flex-row"
-        tabClassName="flex h-7 w-full cursor-pointer items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[14px] leading-5 font-medium text-panel-ink-soft hover:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-selected:bg-[var(--interaction-hover-strong)] aria-selected:text-panel-ink max-sm:h-9 max-sm:w-auto max-sm:flex-1 max-sm:justify-center"
+        className="settings-tab-list flex flex-col gap-0.5 max-sm:flex-row"
+        tabClassName="settings-tab flex h-7 w-full cursor-pointer items-center gap-2 rounded-[5px] border-0 bg-transparent px-2 text-left text-[14px] leading-5 font-medium text-panel-ink-soft hover:bg-[var(--choice-hover)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-selected:bg-[var(--interaction-hover-strong)] aria-selected:text-panel-ink max-sm:h-9 max-sm:w-auto max-sm:flex-1 max-sm:justify-center"
         renderTab={renderSection}
+        renderGroup={renderGroup}
       />
     </aside>
+  )
+}
+
+function renderGroup(group: string): ReactNode {
+  return (
+    <p
+      className={`settings-tab-group m-0 px-2 py-1.5 text-[12px] leading-4 font-medium text-panel-ink-quiet${group === 'Space' ? ' mt-4' : ''}`}
+      role="presentation"
+    >
+      {group}
+    </p>
   )
 }
 
 function renderSection(tab: Tab): ReactNode {
   return (
     <>
-      <span className="flex size-4 items-center justify-center text-panel-ink-muted">
+      <span
+        className={`flex shrink-0 items-center justify-center text-panel-ink-muted${tab.id === 'account' ? ' size-6 -ml-1' : ' size-4'}`}
+      >
         {tab.icon}
       </span>
-      {tab.label}
+      <span className="min-w-0 truncate">{tab.label}</span>
     </>
   )
 }
 
 function CloseButton({ close }: { readonly close: () => void }) {
   return (
-    <div className="absolute top-3 right-3 z-10 size-[22px] rounded-full bg-white">
+    <div className="absolute top-[11px] right-[11px] z-10 size-6">
       <button
-        className="flex size-full cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-panel-ink-quiet transition-colors duration-100 ease-in-out hover:bg-[var(--interaction-hover)] active:bg-[var(--interaction-pressed)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="group flex size-full cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-panel-ink-quiet focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         type="button"
         aria-label="Close settings"
         onClick={close}
       >
-        <CloseIcon />
+        <span className="flex size-[22px] items-center justify-center rounded-full bg-white transition-colors duration-100 ease-in-out group-hover:bg-[var(--interaction-hover)] group-active:bg-[var(--interaction-pressed)]">
+          <CloseIcon />
+        </span>
       </button>
     </div>
   )

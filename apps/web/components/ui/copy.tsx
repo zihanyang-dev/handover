@@ -39,19 +39,10 @@ function mark(took: Took): ReactNode {
 /**
  * Says what it did, then stops saying it — a tick that never clears reads as a stuck button.
  *
- * With `label`, the words are on the button; without, it is the icon alone and the words are its
- * accessible name. The two look nothing alike and behave identically, which is the whole reason
- * this is one component.
+ * The control stays icon-only so it can sit beside a command, link, or message without changing
+ * their geometry; the changing result is its accessible name.
  */
-export function Copy({
-  text,
-  what,
-  label = false,
-}: {
-  readonly text: string
-  readonly what: string
-  readonly label?: boolean
-}) {
+export function Copy({ text, what }: { readonly text: string; readonly what: string }) {
   const [took, setTook] = useState<Took>('nothing yet')
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => {
@@ -71,9 +62,9 @@ export function Copy({
 
   return (
     <button
-      className={label ? 'shell-copy shell-copy-said' : 'shell-copy'}
+      className="shell-copy"
       type="button"
-      aria-label={label ? undefined : said}
+      aria-label={said}
       onClick={() => {
         navigator.clipboard.writeText(text).then(
           () => {
@@ -86,7 +77,6 @@ export function Copy({
       }}
     >
       {mark(took)}
-      {label && <span>{said}</span>}
     </button>
   )
 }

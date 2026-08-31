@@ -8,35 +8,64 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
-import { PersonDash } from 'react-bootstrap-icons'
+import { useState } from 'react'
 import { reasonOf } from '../../api.ts'
+import { MenuSelect } from '../../components/ui/menu-select.tsx'
+import { SettingsHeading } from '../../components/ui/settings-heading.tsx'
 import type { components } from '../../generated/api.ts'
-import { InvitationLinks } from './invitation-links.tsx'
+import { InvitationLinks, type RevealedInvitation } from './invitation-links.tsx'
 import { RemovalChecklist } from './member-removal.tsx'
 import { peopleIn, useChangeRole } from './people.ts'
 
 type Member = components['schemas']['Member']
 
+const ROLES = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'member', label: 'Member' },
+] as const
+
 export function SpacePeople({
   slug,
   afterLeaving,
+  revealedInvitation,
+  revealInvitation,
 }: {
   readonly slug: string
   readonly afterLeaving: () => void
+  readonly revealedInvitation: RevealedInvitation | undefined
+  readonly revealInvitation: (invitation: RevealedInvitation | undefined) => void
 }) {
   const people = useQuery(peopleIn(slug))
   const [removing, setRemoving] = useState<Member>()
   const own = people.data?.find((person) => person.you)
   const isOwner = own?.role === 'owner'
 
-  if (people.isPending) return <PanelState>Looking for people…</PanelState>
-  if (people.isError) return <PanelState>Could not read the people here. Try again.</PanelState>
+  if (people.isPending)
+    return (
+      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
+        Looking for people…
+      </p>
+    )
+  if (people.isError)
+    return (
+      <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="alert">
+        Could not read the people here. Try again.
+      </p>
+    )
 
   return (
     <section aria-labelledby="space-people-title">
-      <PanelHeading />
-      {isOwner && <InvitationLinks slug={slug} />}
+      <SettingsHeading id="space-people-title" title="People" />
+      {isOwner && (
+        <InvitationLinks
+          slug={slug}
+          revealed={revealedInvitation}
+          reveal={revealInvitation}
+          forget={() => {
+            revealInvitation(undefined)
+          }}
+        />
+      )}
       {removing === undefined ? (
         <MemberList slug={slug} people={people.data} isOwner={isOwner} remove={setRemoving} />
       ) : (
@@ -54,22 +83,6 @@ export function SpacePeople({
         />
       )}
     </section>
-  )
-}
-
-function PanelHeading() {
-  return (
-    <header className="mb-9">
-      <h1
-        id="space-people-title"
-        className="m-0 text-[26px] leading-8 font-semibold tracking-[-0.02em] text-panel-ink"
-      >
-        People
-      </h1>
-      <p className="m-0 mt-2 text-[16px] leading-6 text-panel-ink-soft">
-        Manage people in this Space and what they may do.
-      </p>
-    </header>
   )
 }
 
@@ -91,7 +104,7 @@ function MemberList({
       <h2 id="members-title" className="m-0 mb-2 text-[14px] leading-5 font-medium text-panel-ink">
         Members <span className="font-normal text-panel-ink-quiet">{people.length}</span>
       </h2>
-      <ul className="m-0 list-none divide-y divide-panel-line border-y border-panel-line p-0">
+      <ul className="m-0 list-none space-y-1 p-0">
         {people.map((person) => (
           <MemberRow
             key={person.userId}
@@ -129,6 +142,9 @@ function MemberRow({
   readonly remove: () => void
 }) {
   const canRemove = isOwner || person.you
+  const dangerAction = canRemove
+    ? { label: person.you ? 'Leave Space' : 'Remove from Space', choose: remove }
+    : undefined
 
   return (
     <li className="flex min-h-[52px] items-center gap-3 py-2">
@@ -138,30 +154,27 @@ function MemberRow({
         {person.you && <span className="ml-1 font-normal text-panel-ink-quiet">You</span>}
       </span>
       {isOwner ? (
-        <select
-          className="h-8 rounded-[5px] border border-transparent bg-transparent px-2 text-[13px] text-panel-ink-soft hover:bg-panel-fill focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          aria-label={`${person.displayName} role`}
+        <MenuSelect
+          label={`${person.displayName} role`}
           value={person.role}
+          choices={ROLES}
           disabled={changing}
-          onChange={(event) => {
-            changeRole(event.target.value as 'owner' | 'member')
-          }}
-        >
-          <option value="owner">Owner</option>
-          <option value="member">Member</option>
-        </select>
+          onChange={changeRole}
+          dangerAction={dangerAction}
+        />
       ) : (
-        <span className="text-[13px] capitalize text-panel-ink-muted">{person.role}</span>
-      )}
-      {canRemove && (
-        <button
-          className="flex size-8 shrink-0 items-center justify-center rounded-[5px] border-0 bg-transparent text-panel-ink-muted hover:bg-panel-fill hover:text-panel-danger-quiet focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          type="button"
-          aria-label={person.you ? 'Leave this Space' : `Remove ${person.displayName}`}
-          onClick={remove}
-        >
-          <PersonDash aria-hidden />
-        </button>
+        <>
+          <span className="text-[13px] capitalize text-panel-ink-muted">{person.role}</span>
+          {canRemove && (
+            <button
+              className="h-7 rounded-[5px] border-0 bg-transparent px-2 text-[13px] text-panel-ink-muted hover:bg-panel-danger-wash hover:text-panel-danger-quiet focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+              type="button"
+              onClick={remove}
+            >
+              Leave Space
+            </button>
+          )}
+        </>
       )}
     </li>
   )
@@ -186,14 +199,6 @@ function RoleError({ thrown }: { readonly thrown: unknown }) {
   return (
     <p className="mt-3 text-[13px] text-panel-danger" role="alert">
       {whyTheRoleStands(thrown)}
-    </p>
-  )
-}
-
-function PanelState({ children }: { readonly children: ReactNode }) {
-  return (
-    <p className="py-10 text-center text-[14px] text-panel-ink-muted" role="status">
-      {children}
     </p>
   )
 }

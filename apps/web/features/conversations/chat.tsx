@@ -18,8 +18,8 @@ import {
   ConversationSurface,
   type ChatAgent,
 } from './conversation-surface.tsx'
+import { conversationsIn, useConversation } from './conversation.ts'
 import { consumeMessageArrival } from './message-transition.ts'
-import { conversationsIn, useConversation } from './talking.ts'
 
 export function Chat({ slug, id }: { readonly slug: string; readonly id: string }) {
   const conversation = useConversation(slug, id)
@@ -34,9 +34,18 @@ export function Chat({ slug, id }: { readonly slug: string; readonly id: string 
   const me = useQuery(meQuery)
   const [animateArrival] = useState(() => consumeMessageArrival(id))
 
-  if (conversation.isPending) return <p className="chat-screen-state">Looking…</p>
+  if (conversation.isPending)
+    return (
+      <p className="chat-screen-state" role="status">
+        Looking…
+      </p>
+    )
   if (conversation.isError)
-    return <p className="chat-screen-state">Could not read this chat. Try again.</p>
+    return (
+      <p className="chat-screen-state" role="alert">
+        Could not read this chat. Try again.
+      </p>
+    )
   if (conversation.data === null) return <UnavailableChat slug={slug} />
 
   const { agentKind, machineId } = conversation.data
@@ -78,5 +87,12 @@ function UnavailableChat({ slug }: { readonly slug: string }) {
 function agentPresentation(agent: InstalledAgent | undefined, kind: string): ChatAgent {
   if (agent === undefined) return { avatarSrc: '', name: agentName(kind, null) }
 
-  return { avatarSrc: agent.avatarUrl, name: agentName(agent.kind, agent.name) }
+  return {
+    avatarSrc: agent.avatarUrl,
+    name: agentName(agent.kind, agent.name),
+    location: {
+      machine: agent.machineName,
+      ...(agent.connectedIn === undefined ? {} : { directory: agent.connectedIn }),
+    },
+  }
 }

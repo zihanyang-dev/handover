@@ -14,7 +14,7 @@ import type { components } from '../../generated/api.ts'
 import { AgentMark, agentKindName, agentName } from '../machines/agent.tsx'
 import { agentsOn, machinesIn, type InstalledAgent } from '../machines/machine-list.ts'
 import { ChatIcon } from '../spaces/sidebar-icons.tsx'
-import { conversationsIn, useSetPinned } from './talking.ts'
+import { conversationsIn, useSetPinned } from './conversation.ts'
 
 type Conversation = components['schemas']['Conversation']
 

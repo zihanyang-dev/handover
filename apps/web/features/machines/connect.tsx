@@ -79,7 +79,7 @@ function Answer({
       </p>
 
       <button
-        className="button button-quiet"
+        className="button h-7 min-h-7 rounded-[var(--interaction-radius)] border-0 bg-transparent px-2 py-0 text-copy-xs font-normal text-content shadow-none transition-colors duration-100 ease-in-out enabled:hover:bg-[var(--interaction-hover)] enabled:active:bg-[var(--interaction-pressed)] focus-visible:shadow-[0_0_0_2px_var(--base),0_0_0_4px_var(--focus)]"
         type="button"
         disabled={pending}
         onClick={() => {
@@ -114,16 +114,18 @@ function Answered({ letIn }: { readonly letIn: boolean }) {
  * day somebody reworded the message.
  */
 function Trouble({
+  id,
   error,
   fallback,
 }: {
+  readonly id: string
   readonly error: { readonly reason: string } | null
   readonly fallback: string
 }) {
   if (error === null) return null
 
   return (
-    <p className="said said-bad" role="alert">
+    <p id={id} className="said said-bad" role="alert">
       <ExclamationCircleFill aria-hidden />
       {SAID[reasonOf(error) ?? ''] ?? fallback}
     </p>
@@ -132,6 +134,8 @@ function Trouble({
 
 export function Connect({ typed }: { readonly typed: string }) {
   const field = useId()
+  const waitingError = useId()
+  const answerError = useId()
   const [code, setCode] = useState(typed)
   const [asked, setAsked] = useState(typed)
 
@@ -170,8 +174,16 @@ export function Connect({ typed }: { readonly typed: string }) {
           <p className="lede">Type the code shown in the terminal you ran the command in.</p>
         </header>
 
-        <Trouble error={waiting.error} fallback="That could not be checked. Try again shortly." />
-        <Trouble error={answer.error} fallback="That could not be done. Try again shortly." />
+        <Trouble
+          id={waitingError}
+          error={waiting.error}
+          fallback="That could not be checked. Try again shortly."
+        />
+        <Trouble
+          id={answerError}
+          error={answer.error}
+          fallback="That could not be done. Try again shortly."
+        />
 
         <div className="connect-code">
           <label className="label" htmlFor={field}>
@@ -185,6 +197,12 @@ export function Connect({ typed }: { readonly typed: string }) {
             spellCheck={false}
             placeholder="WDJB-MJHT"
             value={code}
+            aria-invalid={waiting.isError || answer.isError}
+            aria-describedby={
+              [waiting.isError ? waitingError : '', answer.isError ? answerError : '']
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
             onChange={(event) => {
               setCode(event.target.value)
             }}

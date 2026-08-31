@@ -126,6 +126,19 @@ describe('asking somebody in', () => {
     expect(((await made.json()) as { link: string }).link).toContain(`${WEB}/join/hi_`)
   })
 
+  it('replaces the previous link and lists only the replacement', async () => {
+    const first = await aLink()
+    const replacement = await aLink()
+
+    expect((await as(MINA, `/invitations/${first.secret}`)).status).toBe(404)
+    expect((await as(MINA, `/invitations/${replacement.secret}`)).status).toBe(200)
+
+    const open = await as(KAI, `/spaces/${SLUG}/invitations`)
+    expect((await open.json()) as { invitations: { id: string }[] }).toEqual({
+      invitations: [expect.objectContaining({ id: replacement.id })],
+    })
+  })
+
   it('is not something a member can do', async () => {
     const { secret } = await aLink()
     await joined(MINA, secret)

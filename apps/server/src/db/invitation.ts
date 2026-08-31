@@ -8,6 +8,11 @@
  *
  * No address on it. A link works for whoever holds it, and the screen says so rather than a field
  * nothing checks pretending otherwise — Notion's secret link is the same bargain.
+ *
+ * Locks, in the order every path here takes whichever of them it needs:
+ *   1. the `spaces` row an invitation belongs to
+ *   2. the `invitations` row
+ *   3. the membership row, through its unique on (space_id, user_id)
  */
 
 import { sql } from 'kysely'
@@ -34,19 +39,38 @@ export async function inviteInto(
   db: Database,
   into: { readonly spaceId: string; readonly by: string },
 ): Promise<Made> {
-  const secret = mint(INVITATION)
-  const row = await db
-    .insertInto('invitations')
-    .values({
-      space_id: into.spaceId,
-      secret_hash: secret.hash,
-      made_by: into.by,
-      expires_at: sql<Date>`now() + ${GOOD_FOR_DAYS} * interval '1 day'`,
-    })
-    .returning(['id', 'expires_at as expiresAt', 'made_by as madeBy'])
-    .executeTakeFirstOrThrow()
+  return db.transaction().execute(async (tx) => {
+    // Serialise replacements on the thing they are for. Without this lock two requests can both
+    // revoke nothing and then race to insert; the unique index would reject one, but somebody who
+    // pressed Replace would receive an unexplained failure instead of the one new link promised.
+    await tx
+      .selectFrom('spaces')
+      .select('id')
+      .where('id', '=', into.spaceId)
+      .forUpdate()
+      .executeTakeFirstOrThrow()
 
-  return { ...row, secret: secret.secret }
+    await tx
+      .updateTable('invitations')
+      .set({ revoked_at: sql<Date>`clock_timestamp()` })
+      .where('space_id', '=', into.spaceId)
+      .where('revoked_at', 'is', null)
+      .execute()
+
+    const secret = mint(INVITATION)
+    const row = await tx
+      .insertInto('invitations')
+      .values({
+        space_id: into.spaceId,
+        secret_hash: secret.hash,
+        made_by: into.by,
+        expires_at: sql<Date>`now() + ${GOOD_FOR_DAYS} * interval '1 day'`,
+      })
+      .returning(['id', 'expires_at as expiresAt', 'made_by as madeBy'])
+      .executeTakeFirstOrThrow()
+
+    return { ...row, secret: secret.secret }
+  })
 }
 
 /** The ones that still work here, newest first. Never their secrets — nobody has those any more. */
@@ -122,10 +146,6 @@ export async function whatItOpens(db: Database, secret: string): Promise<Held> {
 
 /**
  * Following a link, all the way, in one transaction.
- *
- * Locks, in the order this path takes them:
- *   1. the invitation row, for update, by its hash
- *   2. the membership row, through its unique on (space_id, user_id)
  *
  * Read and then written separately, a link that was stopped between the two still lets somebody
  * in: whoever revoked it watched it go dark on their screen and it worked anyway. Locking the row

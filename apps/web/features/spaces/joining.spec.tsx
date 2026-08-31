@@ -8,7 +8,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { theSpace } from '../../pretend/a-space.ts'
 import { signedIn } from '../../pretend/signed-in.ts'
 import { routeTree } from '../../routeTree.gen.ts'
+import { ME } from '../identity/me.ts'
 
 const server = setupServer()
 
@@ -44,7 +45,7 @@ function open(at = '/join/hi_secret') {
     </QueryClientProvider>,
   )
 
-  return router
+  return { router, client }
 }
 
 describe('following a link somebody sent', () => {
@@ -64,22 +65,39 @@ describe('following a link somebody sent', () => {
 
   it('lands in the Space, with it now on the list of yours', async () => {
     let asked = 0
+    let joined = false
     server.use(
+      http.get('*/me', () =>
+        HttpResponse.json({
+          id: '00000000-0000-4000-8000-000000000001',
+          displayName: 'Kai',
+          avatarUrl: '/avatars/users/00000000-0000-4000-8000-000000000001',
+          credentials: [],
+          startedWith: 'email',
+          spaces: joined ? [{ id: 'a', slug: 'acme', displayName: 'Acme', emoji: '🏠' }] : [],
+        }),
+      ),
       ...theSpace(),
       http.get('*/invitations/hi_secret', () =>
         HttpResponse.json({ slug: 'acme', displayName: 'Acme', invitedBy: 'Kai' }),
       ),
       http.post('*/me/spaces', () => {
         asked += 1
+        joined = true
         return HttpResponse.json({ slug: 'acme' })
       }),
       http.get('*/spaces/acme/members', () => HttpResponse.json({ members: [] })),
     )
-    const router = open()
+    const { router, client } = open()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Join Acme' }))
 
     expect(await screen.findByRole('complementary', { name: /Acme sidebar/i })).toBeDefined()
+    await waitFor(() => {
+      expect(client.getQueryData<{ spaces: readonly { slug: string }[] }>(ME)?.spaces).toEqual([
+        expect.objectContaining({ slug: 'acme' }),
+      ])
+    })
     expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
     expect([asked, router.state.location.pathname]).toEqual([1, '/s/acme'])
   })

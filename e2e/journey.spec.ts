@@ -92,15 +92,24 @@ test('a machine owner changes agent settings and disconnects it', async ({ page,
   await expect(page.getByRole('heading', { name: 'Machines' })).toBeVisible()
   await expect(page.getByText('settings-mbp')).toBeVisible({ timeout: 15_000 })
   await page.getByLabel('Name').fill('Runner')
-  await page.getByLabel('At once').fill('4')
-  await page.getByRole('button', { name: 'Save' }).click()
+  const atOnce = page.getByLabel('At once')
+  await atOnce.fill('4')
+  const saved = page.waitForResponse(
+    (response) => response.request().method() === 'PATCH' && response.url().includes('/agents/'),
+  )
+  await atOnce.press('Tab')
+  await saved
   await page.getByRole('button', { name: 'Close settings' }).click()
 
   await openSpaceSettings(page)
   await page.getByRole('tab', { name: 'Machines' }).click()
   await expect(page.getByLabel('Name')).toHaveValue('Runner')
   await expect(page.getByLabel('At once')).toHaveValue('4')
-  await page.getByRole('button', { name: 'Disconnect' }).click()
+  await page.getByRole('button', { name: 'settings-mbp actions' }).click()
+  await page
+    .getByRole('menu', { name: 'settings-mbp actions' })
+    .getByRole('menuitem', { name: 'Disconnect machine' })
+    .click()
   await page.getByRole('button', { name: 'Disconnect machine' }).click()
   await expect(page.getByText('No machines here')).toBeVisible({ timeout: 15_000 })
 })
@@ -212,7 +221,7 @@ test('what an agent is doing right now reaches a browser that is watching', asyn
 
 async function openSpaceSettings(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('button', { name: /Open .* menu/u }).click()
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'People' })).toBeVisible()
 }
 

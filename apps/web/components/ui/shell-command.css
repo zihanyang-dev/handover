@@ -1,0 +1,34 @@
+.shell-snippet {
+  @apply flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--neutral-950)] bg-white px-3 py-2.5 text-content;
+}
+
+.shell-snippet code {
+  @apply min-w-0 max-w-full flex-1 overflow-x-auto whitespace-nowrap font-mono text-copy-xs leading-[1.55];
+  scrollbar-width: none;
+}
+
+.shell-copy {
+  @apply grid size-8 shrink-0 cursor-pointer appearance-none place-items-center rounded-md border-0 bg-transparent p-0 text-basic;
+  transition:
+    background-color var(--interaction-fast) ease-in-out,
+    color var(--interaction-fast) ease-in-out;
+}
+
+.shell-copy:hover {
+  background: var(--interaction-hover);
+  color: var(--content);
+}
+
+.shell-copy:active {
+  background: var(--interaction-pressed);
+}
+
+.shell-copy:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.shell-prompt {
+  color: var(--primary);
+  user-select: none;
+}

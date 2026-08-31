@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check2, Copy } from 'react-bootstrap-icons'
+import type { ReactNode } from 'react'
+import { Copy } from '../../components/ui/copy.tsx'
 import { MessageMarkdown } from '../../components/ui/message-markdown.tsx'
-import type { Message } from './talking.ts'
+import type { Message } from './conversation.ts'
 
 type Placement = 'left' | 'right'
 
@@ -33,7 +33,11 @@ export function ChatMessage({
       </header>
       <div className="chat-message-body">{children}</div>
       <div className="chat-message-actions">
-        {copyText !== undefined && copyText !== '' && <CopyMessage text={copyText} />}
+        {copyText !== undefined && copyText !== '' && (
+          <div className="chat-message-action-menu">
+            <Copy text={copyText} what="message" />
+          </div>
+        )}
       </div>
     </article>
   )
@@ -63,36 +67,6 @@ export function ChatMessageText({
   return (
     <div className="chat-line chat-line-agent">
       <MessageMarkdown>{message.content.text}</MessageMarkdown>
-    </div>
-  )
-}
-
-function CopyMessage({ text }: { readonly text: string }) {
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(timer.current)
-    }
-  }, [])
-
-  return (
-    <div className="chat-message-action-menu">
-      <button
-        type="button"
-        aria-label={copied ? 'Copied' : 'Copy message'}
-        onClick={() => {
-          void navigator.clipboard.writeText(text)
-          setCopied(true)
-          clearTimeout(timer.current)
-          timer.current = setTimeout(() => {
-            setCopied(false)
-          }, 1600)
-        }}
-      >
-        {copied ? <Check2 aria-hidden /> : <Copy aria-hidden />}
-      </button>
     </div>
   )
 }

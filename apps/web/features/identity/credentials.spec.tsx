@@ -63,14 +63,14 @@ describe('how you get in', () => {
     expect(ways.getByRole('button', { name: /^connect$/i })).toBeDefined()
   })
 
-  it('says who can get in, beside the list rather than in a settings page', async () => {
+  it('keeps provider rows to the provider and its action', async () => {
     server.use(signedIn({ credentials: ALL }))
     open('/settings')
 
-    // The direct consequence of one address meaning one account: whoever reads that inbox is in.
-    expect(
-      await screen.findByText(/whoever can read one of those inboxes can sign in/i),
-    ).toBeDefined()
+    const ways = await panel()
+    expect(ways.queryByText('Connected to this account')).toBeNull()
+    expect(ways.queryByText('Available to connect')).toBeNull()
+    expect(screen.queryByText(/whoever can read one of those inboxes/u)).toBeNull()
   })
 
   it('leaves out a provider this deployment has no keys for', async () => {

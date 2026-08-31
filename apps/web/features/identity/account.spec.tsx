@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -48,7 +48,7 @@ describe('your name', () => {
     // The field follows what is saved without an effect pushing it there, so the value arrives
     // with the query rather than a render later.
     expect(await screen.findByDisplayValue(EMAIL)).toBeDefined()
-    expect(screen.getByRole('button', { name: /save/i }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Profile' })).toBeDefined()
   })
 
   it('can be changed, and is trimmed on the way', async () => {
@@ -65,9 +65,11 @@ describe('your name', () => {
     const field = await screen.findByDisplayValue(EMAIL)
     await userEvent.clear(field)
     await userEvent.type(field, '  Mina Kim  ')
-    await userEvent.click(screen.getByRole('button', { name: /save/i }))
+    await userEvent.tab()
 
-    expect(saved).toEqual({ displayName: 'Mina Kim' })
+    await waitFor(() => {
+      expect(saved).toEqual({ displayName: 'Mina Kim' })
+    })
   })
 })
 

@@ -43,7 +43,14 @@ services:
 
   # Making the bucket is this deployment's job, not the server's: production credentials may be
   # allowed to read and write objects without being allowed to create buckets.
+  #
+  # A release step, for the same reason the migrations are one — and it used to be neither. Left
+  # to `up`, it ran on every start, nothing read its exit code, and a `mc mb` that failed was a
+  # bucket that did not exist with nobody saying so: the first word anybody got was an upload
+  # failing days later. Behind a profile it does not start with everything else; `release.sh` asks
+  # for it by name and stops if it fails.
   objects-ready:
+    profiles: ['release']
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       objects:
@@ -57,7 +64,10 @@ services:
     environment:
       OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:?}
       OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:?}
-      OBJECT_STORE_BUCKET: ${OBJECT_STORE_BUCKET:-handover}
+      # No default here. `env.ts` refuses to invent one because a process that guessed a bucket
+      # could write a valid object into the wrong deployment; inventing one here would put that
+      # guess back, one layer down.
+      OBJECT_STORE_BUCKET: ${OBJECT_STORE_BUCKET:?the bucket must be set}
 
   app:
     build:

@@ -54,14 +54,14 @@ export function invitationApi(deps: InvitationApi) {
 }
 
 /**
- * Makes a link, and hands over its plaintext the one time it exists.
+ * Replaces the Space's link, and hands over the new plaintext the one time it exists.
  *
  * The whole link and not just the secret, because what somebody does next is send it to a person
  * — and a person needs an address, not a token to assemble one out of.
  */
 function asking({ db, webOrigin }: InvitationApi) {
   return anOwner(db).post('/spaces/{slug}/invitations', {
-    summary: 'Make a link somebody can join this Space with',
+    summary: 'Replace the link somebody can join this Space with',
     answers: { 201: sends(Made, 'The link, shown this once and never again') },
 
     run: async (c) => {
@@ -79,10 +79,10 @@ function asking({ db, webOrigin }: InvitationApi) {
   })
 }
 
-/** The links that still work here. Never their secrets — nobody has those any more. */
+/** The one link that still works here. Never its secret — nobody has that any more. */
 function openOnes({ db }: InvitationApi) {
   return anOwner(db).get('/spaces/{slug}/invitations', {
-    summary: 'The links that still work',
+    summary: 'The link that still works, if there is one',
     answers: { 200: sends(Invitations, 'Still working') },
 
     run: async (c) => {

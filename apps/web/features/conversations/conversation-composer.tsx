@@ -6,8 +6,9 @@ import {
   StopButton,
 } from '../../components/ui/chat-composer.tsx'
 import { AgentMark, agentTint } from '../machines/agent.tsx'
+import { useSay, useStop, type Message } from './conversation.ts'
 import { askedWithChoices, ModelChoices, type Model } from './model-choices.tsx'
-import { useSay, useSayingYouAreTyping, useStop, type Message } from './talking.ts'
+import { useSayingYouAreTyping } from './watching.ts'
 
 export type PendingUserMessage = Extract<Message, { readonly role: 'user' }>
 

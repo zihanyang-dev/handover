@@ -5,7 +5,7 @@
  * interacted with, so its scrolling and composer remain one geometry instead of two page states.
  */
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown } from 'react-bootstrap-icons'
 import {
   MessageScroller,
@@ -18,26 +18,25 @@ import { ChatActivity } from './chat-activity.tsx'
 import { ChatMessage, ChatMessageText } from './chat-message.tsx'
 import { ToolRun, type ToolMessage } from './chat-tools.tsx'
 import { ConversationComposer, type PendingUserMessage } from './conversation-composer.tsx'
-import { HandoverControl, HandoverProposal } from './conversation-work.tsx'
-import {
-  type useConversation,
-  useWatching,
-  type LiveOutput,
-  type LiveTurn,
-  type Message,
-} from './talking.ts'
+import { HandoverControl, HandoverProposal, type ProposalStatus } from './conversation-work.tsx'
+import type { useConversation, Message } from './conversation.ts'
 import {
   getLatestUserPrompt,
   promptToPin,
   type LatestUserPrompt,
   type TranscriptRow,
 } from './transcript-scroll.ts'
+import { useWatching, type LiveOutput, type LiveTurn } from './watching.ts'
 import { WorkPanel } from './work-panel.tsx'
 
 export const CHAT_SCROLL_EDGE_PX = 48
 const PROMPT_TOP_GAP_PX = 24
 
-export type ChatAgent = { readonly avatarSrc: string; readonly name: string }
+export type ChatAgent = {
+  readonly avatarSrc: string
+  readonly name: string
+  readonly location?: { readonly machine: string; readonly directory?: string }
+}
 
 type ConversationSurfaceProps = {
   readonly slug: string
@@ -47,6 +46,41 @@ type ConversationSurfaceProps = {
   readonly ownUserId: string | undefined
   readonly title: string
   readonly animateArrival: boolean
+}
+
+function useMobileWork() {
+  const [isOpen, setIsOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const close = (): void => {
+    setIsOpen(false)
+    requestAnimationFrame(() => {
+      trigger.current?.focus()
+    })
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    closeButton.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [isOpen])
+
+  return {
+    isOpen,
+    open: () => {
+      setIsOpen(true)
+    },
+    close,
+    trigger,
+    closeButton,
+  }
 }
 
 export function ConversationSurface({
@@ -59,8 +93,15 @@ export function ConversationSurface({
   animateArrival,
 }: ConversationSurfaceProps) {
   const { messages, working, underway } = conversation
+  // An accepted tail replaces this local row; until then it is deliberately not Query state.
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>()
-  const [mobileWorkOpen, setMobileWorkOpen] = useState(false)
+  const {
+    isOpen: mobileWorkOpen,
+    open: openMobileWork,
+    close: closeMobileWork,
+    trigger: workTrigger,
+    closeButton: workClose,
+  } = useMobileWork()
   const currentTurn = turnOf(messages)
   const turns = useMemo(() => transcriptTurns(messages), [messages])
   const rows = useMemo(() => rowsWithPending(turns, pendingMessage), [pendingMessage, turns])
@@ -107,18 +148,20 @@ export function ConversationSurface({
         />
         {underway !== undefined && (
           <button
-            className="ml-auto h-7 rounded-[6px] border border-panel-line-firm px-2.5 text-[12px] font-medium text-panel-ink-soft lg:hidden"
+            ref={workTrigger}
+            className="ml-auto h-7 shrink-0 whitespace-nowrap rounded-[6px] border border-panel-line-firm px-2.5 text-[12px] font-medium text-panel-ink-soft lg:hidden"
             type="button"
-            onClick={() => {
-              setMobileWorkOpen(true)
-            }}
+            aria-controls="conversation-work-panel"
+            aria-expanded={mobileWorkOpen}
+            onClick={openMobileWork}
           >
             Work details
           </button>
         )}
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <ConversationMain
+          blocked={mobileWorkOpen}
           slug={slug}
           id={id}
           conversation={conversation}
@@ -132,23 +175,24 @@ export function ConversationSurface({
         />
         {underway !== undefined && (
           <aside
-            className="hidden h-full w-[320px] shrink-0 border-l border-panel-line lg:block"
+            id="conversation-work-panel"
+            className={
+              mobileWorkOpen
+                ? 'absolute inset-0 z-30 h-full w-full shrink-0 bg-white lg:static lg:z-auto lg:block lg:w-[360px] lg:border-l lg:border-panel-line'
+                : 'hidden h-full shrink-0 bg-white lg:block lg:w-[360px] lg:border-l lg:border-panel-line'
+            }
             aria-label="Work details"
+            role={mobileWorkOpen ? 'dialog' : 'complementary'}
           >
-            <WorkPanel slug={slug} id={id} underway={underway} />
-          </aside>
-        )}
-        {underway !== undefined && mobileWorkOpen && (
-          <div className="absolute inset-x-0 top-11 bottom-0 z-30 bg-white lg:hidden">
             <WorkPanel
               slug={slug}
               id={id}
               underway={underway}
-              close={() => {
-                setMobileWorkOpen(false)
-              }}
+              location={agent.location}
+              closeRef={workClose}
+              close={closeMobileWork}
             />
-          </div>
+          </aside>
         )}
       </div>
     </section>
@@ -178,6 +222,7 @@ function useDistanceFromLatest() {
 }
 
 function ConversationMain({
+  blocked,
   slug,
   id,
   conversation,
@@ -189,6 +234,7 @@ function ConversationMain({
   pendingMessage,
   setPendingMessage,
 }: {
+  readonly blocked: boolean
   readonly slug: string
   readonly id: string
   readonly conversation: ConversationSurfaceProps['conversation']
@@ -205,7 +251,7 @@ function ConversationMain({
   const { viewport, hasScrolledAway, noteScrollPosition } = useDistanceFromLatest()
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-1 flex-col" inert={blocked ? true : undefined}>
       <MessageScroller className="chat-scroll-root">
         <MessageScrollerViewport
           ref={viewport}
@@ -337,6 +383,27 @@ function transcriptRow(turn: TranscriptTurn): TranscriptRow {
   return { id: turn.key, kind: 'reply', seq: turn.reply[0]?.seq ?? 0 }
 }
 
+/** The latest proposal since the person last changed what they asked for. */
+function currentProposalSeq(messages: readonly Message[]): number | undefined {
+  let current: number | undefined
+  for (const message of messages) {
+    if (message.role === 'user') current = undefined
+    else if (message.role === 'activity' && message.content.activityType === 'proposed')
+      current = message.seq
+  }
+  return current
+}
+
+function proposalStatus(
+  underway: ConversationSurfaceProps['conversation']['underway'],
+  confirmableProposalSeq: number | undefined,
+  proposalSeq: number,
+): ProposalStatus {
+  const current = confirmableProposalSeq === proposalSeq
+  if (underway === undefined) return current ? 'available' : 'superseded'
+  return current ? 'handed-over' : 'underway'
+}
+
 function Transcript({
   slug,
   id,
@@ -368,6 +435,7 @@ function Transcript({
     activeCallId !== undefined &&
     messages.some((message) => message.role === 'tool' && message.content.callId === activeCallId)
   const activeOutput = activeCallId === undefined ? undefined : liveTurn.outputs.get(activeCallId)
+  const confirmableProposalSeq = currentProposalSeq(messages)
 
   return (
     <>
@@ -391,6 +459,7 @@ function Transcript({
                   slug={slug}
                   id={id}
                   underway={underway}
+                  confirmableProposalSeq={confirmableProposalSeq}
                   messages={turn.reply}
                   agent={agent}
                   liveOutputs={liveTurn.outputs}
@@ -448,6 +517,7 @@ function AgentReply({
   slug,
   id,
   underway,
+  confirmableProposalSeq,
   messages,
   agent,
   liveOutputs,
@@ -455,6 +525,7 @@ function AgentReply({
   readonly slug: string
   readonly id: string
   readonly underway: ConversationSurfaceProps['conversation']['underway']
+  readonly confirmableProposalSeq: number | undefined
   readonly messages: readonly Message[]
   readonly agent: ChatAgent
   readonly liveOutputs: ReadonlyMap<string, LiveOutput>
@@ -481,6 +552,8 @@ function AgentReply({
           slug={slug}
           id={id}
           underway={underway}
+          confirmableProposalSeq={confirmableProposalSeq}
+          location={agent.location}
           blocks={blocks}
           liveOutputs={liveOutputs}
         />
@@ -499,12 +572,16 @@ function ReplyContent({
   slug,
   id,
   underway,
+  confirmableProposalSeq,
+  location,
   blocks,
   liveOutputs,
 }: {
   readonly slug: string
   readonly id: string
   readonly underway: ConversationSurfaceProps['conversation']['underway']
+  readonly confirmableProposalSeq: number | undefined
+  readonly location: ChatAgent['location']
   readonly blocks: readonly ReplyBlock[]
   readonly liveOutputs: ReadonlyMap<string, LiveOutput>
 }) {
@@ -527,9 +604,10 @@ function ReplyContent({
                 key={`activity-${String(block.message.seq)}`}
                 slug={slug}
                 id={id}
+                proposalSeq={block.message.seq}
                 goal={block.text}
-                active={underway?.goal === block.text}
-                available={underway === undefined}
+                location={location}
+                status={proposalStatus(underway, confirmableProposalSeq, block.message.seq)}
               />
             )
           }

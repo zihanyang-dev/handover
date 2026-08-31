@@ -6,7 +6,7 @@ import {
   useMessageScroller,
 } from '@shadcn/react/message-scroller'
 import type { ComponentProps } from 'react'
-import { cn } from '../../lib/utils.ts'
+import { cn } from '../../lib/class-names.ts'
 
 export const MessageScrollerProvider = MessageScrollerPrimitive.Provider
 
