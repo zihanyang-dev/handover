@@ -69,6 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       # Credentials kept, unlike every other checkout here, because this job's whole purpose is to
       # write back what it took. Nothing else in this workflow can.
@@ -82,9 +83,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm db:up
       - run: pnpm looks:before
-      # Pushed with the repository's own token, which is what keeps this from being a loop: a push
-      # made with it starts no further run.
-      - name: Commit the pictures, if they moved
+      # Opened as a pull request rather than pushed, for two reasons that happen to agree: `main`
+      # takes nothing except through one, and new pictures are exactly the kind of change somebody
+      # should see before it lands. GitHub renders them side by side in the diff.
+      - name: Offer the pictures, if they moved
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -93,5 +97,14 @@ jobs:
             echo 'Nothing moved. The pictures already say what the screens say.'
             exit 0
           fi
+          branch="looks/${{ github.run_id }}"
+          git checkout -b "$branch"
           git commit -m 'Take the pictures again, from where the styling is now'
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin "$branch"
+          gh pr create --base '${{ github.ref_name }}' --head "$branch" \
+            --title 'Take the pictures again, from where the styling is now' \
+            --body 'Taken by the `looks` workflow on Linux, from `${{ github.ref_name }}`.
+
+          Look at the images below before merging: that is the whole point of this arriving as a
+          pull request rather than as a push. Anything here that you did not mean to change is a
+          regression being accepted.'
