@@ -1,0 +1,50 @@
+# What the screens look like.
+#
+# Its own workflow, and its own job, because a picture is a different kind of answer: it fails for
+# reasons `check` never can — a font, a graphics library, a browser build — and a functional suite
+# that inherited those failures would be a suite people learn to re-run rather than read.
+#
+# The pictures live in `e2e/looks/`, taken on Linux, which is what this runs on. Changing how
+# something looks on purpose means running this workflow by hand with `update` and committing what
+# it hands back; there is no way to take them from a Mac, and that is the point.
+name: looks
+
+on:
+  workflow_dispatch:
+    inputs:
+      update:
+        description: Take the pictures again instead of comparing against them
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  looks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser and the libraries it draws with, which is the half of a picture this runner
+      # does not come with.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm db:up
+      - run: ${{ inputs.update && 'pnpm looks:before' || 'pnpm looks' }}
+      # Both ways round: the pictures when they were asked for, and the differences when they were
+      # not. A failure nobody can look at is a failure nobody can judge.
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: looks
+          path: |
+            e2e/looks/
+            e2e/test-results/
+          if-no-files-found: ignore

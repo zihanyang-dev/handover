@@ -30,14 +30,41 @@ export default defineConfig({
   // nothing to do with the product.
   timeout: 90_000,
   reporter: [['list']],
-  // Temporary, for the move from a hand-written stylesheet to tokens and utilities. Pictures do
-  // not belong in this repository; they live where the work does and go when it is done.
-  snapshotPathTemplate: '{testDir}/../.looks/{arg}{ext}',
+  /**
+   * A picture per screen, per browser, per operating system.
+   *
+   * The last of the three is the whole reason this reads the way it does. A screen rendered on a
+   * Mac and the same screen rendered on Linux are not the same picture — fonts, hinting and
+   * subpixel antialiasing all differ — so one file for both means whichever machine did not take
+   * it fails on every screen. Playwright's own default carries the platform for exactly this
+   * reason; a template that dropped it was this repository turning that off.
+   *
+   * Only the Linux pictures are kept: CI is where a change is judged, and a second set taken on
+   * somebody's laptop is a second answer nobody agreed to. A Mac takes its own on the first run —
+   * which reports as a failure, once, saying it wrote them — and compares against those after.
+   */
+  snapshotPathTemplate: '{testDir}/looks/{arg}{-projectName}{-snapshotSuffix}{ext}',
   use: {
     baseURL: ORIGIN,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: devices['Desktop Chrome'] }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        /**
+         * Rendering held as still as a browser will hold it.
+         *
+         * Two CI machines with different font and graphics libraries move text by a subpixel, and
+         * a suite that measures ten pixels reads that as a change to the styling. These three
+         * take the difference out at the source rather than by widening what counts as the same.
+         */
+        deviceScaleFactor: 1,
+        launchOptions: { args: ['--disable-lcd-text', '--font-render-hinting=none'] },
+      },
+    },
+  ],
   webServer: {
     // Its output goes to a file because the letters go there: with no mail provider the server
     // writes each code to its log, and that file is this suite's inbox.

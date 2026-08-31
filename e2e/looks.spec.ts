@@ -1,14 +1,21 @@
 /**
  * A picture of every screen, so a change to how they are styled can be proven to change nothing.
  *
- * Temporary: this exists for the move from a hand-written stylesheet to tokens and utilities.
+ * The only thing here that has ever looked at a screen. Everything else asks the code questions;
+ * this asks the browser, and twice now it has been the only thing that noticed — a rename that
+ * reached into CSS property names, and a tidy-up that leaked declarations onto a neighbouring
+ * rule. Both shipped with every other check green.
  *
  * Run it against an empty database, or it is measuring itself: names, addresses and slugs all end
  * up on screen, and a run that had to avoid the last run's would put a different string in every
  * shot — which reads as a change to the styling and is not one.
  *
- *     pnpm looks           compare against the pictures in .looks/
+ *     pnpm looks           compare against the pictures in e2e/looks/
  *     pnpm looks:before    take them again, from where the styling is now
+ *
+ * The pictures CI judges by are the Linux ones, and they are taken by CI: the `looks` workflow,
+ * run by hand, writes a fresh set and hands them back to be committed. A Mac takes its own on
+ * first run and keeps them to itself — see `playwright.config.ts`.
  *
  * Not part of `pnpm test:e2e`, which walks journeys against whatever the last run left behind.
  * This one needs the database emptied first, and both scripts above do that.
