@@ -549,7 +549,7 @@
           "working": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WorkTheyHold"
+              "$ref": "#/components/schemas/TaskTheyHold"
             }
           },
           "machines": {
@@ -564,7 +564,7 @@
           "machines"
         ]
       },
-      "WorkTheyHold": {
+      "TaskTheyHold": {
         "type": "object",
         "properties": {
           "conversationId": {
@@ -2088,7 +2088,7 @@
           "key"
         ]
       },
-      "HandWorkTo": {
+      "HandTaskTo": {
         "type": "object",
         "properties": {
           "ownerUserId": {
@@ -2236,7 +2236,7 @@
           }
         ]
       },
-      "WorkOpened": {
+      "TaskOpened": {
         "type": "object",
         "properties": {
           "conversationId": {
@@ -2248,7 +2248,7 @@
           "conversationId"
         ]
       },
-      "OpenWorkFor": {
+      "OpenTaskFor": {
         "type": "object",
         "properties": {
           "key": {
@@ -5165,7 +5165,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/HandWorkTo"
+                "$ref": "#/components/schemas/HandTaskTo"
               }
             }
           }
@@ -5339,7 +5339,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OpenWorkFor"
+                "$ref": "#/components/schemas/OpenTaskFor"
               }
             }
           }
@@ -5350,7 +5350,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkOpened"
+                  "$ref": "#/components/schemas/TaskOpened"
                 }
               }
             }

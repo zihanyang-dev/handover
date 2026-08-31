@@ -47,7 +47,7 @@ const Member = named('Member', {
   you: z.boolean(),
 })
 
-const WorkTheyHold = named('WorkTheyHold', {
+const TaskTheyHold = named('TaskTheyHold', {
   conversationId: rowId,
   goal: z.string(),
   state: z.string(),
@@ -61,7 +61,7 @@ const MachineTheyHold = named('MachineTheyHold', {
 })
 
 const StillTheirs = named('StillTheirs', {
-  working: z.array(WorkTheyHold).readonly(),
+  working: z.array(TaskTheyHold).readonly(),
   machines: z.array(MachineTheyHold).readonly(),
 })
 

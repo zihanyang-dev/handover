@@ -2919,7 +2919,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["HandWorkTo"];
+                    "application/json": components["schemas"]["HandTaskTo"];
                 };
             };
             responses: {
@@ -3103,7 +3103,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["OpenWorkFor"];
+                    "application/json": components["schemas"]["OpenTaskFor"];
                 };
             };
             responses: {
@@ -3113,7 +3113,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["WorkOpened"];
+                        "application/json": components["schemas"]["TaskOpened"];
                     };
                 };
                 /** @description The body was not the shape it claims */
@@ -3477,10 +3477,10 @@ export interface components {
             role: components["schemas"]["Role"];
         };
         StillTheirs: {
-            working: components["schemas"]["WorkTheyHold"][];
+            working: components["schemas"]["TaskTheyHold"][];
             machines: components["schemas"]["MachineTheyHold"][];
         };
-        WorkTheyHold: {
+        TaskTheyHold: {
             /** Format: uuid */
             conversationId: string;
             goal: string;
@@ -3858,7 +3858,7 @@ export interface components {
         TakeBack: {
             key: string;
         };
-        HandWorkTo: {
+        HandTaskTo: {
             /** Format: uuid */
             ownerUserId: string;
         };
@@ -3895,11 +3895,11 @@ export interface components {
             ending: "done" | "cannot";
             text: string;
         };
-        WorkOpened: {
+        TaskOpened: {
             /** Format: uuid */
             conversationId: string;
         };
-        OpenWorkFor: {
+        OpenTaskFor: {
             key: string;
             goal: string;
             /** @enum {string} */

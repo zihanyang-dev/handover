@@ -202,6 +202,8 @@ export function validateWork(work: Work): Result { … }
 线上            屏幕上             为什么不统一
 invitations     link              线上那个是一行可作废、会过期的记录;人手里拿着的是一条 URL
 task            piece of work     线上那个是账本上的一行;人看到的是"你交出去的那件事"
+conversations   chat              线上那个是一段可以被交接、被接手的记录;屏幕上那是你正在说话的地方
+enrolments      connect           线上那个是一次等着被批准的申请;屏幕上那是人按下的那个动作
 ```
 
 **判据是:一个人读到线上的名字时,会不会以为那是另一样东西。** 不会,就留着两个名字并把对照写在

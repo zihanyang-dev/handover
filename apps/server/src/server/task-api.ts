@@ -119,7 +119,7 @@ const LetItCarryOn = named('LetItCarryOn', {
 const TakeBack = named('TakeBack', CALLED)
 
 /** Who a piece of work is being handed to. */
-const HandWorkTo = named('HandWorkTo', { ownerUserId: rowId })
+const HandTaskTo = named('HandTaskTo', { ownerUserId: rowId })
 
 const StopWorking = named('StopWorking', { ...CALLED, how: HowItStopped })
 
@@ -129,13 +129,13 @@ const StopWorking = named('StopWorking', { ...CALLED, how: HowItStopped })
  * `prd.md` 07 ⑥: an agent that could name a machine could put work on somebody's laptop with
  * nobody in the room. A person handing you something leaves a name and a time; this would not.
  */
-const OpenWorkFor = named('OpenWorkFor', {
+const OpenTaskFor = named('OpenTaskFor', {
   ...CALLED,
   goal,
   agentKind: z.enum(AGENT_KIND_NAMES),
 })
 
-const WorkOpened = named('WorkOpened', { conversationId: z.uuid() })
+const TaskOpened = named('TaskOpened', { conversationId: z.uuid() })
 
 /** No name of its own: the title in the path is the name, so writing it again replaces it. */
 const WriteOutput = named('WriteOutput', { text: z.string().min(1).max(65_536) })
@@ -226,7 +226,7 @@ function handingToSomebody({ db }: TaskApi) {
   return anOwner(db).patch('/spaces/{slug}/conversations/{id}/task', {
     summary: 'Hand a piece of work to somebody else here',
     params: { id: rowId },
-    body: HandWorkTo,
+    body: HandTaskTo,
     answers: {
       204: 'It is theirs, and it is in their Inbox',
       404: refuses(
@@ -300,9 +300,9 @@ function handingOff({ db }: TaskApi) {
   return aMachine(db).post('/machines/current/conversations/{id}/task/handed-off', {
     summary: 'Open a piece of work for another agent',
     params: { id: rowId },
-    body: OpenWorkFor,
+    body: OpenTaskFor,
     answers: {
-      201: sends(WorkOpened, 'Opened, and its machine already knows'),
+      201: sends(TaskOpened, 'Opened, and its machine already knows'),
       404: refuses(UNAVAILABLE, 'Nothing was handed over in that conversation'),
       409: refuses([NO_AGENT, NO_DEEPER], 'This machine cannot take it, or this is already one'),
     },
