@@ -103,7 +103,7 @@ describe('the sidebar', () => {
 
     await open()
 
-    expect(await screen.findByText(/Could not read your conversations/u)).toBeDefined()
+    expect(await screen.findByText(/Could not read your chats/u)).toBeDefined()
   })
 
   it('shows the list itself when the read worked', async () => {
@@ -114,7 +114,7 @@ describe('the sidebar', () => {
     // The other half of the promise: the message above is about a failure and not a fixture that
     // happens to be empty, so a Space that answers must not be carrying it.
     expect(await screen.findByRole('button', { name: 'Pin' })).toBeDefined()
-    expect(screen.queryByText(/Could not read your conversations/u)).toBeNull()
+    expect(screen.queryByText(/Could not read your chats/u)).toBeNull()
   })
 
   it('names whoever started a conversation that is not yours, and stays quiet on your own', async () => {
@@ -167,6 +167,6 @@ describe('the sidebar', () => {
 
     await openChat()
 
-    expect(await screen.findByText(/Could not read your conversations/u)).toBeDefined()
+    expect(await screen.findByText(/Could not read your chats/u)).toBeDefined()
   })
 })

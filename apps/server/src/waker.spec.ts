@@ -87,6 +87,50 @@ describe('looking for work whose moment has come', () => {
     expect(mostAtOnce).toBe(1)
   })
 
+  /**
+   * Stopping is two promises, and the second one is the one that matters.
+   *
+   * `main.ts` closes the pool as soon as this returns. A round still inside a transaction is still
+   * using it, and a stop that returned early would hand that round a pool that had been destroyed
+   * underneath it — at the one moment nobody is watching the logs, on the way out.
+   *
+   * Written after a mutation: taking `await inFlight` out of `stop` left every other test in this
+   * file green.
+   */
+  it('does not return until the round in flight has finished with the pool', async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let roundEnded = false
+
+    const held = {
+      transaction: () => ({
+        execute: async () => {
+          started.resolve()
+          await release.promise
+          roundEnded = true
+          throw new Error('the database is not there')
+        },
+      }),
+    } as unknown as Database
+
+    const waker = keepWaking(held, quiet, 1)
+    await started.promise
+
+    let stopped = false
+    const stopping = waker.stop().then(() => {
+      stopped = true
+    })
+
+    // Given every chance to return early. The round is still holding the pool.
+    await new Promise((wake) => setTimeout(wake, 20))
+    expect(stopped).toBe(false)
+
+    release.resolve()
+    await stopping
+
+    expect(roundEnded).toBe(true)
+  })
+
   it('stops when it is told to', async () => {
     const { promise, resolve } = Promise.withResolvers<void>()
     const broken = gone(1, resolve)

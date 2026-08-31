@@ -199,7 +199,7 @@ export function PinnedChats({ slug }: { readonly slug: string }) {
       {expanded &&
         (conversations.isError ? (
           <p className="empty" role="alert">
-            Could not read your conversations. Try again.
+            Could not read your chats. Try again.
           </p>
         ) : (
           <ul id="pinned-conversations" className="chat-history">
@@ -245,7 +245,7 @@ export function ChatSidebar({ slug }: { readonly slug: string }) {
         <div className="chat-groups">
           {conversations.isError && (
             <p className="empty" role="alert">
-              Could not read your conversations. Try again.
+              Could not read your chats. Try again.
             </p>
           )}
           {grouped(conversations.data ?? []).map((group) => (

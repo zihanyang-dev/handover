@@ -111,7 +111,7 @@ export function ConversationComposer({
 
 function whyNot(reason: string): string {
   if (reason === 'agent-not-on-machine') return 'This agent is no longer installed.'
-  if (reason === 'unavailable') return 'This conversation is not here any more.'
+  if (reason === 'unavailable') return 'This chat is not here any more.'
 
   return 'Could not send that. Try again.'
 }
