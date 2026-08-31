@@ -105,6 +105,16 @@ describe('answering a machine', () => {
     expect(screen.getByRole('button', { name: /that is mine/i })).toBeDefined()
   })
 
+  it('does not turn an email fallback into a label', async () => {
+    server.use(signedIn({ displayName: 'mina@example.com', spaces: [] }), waiting())
+    open('/connect/WDJB-MJHT')
+
+    await screen.findByText('mina-mbp')
+
+    expect(screen.queryByText('mina@example.com')).toBeNull()
+    expect(screen.getByText('Account')).toBeDefined()
+  })
+
   it('says an Account connection can be added to a Space afterwards', async () => {
     server.use(signedIn({ spaces: [] }), waiting())
     open('/connect/WDJB-MJHT')

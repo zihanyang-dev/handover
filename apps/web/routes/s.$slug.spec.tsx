@@ -620,9 +620,9 @@ describe('entering a Space', () => {
         machines: [
           {
             id: 'm-1',
-            name: 'mina-mbp',
-            ownerName: 'Mina',
-            yours: true,
+            name: 'rui-mbp',
+            ownerName: 'rui@example.com',
+            yours: false,
             presence: { state: 'here' },
             agents: [{ kind: 'claude-code', name: 'Scout', version: '2.1.4', models: [] }],
           },
@@ -680,8 +680,9 @@ describe('entering a Space', () => {
 
     await userEvent.click(within(settings).getByRole('tab', { name: 'Machines' }))
     expect(within(settings).getByRole('heading', { name: 'Machines in Acme' })).toBeDefined()
-    expect(within(settings).getByText('mina-mbp')).toBeDefined()
-    expect(within(settings).getByText('Controlled by Mina')).toBeDefined()
+    expect(within(settings).getByText('rui-mbp')).toBeDefined()
+    expect(within(settings).getByText('Controlled by another member')).toBeDefined()
+    expect(within(settings).queryByText('rui@example.com')).toBeNull()
     expect(within(settings).queryByRole('spinbutton', { name: 'At once' })).toBeNull()
     expect(within(settings).queryByText('/Users/mina/code/thing')).toBeNull()
     await userEvent.click(within(settings).getByRole('button', { name: 'Add machine' }))

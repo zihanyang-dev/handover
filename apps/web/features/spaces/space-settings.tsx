@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { Laptop, People } from 'react-bootstrap-icons'
 import { TabList, TabPanel, type Tab } from '../../components/ui/tabs.tsx'
 import type { components } from '../../generated/api.ts'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { AccountSettings } from '../identity/account.tsx'
 import { meQuery } from '../identity/me.ts'
 import { SpaceMachines } from '../machines/space-machines.tsx'
@@ -27,8 +28,8 @@ type Me = components['schemas']['Me']
 export type SettingsSection = 'account' | 'people' | 'machines'
 
 function accountTabName(me: Me | undefined): string {
-  if (me === undefined || me.displayName.includes('@')) return 'Account'
-  return me.displayName
+  if (me === undefined) return 'Account'
+  return nameUnlessAddress(me.displayName) ?? 'Account'
 }
 
 function settingsTabs(me: Me | undefined): readonly Tab[] {

@@ -276,7 +276,10 @@ function approving({ db }: EnrolmentApi) {
     body: LetItIn,
     answers: {
       204: 'It is yours',
-      404: refuses(NOT_WAITING, 'Nothing is waiting, or that machine cannot be reconnected'),
+      404: refuses(
+        [NOT_WAITING, CANNOT_REPLACE],
+        'Nothing is waiting, or that machine cannot be reconnected',
+      ),
     },
 
     run: async (c) => {

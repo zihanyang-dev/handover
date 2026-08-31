@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { components } from '../../generated/api.ts'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { meQuery } from '../identity/me.ts'
 import { useSignOut } from '../identity/sign-out.tsx'
 import { SpaceEmojiPicker } from './emoji-picker.tsx'
@@ -23,7 +24,7 @@ type Space = components['schemas']['Space']
 /** The chosen name in this compact menu, without turning an email fallback into a label. */
 function accountName(me: components['schemas']['Me'] | undefined): string | undefined {
   if (me === undefined) return undefined
-  return me.displayName.includes('@') ? 'Account' : me.displayName
+  return nameUnlessAddress(me.displayName) ?? 'Account'
 }
 
 /** How many people are here, once that is known. A Space always has one, so nought is never true. */

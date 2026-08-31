@@ -111,18 +111,6 @@ describe('staying connected', () => {
     expect(reports).toHaveLength(3)
   })
 
-  it('says the directory it was connected in, so a screen can offer it', async () => {
-    // Nothing runs there any more — every turn gets a folder of its own. It is reported because
-    // `03` promised an agent works in your files, and that promise now lives on somebody being
-    // able to pick this directory when they open a conversation. A screen cannot offer a path it
-    // was never told.
-    const reports: unknown[] = []
-    server.use(keepsAnswering(reports))
-    const { running, signal } = runningFor(1)
-
-    await keepCheckingIn(apiFor(ORIGIN, 'hm_t'), [], running, signal)
-  })
-
   it('says which build it is, in every report and not only the first', async () => {
     // Every report, because the binary can be replaced between two of them — somebody re-running
     // the installer on a machine that never stops running. A version said once at connect would

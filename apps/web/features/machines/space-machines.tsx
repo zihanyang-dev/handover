@@ -11,6 +11,7 @@ import { Link } from '@tanstack/react-router'
 import { useId, useState } from 'react'
 import { Laptop } from 'react-bootstrap-icons'
 import { SettingsHeading } from '../../components/ui/settings-heading.tsx'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { peopleIn } from '../spaces/people.ts'
 import { AgentMark, agentKindName } from './agent.tsx'
 import {
@@ -290,9 +291,12 @@ function SpaceMachineRow({
   readonly slug: string
   readonly spaceName: string
 }) {
+  const controller = machine.yours
+    ? 'you'
+    : (nameUnlessAddress(machine.ownerName) ?? 'another member')
   return (
     <li className="py-5">
-      <MachineHeading machine={machine} note={`Controlled by ${machine.ownerName}`} />
+      <MachineHeading machine={machine} note={`Controlled by ${controller}`} />
       <AgentList machine={machine} editable={false} />
       {canRemove && <RemoveFromSpace machine={machine} slug={slug} spaceName={spaceName} />}
     </li>

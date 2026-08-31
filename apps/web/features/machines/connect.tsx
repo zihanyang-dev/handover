@@ -13,6 +13,7 @@ import { api, cached, reasonOf } from '../../api.ts'
 import { ShellCommand } from '../../components/ui/shell-command.tsx'
 import type { components } from '../../generated/api.ts'
 import { Mark } from '../../mark.tsx'
+import { nameUnlessAddress } from '../identity/account-name.ts'
 import { meQuery } from '../identity/me.ts'
 
 function saidFor(reason: string | undefined, fallback: string): string {
@@ -346,7 +347,7 @@ function FoundAnswer({
     <Answer
       machineName={machine.machineName}
       existingMachines={machine.existingMachines}
-      who={me.displayName}
+      who={nameUnlessAddress(me.displayName) ?? 'Account'}
       spaceName={space?.displayName}
       pending={pending}
       onAnswer={onAnswer}
