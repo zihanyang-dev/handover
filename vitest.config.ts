@@ -5,6 +5,19 @@ process.loadEnvFile('.env.test')
 
 export default defineConfig({
   test: {
+    /**
+     * What one worker may hold, so that ten of them cannot promise more than this machine has.
+     *
+     * Node's default old-space limit here is 4 GB, and a worker only approaches it because V8 lets
+     * garbage pile up while there is free memory to pile it in — the heap of any one test file in
+     * this suite measures between 54 and 113 MB, so what fills the rest is collectable. Left
+     * alone, ten workers each drifting towards 4 GB is a promise of forty on a machine with
+     * thirty-two, and it is kept by compressing and swapping until nothing else can run.
+     *
+     * 512 MB is four times the largest file measured. A worker that genuinely needs more than that
+     * has a leak worth finding rather than a limit worth raising.
+     */
+    poolOptions: { forks: { execArgv: ['--max-old-space-size=512'] } },
     projects: [
       {
         // What the repository asks of itself: not any package's code, and every one of them reads
